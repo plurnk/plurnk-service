@@ -1,0 +1,23 @@
+{
+  "name": "antlrmap",
+  "version": "0.0.1",
+  "description": "Use antlr4 to generate repomaps for llm agent context",
+  "keywords": [
+    "repomap"
+  ],
+  "homepage": "https://github.com/possumtech/antlrmap#readme",
+  "bugs": {
+    "url": "https://github.com/possumtech/antlrmap/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/possumtech/antlrmap.git"
+  },
+  "license": "MIT",
+  "author": "@wikitopian",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
