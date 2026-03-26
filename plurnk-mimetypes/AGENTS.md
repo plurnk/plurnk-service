@@ -312,6 +312,54 @@ Once this works, expanding to TypeScript/Python/etc. is just adding more `map.js
 
 ---
 
+## npm Release Strategy
+
+### Root package: `antlrmap`
+
+Published as `@possumtech/antlrmap`. Ships the CLI and runtime only.
+
+```json
+{
+  "name": "@possumtech/antlrmap",
+  "bin": { "antlrmap": "lib/index.js" },
+  "files": ["lib/"],
+  "dependencies": { "antlr4": "..." }
+}
+```
+
+- No language packs bundled — users install what they need.
+- `vendor/`, `scripts/`, `languages/` are all excluded from the published tarball.
+
+### Language packs: `@antlrmap/<id>`
+
+Each workspace publishes independently. Ships only the precompiled parser and mapping.
+
+```json
+{
+  "name": "@antlrmap/<id>",
+  "files": ["map.js", "generated/"],
+  "peerDependencies": { "antlr4": "..." }
+}
+```
+
+- `files` whitelist ensures `.g4` source, tests, and vendor paths never ship.
+- `antlr4` is a **peerDependency** — the root CLI provides it, avoiding duplication.
+- `private: true` on stubs prevents accidental publish. Remove when `status: "done"`.
+
+### Install experience
+
+```bash
+# CLI
+npm i -g @possumtech/antlrmap
+
+# language packs — install per-project or globally
+npm i -g @antlrmap/javascript @antlrmap/python--python3
+```
+
+The CLI discovers installed `@antlrmap/*` packages at runtime to know which languages are available.
+
+---
+
 ## Decisions
 
 - **Repomap output format**: JSON.

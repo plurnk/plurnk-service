@@ -1,5 +1,5 @@
 {
-  "name": "antlrmap",
+  "name": "@possumtech/antlrmap",
   "version": "0.0.1",
   "description": "Use antlr4 to generate repomaps for llm agent context",
   "keywords": [
@@ -16,8 +16,27 @@
   "license": "MIT",
   "author": "@wikitopian",
   "type": "module",
-  "main": "index.js",
+  "main": "lib/index.js",
+  "bin": {
+    "antlrmap": "lib/index.js"
+  },
+  "files": [
+    "lib/"
+  ],
+  "workspaces": [
+    "languages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "scaffold": "node scripts/scaffold.js",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npx @biomejs/biome check .",
+    "test": "node --test test/**/*.test.js"
+  },
+  "dependencies": {
+    "antlr4": "^4.13.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.9",
+    "antlr-ng": "^1.0.10"
   }
 }
