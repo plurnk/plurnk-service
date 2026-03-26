@@ -4,3 +4,7 @@ node_modules/
 
 # antlrmap — precompiled ANTLR4 output (build artifact, not source)
 languages/*/generated/
+
+# antlr-ng build artifacts
+stdin.c
+stdin.c.p

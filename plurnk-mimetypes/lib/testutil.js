@@ -24,7 +24,7 @@ export async function testLanguage(
 
 			const opts = skip.includes(rel) ? { todo: `known failure: ${rel}` } : {};
 
-		it(`parses ${rel}`, opts, async () => {
+			it(`parses ${rel}`, opts, async () => {
 				const source = await fs.readFile(file, "utf-8");
 				const symbols = parser.parse(source);
 				assert.ok(Array.isArray(symbols), "should return an array");
