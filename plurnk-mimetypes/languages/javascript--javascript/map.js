@@ -64,7 +64,12 @@ class SymbolExtractor extends JavaScriptParserVisitor {
 		const name = ctx.classElementName?.();
 		const getter = ctx.getter?.();
 		const setter = ctx.setter?.();
-		const label = name?.getText() ?? getter?.getText() ?? setter?.getText();
+		// getter/setter rules are: identifier classElementName
+		// so the actual property name is inside the getter/setter, not the top-level getText()
+		const label =
+			name?.getText() ??
+			getter?.classElementName?.()?.getText() ??
+			setter?.classElementName?.()?.getText();
 		if (label) {
 			const params = this.#extractParams(ctx.formalParameterList?.());
 			this.#add("method", label, ctx, params);
