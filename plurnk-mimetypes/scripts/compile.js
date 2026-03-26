@@ -109,6 +109,10 @@ async function compileLang(build) {
 		{ cwd: ROOT },
 	);
 
+	// antlr-ng dumps stdin.c and stdin.c.p in cwd — clean up
+	await fs.rm(path.join(ROOT, "stdin.c"), { force: true });
+	await fs.rm(path.join(ROOT, "stdin.c.p"), { force: true });
+
 	// Copy base files from grammar zoo's JavaScript/ dir
 	if (build.baseFiles) {
 		const jsDir = path.join(grammarPath, "JavaScript");
