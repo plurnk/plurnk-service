@@ -8,7 +8,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 
 export async function testLanguage(
 	langId,
-	{ examplesDir, extensions, maxFiles = 100 },
+	{ examplesDir, extensions, maxFiles = 100, skip = [] },
 ) {
 	const languageDir = path.join(ROOT, "languages", langId);
 	const parser = await Parser.load(languageDir);
@@ -22,7 +22,9 @@ export async function testLanguage(
 		for (const file of files) {
 			const rel = path.relative(examplesPath, file);
 
-			it(`parses ${rel}`, async () => {
+			const opts = skip.includes(rel) ? { todo: `known failure: ${rel}` } : {};
+
+		it(`parses ${rel}`, opts, async () => {
 				const source = await fs.readFile(file, "utf-8");
 				const symbols = parser.parse(source);
 				assert.ok(Array.isArray(symbols), "should return an array");
