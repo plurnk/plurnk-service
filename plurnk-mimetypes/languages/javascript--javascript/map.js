@@ -83,7 +83,13 @@ class SymbolExtractor extends JavaScriptParserVisitor {
 		const text = name.getText();
 		// async/static are modifiers, not field names — the parser can
 		// misparse them as fieldDefinition in some class element patterns
-		if (text === "async" || text === "static" || text === "get" || text === "set") return null;
+		if (
+			text === "async" ||
+			text === "static" ||
+			text === "get" ||
+			text === "set"
+		)
+			return null;
 		this.#add("field", text, ctx);
 		return null;
 	}

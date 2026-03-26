@@ -199,7 +199,7 @@ class SymbolExtractor extends ScalaVisitor {
 	}
 
 	// Exclude imports
-	visitImport_(ctx) {
+	visitImport_(_ctx) {
 		return null;
 	}
 }

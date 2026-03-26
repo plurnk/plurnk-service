@@ -160,7 +160,13 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 	visitPropertyDeclarationExpression(ctx) {
 		const name = ctx.propertyName?.()?.getText();
 		if (!name) return null;
-		if (name === "async" || name === "static" || name === "get" || name === "set") return null;
+		if (
+			name === "async" ||
+			name === "static" ||
+			name === "get" ||
+			name === "set"
+		)
+			return null;
 		this.#add("field", name, ctx);
 		return null;
 	}
