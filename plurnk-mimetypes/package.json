@@ -40,11 +40,13 @@
   ],
   "scripts": {
     "scaffold": "node scripts/scaffold.js",
+    "init-language": "node scripts/init-language.js",
     "build": "node scripts/compile.js",
     "lint": "npx @biomejs/biome check .",
     "test": "node --test test/**/*.test.js",
     "test:languages": "node --test languages/*/map.test.js",
-    "test:all": "node --test test/**/*.test.js languages/*/map.test.js"
+    "test:all": "node --test test/**/*.test.js languages/*/map.test.js",
+    "release": "npm version patch && git push --follow-tags"
   },
   "dependencies": {
     "antlr4": "^4.13.2"

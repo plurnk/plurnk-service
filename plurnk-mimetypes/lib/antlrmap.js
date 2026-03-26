@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import Parser from "./Parser.js";
 
-const EXTENSIONS = Object.freeze({
+const BUILTIN_EXTENSIONS = Object.freeze({
 	".js": "javascript--javascript",
 	".mjs": "javascript--javascript",
 	".ts": "javascript--typescript",
@@ -25,17 +25,36 @@ const EXTENSIONS = Object.freeze({
 	".lua": "lua",
 });
 
-const LANGUAGES_DIR = path.resolve(import.meta.dirname, "..", "languages");
+const BUILTIN_LANGUAGES_DIR = path.resolve(
+	import.meta.dirname,
+	"..",
+	"languages",
+);
 
 export default class Antlrmap {
 	#parsers = new Map();
+	#extensions;
+	#customDirs = new Map();
+
+	constructor({ extensions = {} } = {}) {
+		this.#extensions = { ...BUILTIN_EXTENSIONS, ...extensions };
+	}
+
+	registerLanguage(langId, { dir, extensions }) {
+		this.#customDirs.set(langId, dir);
+		for (const ext of extensions) {
+			this.#extensions[ext] = langId;
+		}
+	}
 
 	async #getParser(ext) {
-		const langId = EXTENSIONS[ext];
+		const langId = this.#extensions[ext];
 		if (!langId) return null;
 		if (this.#parsers.has(langId)) return this.#parsers.get(langId);
 
-		const parser = await Parser.load(path.join(LANGUAGES_DIR, langId));
+		const langDir =
+			this.#customDirs.get(langId) ?? path.join(BUILTIN_LANGUAGES_DIR, langId);
+		const parser = await Parser.load(langDir);
 		this.#parsers.set(langId, parser);
 		return parser;
 	}
@@ -75,12 +94,12 @@ export default class Antlrmap {
 	}
 
 	static get extensions() {
-		return EXTENSIONS;
+		return BUILTIN_EXTENSIONS;
 	}
 
 	static get supported() {
 		const languages = {};
-		for (const [ext, id] of Object.entries(EXTENSIONS)) {
+		for (const [ext, id] of Object.entries(BUILTIN_EXTENSIONS)) {
 			languages[id] ??= [];
 			languages[id].push(ext);
 		}
