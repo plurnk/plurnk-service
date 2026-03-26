@@ -1,0 +1,57 @@
+name: Update Grammar Zoo
+
+on:
+  schedule:
+    # First Monday of each month
+    - cron: "0 9 1-7 * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Update grammars-v4 submodule
+        run: |
+          cd vendor/grammars-v4
+          git fetch origin
+          git checkout origin/master
+          cd ../..
+          echo "NEW_SHA=$(cd vendor/grammars-v4 && git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - run: npm ci
+
+      - name: Rebuild all grammars
+        run: npm run build
+
+      - name: Run tests
+        id: test
+        run: npm run test:all
+        continue-on-error: true
+
+      - name: Create PR
+        if: always()
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/update-grammars-${{ env.NEW_SHA }}
+          title: "chore: update grammars-v4 to ${{ env.NEW_SHA }}"
+          body: |
+            Automated update of the grammars-v4 submodule.
+
+            Test result: ${{ steps.test.outcome }}
+
+            Review the test results before merging — grammar changes
+            upstream may break existing mappings.
+          commit-message: "chore: update grammars-v4 submodule to ${{ env.NEW_SHA }}"

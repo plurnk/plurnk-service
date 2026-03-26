@@ -24,14 +24,20 @@
     "antlrmap": "lib/index.js"
   },
   "files": [
-    "lib/"
+    "lib/antlrmap.js",
+    "lib/index.js",
+    "lib/Parser.js",
+    "lib/Formatter.js",
+    "languages/*/map.js",
+    "languages/*/package.json",
+    "languages/*/generated/**/*.js"
   ],
   "workspaces": [
     "languages/*"
   ],
   "scripts": {
     "scaffold": "node scripts/scaffold.js",
-    "build": "npm run build --workspaces --if-present",
+    "build": "node scripts/compile.js",
     "lint": "npx @biomejs/biome check .",
     "test": "node --test test/**/*.test.js",
     "test:languages": "node --test languages/*/map.test.js",
