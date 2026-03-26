@@ -55,7 +55,12 @@ const BUILDS = [
 		grammarDir: "c",
 		g4: ["CLexer.g4", "CParser.g4"],
 		baseFiles: ["CLexerBase.js", "CParserBase.js"],
-		extraSupport: ["Symbol.js", "SymbolTable.js", "TypeClassification.js", "ErrorListener.js"],
+		extraSupport: [
+			"Symbol.js",
+			"SymbolTable.js",
+			"TypeClassification.js",
+			"ErrorListener.js",
+		],
 	},
 	{
 		id: "cpp",
@@ -91,13 +96,18 @@ async function compileLang(build) {
 
 	// Compile .g4 files
 	const g4Paths = build.g4.map((f) => path.join(grammarPath, f));
-	await exec("npx", [
-		"antlr-ng",
-		"-Dlanguage=JavaScript",
-		"--generate-visitor",
-		"-o", outDir,
-		...g4Paths,
-	], { cwd: ROOT });
+	await exec(
+		"npx",
+		[
+			"antlr-ng",
+			"-Dlanguage=JavaScript",
+			"--generate-visitor",
+			"-o",
+			outDir,
+			...g4Paths,
+		],
+		{ cwd: ROOT },
+	);
 
 	// Copy base files from grammar zoo's JavaScript/ dir
 	if (build.baseFiles) {
