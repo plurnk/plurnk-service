@@ -23,6 +23,20 @@ const BUILTIN_EXTENSIONS = Object.freeze({
 	".kts": "kotlin--kotlin",
 	".php": "php",
 	".lua": "lua",
+	".sql": "sql--sqlite",
+	".dart": "dart2",
+	".scala": "scala",
+	".sc": "scala",
+	".cbl": "cobol85",
+	".cob": "cobol85",
+	".cpy": "cobol85",
+	".clj": "clojure",
+	".cljs": "clojure",
+	".cljc": "clojure",
+	".edn": "clojure",
+	".ex": "elixir",
+	".exs": "elixir",
+	".zig": "zig",
 });
 
 const BUILTIN_LANGUAGES_DIR = path.resolve(

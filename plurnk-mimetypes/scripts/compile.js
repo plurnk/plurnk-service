@@ -85,6 +85,42 @@ const BUILDS = [
 		g4: ["LuaLexer.g4", "LuaParser.g4"],
 		baseFiles: ["LuaLexerBase.js", "LuaParserBase.js"],
 	},
+	{
+		id: "sql--sqlite",
+		grammarDir: "sql/sqlite",
+		g4: ["SQLiteLexer.g4", "SQLiteParser.g4"],
+	},
+	{
+		id: "dart2",
+		grammarDir: "dart2",
+		g4: ["Dart2Lexer.g4", "Dart2Parser.g4"],
+		baseFiles: ["Dart2LexerBase.js"],
+	},
+	{
+		id: "scala",
+		grammarDir: "scala",
+		g4: ["Scala.g4"],
+	},
+	{
+		id: "cobol85",
+		grammarDir: "cobol85",
+		g4: ["Cobol85.g4"],
+	},
+	{
+		id: "clojure",
+		grammarDir: "clojure",
+		g4: ["Clojure.g4"],
+	},
+	{
+		id: "elixir",
+		grammarDir: "elixir",
+		g4: ["ElixirLexer.g4", "ElixirParser.g4"],
+	},
+	{
+		id: "zig",
+		grammarDir: "zig",
+		g4: ["ZigLexer.g4", "ZigParser.g4"],
+	},
 ];
 
 async function compileLang(build) {

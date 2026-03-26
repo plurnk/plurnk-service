@@ -1,0 +1,13 @@
+{
+  "name": "@antlrmap/scala",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "files": [
+    "map.js",
+    "generated/"
+  ],
+  "peerDependencies": {
+    "antlr4": "*"
+  }
+}
