@@ -51,6 +51,7 @@ export default class Parser {
 			lexerClass: LexerClass,
 			parserClass: ParserClass,
 			mapClass: MapClass,
+			entryRule: MapClass.entryRule ?? "program",
 		});
 	}
 }

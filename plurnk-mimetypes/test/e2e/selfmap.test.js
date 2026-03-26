@@ -16,7 +16,7 @@ async function run(...files) {
 describe("antlrmap e2e — self-mapping", () => {
 	it("maps its own source files to JSON", async () => {
 		const output = await run(
-			"lib/index.js",
+			"lib/antlrmap.js",
 			"lib/Parser.js",
 			"lib/Formatter.js",
 		);
@@ -25,7 +25,7 @@ describe("antlrmap e2e — self-mapping", () => {
 		assert.equal(output.length, 3);
 
 		const files = output.map((e) => e.file);
-		assert.ok(files.includes("lib/index.js"));
+		assert.ok(files.includes("lib/antlrmap.js"));
 		assert.ok(files.includes("lib/Parser.js"));
 		assert.ok(files.includes("lib/Formatter.js"));
 	});
@@ -67,17 +67,16 @@ describe("antlrmap e2e — self-mapping", () => {
 	});
 
 	it("excludes unexported module-scope variables", async () => {
-		const [entry] = await run("lib/index.js");
+		const [entry] = await run("lib/antlrmap.js");
 		const names = entry.symbols.map((s) => s.name);
 		assert.ok(
-			!names.includes("parserCache"),
-			"unexported 'parserCache' should not appear",
+			!names.includes("LANGUAGES_DIR"),
+			"unexported 'LANGUAGES_DIR' should not appear",
 		);
 		assert.ok(
-			!names.includes("results"),
-			"unexported 'results' should not appear",
+			!names.includes("EXTENSIONS"),
+			"unexported 'EXTENSIONS' should not appear",
 		);
-		assert.ok(!names.includes("cwd"), "unexported 'cwd' should not appear");
 	});
 
 	it("captures fields on classes", async () => {

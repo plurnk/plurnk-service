@@ -1,0 +1,89 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import Parser from "./Parser.js";
+
+const EXTENSIONS = Object.freeze({
+	".js": "javascript--javascript",
+	".mjs": "javascript--javascript",
+	".ts": "javascript--typescript",
+	".tsx": "javascript--typescript",
+	".py": "python--python3",
+	".pyw": "python--python3",
+	".rs": "rust",
+	".go": "golang",
+	".java": "java--java",
+	".c": "c",
+	".h": "c",
+	".cpp": "cpp",
+	".cxx": "cpp",
+	".cc": "cpp",
+	".hpp": "cpp",
+	".hxx": "cpp",
+	".kt": "kotlin--kotlin",
+	".kts": "kotlin--kotlin",
+	".php": "php",
+	".lua": "lua",
+});
+
+const LANGUAGES_DIR = path.resolve(import.meta.dirname, "..", "languages");
+
+export default class Antlrmap {
+	#parsers = new Map();
+
+	async #getParser(ext) {
+		const langId = EXTENSIONS[ext];
+		if (!langId) return null;
+		if (this.#parsers.has(langId)) return this.#parsers.get(langId);
+
+		const parser = await Parser.load(path.join(LANGUAGES_DIR, langId));
+		this.#parsers.set(langId, parser);
+		return parser;
+	}
+
+	async mapFile(filePath) {
+		const resolved = path.resolve(filePath);
+		const ext = path.extname(resolved);
+		const parser = await this.#getParser(ext);
+		if (!parser) return null;
+
+		const source = await fs.readFile(resolved, "utf-8");
+		return parser.parse(source);
+	}
+
+	async mapSource(source, ext) {
+		const parser = await this.#getParser(ext);
+		if (!parser) return null;
+
+		return parser.parse(source);
+	}
+
+	async mapFiles(filePaths, { cwd = process.cwd() } = {}) {
+		const results = [];
+
+		for (const filePath of filePaths) {
+			const resolved = path.resolve(filePath);
+			const symbols = await this.mapFile(resolved);
+			if (symbols?.length > 0) {
+				results.push({
+					file: path.relative(cwd, resolved),
+					symbols,
+				});
+			}
+		}
+
+		return results;
+	}
+
+	static get extensions() {
+		return EXTENSIONS;
+	}
+
+	static get supported() {
+		const languages = {};
+		for (const [ext, id] of Object.entries(EXTENSIONS)) {
+			languages[id] ??= [];
+			languages[id].push(ext);
+		}
+		return languages;
+	}
+}

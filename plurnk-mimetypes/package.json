@@ -16,7 +16,10 @@
   "license": "MIT",
   "author": "@wikitopian",
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/antlrmap.js",
+  "exports": {
+    ".": "./lib/antlrmap.js"
+  },
   "bin": {
     "antlrmap": "lib/index.js"
   },
@@ -30,7 +33,9 @@
     "scaffold": "node scripts/scaffold.js",
     "build": "npm run build --workspaces --if-present",
     "lint": "npx @biomejs/biome check .",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test test/**/*.test.js",
+    "test:languages": "node --test languages/*/map.test.js",
+    "test:all": "node --test test/**/*.test.js languages/*/map.test.js"
   },
   "dependencies": {
     "antlr4": "^4.13.2"
