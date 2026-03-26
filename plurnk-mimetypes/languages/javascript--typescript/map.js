@@ -159,7 +159,9 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 	// propertyMemberBase propertyName '?'? typeAnnotation? initializer? SemiColon
 	visitPropertyDeclarationExpression(ctx) {
 		const name = ctx.propertyName?.()?.getText();
-		if (name) this.#add("field", name, ctx);
+		if (!name) return null;
+		if (name === "async" || name === "static" || name === "get" || name === "set") return null;
+		this.#add("field", name, ctx);
 		return null;
 	}
 
