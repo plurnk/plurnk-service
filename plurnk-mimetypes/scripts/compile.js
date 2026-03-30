@@ -121,6 +121,67 @@ const BUILDS = [
 		grammarDir: "zig",
 		g4: ["ZigLexer.g4", "ZigParser.g4"],
 	},
+	{
+		id: "r",
+		grammarDir: "r",
+		g4: ["R.g4"],
+	},
+	{
+		id: "matlab",
+		grammarDir: "matlab",
+		g4: ["matlab.g4"],
+	},
+	{
+		id: "verilog",
+		grammarDir: "verilog/verilog",
+		g4: ["VerilogLexer.g4", "VerilogParser.g4"],
+	},
+	{
+		id: "vhdl",
+		grammarDir: "vhdl/vhdl",
+		g4: ["vhdl.g4"],
+	},
+	{
+		id: "objc",
+		grammarDir: "objc",
+		g4: ["ObjectiveCLexer.g4", "ObjectiveCParser.g4"],
+	},
+	{
+		id: "terraform",
+		grammarDir: "terraform",
+		g4: ["terraform.g4"],
+	},
+	{
+		id: "fortran",
+		grammarDir: "fortran/fortran90",
+		g4: ["Fortran90Lexer.g4", "Fortran90Parser.g4"],
+		baseFiles: ["Fortran90LexerBase.js"],
+	},
+	{
+		id: "erlang",
+		grammarDir: "erlang",
+		g4: ["Erlang.g4"],
+	},
+	{
+		id: "thrift",
+		grammarDir: "thrift",
+		g4: ["Thrift.g4"],
+	},
+	{
+		id: "graphql",
+		grammarDir: "graphql",
+		g4: ["GraphQL.g4"],
+	},
+	{
+		id: "pgn",
+		grammarDir: "pgn",
+		g4: ["PGN.g4"],
+	},
+	{
+		id: "awk",
+		grammarDir: "awk",
+		g4: ["awk.g4"],
+	},
 ];
 
 async function compileLang(build) {

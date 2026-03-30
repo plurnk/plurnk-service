@@ -132,7 +132,8 @@ const visitMethods = [...visitorSource.matchAll(/visit(\w+)\(ctx\)/g)]
 
 // Generate map.js skeleton
 const extArray = extensions.map((e) => `"${e}"`).join(", ");
-const mapContent = `import ${parserG4.replace(".g4", "")}Visitor from "./generated/${visitorName}";
+const mapContent = `import { withExtractor, createMap } from "../../lib/BaseExtractor.js";
+import ${parserG4.replace(".g4", "")}Visitor from "./generated/${visitorName}";
 
 // Available visitor methods (from the grammar):
 // ${visitMethods.map((m) => `visit${m}`).join("\n// ")}
@@ -143,45 +144,35 @@ const mapContent = `import ${parserG4.replace(".g4", "")}Visitor from "./generat
 // - Functions and methods must include params
 // - Identify the scope boundary rule (e.g., functionBody, block) that separates
 //   "visible definitions" from "local implementation"
+//
+// Inherited from withExtractor():
+//   this._add(kind, name, ctx, params) — emit a symbol
+//   this._inBody — true when inside a function/method body
+//   this._gateBody(ctx) — call from the scope boundary visitor
+//   this._endLine(ctx) — override if the grammar needs custom endLine logic
 
-class SymbolExtractor extends ${parserG4.replace(".g4", "")}Visitor {
-	#symbols = [];
-	#inBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(${parserG4.replace(".g4", "")}Visitor) {
 	// TODO: Implement visitors for this language's definitions.
-	// Start by identifying:
-	// 1. The scope boundary rule (sets #inBody = true)
-	// 2. Function/method declaration rules
-	// 3. Class/struct/type declaration rules
-	// 4. Field/property declaration rules
+	//
+	// 1. Scope boundary — find the rule for function/method body and gate it:
+	//    visitFunctionBody(ctx) { return this._gateBody(ctx); }
+	//
+	// 2. Declarations — override visitors and call this._add():
+	//    visitFunctionDeclaration(ctx) {
+	//        if (this._inBody) return null;
+	//        const id = ctx.identifier();
+	//        if (id) this._add("function", id.getText(), ctx, this.#extractParams(...));
+	//        return this.visitChildren(ctx);
+	//    }
+	//
+	// 3. Params — add a private #extractParams method for this grammar's param rules
 }
 
-export default class ${name.replace(/[^a-zA-Z0-9]/g, "_")}Map {
-	static status = "todo";
-	static entryRule = "${entry}";
-	static extensions = [${extArray}];
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "${entry}",
+	extensions: [${extArray}],
+});
 `;
 
 await fs.writeFile(path.join(outDir, "map.js"), mapContent);
