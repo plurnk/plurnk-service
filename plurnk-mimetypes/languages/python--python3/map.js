@@ -9,15 +9,29 @@ class SymbolExtractor extends Python3ParserVisitor {
 		return this.#symbols;
 	}
 
+	// DEDENT token type in the Python3 grammar
+	static #DEDENT = 2;
+
 	#add(kind, name, ctx, params) {
 		const symbol = {
 			name,
 			kind,
 			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
+			// Python's DEDENT tokens land on the next definition's line.
+			// Subtract 1 to keep endLine within the current definition.
+			endLine: this.#endLine(ctx),
 		};
 		if (params) symbol.params = params;
 		this.#symbols.push(symbol);
+	}
+
+	#endLine(ctx) {
+		const stop = ctx.stop;
+		if (!stop) return ctx.start.line;
+		if (stop.type === SymbolExtractor.#DEDENT && stop.line > ctx.start.line) {
+			return stop.line - 1;
+		}
+		return stop.line;
 	}
 
 	#extractParams(parameters) {

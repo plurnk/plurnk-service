@@ -111,6 +111,8 @@ class SymbolExtractor extends RustParserVisitor {
 
 	visitInherentImpl(ctx) {
 		if (this.#inBody) return null;
+		const type = ctx.type_?.();
+		if (type) this.#add("class", type.getText(), ctx);
 		const wasInImpl = this.#inImpl;
 		this.#inImpl = true;
 		this.visitChildren(ctx);
@@ -120,6 +122,8 @@ class SymbolExtractor extends RustParserVisitor {
 
 	visitTraitImpl(ctx) {
 		if (this.#inBody) return null;
+		const type = ctx.type_?.();
+		if (type) this.#add("class", type.getText(), ctx);
 		const wasInImpl = this.#inImpl;
 		this.#inImpl = true;
 		this.visitChildren(ctx);

@@ -87,7 +87,9 @@ class SymbolExtractor extends ZigParserVisitor {
 			const containerKind = this.#findContainerKind(globalVar.expr?.());
 			if (containerKind) {
 				this.#add(containerKind, name, ctx);
-			} else if (isConst) {
+				return this.visitChildren(ctx);
+			}
+			if (isConst) {
 				this.#add("constant", name, ctx);
 			} else {
 				this.#add("variable", name, ctx);

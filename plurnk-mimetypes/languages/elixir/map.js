@@ -25,15 +25,8 @@ class SymbolExtractor extends ElixirParserVisitor {
 		return exprs.map((e) => e.getText());
 	}
 
-	// Scope boundary: do_block inside function_def is the wall.
-	visitDo_block(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
-	}
-
+	// Scope boundary: function/macro body is the wall. Module do_blocks
+	// must remain transparent so inner defs are discovered.
 	visitModule_def(ctx) {
 		if (this.#inBody) return null;
 		const alias = ctx.ALIAS?.();
@@ -50,7 +43,11 @@ class SymbolExtractor extends ElixirParserVisitor {
 				paramLists.length > 0 ? this.#extractParams(paramLists[0]) : [];
 			this.#add("function", variable.getText(), ctx, params);
 		}
-		return this.visitChildren(ctx);
+		const wasInBody = this.#inBody;
+		this.#inBody = true;
+		this.visitChildren(ctx);
+		this.#inBody = wasInBody;
+		return null;
 	}
 
 	visitMacro_def(ctx) {
@@ -60,7 +57,11 @@ class SymbolExtractor extends ElixirParserVisitor {
 			const params = this.#extractParams(ctx.expressions_?.());
 			this.#add("function", variable.getText(), ctx, params);
 		}
-		return this.visitChildren(ctx);
+		const wasInBody = this.#inBody;
+		this.#inBody = true;
+		this.visitChildren(ctx);
+		this.#inBody = wasInBody;
+		return null;
 	}
 
 	visitAnonymous_function() {

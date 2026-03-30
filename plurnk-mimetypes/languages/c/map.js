@@ -67,7 +67,10 @@ class SymbolExtractor extends CParserVisitor {
 			const params = this.#extractParams(declarator);
 			this.#add("function", name, ctx, params);
 		}
-		return this.visitChildren(ctx);
+		// Don't descend — params are already extracted, and the body
+		// would only contain local declarations we want to exclude.
+		// Descending would also misparse struct types in params as definitions.
+		return null;
 	}
 
 	visitStructOrUnionSpecifier(ctx) {
