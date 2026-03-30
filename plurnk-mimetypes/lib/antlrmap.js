@@ -79,7 +79,12 @@ export default class Antlrmap {
 		const parser = await this.#getParser(ext);
 		if (!parser) return null;
 
-		const source = await fs.readFile(resolved, "utf-8");
+		let source;
+		try {
+			source = await fs.readFile(resolved, "utf-8");
+		} catch {
+			return [];
+		}
 		return parser.parse(source);
 	}
 

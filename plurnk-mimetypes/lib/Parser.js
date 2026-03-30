@@ -22,8 +22,11 @@ export default class Parser {
 		const parser = new this.#parserClass(tokens);
 		parser.removeErrorListeners();
 		const tree = parser[this.#entryRule]();
-		return this.#mapClass.extract(tree);
+		const flat = this.#mapClass.extract(tree);
+		return nestSymbols(flat);
 	}
+
+	static nestSymbols = nestSymbols;
 
 	static async load(languageDir) {
 		const generated = path.join(languageDir, "generated");
@@ -54,4 +57,32 @@ export default class Parser {
 			entryRule: MapClass.entryRule ?? "program",
 		});
 	}
+}
+
+function nestSymbols(flat) {
+	const sorted = flat.toSorted(
+		(a, b) => a.line - b.line || b.endLine - a.endLine,
+	);
+	const roots = [];
+	const stack = [];
+
+	for (const sym of sorted) {
+		while (stack.length > 0 && stack[stack.length - 1].endLine < sym.line) {
+			stack.pop();
+		}
+
+		if (stack.length > 0) {
+			const parent = stack[stack.length - 1];
+			parent.children ??= [];
+			parent.children.push(sym);
+		} else {
+			roots.push(sym);
+		}
+
+		if (sym.endLine > sym.line) {
+			stack.push(sym);
+		}
+	}
+
+	return roots;
 }

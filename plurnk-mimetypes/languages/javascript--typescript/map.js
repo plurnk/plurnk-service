@@ -143,15 +143,15 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 	visitGetterSetterDeclarationExpression(ctx) {
 		const getter = ctx.getAccessor?.();
 		const setter = ctx.setAccessor?.();
-		const accessor = getter ?? setter;
-		if (accessor) {
-			const name = accessor.classElementName?.()?.getText();
-			if (name) {
-				const params = setter
-					? this.#extractFormalParams(setter.formalParameterList?.())
-					: [];
-				this.#add("method", name, ctx, params);
-			}
+		// classElementName is inside the getter/setter rule, not on getAccessor/setAccessor directly
+		const name =
+			getter?.getter?.()?.classElementName?.()?.getText() ??
+			setter?.setter?.()?.classElementName?.()?.getText();
+		if (name) {
+			const params = setter
+				? this.#extractFormalParams(setter.formalParameterList?.())
+				: [];
+			this.#add("method", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
@@ -175,6 +175,20 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 		return null;
 	}
 
+	// TS has two export paths:
+	// 1. exportStatement → ExportDeclaration (export { x } / export declaration)
+	// 2. sourceElement → Export? statement (export const x = ...)
+	// Handle both.
+	visitSourceElement(ctx) {
+		if (ctx.Export?.()) {
+			this.#inExport = true;
+			this.visitChildren(ctx);
+			this.#inExport = false;
+			return null;
+		}
+		return this.visitChildren(ctx);
+	}
+
 	visitExportDeclaration(ctx) {
 		this.#inExport = true;
 		this.visitChildren(ctx);
@@ -183,6 +197,14 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 	}
 
 	visitExportDefaultDeclaration(ctx) {
+		return this.visitChildren(ctx);
+	}
+
+	// Class expressions: const Foo = class { ... }
+	visitClassExpression(ctx) {
+		if (this.#inBody) return null;
+		const id = ctx.identifier?.();
+		if (id) this.#add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
@@ -196,7 +218,8 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 			const id = decl.identifierOrKeyWord?.();
 			if (id) this.#add("variable", id.getText(), decl);
 		}
-		return null;
+		// Descend into initializers for class/function expressions
+		return this.visitChildren(ctx);
 	}
 }
 

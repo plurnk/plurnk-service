@@ -60,12 +60,19 @@ class SymbolExtractor extends JavaScriptParserVisitor {
 		return this.visitChildren(ctx);
 	}
 
+	// Class expressions: const Foo = class { ... }
+	// Emit the class and descend to capture methods/fields
+	visitClassExpression(ctx) {
+		if (this.#inBody) return null;
+		const id = ctx.identifier?.();
+		if (id) this.#add("class", id.getText(), ctx);
+		return this.visitChildren(ctx);
+	}
+
 	visitMethodDefinition(ctx) {
 		const name = ctx.classElementName?.();
 		const getter = ctx.getter?.();
 		const setter = ctx.setter?.();
-		// getter/setter rules are: identifier classElementName
-		// so the actual property name is inside the getter/setter, not the top-level getText()
 		const label =
 			name?.getText() ??
 			getter?.classElementName?.()?.getText() ??
@@ -81,8 +88,6 @@ class SymbolExtractor extends JavaScriptParserVisitor {
 		const name = ctx.classElementName?.();
 		if (!name) return null;
 		const text = name.getText();
-		// async/static are modifiers, not field names — the parser can
-		// misparse them as fieldDefinition in some class element patterns
 		if (
 			text === "async" ||
 			text === "static" ||
@@ -109,14 +114,16 @@ class SymbolExtractor extends JavaScriptParserVisitor {
 		return this.visitChildren(ctx);
 	}
 
-	// Variables are only visible outside the file if exported
+	// Exported variables — descend into initializer to find class/function expressions
 	visitVariableDeclaration(ctx) {
 		if (this.#inBody) return null;
 		if (!this.#inExport) return null;
 		const assignable = ctx.assignable?.();
 		const id = assignable?.identifier?.();
 		if (id) this.#add("variable", id.getText(), ctx);
-		return null;
+		// Descend so class expressions and arrow functions inside the
+		// initializer are visited (visitClassExpression will fire)
+		return this.visitChildren(ctx);
 	}
 }
 

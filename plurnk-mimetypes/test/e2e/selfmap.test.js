@@ -13,6 +13,15 @@ async function run(...files) {
 	return JSON.parse(stdout);
 }
 
+function flatten(symbols) {
+	const result = [];
+	for (const sym of symbols) {
+		result.push(sym);
+		if (sym.children) result.push(...flatten(sym.children));
+	}
+	return result;
+}
+
 describe("antlrmap e2e — self-mapping", () => {
 	it("maps its own source files to JSON", async () => {
 		const output = await run(
@@ -30,22 +39,52 @@ describe("antlrmap e2e — self-mapping", () => {
 		assert.ok(files.includes("lib/Formatter.js"));
 	});
 
+	it("nests class members under their parent class", async () => {
+		const [entry] = await run("lib/Parser.js");
+		const parserClass = entry.symbols.find(
+			(s) => s.name === "Parser" && s.kind === "class",
+		);
+		assert.ok(parserClass, "Parser class should be at top level");
+		assert.ok(
+			Array.isArray(parserClass.children),
+			"class should have children",
+		);
+
+		const childNames = parserClass.children.map((c) => c.name);
+		assert.ok(
+			childNames.includes("parse"),
+			"parse should be a child of Parser",
+		);
+		assert.ok(childNames.includes("load"), "load should be a child of Parser");
+		assert.ok(
+			childNames.includes("#lexerClass"),
+			"#lexerClass field should be a child of Parser",
+		);
+
+		// Methods should NOT appear at the top level
+		const topNames = entry.symbols.map((s) => s.name);
+		assert.ok(
+			!topNames.includes("parse"),
+			"parse should not be a top-level symbol",
+		);
+	});
+
 	it("captures class declarations with methods and params", async () => {
 		const [entry] = await run("lib/Parser.js");
-		const symbols = entry.symbols;
+		const all = flatten(entry.symbols);
 
-		const parserClass = symbols.find(
+		const parserClass = all.find(
 			(s) => s.name === "Parser" && s.kind === "class",
 		);
 		assert.ok(parserClass, "Parser class should be found");
 
-		const parseMethod = symbols.find(
+		const parseMethod = all.find(
 			(s) => s.name === "parse" && s.kind === "method",
 		);
 		assert.ok(parseMethod, "parse method should be found");
 		assert.deepEqual(parseMethod.params, ["source"]);
 
-		const loadMethod = symbols.find(
+		const loadMethod = all.find(
 			(s) => s.name === "load" && s.kind === "method",
 		);
 		assert.ok(loadMethod, "load method should be found");
@@ -54,13 +93,15 @@ describe("antlrmap e2e — self-mapping", () => {
 
 	it("excludes imports — they are dependencies, not definitions", async () => {
 		const [entry] = await run("lib/Parser.js");
-		const kinds = entry.symbols.map((s) => s.kind);
+		const all = flatten(entry.symbols);
+		const kinds = all.map((s) => s.kind);
 		assert.ok(!kinds.includes("import"), "no import symbols should appear");
 	});
 
 	it("excludes local variables inside function bodies", async () => {
 		const [entry] = await run("lib/Parser.js");
-		const names = entry.symbols.map((s) => s.name);
+		const all = flatten(entry.symbols);
+		const names = all.map((s) => s.name);
 		assert.ok(!names.includes("chars"), "local 'chars' should not appear");
 		assert.ok(!names.includes("tokens"), "local 'tokens' should not appear");
 		assert.ok(!names.includes("lexer"), "local 'lexer' should not appear");
@@ -68,20 +109,24 @@ describe("antlrmap e2e — self-mapping", () => {
 
 	it("excludes unexported module-scope variables", async () => {
 		const [entry] = await run("lib/antlrmap.js");
-		const names = entry.symbols.map((s) => s.name);
+		const all = flatten(entry.symbols);
+		const names = all.map((s) => s.name);
 		assert.ok(
 			!names.includes("LANGUAGES_DIR"),
 			"unexported 'LANGUAGES_DIR' should not appear",
 		);
 		assert.ok(
-			!names.includes("EXTENSIONS"),
-			"unexported 'EXTENSIONS' should not appear",
+			!names.includes("BUILTIN_EXTENSIONS"),
+			"unexported 'BUILTIN_EXTENSIONS' should not appear",
 		);
 	});
 
 	it("captures fields on classes", async () => {
 		const [entry] = await run("lib/Parser.js");
-		const fields = entry.symbols.filter((s) => s.kind === "field");
+		const parserClass = entry.symbols.find(
+			(s) => s.name === "Parser" && s.kind === "class",
+		);
+		const fields = parserClass.children.filter((s) => s.kind === "field");
 		const fieldNames = fields.map((f) => f.name);
 		assert.ok(fieldNames.includes("#lexerClass"));
 		assert.ok(fieldNames.includes("#parserClass"));
@@ -98,7 +143,6 @@ describe("antlrmap e2e — self-mapping", () => {
 		assert.equal(single.length, 1);
 		assert.equal(multi.length, 2);
 
-		// Same structure for the shared file
 		assert.deepEqual(
 			single[0],
 			multi.find((e) => e.file === "lib/Formatter.js"),
