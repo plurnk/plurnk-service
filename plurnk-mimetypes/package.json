@@ -1,6 +1,6 @@
 {
   "name": "@possumtech/antlrmap",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Use antlr4 to generate repomaps for llm agent context",
   "keywords": [
     "repomap"
