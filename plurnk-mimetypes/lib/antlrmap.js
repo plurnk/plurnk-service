@@ -58,6 +58,11 @@ const BUILTIN_EXTENSIONS = Object.freeze({
 	".gql": "graphql",
 	".pgn": "pgn",
 	".awk": "awk",
+	".json": "json",
+	".jsonc": "json",
+	".toml": "toml",
+	".dockerfile": "dockerfile",
+	Dockerfile: "dockerfile",
 });
 
 const BUILTIN_LANGUAGES_DIR = path.resolve(

@@ -182,6 +182,22 @@ const BUILDS = [
 		grammarDir: "awk",
 		g4: ["awk.g4"],
 	},
+	{
+		id: "json",
+		grammarDir: "json",
+		g4: ["JSON.g4"],
+	},
+	{
+		id: "toml",
+		grammarDir: "toml",
+		g4: ["TomlLexer.g4", "TomlParser.g4"],
+	},
+	{
+		id: "dockerfile",
+		// Custom grammar, not from vendor
+		grammarDir: "../languages/dockerfile/grammar",
+		g4: ["DockerfileLexer.g4", "DockerfileParser.g4"],
+	},
 ];
 
 async function compileLang(build) {
