@@ -195,14 +195,16 @@ const BUILDS = [
 	{
 		id: "dockerfile",
 		// Custom grammar, not from vendor
-		grammarDir: "../languages/dockerfile/grammar",
+		grammarPath: "languages/dockerfile/grammar",
 		g4: ["DockerfileLexer.g4", "DockerfileParser.g4"],
 	},
 ];
 
 async function compileLang(build) {
 	const outDir = path.join(LANGUAGES, build.id, "generated");
-	const grammarPath = path.join(VENDOR, build.grammarDir);
+	const grammarPath = build.grammarPath
+		? path.join(ROOT, build.grammarPath)
+		: path.join(VENDOR, build.grammarDir);
 
 	await fs.rm(outDir, { recursive: true, force: true });
 	await fs.mkdir(outDir, { recursive: true });
