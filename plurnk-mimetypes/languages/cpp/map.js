@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import CPP14ParserVisitor from "./generated/CPP14ParserVisitor.js";
 
-class SymbolExtractor extends CPP14ParserVisitor {
-	#symbols = [];
-	#inBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(CPP14ParserVisitor) {
 	#extractDeclaratorName(declarator) {
 		if (!declarator) return null;
 		const ptrDecl = declarator.pointerDeclarator?.();
@@ -105,33 +88,28 @@ class SymbolExtractor extends CPP14ParserVisitor {
 		return null;
 	}
 
-	// Scope boundary: compoundStatement inside functionBody
 	visitCompoundStatement(ctx) {
-		if (this.#inBody) return this.visitChildren(ctx);
+		if (this._inBody) return this.visitChildren(ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitFunctionBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitFunctionDefinition(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const declarator = ctx.declarator?.();
 		const name = this.#extractDeclaratorName(declarator);
 		if (name) {
 			const params = this.#extractParams(declarator);
-			this.#add("function", name, ctx, params);
+			this._add("function", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitClassSpecifier(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const head = ctx.classHead?.();
 		if (head) {
 			const headName = head.classHeadName?.();
@@ -139,7 +117,7 @@ class SymbolExtractor extends CPP14ParserVisitor {
 				const className = headName.className?.();
 				if (className) {
 					const id = className.Identifier?.();
-					if (id) this.#add("class", id.getText(), ctx);
+					if (id) this._add("class", id.getText(), ctx);
 				}
 			}
 		}
@@ -147,39 +125,34 @@ class SymbolExtractor extends CPP14ParserVisitor {
 	}
 
 	visitEnumSpecifier(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const head = ctx.enumHead?.();
 		if (head) {
 			const id = head.Identifier?.();
-			if (id) this.#add("enum", id.getText(), ctx);
+			if (id) this._add("enum", id.getText(), ctx);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitNamespaceDefinition(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.Identifier?.();
 		const origName = ctx.originalNamespaceName?.();
 		const name = id?.getText() ?? origName?.Identifier?.()?.getText();
-		if (name) this.#add("module", name, ctx);
+		if (name) this._add("module", name, ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitAliasDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.Identifier?.();
-		if (id) this.#add("type", id.getText(), ctx);
+		if (id) this._add("type", id.getText(), ctx);
 		return null;
 	}
 }
 
-export default class CppMap {
-	static status = "done";
-	static entryRule = "translationUnit";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "translationUnit",
+	extensions: [".cpp", ".cxx", ".cc", ".hpp"],
+});

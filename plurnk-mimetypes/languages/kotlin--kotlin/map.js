@@ -1,24 +1,8 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import KotlinParserVisitor from "./generated/KotlinParserVisitor.js";
 
-class SymbolExtractor extends KotlinParserVisitor {
-	#symbols = [];
-	#inBody = false;
+class Extractor extends withExtractor(KotlinParserVisitor) {
 	#inClassBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
 
 	#extractParams(ctx) {
 		const fvp = ctx.functionValueParameters?.();
@@ -35,13 +19,8 @@ class SymbolExtractor extends KotlinParserVisitor {
 		return params;
 	}
 
-	// Scope boundary: functionBody
 	visitFunctionBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitClassBody(ctx) {
@@ -53,7 +32,7 @@ class SymbolExtractor extends KotlinParserVisitor {
 	}
 
 	visitClassDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.simpleIdentifier?.();
 		if (id) {
 			const modifiers = ctx.modifierList?.()?.getText() ?? "";
@@ -61,43 +40,43 @@ class SymbolExtractor extends KotlinParserVisitor {
 				modifiers.includes("interface") || ctx.INTERFACE?.()
 					? "interface"
 					: "class";
-			this.#add(kind, id.getText(), ctx);
+			this._add(kind, id.getText(), ctx);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitObjectDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.simpleIdentifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitCompanionObject(ctx) {
 		const id = ctx.simpleIdentifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitFunctionDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
 		if (id) {
 			const params = this.#extractParams(ctx);
 			const kind = this.#inClassBody ? "method" : "function";
-			this.#add(kind, id.getText(), ctx, params);
+			this._add(kind, id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitPropertyDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const varDecl = ctx.variableDeclaration?.();
 		if (varDecl) {
 			const id = varDecl.simpleIdentifier?.();
 			if (id) {
 				const kind = this.#inClassBody ? "field" : "variable";
-				this.#add(kind, id.getText(), ctx);
+				this._add(kind, id.getText(), ctx);
 			}
 		}
 		const multiVar = ctx.multiVariableDeclaration?.();
@@ -107,7 +86,7 @@ class SymbolExtractor extends KotlinParserVisitor {
 				const id = decl.simpleIdentifier?.();
 				if (id) {
 					const kind = this.#inClassBody ? "field" : "variable";
-					this.#add(kind, id.getText(), ctx);
+					this._add(kind, id.getText(), ctx);
 				}
 			}
 		}
@@ -115,9 +94,9 @@ class SymbolExtractor extends KotlinParserVisitor {
 	}
 
 	visitTypeAlias(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.simpleIdentifier?.();
-		if (id) this.#add("type", id.getText(), ctx);
+		if (id) this._add("type", id.getText(), ctx);
 		return null;
 	}
 
@@ -134,7 +113,7 @@ class SymbolExtractor extends KotlinParserVisitor {
 				}
 			}
 		}
-		this.#add("method", "constructor", ctx, params);
+		this._add("method", "constructor", ctx, params);
 		return null;
 	}
 
@@ -147,13 +126,8 @@ class SymbolExtractor extends KotlinParserVisitor {
 	}
 }
 
-export default class KotlinMap {
-	static status = "done";
-	static entryRule = "kotlinFile";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "kotlinFile",
+	extensions: [".kt", ".kts"],
+});

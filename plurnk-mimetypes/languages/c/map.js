@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import CParserVisitor from "./generated/CParserVisitor.js";
 
-class SymbolExtractor extends CParserVisitor {
-	#symbols = [];
-	#inBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(CParserVisitor) {
 	#extractDeclaratorName(declarator) {
 		if (!declarator) return null;
 		const direct = declarator.directDeclarator?.();
@@ -50,22 +33,17 @@ class SymbolExtractor extends CParserVisitor {
 		return params;
 	}
 
-	// Scope boundary: compoundStatement inside functionDefinition
 	visitFunctionBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitFunctionDefinition(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const declarator = ctx.declarator?.();
 		const name = this.#extractDeclaratorName(declarator);
 		if (name) {
 			const params = this.#extractParams(declarator);
-			this.#add("function", name, ctx, params);
+			this._add("function", name, ctx, params);
 		}
 		// Don't descend — params are already extracted, and the body
 		// would only contain local declarations we want to exclude.
@@ -74,32 +52,27 @@ class SymbolExtractor extends CParserVisitor {
 	}
 
 	visitStructOrUnionSpecifier(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.Identifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitEnumSpecifier(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.Identifier?.();
-		if (id) this.#add("enum", id.getText(), ctx);
+		if (id) this._add("enum", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		return this.visitChildren(ctx);
 	}
 }
 
-export default class CMap {
-	static status = "done";
-	static entryRule = "compilationUnit";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "compilationUnit",
+	extensions: [".c", ".h"],
+});

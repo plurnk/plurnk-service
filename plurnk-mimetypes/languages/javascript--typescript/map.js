@@ -1,24 +1,8 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import TypeScriptParserVisitor from "./generated/TypeScriptParserVisitor.js";
 
-class SymbolExtractor extends TypeScriptParserVisitor {
-	#symbols = [];
-	#inBody = false;
+class Extractor extends withExtractor(TypeScriptParserVisitor) {
 	#inExport = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
 
 	#extractFormalParams(formalParameterList) {
 		if (!formalParameterList) return [];
@@ -59,91 +43,83 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 		return this.#extractParams(callSignature.parameterList?.());
 	}
 
-	// Semantic boundary: functionBody is the scope wall.
 	visitFunctionBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitFunctionDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
 		if (id) {
 			const params = this.#extractCallSignatureParams(ctx.callSignature?.());
-			this.#add("function", id.getText(), ctx, params);
+			this._add("function", id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitGeneratorFunctionDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
 		if (id) {
 			const params = this.#extractFormalParams(ctx.formalParameterList?.());
-			this.#add("function", id.getText(), ctx, params);
+			this._add("function", id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitClassDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitInterfaceDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("interface", id.getText(), ctx);
+		if (id) this._add("interface", id.getText(), ctx);
 		return null;
 	}
 
 	visitTypeAliasDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("type", id.getText(), ctx);
+		if (id) this._add("type", id.getText(), ctx);
 		return null;
 	}
 
 	visitEnumDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("enum", id.getText(), ctx);
+		if (id) this._add("enum", id.getText(), ctx);
 		return null;
 	}
 
 	visitNamespaceDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const name = ctx.namespaceName();
-		if (name) this.#add("module", name.getText(), ctx);
+		if (name) this._add("module", name.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitConstructorDeclaration(ctx) {
 		const params = this.#extractFormalParams(ctx.formalParameterList?.());
-		this.#add("method", "constructor", ctx, params);
+		this._add("method", "constructor", ctx, params);
 		return this.visitChildren(ctx);
 	}
 
-	// propertyMemberBase propertyName callSignature (('{' functionBody '}') | SemiColon)
 	visitMethodDeclarationExpression(ctx) {
 		const name = ctx.propertyName?.()?.getText();
 		if (name) {
 			const params = this.#extractCallSignatureParams(ctx.callSignature?.());
-			this.#add("method", name, ctx, params);
+			this._add("method", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
-	// propertyMemberBase (getAccessor | setAccessor)
 	visitGetterSetterDeclarationExpression(ctx) {
 		const getter = ctx.getAccessor?.();
 		const setter = ctx.setAccessor?.();
-		// classElementName is inside the getter/setter rule, not on getAccessor/setAccessor directly
 		const name =
 			getter?.getter?.()?.classElementName?.()?.getText() ??
 			setter?.setter?.()?.classElementName?.()?.getText();
@@ -151,12 +127,11 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 			const params = setter
 				? this.#extractFormalParams(setter.formalParameterList?.())
 				: [];
-			this.#add("method", name, ctx, params);
+			this._add("method", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
-	// propertyMemberBase propertyName '?'? typeAnnotation? initializer? SemiColon
 	visitPropertyDeclarationExpression(ctx) {
 		const name = ctx.propertyName?.()?.getText();
 		if (!name) return null;
@@ -167,7 +142,7 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 			name === "set"
 		)
 			return null;
-		this.#add("field", name, ctx);
+		this._add("field", name, ctx);
 		return null;
 	}
 
@@ -175,10 +150,6 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 		return null;
 	}
 
-	// TS has two export paths:
-	// 1. exportStatement → ExportDeclaration (export { x } / export declaration)
-	// 2. sourceElement → Export? statement (export const x = ...)
-	// Handle both.
 	visitSourceElement(ctx) {
 		if (ctx.Export?.()) {
 			this.#inExport = true;
@@ -200,35 +171,29 @@ class SymbolExtractor extends TypeScriptParserVisitor {
 		return this.visitChildren(ctx);
 	}
 
-	// Class expressions: const Foo = class { ... }
 	visitClassExpression(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitVariableStatement(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		if (!this.#inExport) return null;
 		const declList = ctx.variableDeclarationList?.();
 		if (!declList) return null;
 		const decls = declList.variableDeclaration?.() ?? [];
 		for (const decl of decls) {
 			const id = decl.identifierOrKeyWord?.();
-			if (id) this.#add("variable", id.getText(), decl);
+			if (id) this._add("variable", id.getText(), decl);
 		}
-		// Descend into initializers for class/function expressions
 		return this.visitChildren(ctx);
 	}
 }
 
-export default class TypeScriptMap {
-	static status = "done";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "program",
+	extensions: [".ts", ".tsx"],
+});

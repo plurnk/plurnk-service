@@ -1,3 +1,4 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import ClojureVisitor from "./generated/ClojureVisitor.js";
 
 const DEF_KINDS = Object.freeze({
@@ -12,24 +13,7 @@ const DEF_KINDS = Object.freeze({
 	deftype: "class",
 });
 
-class SymbolExtractor extends ClojureVisitor {
-	#symbols = [];
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(ClojureVisitor) {
 	#extractParams(forms) {
 		if (!forms) return [];
 		const children = forms.form?.() ?? [];
@@ -66,19 +50,13 @@ class SymbolExtractor extends ClojureVisitor {
 		if (!name) return null;
 
 		const params = kind === "function" ? this.#extractParams(forms) : undefined;
-		this.#add(kind, name, ctx, params);
+		this._add(kind, name, ctx, params);
 		return null;
 	}
 }
 
-export default class ClojureMap {
-	static status = "done";
-	static entryRule = "file_";
-	static extensions = [".clj", ".cljs", ".cljc", ".edn"];
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "file_",
+	extensions: [".clj", ".cljs", ".cljc", ".edn"],
+});

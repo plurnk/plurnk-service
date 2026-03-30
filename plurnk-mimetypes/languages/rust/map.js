@@ -1,24 +1,8 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import RustParserVisitor from "./generated/RustParserVisitor.js";
 
-class SymbolExtractor extends RustParserVisitor {
-	#symbols = [];
-	#inBody = false;
+class Extractor extends withExtractor(RustParserVisitor) {
 	#inImpl = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
 
 	#extractParams(functionParameters) {
 		if (!functionParameters) return [];
@@ -55,64 +39,59 @@ class SymbolExtractor extends RustParserVisitor {
 		return params;
 	}
 
-	// Scope boundary: blockExpression inside function_ is the wall.
 	visitBlockExpression(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitFunction_(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
 		if (id) {
 			const params = this.#extractParams(ctx.functionParameters?.());
 			const kind = this.#inImpl ? "method" : "function";
-			this.#add(kind, id.getText(), ctx, params);
+			this._add(kind, id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitStructStruct(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitTupleStruct(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return null;
 	}
 
 	visitStructField(ctx) {
 		const id = ctx.identifier();
-		if (id) this.#add("field", id.getText(), ctx);
+		if (id) this._add("field", id.getText(), ctx);
 		return null;
 	}
 
 	visitEnumeration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("enum", id.getText(), ctx);
+		if (id) this._add("enum", id.getText(), ctx);
 		return null;
 	}
 
 	visitTrait_(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("interface", id.getText(), ctx);
+		if (id) this._add("interface", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitInherentImpl(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const type = ctx.type_?.();
-		if (type) this.#add("class", type.getText(), ctx);
+		if (type) this._add("class", type.getText(), ctx);
 		const wasInImpl = this.#inImpl;
 		this.#inImpl = true;
 		this.visitChildren(ctx);
@@ -121,9 +100,9 @@ class SymbolExtractor extends RustParserVisitor {
 	}
 
 	visitTraitImpl(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const type = ctx.type_?.();
-		if (type) this.#add("class", type.getText(), ctx);
+		if (type) this._add("class", type.getText(), ctx);
 		const wasInImpl = this.#inImpl;
 		this.#inImpl = true;
 		this.visitChildren(ctx);
@@ -132,37 +111,37 @@ class SymbolExtractor extends RustParserVisitor {
 	}
 
 	visitTypeAlias(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("type", id.getText(), ctx);
+		if (id) this._add("type", id.getText(), ctx);
 		return null;
 	}
 
 	visitModule(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("module", id.getText(), ctx);
+		if (id) this._add("module", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitConstantItem(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("constant", id.getText(), ctx);
+		if (id) this._add("constant", id.getText(), ctx);
 		return null;
 	}
 
 	visitStaticItem(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("variable", id.getText(), ctx);
+		if (id) this._add("variable", id.getText(), ctx);
 		return null;
 	}
 
 	visitUnion_(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
@@ -175,13 +154,8 @@ class SymbolExtractor extends RustParserVisitor {
 	}
 }
 
-export default class RustMap {
-	static status = "done";
-	static entryRule = "crate";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "crate",
+	extensions: [".rs"],
+});

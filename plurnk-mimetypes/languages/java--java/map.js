@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import JavaParserVisitor from "./generated/JavaParserVisitor.js";
 
-class SymbolExtractor extends JavaParserVisitor {
-	#symbols = [];
-	#inBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(JavaParserVisitor) {
 	#extractParams(formalParametersCtx) {
 		if (!formalParametersCtx) return [];
 		const params = [];
@@ -39,45 +22,38 @@ class SymbolExtractor extends JavaParserVisitor {
 		return id;
 	}
 
-	// Scope boundary: methodBody blocks hide local declarations.
 	visitMethodBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
-	// constructorDeclaration uses `constructorBody = block`, so the block is the boundary.
 	visitConstructorDeclaration(ctx) {
 		const id = ctx.identifier?.();
 		if (id) {
 			const params = this.#extractParams(ctx.formalParameters?.());
-			this.#add("method", id.getText(), ctx, params);
+			this._add("method", id.getText(), ctx, params);
 		}
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
+		const was = this._inBody;
+		this._inBody = true;
 		const body = ctx.block?.();
 		if (body) this.visit(body);
-		this.#inBody = wasInBody;
+		this._inBody = was;
 		return null;
 	}
 
-	// compactConstructorDeclaration also uses `constructorBody = block`.
 	visitCompactConstructorDeclaration(ctx) {
 		const id = ctx.identifier?.();
-		if (id) this.#add("method", id.getText(), ctx);
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
+		if (id) this._add("method", id.getText(), ctx);
+		const was = this._inBody;
+		this._inBody = true;
 		const body = ctx.block?.();
 		if (body) this.visit(body);
-		this.#inBody = wasInBody;
+		this._inBody = was;
 		return null;
 	}
 
 	visitPackageDeclaration(ctx) {
 		const name = ctx.qualifiedName?.()?.getText();
-		if (name) this.#add("module", name, ctx);
+		if (name) this._add("module", name, ctx);
 		return null;
 	}
 
@@ -86,37 +62,37 @@ class SymbolExtractor extends JavaParserVisitor {
 	}
 
 	visitClassDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitInterfaceDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("interface", id.getText(), ctx);
+		if (id) this._add("interface", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitEnumDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("enum", id.getText(), ctx);
+		if (id) this._add("enum", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitRecordDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("class", id.getText(), ctx);
+		if (id) this._add("class", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitAnnotationTypeDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.();
-		if (id) this.#add("interface", id.getText(), ctx);
+		if (id) this._add("interface", id.getText(), ctx);
 		return this.visitChildren(ctx);
 	}
 
@@ -124,7 +100,7 @@ class SymbolExtractor extends JavaParserVisitor {
 		const id = ctx.identifier?.();
 		if (id) {
 			const params = this.#extractParams(ctx.formalParameters?.());
-			this.#add("method", id.getText(), ctx, params);
+			this._add("method", id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
@@ -133,7 +109,7 @@ class SymbolExtractor extends JavaParserVisitor {
 		const id = ctx.identifier?.();
 		if (id) {
 			const params = this.#extractParams(ctx.formalParameters?.());
-			this.#add("method", id.getText(), ctx, params);
+			this._add("method", id.getText(), ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
@@ -143,7 +119,7 @@ class SymbolExtractor extends JavaParserVisitor {
 			ctx.variableDeclarators?.()?.variableDeclarator?.() ?? [];
 		for (const decl of declarators) {
 			const id = decl.variableDeclaratorId?.()?.identifier?.();
-			if (id) this.#add("field", id.getText(), ctx);
+			if (id) this._add("field", id.getText(), ctx);
 		}
 		return null;
 	}
@@ -152,19 +128,14 @@ class SymbolExtractor extends JavaParserVisitor {
 		const declarators = ctx.constantDeclarator?.() ?? [];
 		for (const decl of declarators) {
 			const id = decl.identifier?.();
-			if (id) this.#add("field", id.getText(), ctx);
+			if (id) this._add("field", id.getText(), ctx);
 		}
 		return null;
 	}
 }
 
-export default class JavaMap {
-	static status = "done";
-	static entryRule = "compilationUnit";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "compilationUnit",
+	extensions: [".java"],
+});

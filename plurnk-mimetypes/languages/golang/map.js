@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import GoParserVisitor from "./generated/GoParserVisitor.js";
 
-class SymbolExtractor extends GoParserVisitor {
-	#symbols = [];
-	#inBlock = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(GoParserVisitor) {
 	#extractParams(signature) {
 		if (!signature) return [];
 		const parameters = signature.parameters?.();
@@ -51,18 +34,13 @@ class SymbolExtractor extends GoParserVisitor {
 		return "type";
 	}
 
-	// Scope boundary: block inside functionDecl/methodDecl
 	visitBlock(ctx) {
-		const wasInBlock = this.#inBlock;
-		this.#inBlock = true;
-		this.visitChildren(ctx);
-		this.#inBlock = wasInBlock;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitPackageClause(ctx) {
 		const name = ctx.packageName?.()?.identifier?.()?.getText();
-		if (name) this.#add("module", name, ctx);
+		if (name) this._add("module", name, ctx);
 		return null;
 	}
 
@@ -71,72 +49,67 @@ class SymbolExtractor extends GoParserVisitor {
 	}
 
 	visitFunctionDecl(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const name = ctx.IDENTIFIER?.()?.getText();
 		if (name) {
 			const params = this.#extractParams(ctx.signature?.());
-			this.#add("function", name, ctx, params);
+			this._add("function", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitMethodDecl(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const name = ctx.IDENTIFIER?.()?.getText();
 		if (name) {
 			const params = this.#extractParams(ctx.signature?.());
-			this.#add("method", name, ctx, params);
+			this._add("method", name, ctx, params);
 		}
 		return this.visitChildren(ctx);
 	}
 
 	visitTypeDef(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const name = ctx.IDENTIFIER?.()?.getText();
 		if (name) {
 			const kind = this.#resolveTypeDefKind(ctx);
-			this.#add(kind, name, ctx);
+			this._add(kind, name, ctx);
 		}
 		return null;
 	}
 
 	visitAliasDecl(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const name = ctx.IDENTIFIER?.()?.getText();
-		if (name) this.#add("type", name, ctx);
+		if (name) this._add("type", name, ctx);
 		return null;
 	}
 
 	visitConstSpec(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const idList = ctx.identifierList?.();
 		if (!idList) return null;
 		const ids = idList.IDENTIFIER?.() ?? [];
 		for (const id of ids) {
-			this.#add("constant", id.getText(), ctx);
+			this._add("constant", id.getText(), ctx);
 		}
 		return null;
 	}
 
 	visitVarSpec(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const idList = ctx.identifierList?.();
 		if (!idList) return null;
 		const ids = idList.IDENTIFIER?.() ?? [];
 		for (const id of ids) {
-			this.#add("variable", id.getText(), ctx);
+			this._add("variable", id.getText(), ctx);
 		}
 		return null;
 	}
 }
 
-export default class GolangMap {
-	static status = "done";
-	static entryRule = "sourceFile";
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "sourceFile",
+	extensions: [".go"],
+});

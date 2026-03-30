@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import ZigParserVisitor from "./generated/ZigParserVisitor.js";
 
-class SymbolExtractor extends ZigParserVisitor {
-	#symbols = [];
-	#inBlock = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(ZigParserVisitor) {
 	#extractParams(paramDeclList) {
 		if (!paramDeclList) return [];
 		const decls = paramDeclList.param_decl?.() ?? [];
@@ -56,23 +39,18 @@ class SymbolExtractor extends ZigParserVisitor {
 		return null;
 	}
 
-	// Scope boundary: block inside fn is the wall.
 	visitBlock(ctx) {
-		const wasInBlock = this.#inBlock;
-		this.#inBlock = true;
-		this.visitChildren(ctx);
-		this.#inBlock = wasInBlock;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitDecl(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const fnProto = ctx.fn_proto?.();
 		if (fnProto) {
 			const id = fnProto.IDENTIFIER?.();
 			if (id) {
 				const params = this.#extractParams(fnProto.param_decl_list?.());
-				this.#add("function", id.getText(), ctx, params);
+				this._add("function", id.getText(), ctx, params);
 			}
 			return this.visitChildren(ctx);
 		}
@@ -86,42 +64,36 @@ class SymbolExtractor extends ZigParserVisitor {
 			const isConst = !!varProto.CONST?.();
 			const containerKind = this.#findContainerKind(globalVar.expr?.());
 			if (containerKind) {
-				this.#add(containerKind, name, ctx);
+				this._add(containerKind, name, ctx);
 				return this.visitChildren(ctx);
 			}
 			if (isConst) {
-				this.#add("constant", name, ctx);
+				this._add("constant", name, ctx);
 			} else {
-				this.#add("variable", name, ctx);
+				this._add("variable", name, ctx);
 			}
 		}
 		return null;
 	}
 
 	visitTest_decl(ctx) {
-		if (this.#inBlock) return null;
+		if (this._inBody) return null;
 		const strLit = ctx.STRINGLITERAL?.();
 		const id = ctx.IDENTIFIER?.();
 		const name = strLit?.getText()?.slice(1, -1) ?? id?.getText() ?? "test";
-		this.#add("function", name, ctx);
+		this._add("function", name, ctx);
 		return null;
 	}
 
 	visitContainer_field(ctx) {
 		const id = ctx.IDENTIFIER?.();
-		if (id) this.#add("field", id.getText(), ctx);
+		if (id) this._add("field", id.getText(), ctx);
 		return null;
 	}
 }
 
-export default class ZigMap {
-	static status = "done";
-	static entryRule = "root";
-	static extensions = [".zig"];
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "root",
+	extensions: [".zig"],
+});

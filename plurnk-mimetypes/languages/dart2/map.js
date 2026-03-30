@@ -1,24 +1,7 @@
+import { createMap, withExtractor } from "../../lib/BaseExtractor.js";
 import Dart2ParserVisitor from "./generated/Dart2ParserVisitor.js";
 
-class SymbolExtractor extends Dart2ParserVisitor {
-	#symbols = [];
-	#inBody = false;
-
-	get symbols() {
-		return this.#symbols;
-	}
-
-	#add(kind, name, ctx, params) {
-		const symbol = {
-			name,
-			kind,
-			line: ctx.start.line,
-			endLine: ctx.stop?.line ?? ctx.start.line,
-		};
-		if (params) symbol.params = params;
-		this.#symbols.push(symbol);
-	}
-
+class Extractor extends withExtractor(Dart2ParserVisitor) {
 	#extractParams(formalParameterList) {
 		if (!formalParameterList) return [];
 		const params = [];
@@ -78,57 +61,51 @@ class SymbolExtractor extends Dart2ParserVisitor {
 		return params;
 	}
 
-	// Scope boundary: functionBody
 	visitFunctionBody(ctx) {
-		const wasInBody = this.#inBody;
-		this.#inBody = true;
-		this.visitChildren(ctx);
-		this.#inBody = wasInBody;
-		return null;
+		return this._gateBody(ctx);
 	}
 
 	visitClassDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id =
 			ctx.typeIdentifier?.()?.getText() ??
 			ctx.mixinApplicationClass?.()?.typeIdentifier?.()?.getText();
-		if (id) this.#add("class", id, ctx);
+		if (id) this._add("class", id, ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitMixinDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.typeIdentifier?.()?.getText();
-		if (id) this.#add("class", id, ctx);
+		if (id) this._add("class", id, ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitExtensionDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.()?.getText();
-		if (id) this.#add("class", id, ctx);
+		if (id) this._add("class", id, ctx);
 		return this.visitChildren(ctx);
 	}
 
 	visitEnumType(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id = ctx.identifier?.()?.getText();
-		if (id) this.#add("enum", id, ctx);
+		if (id) this._add("enum", id, ctx);
 		return null;
 	}
 
 	visitTypeAlias(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const id =
 			ctx.typeIdentifier?.()?.getText() ??
 			ctx.functionTypeAlias?.()?.functionPrefix?.()?.identifier?.()?.getText();
-		if (id) this.#add("type", id, ctx);
+		if (id) this._add("type", id, ctx);
 		return null;
 	}
 
-	// Top-level function: functionSignature functionBody
 	visitTopLevelDeclaration(ctx) {
-		if (this.#inBody) return null;
+		if (this._inBody) return null;
 		const funcSig = ctx.functionSignature?.();
 		if (funcSig) {
 			const id = funcSig.identifier?.()?.getText();
@@ -136,26 +113,25 @@ class SymbolExtractor extends Dart2ParserVisitor {
 				const params = this.#extractParams(
 					funcSig.formalParameterPart?.()?.formalParameterList?.(),
 				);
-				this.#add("function", id, ctx, params);
+				this._add("function", id, ctx, params);
 			}
 		}
 		const getSig = ctx.getterSignature?.();
 		if (getSig && !funcSig) {
 			const id = getSig.identifier?.()?.getText();
-			if (id) this.#add("function", id, ctx);
+			if (id) this._add("function", id, ctx);
 		}
 		const setSig = ctx.setterSignature?.();
 		if (setSig && !funcSig && !getSig) {
 			const id = setSig.identifier?.()?.getText();
 			if (id) {
 				const params = this.#extractParams(setSig.formalParameterList?.());
-				this.#add("function", id, ctx, params);
+				this._add("function", id, ctx, params);
 			}
 		}
 		return this.visitChildren(ctx);
 	}
 
-	// Class members: methodSignature functionBody | declaration SC
 	visitClassMemberDeclaration(ctx) {
 		const methodSig = ctx.methodSignature?.();
 		if (methodSig) {
@@ -177,14 +153,14 @@ class SymbolExtractor extends Dart2ParserVisitor {
 				const params = this.#extractParams(
 					funcSig.formalParameterPart?.()?.formalParameterList?.(),
 				);
-				this.#add("method", id, outerCtx, params);
+				this._add("method", id, outerCtx, params);
 			}
 			return;
 		}
 		const getSig = methodSig.getterSignature?.();
 		if (getSig) {
 			const id = getSig.identifier?.()?.getText();
-			if (id) this.#add("method", id, outerCtx);
+			if (id) this._add("method", id, outerCtx);
 			return;
 		}
 		const setSig = methodSig.setterSignature?.();
@@ -192,7 +168,7 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const id = setSig.identifier?.()?.getText();
 			if (id) {
 				const params = this.#extractParams(setSig.formalParameterList?.());
-				this.#add("method", id, outerCtx, params);
+				this._add("method", id, outerCtx, params);
 			}
 			return;
 		}
@@ -201,7 +177,7 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const name = ctorSig.constructorName?.()?.getText();
 			if (name) {
 				const params = this.#extractParams(ctorSig.formalParameterList?.());
-				this.#add("method", name, outerCtx, params);
+				this._add("method", name, outerCtx, params);
 			}
 			return;
 		}
@@ -210,7 +186,7 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const name = factorySig.constructorName?.()?.getText();
 			if (name) {
 				const params = this.#extractParams(factorySig.formalParameterList?.());
-				this.#add("method", name, outerCtx, params);
+				this._add("method", name, outerCtx, params);
 			}
 			return;
 		}
@@ -219,33 +195,29 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const op = opSig.operator?.()?.getText();
 			if (op) {
 				const params = this.#extractParams(opSig.formalParameterList?.());
-				this.#add("method", `operator ${op}`, outerCtx, params);
+				this._add("method", `operator ${op}`, outerCtx, params);
 			}
 		}
 	}
 
 	#visitDeclarationAsField(decl, outerCtx) {
-		// Static const/final fields
 		const staticFinals =
 			decl.staticFinalDeclarationList?.()?.staticFinalDeclaration?.() ?? [];
 		for (const sf of staticFinals) {
 			const id = sf.identifier?.()?.getText();
-			if (id) this.#add("field", id, outerCtx);
+			if (id) this._add("field", id, outerCtx);
 		}
-		// Instance/static variable fields
 		const initIds =
 			decl.initializedIdentifierList?.()?.initializedIdentifier?.() ?? [];
 		for (const ii of initIds) {
 			const id = ii.identifier?.()?.getText();
-			if (id) this.#add("field", id, outerCtx);
+			if (id) this._add("field", id, outerCtx);
 		}
-		// Covariant identifierList (late final with no initializer)
 		const idList = decl.identifierList?.()?.identifier?.() ?? [];
 		for (const id of idList) {
 			const name = id.getText();
-			if (name) this.#add("field", name, outerCtx);
+			if (name) this._add("field", name, outerCtx);
 		}
-		// Getter/setter/function declared without methodSignature path
 		const funcSig = decl.functionSignature?.();
 		if (funcSig) {
 			const id = funcSig.identifier?.()?.getText();
@@ -253,20 +225,20 @@ class SymbolExtractor extends Dart2ParserVisitor {
 				const params = this.#extractParams(
 					funcSig.formalParameterPart?.()?.formalParameterList?.(),
 				);
-				this.#add("method", id, outerCtx, params);
+				this._add("method", id, outerCtx, params);
 			}
 		}
 		const getSig = decl.getterSignature?.();
 		if (getSig && !funcSig) {
 			const id = getSig.identifier?.()?.getText();
-			if (id) this.#add("method", id, outerCtx);
+			if (id) this._add("method", id, outerCtx);
 		}
 		const setSig = decl.setterSignature?.();
 		if (setSig && !funcSig && !getSig) {
 			const id = setSig.identifier?.()?.getText();
 			if (id) {
 				const params = this.#extractParams(setSig.formalParameterList?.());
-				this.#add("method", id, outerCtx, params);
+				this._add("method", id, outerCtx, params);
 			}
 		}
 		const ctorSig = decl.constructorSignature?.();
@@ -274,7 +246,7 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const name = ctorSig.constructorName?.()?.getText();
 			if (name) {
 				const params = this.#extractParams(ctorSig.formalParameterList?.());
-				this.#add("method", name, outerCtx, params);
+				this._add("method", name, outerCtx, params);
 			}
 		}
 		const opSig = decl.operatorSignature?.();
@@ -282,12 +254,11 @@ class SymbolExtractor extends Dart2ParserVisitor {
 			const op = opSig.operator?.()?.getText();
 			if (op) {
 				const params = this.#extractParams(opSig.formalParameterList?.());
-				this.#add("method", `operator ${op}`, outerCtx, params);
+				this._add("method", `operator ${op}`, outerCtx, params);
 			}
 		}
 	}
 
-	// Exclude imports
 	visitLibraryImport() {
 		return null;
 	}
@@ -301,14 +272,8 @@ class SymbolExtractor extends Dart2ParserVisitor {
 	}
 }
 
-export default class Dart2Map {
-	static status = "done";
-	static entryRule = "compilationUnit";
-	static extensions = [".dart"];
-
-	static extract(tree) {
-		const visitor = new SymbolExtractor();
-		visitor.visit(tree);
-		return visitor.symbols;
-	}
-}
+export default createMap({
+	ExtractorClass: Extractor,
+	entryRule: "compilationUnit",
+	extensions: [".dart"],
+});
