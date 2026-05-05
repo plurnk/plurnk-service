@@ -12,7 +12,7 @@ No Java dependency. The entire build and runtime is pure JavaScript.
 
 ## Supported Languages
 
-JavaScript, TypeScript, Python, Rust, Go, Java, C, C++, Kotlin, PHP, Lua.
+JavaScript, TypeScript, Python, Rust, Go, Java, C, C++, Kotlin, PHP, Lua, Markdown.
 
 ```bash
 antlrmap --supported   # JSON of all languages and file extensions
@@ -103,7 +103,7 @@ npm run build    # compiles ANTLR4 grammars to JavaScript
 `npm run build` compiles all active `.g4` grammars from the grammar zoo submodule into JavaScript parsers using [antlr-ng](https://github.com/nicotordev/antlr-ng) (a pure JS/TS port of the ANTLR4 tool). Output lands in `languages/<id>/generated/`. This is a build-time step — the published package ships precompiled parsers with no build required at install time.
 
 ```bash
-npm run build                        # compile all 11 languages
+npm run build                        # compile all 12 languages
 node scripts/compile.js rust         # compile a single language
 ```
 
@@ -160,7 +160,7 @@ A scheduled workflow (`update-grammars.yml`) runs monthly, updates the grammars-
 
 ## Adding a Custom Language
 
-antlrmap ships with 11 languages, but any language with an ANTLR4 grammar can be added — including your own proprietary or bespoke languages. You don't need to fork antlrmap or wait for upstream support.
+antlrmap ships with 12 languages, but any language with an ANTLR4 grammar can be added — including your own proprietary or bespoke languages. You don't need to fork antlrmap or wait for upstream support.
 
 ### Quick start (grammar zoo language)
 

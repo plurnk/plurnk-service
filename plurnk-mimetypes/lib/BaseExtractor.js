@@ -7,7 +7,7 @@ export function withExtractor(VisitorClass) {
 			return this._symbols;
 		}
 
-		_add(kind, name, ctx, params) {
+		_add(kind, name, ctx, params, extra) {
 			const symbol = {
 				name,
 				kind,
@@ -15,6 +15,7 @@ export function withExtractor(VisitorClass) {
 				endLine: this._endLine(ctx),
 			};
 			if (params) symbol.params = params;
+			if (extra) Object.assign(symbol, extra);
 			this._symbols.push(symbol);
 		}
 

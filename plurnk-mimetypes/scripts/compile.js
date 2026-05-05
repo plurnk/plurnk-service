@@ -198,6 +198,12 @@ const BUILDS = [
 		grammarPath: "languages/dockerfile/grammar",
 		g4: ["DockerfileLexer.g4", "DockerfileParser.g4"],
 	},
+	{
+		id: "markdown",
+		// Custom grammar, not from vendor — grammars-v4 has no markdown
+		grammarPath: "languages/markdown/grammar",
+		g4: ["MarkdownLexer.g4", "MarkdownParser.g4"],
+	},
 ];
 
 async function compileLang(build) {

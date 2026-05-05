@@ -63,6 +63,8 @@ const BUILTIN_EXTENSIONS = Object.freeze({
 	".toml": "toml",
 	".dockerfile": "dockerfile",
 	Dockerfile: "dockerfile",
+	".md": "markdown",
+	".markdown": "markdown",
 });
 
 const BUILTIN_LANGUAGES_DIR = path.resolve(

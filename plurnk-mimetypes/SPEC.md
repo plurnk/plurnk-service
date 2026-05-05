@@ -34,6 +34,7 @@ Every language mapping (`map.js`) must follow these rules. The goal is consisten
 | `module` | A module/namespace/package declaration | `module Foo`, `namespace Bar`, `package main` |
 | `variable` | A named binding at module scope, **only if not confirmed private to the file** | `export const PORT = 3000` |
 | `constant` | A named constant declaration visible outside the file | `pub const MAX: u32 = 100` |
+| `heading` | A markdown heading line. Carries an extra `level` field (1-6). | `# Title`, `## Section` |
 
 ### Exclude (confirmed invisible or not definitions)
 
@@ -115,6 +116,7 @@ JSON array. One entry per file, each containing the file path and its symbols.
 | `line` | number | yes | Start line (1-indexed) |
 | `endLine` | number | yes | End line (1-indexed) |
 | `params` | string[] | no | Parameter names, present on functions and methods when available |
+| `level` | number | no | Heading depth 1-6, present on `heading` symbols |
 
 ### File entry fields
 
