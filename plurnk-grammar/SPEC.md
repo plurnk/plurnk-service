@@ -234,27 +234,25 @@ body fields; the lexer is unaware):
   and calls `new RegExp(pattern, flags)`. On failure (missing closing
   `/`, unterminated character class, invalid flag, etc.), a
   `PlurnkParseError` with source `"visitor"` is emitted.
+- **XPath body** (matcher-body OPs only, leading `//`): the Visitor
+  calls `xpath.parse()` from the `xpath` npm package (XPath 1.0
+  parser-only, no DOM execution). On failure (unterminated predicate,
+  invalid operator, etc.), a `PlurnkParseError` with source `"visitor"`
+  is emitted.
 
-**Deferred validation (no Node-native parser available):**
+**Deferred validation:**
 
-- **XPath** bodies — pass through as raw strings. Validation belongs
-  to the runtime where xpath is actually executed against XML/HTML
-  content.
-- **JsonPath** bodies — same as xpath; pass through as raw.
-- **Glob** bodies — pass through as raw; runtime applies whatever glob
-  matcher is appropriate.
+- **JsonPath** bodies — pass through as raw. To be promoted by
+  adopting `jsonpath-plus` (parallel to the xpath integration).
+- **Glob** bodies — pass through as raw; runtime applies whatever
+  glob matcher is appropriate.
 
-These can be promoted to Visitor-level validation later by adopting a
-lightweight npm dependency (e.g., `xpath`, `jsonpath-plus`) — out of
-scope for the grammar package's minimal surface.
-
-**Why not ANTLR sub-grammars for any of these?** Node's `new URL()` and
-`new RegExp()` are authoritative, well-tested, and zero-cost to invoke.
-ANTLR sub-grammars for URI/regex would add hundreds of lines of
-generated parser code with no validation benefit over the native
-facilities. For xpath/jsonpath, the same principle applies — when
-validation is needed, an npm library is cleaner than re-implementing
-a sub-grammar.
+**Why not ANTLR sub-grammars for any of these?** Node's `new URL()`
+and `new RegExp()` are authoritative, well-tested, and zero-cost to
+invoke; `xpath` is the de facto Node XPath 1.0 parser. ANTLR
+sub-grammars for any of these would add hundreds of lines of
+generated parser code with no validation benefit over the native or
+library facilities.
 
 ## 7. Line Markers
 
