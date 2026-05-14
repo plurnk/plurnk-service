@@ -4,9 +4,21 @@
 
 Plurnk extends HEREDOC formatting into a state-machine grammar for LLM
 agents. Every plurnk statement is a single self-contained operation: a
-canonical open tag, an optional payload, and a matching close tag.
-Statements are flat — there is no composition or substitution. Errors
-surface per-statement via SEND status codes aligned with HTTP semantics.
+canonical open tag, an optional payload, and a colon-fenced opaque body
+terminated by a matching close tag. Statements are flat — there is no
+composition or substitution. Documents may contain arbitrary
+interstatement text, which the parser captures verbatim and surfaces
+to consumers without imposing meaning on it.
+
+The parser produces a typed AST (per OP discriminated union) plus a
+list of structured errors. Both are JSON-serializable. Errors are
+per-statement; the parser recovers at statement boundaries when it
+can, and surfaces an `unparsedTail` when a boundary-destroying error
+prevents further recovery. See §12 for the consumer contract.
+
+Note: SEND status codes (§9) are a *protocol-level* convention for
+SEND statements emitted by the model and runtime. They are unrelated
+to parse-time `PlurnkParseError` objects produced by this package (§12).
 
 ## 1.1 Domain Boundary
 
@@ -22,31 +34,35 @@ of:
 Anything that fits inside that constraint belongs in `.g4`. Anything
 that needs interpretation belongs in the runtime resolver.
 
-**Concretely in domain — parser-managed:**
+**Concretely in domain — parser-managed (lexer + parser):**
 
 - Statement structure: open tag, slots, body, close tag.
-- Lexical tokens: `<<`, OP keywords, `[…]`, `(…)`, `<N>`, body, close tag.
+- Lexical tokens: `<<`, OP keywords, `[…]`, `(…)`, `<N>`, `:`, body, close tag, interstatement TEXT.
 - Slot *shape* constraints: URI shape (scheme grammar + path character class), line-marker integer form, suffix character class, CSV form of `[signal]`.
-- HEREDOC discipline: open/close tag character match, body opacity, nesting via suffix.
+- HEREDOC discipline: open/close tag character match, body opacity between `:body:` fences, nesting via suffix.
 - Whitespace rules (§11).
-- Hard constraints: `<LineFinal>` requires `<LineFirst>`; close tag matches open.
-- Body-mode dispatch (matcher-body vs. content-body) and matcher dialect tagging by leading character. The lexer tags by dialect and enforces the *syntactic frame* (e.g., regex must close with `/` before flags); the inner content is opaque.
+- Hard constraint: `:OPsuffix` close tag must character-match the open tag's `OPsuffix`.
+
+**Concretely in domain — Visitor-managed (typed AST construction):**
+
+- Extracting `op`, `suffix`, `signal` (split on comma), `path` (raw),
+  `lineMarker` (parsed `<N>` or `<N-M>` integer form), and `body` (raw)
+  from the parse tree into a typed discriminated union.
+- Native-JS validation of slot contents where useful (e.g., `new URL()`
+  for path, `new RegExp()` for regex bodies). This is preferred over
+  ANTLR sub-grammars for URI/regex/xpath/jsonpath — Node's built-ins are
+  authoritative, well-tested, and zero-cost to invoke.
 
 **Concretely out of domain — runtime:**
 
-- URI resolution: what `known://`, `unknown://`, `file://` actually point at; what bare paths resolve to; percent-encoding correctness; authority and port semantics.
-- Inner-dialect parsing: whether a regex compiles, whether an xpath is well-formed, whether a glob has a valid bracket set.
+- URI resolution: what `known://`, `unknown://`, `file://` actually point at; what bare paths resolve to.
 - Tag-matching combination (AND/OR), tag-set semantics.
 - Line-marker arithmetic, out-of-range handling, result-set ordering for pagination.
 - Status code *meanings*: any digit string is grammatically valid in `[signal]`; whether `[410]` means "Gone" or any code carries privileged semantics on any OP is runtime convention.
 - Empty-body semantics (e.g., empty EDIT clears the entry).
 - EXEC body execution: runtime selection, sandboxing, permissions.
 - Filter composition (how SHOW/HIDE combine path × tag × body filters).
-- Output shape returned to the model. The §4 Per-OP Output table documents convention, not grammar rules.
-
-URI and matcher-body blocks are parser-managed up to their syntactic
-shape (§5, §6). Their inner contents are opaque to the parser and are
-the responsibility of the runtime sub-parsers.
+- Output shape returned to the model after a statement executes. The §4 Per-OP Output table documents convention, not grammar rules.
 
 ## 2. Canonical Statement Form
 
@@ -174,37 +190,39 @@ Runtime-enforced semantics:
 ## 6. Bulk Pattern Matching
 
 For FIND, READ, SHOW, and HIDE, `body` is an optional pattern matcher.
-Matcher dialect is resolved at lex time by the body's leading
-characters:
+The lexer captures the body opaquely (between the `:body:` fences) —
+dialect dispatch is not a lexer concern. Dialect is determined by the
+body's leading characters, and validated by the Visitor using native
+JS facilities (`new RegExp()` etc.) where applicable:
 
-| Leading        | Dialect   | Form                      |
-|----------------|-----------|---------------------------|
-| `//`           | xpath     | `//…`                     |
-| `/`            | regex     | `/…/flags` (trailing `/` required, flags `[a-z]*`) |
-| `$`            | jsonpath  | `$…`                      |
-| otherwise      | glob      | `…` (literal substring if no metacharacters) |
+| Leading prefix | Dialect   | Canonical form            | Validation         |
+|----------------|-----------|---------------------------|--------------------|
+| `//`           | xpath     | `//…`                     | runtime (xpath lib) |
+| `/`            | regex     | `/pattern/flags` (trailing `/` required, flags `[a-z]*`) | `new RegExp()` in Visitor |
+| `$`            | jsonpath  | `$…`                      | runtime (jsonpath lib) |
+| otherwise      | glob      | `…` (literal substring if no metacharacters) | runtime (glob library) |
 
-The lexer tags the body token by dialect. The parser receives a typed
-token (`XPathBody | RegexBody | JsonPathBody | GlobBody`), not an
-opaque string. Inner-dialect validation (whether the regex compiles,
-whether the xpath is well-formed) is a runtime concern.
+Dialect conventions (the Visitor uses these to construct typed AST
+body fields; the lexer is unaware):
 
-Hard rules:
-
-- Xpath body must begin with exactly `//` (descendant-or-self axis).
-  Absolute-root form `/foo` is unreachable; rework as `//foo` or
-  embed selection in `(path)`.
-- Regex body must be a delimited literal: opens with `/`, ends with `/`
-  before the close tag, with optional flag chars `[a-z]*` between the
-  closing `/` and the close tag. Literal `/` inside the pattern must
-  be escaped `\/`. A regex body that opens with `/` but has no closing
-  `/` is a lex error.
+- Xpath body begins with `//` (descendant-or-self axis). Absolute-root
+  `/foo` is unreachable (collides with regex prefix); rework as `//foo`.
+- Regex body is a delimited literal: opens with `/`, ends with `/`
+  before the close fence, with optional flag chars `[a-z]*` between
+  the closing `/` and the close fence. Literal `/` inside the pattern
+  must be escaped `\/`.
 - Regex anchors `^` and `$` go inside the slashes: `/^foo$/`.
 - Flag semantics (`i` case-insensitive, `m` multiline, `s` dotall,
-  etc.) are runtime concerns; the parser accepts any `[a-z]*`.
+  etc.) follow ECMAScript regex.
+- Glob is the catch-all and includes the literal-substring case when
+  no metacharacters are present.
 
-Glob is the catch-all and includes the literal-substring case when no
-metacharacters are present.
+**Why not ANTLR sub-grammars for these?** Node's `new URL()` and
+`new RegExp()` are authoritative, well-tested, and zero-cost to invoke.
+ANTLR sub-grammars for URI/regex/xpath/jsonpath would add hundreds of
+lines of generated parser code with no validation benefit over the
+native facilities. The Visitor invokes natives where useful and stops
+there.
 
 ## 7. Line Markers
 
@@ -317,7 +335,8 @@ grammar treats body as opaque.
 ## 10. Implementation Notes
 
 - ANTLR4 split follows standard convention: `plurnkLexer.g4` defines
-  tokens; `plurnkParser.g4` defines statement structure.
+  tokens; `plurnkParser.g4` defines statement structure. Generated
+  using `antlr-ng` targeting the `antlr4ng` runtime.
 - The body is fenced by `:` on the header side and `:OPsuffix` on the
   close side. The lexer enters body mode when it consumes the opening
   `:` after the last header element. In body mode, the close-tag rule
@@ -325,21 +344,34 @@ grammar treats body as opaque.
   next characters match `:OPsuffix` exactly. The open tag (`OP +
   suffix`) is captured at statement start and held on the lexer
   instance.
-- Two body modes:
-  - **Matcher-body mode** (FIND, READ, SHOW, HIDE) — two-character
-    lookahead on the leading characters tags the body as
-    `XPathBody`, `RegexBody`, `JsonPathBody`, or `GlobBody`.
-  - **Content-body mode** (EDIT, COPY, MOVE, SEND, EXEC) —
-    captures opaque content up to the close tag.
-- Header mode hierarchy: small state machine (DEFAULT → OPENED →
-  POST_SIGNAL → POST_PATH → POST_L → BODY) tracks which header
-  elements remain valid at each position (after signal, signal is no
-  longer valid; after path, neither signal nor path; after `<L>`, only
-  the `:` body delimiter is valid). Each header mode requires the `:`
-  to transition to BODY; no fallback.
-- Errors must surface at the statement level with sufficient context to
-  emit a `SEND[4xx]` describing the violation. Defensive recovery is
-  out of scope; fail hard on contract violation.
+- The body is uniformly opaque at the lexer level (a sequence of
+  `BODY_TEXT` tokens). The Visitor reconstructs body content as a
+  single string and, per OP semantics, interprets it as content,
+  destination URI, payload, command, or matcher.
+- Header mode hierarchy: state machine `DEFAULT → OPENED → SIGNAL → POST_SIGNAL → PATH → POST_PATH → POST_L → BODY` tracks which
+  header elements remain valid at each position (after signal, signal
+  is no longer valid; after path, neither signal nor path; after `<L>`,
+  only the `:` body delimiter is valid). Each header mode requires the
+  `:` to transition to BODY; no fallback.
+- PATH and SIGNAL content reject `<<` (single `<` is permitted inside
+  them, double `<<` is the statement-opener prefix and must not appear).
+  This prevents a malformed path or signal from silently swallowing the
+  next statement.
+- Interstatement content (between statements) is captured as `TEXT`
+  tokens. The lexer's `TEXT` rule matches any chars that aren't a
+  recognized statement opener; a `<<` followed by a non-OP sequence is
+  rolled into `TEXT` rather than producing an error.
+- Error model: the parser uses ANTLR's `DefaultErrorStrategy` for
+  cross-statement recovery (sync to next statement opener on error).
+  An error listener records every syntax error as a `PlurnkParseError`
+  (line, column, source: `"lexer" | "parser"`, message). The Visitor's
+  caller correlates errors to statement positions and emits them in
+  the result's `items` array in order.
+- Boundary-destroying errors (lexer ends in a non-DEFAULT mode at EOF,
+  typically meaning a statement was never closed) surface as
+  `unparsedTail` on the parse result. The agent's consumer treats this
+  as "the document past this point is unparseable; do not execute
+  anything after the last successful item."
 
 ## 11. Whitespace and Comments
 
@@ -365,5 +397,93 @@ forgiveness is safe, strict where laxity would corrupt content.
 
 Comments: plurnk has no comment syntax. The protocol is wire-shaped,
 not source-shaped. To leave a self-documenting breadcrumb, use
-`<<EDIT(known://notes/…)…EDIT` (model-visible) or
-`<<SEND[1xx](…)…SEND` (orchestrator-visible).
+`<<EDIT(known://notes/…):…:EDIT` (model-visible) or
+`<<SEND[1xx](…):…:SEND` (orchestrator-visible).
+
+## 12. Public API
+
+This package exports a single entry point `parse(input: string): ParseResult` and the AST type union. The full surface area:
+
+```typescript
+parse(input: string): ParseResult
+
+type ParseResult = {
+    items: ParseItem[];
+    unparsedTail?: { from: Position; reason: string };
+};
+
+type ParseItem =
+    | { kind: "statement"; statement: PlurnkStatement }
+    | { kind: "error"; error: PlurnkParseError }
+    | { kind: "text"; text: string; position: Position };
+
+type Position = { line: number; column: number };
+
+type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SHOW" | "HIDE" | "SEND" | "EXEC";
+
+type PlurnkStatement =
+    | FindStatement | ReadStatement | EditStatement
+    | CopyStatement | MoveStatement
+    | ShowStatement | HideStatement
+    | SendStatement | ExecStatement;
+
+interface StatementBase {
+    suffix: string;          // empty string if no suffix
+    signal: string[] | null; // null = no [signal] slot; [] = empty signal; ["a","b"] = CSV fields
+    path: string | null;     // raw path string; null if no (path) slot
+    lineMarker: LineMarker | null;
+    body: string | null;     // raw body string; null if no body
+    position: Position;
+}
+
+interface LineMarker { first: number; last: number | null; }
+
+interface FindStatement extends StatementBase { op: "FIND"; }
+// (each OP variant identical shape, distinguished by `op` literal)
+```
+
+The `op` field is the discriminator. TypeScript narrows the statement
+type per-branch: `switch (s.op) { case "EDIT": /* s is EditStatement */ }`.
+
+**Items are ordered.** The agent consumer iterates in order: execute on
+`statement`, halt on `error`, surface or ignore `text` per policy.
+
+**ANTLR types do not leak.** All `antlr4ng` types are internal to this
+package; consumers receive only the types listed above.
+
+## 13. Error Format
+
+`PlurnkParseError` is a JSON-serializable Error subclass:
+
+```typescript
+class PlurnkParseError extends Error {
+    readonly line: number;
+    readonly column: number;
+    readonly source: "lexer" | "parser";
+    // .message is "Plurnk <source> error at <line>:<column> — <ANTLR message>"
+}
+```
+
+Serialization convention for transmission to the model (the agent
+runtime constructs this; the parser provides the fields):
+
+```json
+{
+    "line": 1,
+    "column": 12,
+    "source": "parser",
+    "message": "missing CLOSE_TAG at '<EOF>'"
+}
+```
+
+**Per-statement semantics.** A single statement produces at most one
+error (fail-hard within a statement; first error wins, no cascading
+within-statement reports). Across statements, the parser recovers and
+continues — independent malformations in different statements each
+get their own error item in the result.
+
+**Boundary-destroying errors.** When the lexer cannot determine where
+a malformed statement ends (e.g., a body that never finds its close
+tag), the parser cannot reliably parse content after that point. The
+result's `unparsedTail` field marks the position from which parsing
+gave up. Consumers must treat anything past that point as undefined.
