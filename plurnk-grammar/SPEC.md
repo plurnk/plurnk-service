@@ -113,15 +113,15 @@ All other restrictions are runtime concerns, not grammar concerns.
 
 | OP     | `[signal]`        | `(path)` | `body`                  | `<LineN>`     |
 |--------|-------------------|----------|-------------------------|---------------|
-| FIND   | —                 | required | pattern matcher         | result-set pagination |
-| READ   | —                 | required | pattern matcher         | per-entry lines |
+| FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
+| READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | —                 | required | destination URI         | entry lines |
-| MOVE   | —                 | required | destination URI         | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI       | entry lines |
+| MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | SHOW   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | HIDE   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
-| SEND   | HTTP status code (numeric) | optional | message payload (JSON by convention for structured responses) | not applicable |
-| EXEC   | runtime tag (`sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
+| SEND   | HTTP status code (single integer) | optional | message payload (JSON by convention for structured responses) | not applicable |
+| EXEC   | runtime tag (single string; `sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
 
 The `<L>` slot is optional. Its referent shifts by OP (per the column
 above) but the syntax is uniform: a single integer denotes one
@@ -427,9 +427,9 @@ type PlurnkStatement =
     | ShowStatement | HideStatement
     | SendStatement | ExecStatement;
 
-interface StatementBase {
+interface StatementBase<S> {
     suffix: string;          // empty string if no suffix
-    signal: string[] | null; // null = no [signal] slot; [] = empty signal; ["a","b"] = CSV fields
+    signal: S | null;        // null = no [signal] slot; type S varies per OP (see below)
     path: string | null;     // raw path string; null if no (path) slot
     lineMarker: LineMarker | null;
     body: string | null;     // raw body string; null if no body
@@ -438,8 +438,20 @@ interface StatementBase {
 
 interface LineMarker { first: number; last: number | null; }
 
-interface FindStatement extends StatementBase { op: "FIND"; }
-// (each OP variant identical shape, distinguished by `op` literal)
+// Tag-bearing OPs: signal is a CSV array of tag strings (filter or apply, per OP).
+interface FindStatement extends StatementBase<string[]> { op: "FIND"; }
+interface ReadStatement extends StatementBase<string[]> { op: "READ"; }
+interface EditStatement extends StatementBase<string[]> { op: "EDIT"; }
+interface CopyStatement extends StatementBase<string[]> { op: "COPY"; }
+interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; }
+interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; }
+interface HideStatement extends StatementBase<string[]> { op: "HIDE"; }
+
+// SEND: signal is a single integer (HTTP status code).
+interface SendStatement extends StatementBase<number> { op: "SEND"; }
+
+// EXEC: signal is a single string (runtime tag).
+interface ExecStatement extends StatementBase<string> { op: "EXEC"; }
 ```
 
 The `op` field is the discriminator. TypeScript narrows the statement
@@ -456,13 +468,21 @@ package; consumers receive only the types listed above.
 `PlurnkParseError` is a JSON-serializable Error subclass:
 
 ```typescript
+type ErrorSource = "lexer" | "parser" | "visitor";
+
 class PlurnkParseError extends Error {
     readonly line: number;
     readonly column: number;
-    readonly source: "lexer" | "parser";
-    // .message is "Plurnk <source> error at <line>:<column> — <ANTLR message>"
+    readonly source: ErrorSource;
+    // .message is "Plurnk <source> error at <line>:<column> — <message>"
 }
 ```
+
+The three sources distinguish:
+
+- **`"lexer"`** — token-level failures (unrecognized character, malformed integer in `<L>`, etc.).
+- **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
+- **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
