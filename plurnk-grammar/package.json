@@ -10,9 +10,9 @@
   },
   "scripts": {
     "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",
-    "antlr:tokens": "testrig src/generated/plurnk start --tokens",
-    "antlr:trace": "testrig src/generated/plurnk start --trace",
-    "antlr:parse": "testrig src/generated/plurnk start --tree",
+    "antlr:tokens": "testrig src/generated/plurnk document --tokens",
+    "antlr:trace": "testrig src/generated/plurnk document --trace",
+    "antlr:parse": "testrig src/generated/plurnk document --tree",
     "test:lint": "tsc --noEmit",
     "test:unit": "node --test test/unit/*.test.ts",
     "test:intg": "node --test test/integration/*.test.ts",
