@@ -154,7 +154,8 @@ test("AST: minimal EDIT extracts op, suffix, body", () => {
     const s = item.statement;
     assert.equal(s.op, "EDIT");
     assert.equal(s.suffix, "");
-    assert.equal(s.path, "p");
+    assert.equal(s.path?.kind, "local");
+    assert.equal(s.path?.raw, "p");
     assert.equal(s.body, "hello");
     assert.equal(s.signal, null);
     assert.equal(s.lineMarker, null);
@@ -393,6 +394,94 @@ test("AST: missing path is null", () => {
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
     assert.equal(item.statement.path, null);
+});
+
+// -------------------------------------------------------------------------
+// ParsedPath: local vs URL discrimination, URL component breakdown
+// -------------------------------------------------------------------------
+
+test("ParsedPath: bare path is kind=local", () => {
+    const result = parse("<<READ(./README.md)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    assert.equal(p.kind, "local");
+    assert.equal(p.raw, "./README.md");
+});
+
+test("ParsedPath: glob path is kind=local", () => {
+    const result = parse("<<FIND(config/**/*.xml)::FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    assert.equal(p.kind, "local");
+    assert.equal(p.raw, "config/**/*.xml");
+});
+
+test("ParsedPath: https URL decomposed fully", () => {
+    const result = parse("<<READ(https://user:pass@sub.example.com:8080/foo/bar?q=1&q=2#frag)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    if (p.kind !== "url") return;
+    assert.equal(p.scheme, "https");
+    assert.equal(p.username, "user");
+    assert.equal(p.password, "pass");
+    assert.equal(p.hostname, "sub.example.com");
+    assert.equal(p.port, 8080);
+    assert.equal(p.pathname, "/foo/bar");
+    assert.deepEqual(p.search, { q: ["1", "2"] });
+    assert.equal(p.fragment, "frag");
+});
+
+test("ParsedPath: known:// scheme parses (hostname is first segment)", () => {
+    const result = parse("<<READ(known://entries/foo/bar)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    if (p.kind !== "url") return;
+    assert.equal(p.scheme, "known");
+    assert.equal(p.hostname, "entries");
+    assert.equal(p.pathname, "/foo/bar");
+});
+
+test("ParsedPath: log:// scheme parses correctly", () => {
+    const result = parse("<<READ(log://1/turn/2/action/3/get)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    if (p.kind !== "url") return;
+    assert.equal(p.scheme, "log");
+    assert.equal(p.hostname, "1");
+    assert.equal(p.pathname, "/turn/2/action/3/get");
+});
+
+test("ParsedPath: file:///… scheme parses, empty hostname", () => {
+    const result = parse("<<READ(file:///tmp/foo.txt)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    if (p.kind !== "url") return;
+    assert.equal(p.scheme, "file");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "/tmp/foo.txt");
+});
+
+test("ParsedPath: empty query and fragment are null/empty", () => {
+    const result = parse("<<READ(https://example.com/foo)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") return;
+    const p = item.statement.path;
+    assert.ok(p);
+    if (p.kind !== "url") return;
+    assert.deepEqual(p.search, {});
+    assert.equal(p.fragment, null);
 });
 
 test("AST: position points to opening << column", () => {

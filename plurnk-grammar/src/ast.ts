@@ -21,10 +21,43 @@ export interface LineMarker {
     last: number | null;
 }
 
+/**
+ * Parsed path slot. A path is either a local source path (no scheme — filesystem-style)
+ * or a URL with a recognized `scheme://` prefix. URLs are fully decomposed via WHATWG URL;
+ * locals are kept as raw strings (resolution is the runtime's job).
+ *
+ * Subdomain / registrable-domain splitting requires the public suffix list (PSL) and is
+ * deferred to the runtime — `hostname` is the full host string as parsed by URL.
+ */
+export type ParsedPath = LocalPath | UrlPath;
+
+export interface LocalPath {
+    kind: "local";
+    raw: string;
+}
+
+export interface UrlPath {
+    kind: "url";
+    raw: string;
+    /** Scheme without trailing `:` — `"https"`, `"known"`, etc. */
+    scheme: string;
+    username: string | null;
+    password: string | null;
+    /** Full hostname as parsed by URL. For custom schemes (`known://draft`), this is the first authority segment. */
+    hostname: string | null;
+    port: number | null;
+    /** Path component (everything after the authority, before `?` or `#`). May be empty. */
+    pathname: string;
+    /** Query parameters. Multi-value keys are arrays. Empty record if no query. */
+    search: Record<string, string | string[]>;
+    /** Fragment (after `#`), with the `#` stripped; null if no fragment. */
+    fragment: string | null;
+}
+
 interface StatementBase<S> {
     suffix: string;
     signal: S | null;
-    path: string | null;
+    path: ParsedPath | null;
     lineMarker: LineMarker | null;
     body: string | null;
     position: Position;
@@ -110,18 +143,42 @@ const coerceExecSignal = (raw: string[] | null, pos: Position): string | null =>
     return raw[0]!;
 };
 
-const validatePath = (raw: string, pos: Position): void => {
-    if (raw.length === 0) return;
+const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+const parsePath = (raw: string, pos: Position): ParsedPath | null => {
+    if (raw.length === 0) return null;
+    if (!SCHEME_PATTERN.test(raw)) {
+        return { kind: "local", raw };
+    }
+    let url: URL;
     try {
-        new URL(raw);
-        return;
-    } catch {}
-    try {
-        new URL(raw, "file:///");
-        return;
+        url = new URL(raw);
     } catch (e: any) {
         throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${e?.message ?? raw}`);
     }
+    const search: Record<string, string | string[]> = {};
+    for (const [key, value] of url.searchParams) {
+        const existing = search[key];
+        if (existing === undefined) {
+            search[key] = value;
+        } else if (Array.isArray(existing)) {
+            existing.push(value);
+        } else {
+            search[key] = [existing, value];
+        }
+    }
+    return {
+        kind: "url",
+        raw,
+        scheme: url.protocol.replace(/:$/, ""),
+        username: url.username || null,
+        password: url.password || null,
+        hostname: url.hostname || null,
+        port: url.port ? Number.parseInt(url.port, 10) : null,
+        pathname: url.pathname,
+        search,
+        fragment: url.hash ? url.hash.slice(1) : null,
+    };
 };
 
 type MatcherDialect = "xpath" | "regex" | "jsonpath" | "glob";
@@ -177,10 +234,11 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     }
 
     const pathCtx = ctx.path();
-    let path: string | null = null;
+    let rawPath: string | null = null;
     if (pathCtx) {
-        path = pathCtx.PATH_TEXT()?.getText() ?? "";
+        rawPath = pathCtx.PATH_TEXT()?.getText() ?? "";
     }
+    const path: ParsedPath | null = rawPath !== null ? parsePath(rawPath, position) : null;
 
     const lineMarkerCtx = ctx.lineMarker();
     let lineMarker: LineMarker | null = null;
@@ -205,8 +263,7 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
             signal = rawSignal;
     }
 
-    // Native-JS validation of slot contents.
-    if (path !== null) validatePath(path, position);
+    // Native-JS validation of body where applicable (path is already validated by parsePath).
     if (body !== null && MATCHER_OPS.has(op)) {
         const dialect = detectMatcherDialect(body);
         if (dialect === "regex") validateRegexBody(body, position);
