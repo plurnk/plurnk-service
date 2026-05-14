@@ -1,6 +1,6 @@
 lexer grammar plurnkLexer;
 
-tokens { LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, SIGNAL_TEXT, PATH_TEXT, BODY_TEXT, CLOSE_TAG }
+tokens { LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, SIGNAL_TEXT, PATH_TEXT, BODY_TEXT, CLOSE_TAG, TEXT }
 
 // ============================================================================
 // Lexer state — captures the open tag (OP + suffix) so the body-mode
@@ -39,6 +39,23 @@ private consumeRestOfCloseTagAfterColon(): void {
         this.inputStream.consume();
     }
 }
+
+private isOpKeywordAfterLtLt(): boolean {
+    // Called from TEXT rule after '<<' has been matched.
+    // LA(1) is the first char after '<<'.
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
+    for (const op of ops) {
+        let matches = true;
+        for (let i = 0; i < op.length; i++) {
+            if (this.inputStream.LA(i + 1) !== op.charCodeAt(i)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
+}
 }
 
 // ============================================================================
@@ -62,7 +79,9 @@ OPEN_HIDE : '<<HIDE' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
 OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
 
-WS : [ \t\r\n]+ -> skip ;
+// Interstatement content: anything that isn't a recognized statement opener.
+// A '<<' is part of TEXT only if the chars following aren't a valid OP keyword.
+TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[<])+ ;
 
 // ============================================================================
 // OPENED — after the open tag; allows signal, path, L, or body-`:`.

@@ -3,7 +3,7 @@ parser grammar plurnkParser;
 options { tokenVocab = plurnkLexer; }
 
 document
-    : statement* EOF
+    : (statement | TEXT)* EOF
     ;
 
 statement
