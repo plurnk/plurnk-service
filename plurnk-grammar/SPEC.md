@@ -97,7 +97,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | MOVE   | —                 | required | destination URI         | entry lines |
 | SHOW   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | HIDE   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
-| SEND   | `code[,reason]`   | optional | message payload         | not applicable |
+| SEND   | HTTP status code (numeric) | optional | message payload (JSON by convention for structured responses) | not applicable |
 | EXEC   | runtime tag (`sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
 
 All `<LineN>` slots are optional. The slot's *referent* shifts by OP
@@ -252,6 +252,23 @@ transfers directly:
 
 SEND with no `(path)` broadcasts to the default control channel. SEND
 with `(path)` directs the message at a specific recipient URI.
+
+### Response Body Convention
+
+Structured responses (errors, query results, multi-field acknowledgments)
+are emitted as **JSON in the SEND body**, so the model can consume them
+with the same jsonpath dialect it uses for matching:
+
+```
+<<SEND[400](err://lex)
+{"reason":"unexpected token","position":{"line":47,"column":12},"expected":[")"],"got":"["}
+SEND
+```
+
+The model retrieves a field with `<<READ(err://lex)$.reasonREAD` or
+similar. Plain-text bodies remain valid for simple terminal answers
+(`<<SEND[200]ParisSEND`). The JSON convention is runtime policy; the
+grammar treats body as opaque.
 
 ## 10. Implementation Notes
 

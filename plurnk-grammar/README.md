@@ -125,14 +125,14 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 26. Archive the second hundred of stale fetch logs (pagination)
 	<<HIDE(log://**/get)<101><200>HIDE
 
-27. Deliver the final answer with an HTTP-style reason phrase
-	<<SEND[200,answer ready]ParisSEND
+27. Deliver a structured answer (JSON body)
+	<<SEND[200]{"answer":"Paris","confidence":0.95}SEND
 
-28. Report a client error (malformed input)
-	<<SEND[400,unrecognized OP]unknown operation: FOOBARSEND
+28. Report a client error (JSON body the model can traverse with jsonpath)
+	<<SEND[400]{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","SHOW","HIDE","SEND","EXEC"]}SEND
 
 29. Report a server error with explicit recipient
-	<<SEND[503,git unavailable](log://errors)git: command not foundSEND
+	<<SEND[503](log://errors){"reason":"git unavailable","command":"git status"}SEND
 
 30. Direct an informational message at a named agent
 	<<SEND[102](agent://supervisor)decomposition complete; awaiting clearanceSEND
