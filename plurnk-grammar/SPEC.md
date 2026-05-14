@@ -51,8 +51,14 @@ the responsibility of the runtime sub-parsers.
 ## 2. Canonical Statement Form
 
 ```
-<<OPsuffix [signal]? (path)? <L>? body? OPsuffix
+<<OPsuffix [signal]? (path)? <L>? : body? :OPsuffix
 ```
+
+The `:` characters fence the body. Everything between the opening `:`
+and the closing `:OPsuffix` literal is body, verbatim. This is what
+makes plurnk solve grammatical enclosure: body content is fully opaque
+to OP keywords, modifier-like characters, and the protocol's own
+syntax.
 
 Optionality:
 
@@ -60,17 +66,18 @@ Optionality:
 |-------------|---------------|
 | `<<`        | required      |
 | `OP`        | required      |
-| `suffix`    | optional      |
+| `suffix`    | optional; used for nesting and `:OPkeyword` escape (see §8) |
 | `[signal]`  | optional, OP-dependent contents |
 | `(path)`    | required for all OPs except SEND |
 | `<L>`       | optional; single position or range (see §7) |
+| `:`         | required (header → body delimiter) |
 | `body`      | optional, OP-dependent meaning |
-| `OPsuffix`  | required, must character-match the open |
+| `:OPsuffix` | required (close tag: `:` + open tag's OP and suffix, character-matching) |
 
 Hard constraints:
 
-- Close-tag `OP` and `suffix` must literally match the open tag.
-- The header (everything before body) appears in the order shown above.
+- Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`.
+- Header elements appear in the order shown above (signal, then path, then `<L>`, then `:`).
 
 All other restrictions are runtime concerns, not grammar concerns.
 
@@ -82,8 +89,9 @@ All other restrictions are runtime concerns, not grammar concerns.
 - `[` … `]` — signal slot; contents are OP-dependent (see §4).
 - `(` … `)` — path slot; contents are a URI (see §5).
 - `<L>` — line marker. Shape: `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`. A single signed integer denotes a position; two signed integers separated by `-` denote an inclusive range.
-- `body` — opaque byte stream terminated only by the matching close tag literal `OPsuffix`.
-- `OPsuffix` close — must character-match the open OP and suffix.
+- `:` — body delimiter. Appears between header and body, and (with the OP+suffix following) at the close.
+- `body` — opaque byte stream between the opening `:` and the matching close tag `:OPsuffix`.
+- `:OPsuffix` close — `:` immediately followed by the open tag's `OP` and `suffix` (character-matching, no whitespace).
 
 ## 4. Per-OP Semantics
 
@@ -240,23 +248,40 @@ canonical ordering. Runtime guarantee, not a parser concern.
 
 ## 8. Suffix Discipline
 
-- `suffix` is `[A-Za-z0-9_]*`, concatenated to `OP` with no separator.
-- Open and close must character-match: `<<EDITa…EDITa`, `<<READ_outer…READ_outer`.
-- Suffix enables nesting. Inside the body of an outer `<<EDITa…EDITa`,
-  any `<<EDIT…EDIT` substring is treated as opaque body content because
-  the outer close tag is `EDITa`, not `EDIT`. The body of an outer block
-  cannot contain its own close-tag literal; choose a suffix that does
-  not collide with body content.
-- Empty suffix is the default for non-nested statements.
+The `:body:` fencing handles the vast majority of grammatical-enclosure
+concerns: body content is fully opaque to OP keywords and modifier-like
+characters. The suffix is reserved for the residual edge case where
+body content literally contains the close-tag pattern `:OPkeyword`.
+That happens in two scenarios:
+
+1. **Nesting plurnk statements inside a body** (recording a plurnk
+   transcript, storing examples, etc.). The inner statement's close
+   `:OP` would prematurely terminate the outer's body.
+2. **Body content contains `:OPkeyword` as literal text** (e.g., a
+   stored JSON object with a value mentioning plurnk syntax).
+
+Suffix rules:
+
+- `suffix` is `[A-Za-z0-9_]*`, concatenated to `OP` with no separator, on both open and close.
+- Open `<<OPsuffix` and close `:OPsuffix` must character-match.
+- A non-empty suffix on the outer statement ensures its close tag
+  (`:OPsuffix`) is distinct from any `:OP` substring that may appear in
+  body content (whether as nested plurnk or as literal text).
+- The body of a statement cannot contain its own exact close-tag
+  literal; choose a suffix that does not collide.
+- Empty suffix is the default. Most statements need no suffix.
 
 Example — nested EDIT inside an outer EDITa:
 
 ```
-<<EDITa(known://demo)
-The following is a quoted plurnk operation:
-<<EDIT(known://inner)hello worldEDIT
-EDITa
+<<EDITa(known://demo):
+The following is a quoted plurnk operation, preserved verbatim:
+<<EDIT(known://inner):hello world:EDIT
+:EDITa
 ```
+
+The inner's `:EDIT` close does not terminate the outer because the
+outer's close tag is `:EDITa`.
 
 ## 9. SEND Status Codes
 
@@ -293,23 +318,25 @@ grammar treats body as opaque.
 
 - ANTLR4 split follows standard convention: `plurnkLexer.g4` defines
   tokens; `plurnkParser.g4` defines statement structure.
-- The body is HEREDOC-discipline: the lexer enters body mode after the
-  last header element (path, signal, or `<L>`) is consumed, and remains
-  in that mode until the matching close-tag literal. Because the close
-  tag depends on the runtime value of `OP + suffix` from the open, the
-  lexer captures the open tag at statement start and uses a semantic
-  predicate to recognize the matching close tag in body mode.
+- The body is fenced by `:` on the header side and `:OPsuffix` on the
+  close side. The lexer enters body mode when it consumes the opening
+  `:` after the last header element. In body mode, the close-tag rule
+  uses a semantic predicate (`atColonCloseTag()`) that fires when the
+  next characters match `:OPsuffix` exactly. The open tag (`OP +
+  suffix`) is captured at statement start and held on the lexer
+  instance.
 - Two body modes:
   - **Matcher-body mode** (FIND, READ, SHOW, HIDE) — two-character
     lookahead on the leading characters tags the body as
     `XPathBody`, `RegexBody`, `JsonPathBody`, or `GlobBody`.
   - **Content-body mode** (EDIT, COPY, MOVE, SEND, EXEC) —
     captures opaque content up to the close tag.
-- Header mode hierarchy: small state machine tracks which header
+- Header mode hierarchy: small state machine (DEFAULT → OPENED →
+  POST_SIGNAL → POST_PATH → POST_L → BODY) tracks which header
   elements remain valid at each position (after signal, signal is no
   longer valid; after path, neither signal nor path; after `<L>`, only
-  body remains). This disambiguates leading-`[` after a header element
-  from leading-`[` as the first body character.
+  the `:` body delimiter is valid). Each header mode requires the `:`
+  to transition to BODY; no fallback.
 - Errors must surface at the statement level with sufficient context to
   emit a `SEND[4xx]` describing the violation. Defensive recovery is
   out of scope; fail hard on contract violation.
@@ -320,23 +347,21 @@ Plurnk is HEREDOC-disciplined and LLM-tolerant: forgiving where
 forgiveness is safe, strict where laxity would corrupt content.
 
 - **Between header elements** (`OPsuffix`, `[signal]`, `(path)`,
-  `<L>`): whitespace (spaces, tabs, newlines) is optional and
-  non-significant.
+  `<L>`, the body-delimiter `:`): whitespace (spaces, tabs, newlines)
+  is optional and non-significant.
 - **Inside header elements** (between the brackets/parens/angles
   themselves — e.g., inside `[…]`, `(…)`, `<…>`, between `OP` and
   `suffix`): whitespace is forbidden. These are strict tokens.
-- **Header-to-body transition**: one optional protocol newline is
-  consumed between the last header element and the start of body.
-  Subsequent characters are body content.
 - **Body interior**: whitespace is preserved verbatim. Body content
-  begins at the first character after the optional protocol newline
-  and ends immediately before the close-tag literal.
-- **Body-to-close-tag transition**: one optional protocol newline is
-  consumed between the end of body and the close tag.
-- **Close tag**: matched as the literal `OPsuffix` wherever it next
-  appears after the body. No whitespace permitted inside the close-tag
-  token. Suffix discipline (see §8) ensures the literal does not
-  collide with body content.
+  begins at the character immediately after the opening `:` and ends
+  immediately before the closing `:OPsuffix`. Leading and trailing
+  newlines in body content (common for multi-line bodies written by
+  the model) are part of the body; runtime consumers may normalize
+  them.
+- **Close tag** (`:OPsuffix`): the `:` and the `OPsuffix` must be
+  character-adjacent — no whitespace permitted between them. Whitespace
+  *before* the close `:` (i.e., trailing whitespace in body) is body
+  content, preserved verbatim.
 
 Comments: plurnk has no comment syntax. The protocol is wire-shaped,
 not source-shaped. To leave a self-documenting breadcrumb, use
