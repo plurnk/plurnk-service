@@ -141,3 +141,128 @@ test("clean parse has no unparsedTail", () => {
     const result = parse("<<EDIT(p):body:EDIT");
     assert.equal(result.unparsedTail, undefined);
 });
+
+// -------------------------------------------------------------------------
+// Domain AST shape
+// -------------------------------------------------------------------------
+
+test("AST: minimal EDIT extracts op, suffix, body", () => {
+    const result = parse("<<EDIT(p):hello:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    const s = item.statement;
+    assert.equal(s.op, "EDIT");
+    assert.equal(s.suffix, "");
+    assert.equal(s.path, "p");
+    assert.equal(s.body, "hello");
+    assert.equal(s.signal, null);
+    assert.equal(s.lineMarker, null);
+});
+
+test("AST: suffix is extracted on nested outer", () => {
+    const result = parse("<<EDITouter(p):body:EDITouter");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.equal(item.statement.op, "EDIT");
+    assert.equal(item.statement.suffix, "outer");
+});
+
+test("AST: signal CSV splits on comma", () => {
+    const result = parse("<<EDIT[france,geography](p):body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.signal, ["france", "geography"]);
+});
+
+test("AST: single-value signal yields one-element array", () => {
+    const result = parse("<<SEND[200]:Paris:SEND");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.signal, ["200"]);
+});
+
+test("AST: empty signal yields empty array (not null)", () => {
+    const result = parse("<<SEND[]:msg:SEND");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.signal, []);
+});
+
+test("AST: line marker single position", () => {
+    const result = parse("<<EDIT(p)<5>:line:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 5, last: null });
+});
+
+test("AST: line marker positive range", () => {
+    const result = parse("<<EDIT(p)<4-7>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 4, last: 7 });
+});
+
+test("AST: line marker append sentinel", () => {
+    const result = parse("<<EDIT(p)<-1>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: -1, last: null });
+});
+
+test("AST: line marker negative range like <0--5>", () => {
+    const result = parse("<<EDIT(p)<0--5>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 0, last: -5 });
+});
+
+test("AST: line marker range with negative start <-3--1>", () => {
+    const result = parse("<<EDIT(p)<-3--1>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: -3, last: -1 });
+});
+
+test("AST: empty body is null, not empty string", () => {
+    const result = parse("<<EDIT(p)::EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.equal(item.statement.body, null);
+});
+
+test("AST: missing path is null", () => {
+    const result = parse("<<SEND[200]:msg:SEND");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.equal(item.statement.path, null);
+});
+
+test("AST: position points to opening << column", () => {
+    const result = parse("\n\n  <<EDIT(p):body:EDIT");
+    const item = result.items.find((i) => i.kind === "statement");
+    assert.ok(item);
+    if (item?.kind !== "statement") return;
+    assert.equal(item.statement.position.line, 3);
+    assert.equal(item.statement.position.column, 2);
+});
+
+test("AST: discriminated union narrows correctly per op", () => {
+    const result = parse("<<EDIT(p):body:EDIT<<READ(q)::READ");
+    const statements = result.items.filter((i) => i.kind === "statement");
+    assert.equal(statements.length, 2);
+    if (statements[0].kind !== "statement" || statements[1].kind !== "statement") return;
+    assert.equal(statements[0].statement.op, "EDIT");
+    assert.equal(statements[1].statement.op, "READ");
+});

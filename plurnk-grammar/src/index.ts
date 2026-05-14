@@ -8,9 +8,24 @@ import {
     type Token,
 } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
-import { plurnkParser, type StatementContext } from "./generated/plurnkParser.ts";
+import { plurnkParser } from "./generated/plurnkParser.ts";
+import { buildStatement, type PlurnkStatement, type Position } from "./ast.ts";
 
-export type Position = { line: number; column: number };
+export {
+    type PlurnkStatement,
+    type PlurnkOp,
+    type Position,
+    type LineMarker,
+    type FindStatement,
+    type ReadStatement,
+    type EditStatement,
+    type CopyStatement,
+    type MoveStatement,
+    type ShowStatement,
+    type HideStatement,
+    type SendStatement,
+    type ExecStatement,
+} from "./ast.ts";
 
 export class PlurnkParseError extends Error {
     readonly line: number;
@@ -27,7 +42,7 @@ export class PlurnkParseError extends Error {
 }
 
 export type ParseItem =
-    | { kind: "statement"; tree: StatementContext; position: Position }
+    | { kind: "statement"; statement: PlurnkStatement }
     | { kind: "error"; error: PlurnkParseError }
     | { kind: "text"; text: string; position: Position };
 
@@ -92,8 +107,6 @@ export const parse = (input: string): ParseResult => {
         const stop = ctx.stop ?? ctx.symbol;
         if (!start) continue;
 
-        const position: Position = { line: start.line, column: start.column };
-
         if (ctx.ruleIndex === plurnkParser.RULE_statement) {
             const errForStatement = errors.find(
                 (e) => !consumedErrors.has(e) && errorInRange(e, start, stop ?? start),
@@ -102,23 +115,20 @@ export const parse = (input: string): ParseResult => {
                 consumedErrors.add(errForStatement);
                 items.push({ kind: "error", error: errForStatement });
             } else {
-                items.push({ kind: "statement", tree: ctx as StatementContext, position });
+                items.push({ kind: "statement", statement: buildStatement(ctx) });
             }
         } else if (ctx.symbol?.type === plurnkLexer.TEXT) {
+            const position: Position = { line: start.line, column: start.column };
             items.push({ kind: "text", text: ctx.symbol.text ?? "", position });
         }
     }
 
-    // Any remaining errors that didn't get associated with a statement
-    // (e.g., orphan lexer errors) get appended in order.
     for (const err of errors) {
         if (!consumedErrors.has(err)) {
             items.push({ kind: "error", error: err });
         }
     }
 
-    // Detect a boundary-destroying error: lexer ended in a non-DEFAULT mode,
-    // typically meaning a statement was never closed.
     let unparsedTail: ParseResult["unparsedTail"];
     if (lexer.mode !== 0) {
         const lastToken = tokenStream.get(tokenStream.size - 1);
