@@ -110,6 +110,54 @@ const coerceExecSignal = (raw: string[] | null, pos: Position): string | null =>
     return raw[0]!;
 };
 
+const validatePath = (raw: string, pos: Position): void => {
+    if (raw.length === 0) return;
+    try {
+        new URL(raw);
+        return;
+    } catch {}
+    try {
+        new URL(raw, "file:///");
+        return;
+    } catch (e: any) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${e?.message ?? raw}`);
+    }
+};
+
+type MatcherDialect = "xpath" | "regex" | "jsonpath" | "glob";
+
+const detectMatcherDialect = (body: string): MatcherDialect => {
+    if (body.startsWith("//")) return "xpath";
+    if (body.startsWith("/")) return "regex";
+    if (body.startsWith("$")) return "jsonpath";
+    return "glob";
+};
+
+const validateRegexBody = (body: string, pos: Position): void => {
+    // body has form /pattern/flags ; the leading '/' is the dialect marker
+    let i = 1;
+    while (i < body.length) {
+        if (body[i] === "\\") {
+            i += 2;
+            continue;
+        }
+        if (body[i] === "/") break;
+        i++;
+    }
+    if (i >= body.length) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "regex body missing closing /");
+    }
+    const pattern = body.slice(1, i);
+    const flags = body.slice(i + 1);
+    try {
+        new RegExp(pattern, flags);
+    } catch (e: any) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid regex: ${e?.message ?? body}`);
+    }
+};
+
+const MATCHER_OPS = new Set<PlurnkOp>(["FIND", "READ", "SHOW", "HIDE"]);
+
 export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     const openTagCtx = ctx.openTag();
     const openTagText = openTagCtx.getText();
@@ -155,6 +203,14 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
             break;
         default:
             signal = rawSignal;
+    }
+
+    // Native-JS validation of slot contents.
+    if (path !== null) validatePath(path, position);
+    if (body !== null && MATCHER_OPS.has(op)) {
+        const dialect = detectMatcherDialect(body);
+        if (dialect === "regex") validateRegexBody(body, position);
+        // xpath / jsonpath / glob: pass-through; runtime validates.
     }
 
     return { op, suffix, signal, path, lineMarker, body, position } as PlurnkStatement;

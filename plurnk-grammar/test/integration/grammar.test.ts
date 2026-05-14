@@ -257,6 +257,88 @@ test("visitor error: SEND with empty signal []", () => {
     assert.equal(errors[0].error.source, "visitor");
 });
 
+// -------------------------------------------------------------------------
+// Native-JS validation: URL and regex
+// -------------------------------------------------------------------------
+
+test("valid path (https URL) accepted", () => {
+    const result = parse("<<READ(https://example.com/page)::READ");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("valid path (custom scheme) accepted", () => {
+    const result = parse("<<READ(known://entries/foo)::READ");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
+test("valid path (relative, falls back to file://) accepted", () => {
+    const result = parse("<<READ(./README.md)::READ");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
+test("valid path (glob pattern under file://) accepted", () => {
+    const result = parse("<<FIND(config/**/*.xml)::FIND");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
+test("invalid path (unterminated IPv6 bracket) produces visitor error", () => {
+    // WHATWG URL accepts many surprising things (spaces auto-encode, custom schemes
+    // pass through, etc.), but it rejects malformed authority forms like an
+    // unclosed IPv6 bracket — and similar URL-protocol violations.
+    const result = parse("<<READ(http://[bad):body:READ");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("valid regex body accepted", () => {
+    const result = parse("<<FIND(log://errors):/timeout|deadline/i:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("regex body missing closing slash produces visitor error", () => {
+    const result = parse("<<FIND(log://x):/unclosed-regex:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("invalid regex pattern (unterminated character class) produces visitor error", () => {
+    const result = parse("<<FIND(log://x):/[abc/:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("xpath body (// prefix) skips regex validation", () => {
+    const result = parse("<<FIND(config/x.xml)://user[@role='admin']:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("jsonpath body ($ prefix) skips regex validation", () => {
+    const result = parse("<<READ(lang/en.json):$.greeting:READ");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("glob body (no special prefix) skips regex validation", () => {
+    const result = parse("<<FIND(known://**):Paris*:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("non-matcher OP body never triggers regex validation", () => {
+    // EDIT body starting with '/' is content, not regex; should not be validated.
+    const result = parse("<<EDIT(p):/this looks like regex but is EDIT content/x:EDIT");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
 test("AST: line marker single position", () => {
     const result = parse("<<EDIT(p)<5>:line:EDIT");
     const item = result.items[0];
