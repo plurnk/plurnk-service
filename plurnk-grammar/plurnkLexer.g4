@@ -1,10 +1,10 @@
 lexer grammar plurnkLexer;
 
-tokens { LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, SIGNAL_TEXT, PATH_TEXT, BODY_TEXT, CLOSE_TAG }
+tokens { LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, SIGNAL_TEXT, PATH_TEXT, BODY_TEXT, CLOSE_TAG }
 
 // ============================================================================
 // Lexer state — captures the open tag (OP + suffix) so the body-mode
-// close-tag predicate can verify the matching literal.
+// close-tag predicate can verify the matching `:OPsuffix` literal.
 // ============================================================================
 
 @lexer::members {
@@ -14,13 +14,14 @@ private setOpenTag(): void {
     this.openTag = this.text.substring(2);
 }
 
-private atCloseTag(): boolean {
+private atColonCloseTag(): boolean {
+    if (this.inputStream.LA(1) !== 0x3A /* ':' */) return false;
     const tag = this.openTag;
     if (tag.length === 0) return false;
     for (let i = 0; i < tag.length; i++) {
-        if (this.inputStream.LA(i + 1) !== tag.charCodeAt(i)) return false;
+        if (this.inputStream.LA(i + 2) !== tag.charCodeAt(i)) return false;
     }
-    const followChar = this.inputStream.LA(tag.length + 1);
+    const followChar = this.inputStream.LA(tag.length + 2);
     if (followChar > 0 && this.isIdentChar(followChar)) return false;
     return true;
 }
@@ -32,7 +33,7 @@ private isIdentChar(c: number): boolean {
            c === 0x5F;
 }
 
-private consumeRestOfCloseTag(): void {
+private consumeRestOfCloseTagAfterColon(): void {
     const remaining = this.openTag.length - 1;
     for (let i = 0; i < remaining; i++) {
         this.inputStream.consume();
@@ -64,7 +65,7 @@ OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
 WS : [ \t\r\n]+ -> skip ;
 
 // ============================================================================
-// OPENED — after the open tag; allows signal, path, L, or body.
+// OPENED — after the open tag; allows signal, path, L, or body-`:`.
 // ============================================================================
 
 mode OPENED;
@@ -72,38 +73,34 @@ OPENED_WS       : [ \t\r\n]+ -> skip ;
 OPENED_LBRACKET : '[' -> type(LBRACKET), mode(SIGNAL) ;
 OPENED_LPAREN   : '(' -> type(LPAREN), mode(PATH) ;
 OPENED_L        : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-OPENED_CLOSE    : { this.atCloseTag() }? . { this.consumeRestOfCloseTag(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-OPENED_BODY     : . -> more, mode(BODY) ;
+OPENED_COLON    : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
-// POST_SIGNAL — after signal; allows path, L, or body. No more signal.
+// POST_SIGNAL — after signal; allows path, L, or body-`:`.
 // ============================================================================
 
 mode POST_SIGNAL;
 PS_WS     : [ \t\r\n]+ -> skip ;
 PS_LPAREN : '(' -> type(LPAREN), mode(PATH) ;
 PS_L      : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-PS_CLOSE  : { this.atCloseTag() }? . { this.consumeRestOfCloseTag(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-PS_BODY   : . -> more, mode(BODY) ;
+PS_COLON  : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
-// POST_PATH — after path; allows L or body. No more signal or path.
+// POST_PATH — after path; allows L or body-`:`.
 // ============================================================================
 
 mode POST_PATH;
 PP_WS    : [ \t\r\n]+ -> skip ;
 PP_L     : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-PP_CLOSE : { this.atCloseTag() }? . { this.consumeRestOfCloseTag(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-PP_BODY  : . -> more, mode(BODY) ;
+PP_COLON : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
-// POST_L — after line marker; body only.
+// POST_L — after line marker; only body-`:` is valid.
 // ============================================================================
 
 mode POST_L;
 PL_WS    : [ \t\r\n]+ -> skip ;
-PL_CLOSE : { this.atCloseTag() }? . { this.consumeRestOfCloseTag(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-PL_BODY  : . -> more, mode(BODY) ;
+PL_COLON : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
 // SIGNAL — inside `[...]`.
@@ -122,13 +119,16 @@ PATH_INNER : ~[)\r\n]+ -> type(PATH_TEXT) ;
 PATH_END   : ')' -> type(RPAREN), mode(POST_PATH) ;
 
 // ============================================================================
-// BODY — opaque body; close-tag detection via predicate against captured
-// open tag. BODY_RUN bundles runs of non-uppercase characters into single
-// tokens; each uppercase character is checked individually as a potential
-// close-tag start.
+// BODY — opaque body; close-tag detection via predicate matching the
+// `:OPsuffix` literal. BODY_RUN bundles runs of non-colon characters into
+// single tokens for efficiency; individual `:` characters that don't begin
+// a close tag are emitted as body content.
 // ============================================================================
 
 mode BODY;
-BODY_CLOSE : { this.atCloseTag() }? . { this.consumeRestOfCloseTag(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-BODY_RUN   : ~[A-Z]+ -> type(BODY_TEXT) ;
-BODY_CHAR  : . -> type(BODY_TEXT) ;
+BODY_CLOSE
+    : { this.atColonCloseTag() }? ':' . { this.consumeRestOfCloseTagAfterColon(); }
+      -> type(CLOSE_TAG), mode(DEFAULT_MODE)
+    ;
+BODY_RUN   : ~[:]+ -> type(BODY_TEXT) ;
+BODY_COLON : ':' -> type(BODY_TEXT) ;

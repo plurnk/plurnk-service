@@ -7,7 +7,7 @@ document
     ;
 
 statement
-    : openTag signal? path? lineMarker? body? CLOSE_TAG
+    : openTag signal? path? lineMarker? COLON body? CLOSE_TAG
     ;
 
 openTag
