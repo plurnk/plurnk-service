@@ -126,7 +126,9 @@ PL_COLON : ':' -> type(COLON), mode(BODY) ;
 // ============================================================================
 
 mode SIGNAL;
-SIGNAL_INNER : ~[\]\r\n]+ -> type(SIGNAL_TEXT) ;
+// Permit single '<' inside signal content (rare but valid); reject '<<' so a
+// malformed signal can't silently swallow a subsequent statement opener.
+SIGNAL_INNER : (~[\]<\r\n] | '<' ~[\]<\r\n])+ -> type(SIGNAL_TEXT) ;
 SIGNAL_END   : ']' -> type(RBRACKET), mode(POST_SIGNAL) ;
 
 // ============================================================================
@@ -134,7 +136,9 @@ SIGNAL_END   : ']' -> type(RBRACKET), mode(POST_SIGNAL) ;
 // ============================================================================
 
 mode PATH;
-PATH_INNER : ~[)\r\n]+ -> type(PATH_TEXT) ;
+// Permit single '<' inside path content (e.g., URI fragments); reject '<<' so
+// a malformed path can't silently swallow a subsequent statement opener.
+PATH_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(PATH_TEXT) ;
 PATH_END   : ')' -> type(RPAREN), mode(POST_PATH) ;
 
 // ============================================================================

@@ -106,6 +106,16 @@ test("three valid statements in sequence parse independently", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 3);
 });
 
+test("malformed path (unclosed paren) produces error, not silent swallowing", () => {
+    // Statement 2's path is missing its `)`. With tightened PATH_INNER,
+    // the lexer rejects `<<` inside path content and produces an error
+    // instead of greedily consuming statement 3.
+    const input = "<<EDIT(p1):one:EDIT<<EDIT(broken<<EDIT(p3):three:EDIT";
+    const result = parse(input);
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1, "expected at least one error from malformed path");
+});
+
 test("error carries line, column, and source", () => {
     // Malformed: missing close.
     const input = "<<EDIT(p):body without close";
