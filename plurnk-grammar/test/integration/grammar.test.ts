@@ -316,10 +316,31 @@ test("invalid regex pattern (unterminated character class) produces visitor erro
     assert.equal(errors[0].error.source, "visitor");
 });
 
-test("xpath body (// prefix) skips regex validation", () => {
+test("valid xpath body (//user[@role='admin']) accepted", () => {
     const result = parse("<<FIND(config/x.xml)://user[@role='admin']:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("valid xpath body with complex predicate accepted", () => {
+    const result = parse("<<FIND(doc.xml)://book[price>10 and @lang='en']/title:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
+test("invalid xpath body (unterminated predicate) produces visitor error", () => {
+    const result = parse("<<FIND(doc.xml)://book[unterminated:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("invalid xpath body (stray operators) produces visitor error", () => {
+    const result = parse("<<FIND(doc.xml)://**/<<<:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
 });
 
 test("jsonpath body ($ prefix) skips regex validation", () => {

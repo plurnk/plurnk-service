@@ -1,5 +1,13 @@
 import type { StatementContext } from "./generated/plurnkParser.ts";
 import { PlurnkParseError } from "./errors.ts";
+import * as xpath from "xpath";
+
+// The xpath package's .d.ts omits its `parse` function (it only types the
+// document-evaluation surface). Augment the type here — `parse` is exported
+// at runtime and throws on a syntactically invalid XPath 1.0 expression.
+declare module "xpath" {
+    export function parse(expression: string): unknown;
+}
 
 export type Position = { line: number; column: number };
 
@@ -213,6 +221,14 @@ const validateRegexBody = (body: string, pos: Position): void => {
     }
 };
 
+const validateXPathBody = (body: string, pos: Position): void => {
+    try {
+        xpath.parse(body);
+    } catch (e: any) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid xpath: ${e?.message ?? body}`);
+    }
+};
+
 const MATCHER_OPS = new Set<PlurnkOp>(["FIND", "READ", "SHOW", "HIDE"]);
 
 export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
@@ -267,7 +283,8 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     if (body !== null && MATCHER_OPS.has(op)) {
         const dialect = detectMatcherDialect(body);
         if (dialect === "regex") validateRegexBody(body, position);
-        // xpath / jsonpath / glob: pass-through; runtime validates.
+        else if (dialect === "xpath") validateXPathBody(body, position);
+        // jsonpath / glob: pass-through; runtime validates.
     }
 
     return { op, suffix, signal, path, lineMarker, body, position } as PlurnkStatement;
