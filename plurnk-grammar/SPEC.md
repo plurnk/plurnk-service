@@ -51,27 +51,26 @@ the responsibility of the runtime sub-parsers.
 ## 2. Canonical Statement Form
 
 ```
-<<OPsuffix [signal]? (path)? <LineFirst>? body? <LineFinal>? OPsuffix
+<<OPsuffix [signal]? (path)? <L>? body? OPsuffix
 ```
 
 Optionality:
 
-| Element       | Status        |
-|---------------|---------------|
-| `<<`          | required      |
-| `OP`          | required      |
-| `suffix`      | optional      |
-| `[signal]`    | optional, OP-dependent contents |
-| `(path)`      | required for all OPs except SEND |
-| `<LineFirst>` | optional      |
-| `body`        | optional, OP-dependent meaning |
-| `<LineFinal>` | optional      |
-| `OPsuffix`    | required, must character-match the open |
+| Element     | Status        |
+|-------------|---------------|
+| `<<`        | required      |
+| `OP`        | required      |
+| `suffix`    | optional      |
+| `[signal]`  | optional, OP-dependent contents |
+| `(path)`    | required for all OPs except SEND |
+| `<L>`       | optional; single position or range (see §7) |
+| `body`      | optional, OP-dependent meaning |
+| `OPsuffix`  | required, must character-match the open |
 
 Hard constraints:
 
-- `<LineFinal>` presence requires `<LineFirst>`.
 - Close-tag `OP` and `suffix` must literally match the open tag.
+- The header (everything before body) appears in the order shown above.
 
 All other restrictions are runtime concerns, not grammar concerns.
 
@@ -82,7 +81,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 - `suffix` — `[A-Za-z0-9_]*` immediately concatenated to `OP`, no separator.
 - `[` … `]` — signal slot; contents are OP-dependent (see §4).
 - `(` … `)` — path slot; contents are a URI (see §5).
-- `<N>` — line marker, where `N` is a signed integer.
+- `<L>` — line marker. Shape: `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`. A single signed integer denotes a position; two signed integers separated by `-` denote an inclusive range.
 - `body` — opaque byte stream terminated only by the matching close tag literal `OPsuffix`.
 - `OPsuffix` close — must character-match the open OP and suffix.
 
@@ -100,20 +99,19 @@ All other restrictions are runtime concerns, not grammar concerns.
 | SEND   | HTTP status code (numeric) | optional | message payload (JSON by convention for structured responses) | not applicable |
 | EXEC   | runtime tag (`sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
 
-All `<LineN>` slots are optional. The slot's *referent* shifts by OP
-(per the column above) but the syntax and semantics are uniform:
-`<L1><L2>` selects items at positions `L1..L2` inclusive of whatever
-sequence the OP operates on or produces.
+The `<L>` slot is optional. Its referent shifts by OP (per the column
+above) but the syntax is uniform: a single integer denotes one
+position, an integer range `<N-M>` selects items at positions `N..M`
+inclusive of whatever sequence the OP operates on or produces.
 
-EDIT line-marker semantics (single source of authority for line-marker
-behavior across the grammar):
+EDIT line-marker semantics (single source of authority):
 
-- No `<LineFirst>` + body present: replace entire entry contents with body.
-- No `<LineFirst>` + no body: clear entry contents (empty replacement).
-- `<LineFirst>` only + body: replace the single line at `LineFirst` with body.
-- `<LineFirst>` + `<LineFinal>` + body: replace lines `LineFirst..LineFinal` inclusive.
-- `<0>` … `<0>` + body: prepend body before line 1.
-- `<-1>` … `<-1>` + body: append body after the last line.
+- No `<L>` + body present: replace entire entry contents with body.
+- No `<L>` + no body: clear entry contents (empty replacement).
+- `<N>` (single position) + body: replace the single line at `N` with body.
+- `<N-M>` (range) + body: replace lines `N..M` inclusive with body.
+- `<0>` + body: prepend body before line 1.
+- `<-1>` + body: append body after the last line.
 
 SHOW and HIDE filters are AND-combined: an entry is selected when its
 path matches `(path)`, its tags satisfy `[signal]` (if present), and its
@@ -202,22 +200,43 @@ metacharacters are present.
 
 ## 7. Line Markers
 
-Line markers select a subrange of the sequence an OP operates on or
-produces. The sequence type is OP-specific (see §4 per-OP table):
-entry lines for EDIT/WIPE/COPY/MOVE, matched content lines for READ,
-positions in the matched-paths list for FIND/SHOW/HIDE.
+A line marker selects a position or range from the sequence an OP
+operates on or produces. The sequence type is OP-specific (see §4
+per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
+for READ, positions in the matched-paths list for FIND/SHOW/HIDE.
 
-- `<N>` where `N` is a signed decimal integer.
+**Token shape:** `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`.
+
+| Form     | Meaning                              |
+|----------|--------------------------------------|
+| `<N>`    | single position N                    |
+| `<N-M>`  | inclusive range N..M                 |
+| `<0>`    | prepend anchor (before position 1)   |
+| `<-1>`   | append anchor (after last position)  |
+
+Examples involving negative integers:
+
+- `<-1-5>` — range from -1 to 5
+- `<0--5>` — range from 0 to -5
+- `<-3--1>` — range from -3 to -1
+
+**Parsing rule:** greedy. The first signed integer consumes leading
+`-` and digits maximally; the optional `-` range separator follows; the
+optional second signed integer consumes its own optional `-` and
+digits. So `<-1-5>` parses as first=`-1`, separator=`-`, second=`5`.
+This falls out of standard ANTLR longest-match.
+
+**Runtime concerns** (not enforced by the parser):
+
 - `N ≥ 1`: 1-indexed position.
-- `N = 0`: prepend anchor (position before position 1).
-- `N = -1`: append anchor (position after the last position).
-- `<LineFirst>` alone: single-position operation at `LineFirst`.
-- `<LineFirst>` + `<LineFinal>`: inclusive range; `LineFirst ≤ LineFinal` is a runtime concern.
+- Validity of any specific value (out-of-range, inverted range where
+  `N > M`, sentinel meanings beyond the canonical `0`/`-1`) is decided
+  per-OP at runtime.
 
-Result-set ordering (FIND, SHOW, HIDE): the runtime must produce a
-deterministic order so that `<L1><L2>` pagination is reproducible.
+**Result-set ordering** (FIND, SHOW, HIDE): the runtime must produce a
+deterministic order so that `<N-M>` pagination is reproducible.
 Lexicographic ascending order over the matched path strings is the
-canonical ordering. This is a runtime guarantee, not a parser concern.
+canonical ordering. Runtime guarantee, not a parser concern.
 
 ## 8. Suffix Discipline
 
@@ -274,19 +293,23 @@ grammar treats body as opaque.
 
 - ANTLR4 split follows standard convention: `plurnkLexer.g4` defines
   tokens; `plurnkParser.g4` defines statement structure.
-- The body is HEREDOC-discipline: the lexer must enter a body mode after
-  the last pre-body element (path, signal, or `<LineFirst>`) is
-  consumed, and remain in that mode until the matching close-tag
-  literal is found. Because the close tag depends on the runtime value
-  of `OP + suffix` from the open, this is most cleanly handled by a
-  lexer semantic predicate that captures the open tag and compares
-  against it at potential close points.
+- The body is HEREDOC-discipline: the lexer enters body mode after the
+  last header element (path, signal, or `<L>`) is consumed, and remains
+  in that mode until the matching close-tag literal. Because the close
+  tag depends on the runtime value of `OP + suffix` from the open, the
+  lexer captures the open tag at statement start and uses a semantic
+  predicate to recognize the matching close tag in body mode.
 - Two body modes:
   - **Matcher-body mode** (FIND, READ, SHOW, HIDE) — two-character
     lookahead on the leading characters tags the body as
     `XPathBody`, `RegexBody`, `JsonPathBody`, or `GlobBody`.
   - **Content-body mode** (EDIT, COPY, MOVE, SEND, EXEC) —
     captures opaque content up to the close tag.
+- Header mode hierarchy: small state machine tracks which header
+  elements remain valid at each position (after signal, signal is no
+  longer valid; after path, neither signal nor path; after `<L>`, only
+  body remains). This disambiguates leading-`[` after a header element
+  from leading-`[` as the first body character.
 - Errors must surface at the statement level with sufficient context to
   emit a `SEND[4xx]` describing the violation. Defensive recovery is
   out of scope; fail hard on contract violation.
@@ -297,7 +320,7 @@ Plurnk is HEREDOC-disciplined and LLM-tolerant: forgiving where
 forgiveness is safe, strict where laxity would corrupt content.
 
 - **Between header elements** (`OPsuffix`, `[signal]`, `(path)`,
-  `<LineFirst>`): whitespace (spaces, tabs, newlines) is optional and
+  `<L>`): whitespace (spaces, tabs, newlines) is optional and
   non-significant.
 - **Inside header elements** (between the brackets/parens/angles
   themselves — e.g., inside `[…]`, `(…)`, `<…>`, between `OP` and

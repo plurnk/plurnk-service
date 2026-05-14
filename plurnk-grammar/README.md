@@ -11,14 +11,13 @@ requires the model to own, remember, and optimize for its context token budget.
 
 ## Plurnk Syntax
 
-<<OPsuffix[signal](path)<LineFirst>body<LineFinal>OPsuffix
+<<OPsuffix[signal](path)<L>body OPsuffix
 
 OP: Operation Code (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC)
 suffix: Optional suffix to ensure uniqueness of the HEREDOC tag
 signal: Optional CSV; OP-specific interpretation (see SPEC.md §4)
 path: URI-style address; bare paths default to `file://`
-LineFirst: Optionally restrict operation to a line
-LineFinal: If present, requires LineFirst; defines an inclusive line range
+L: Optional line marker; `<N>` for a single position or `<N-M>` for an inclusive range. N and M are signed integers.
 body: OP-specific meaning (see SPEC.md §4): content, destination, payload, command, or pattern matcher
 
 * Bulk Pattern Matching: Use glob, regex, jsonpath, or xpath syntax
@@ -50,7 +49,7 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 	<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)READ
 
 5. Read lines 426–465 of a long article
-	<<READ(https://en.wikipedia.org/wiki/Donald_Rumsfeld)<426><465>READ
+	<<READ(https://en.wikipedia.org/wiki/Donald_Rumsfeld)<426-465>READ
 
 6. Create an unknown entry with tags
 	<<EDIT[france,geography](unknown://countries/france/capital)What is the capital of France?EDIT
@@ -63,19 +62,19 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 	EDIT
 
 8. Mark a plan step complete (single-line replace)
-	<<EDIT(known://plan)<2>- [x] Discover capital of France<2>EDIT
+	<<EDIT(known://plan)<2>- [x] Discover capital of FranceEDIT
 
 9. Replace a range of lines
-	<<EDIT(known://countries/france/capital)<4>
+	<<EDIT(known://countries/france/capital)<4-5>
 	The capital of France is Paris, on the river Seine.
 	Paris has been the continuous capital of France since 987 CE.
-	<5>EDIT
+	EDIT
 
 10. Append content to an existing entry
-	<<EDIT(known://countries/france/capital)<-1>[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris)<-1>EDIT
+	<<EDIT(known://countries/france/capital)<-1>[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris)EDIT
 
 11. Prepend content to an existing entry
-	<<EDIT(known://countries/france/capital)<0>[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris)<0>EDIT
+	<<EDIT(known://countries/france/capital)<0>[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris)EDIT
 
 12. Clear entry contents (empty EDIT body)
 	<<EDIT(known://countries/france/capital)EDIT
@@ -105,10 +104,10 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 	<<FIND(known://countries/**)Paris*FIND
 
 21. List the first 20 entries under a broad path (result-set pagination)
-	<<FIND(known://**)<1><20>FIND
+	<<FIND(known://**)<1-20>FIND
 
 22. Read the first five lines of a local file (bare path → file://)
-	<<READ(./README.md)<1><5>READ
+	<<READ(./README.md)<1-5>READ
 
 23. Copy a draft entry to a dated archive location
 	<<COPY(known://draft)known://archive/2026-05-14/draftCOPY
@@ -123,7 +122,7 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 	<<SHOW[france](known://countries/**)Paris*SHOW
 
 26. Archive the second hundred of stale fetch logs (pagination)
-	<<HIDE(log://**/get)<101><200>HIDE
+	<<HIDE(log://**/get)<101-200>HIDE
 
 27. Deliver a structured answer (JSON body)
 	<<SEND[200]{"answer":"Paris","confidence":0.95}SEND
