@@ -1,4 +1,5 @@
 import type { StatementContext } from "./generated/plurnkParser.ts";
+import { PlurnkParseError } from "./errors.ts";
 
 export type Position = { line: number; column: number };
 
@@ -20,24 +21,29 @@ export interface LineMarker {
     last: number | null;
 }
 
-interface StatementBase {
+interface StatementBase<S> {
     suffix: string;
-    signal: string[] | null;
+    signal: S | null;
     path: string | null;
     lineMarker: LineMarker | null;
     body: string | null;
     position: Position;
 }
 
-export interface FindStatement extends StatementBase { op: "FIND"; }
-export interface ReadStatement extends StatementBase { op: "READ"; }
-export interface EditStatement extends StatementBase { op: "EDIT"; }
-export interface CopyStatement extends StatementBase { op: "COPY"; }
-export interface MoveStatement extends StatementBase { op: "MOVE"; }
-export interface ShowStatement extends StatementBase { op: "SHOW"; }
-export interface HideStatement extends StatementBase { op: "HIDE"; }
-export interface SendStatement extends StatementBase { op: "SEND"; }
-export interface ExecStatement extends StatementBase { op: "EXEC"; }
+/** Tag-bearing signal: CSV of tags (filter or apply, per OP). */
+export interface FindStatement extends StatementBase<string[]> { op: "FIND"; }
+export interface ReadStatement extends StatementBase<string[]> { op: "READ"; }
+export interface EditStatement extends StatementBase<string[]> { op: "EDIT"; }
+export interface CopyStatement extends StatementBase<string[]> { op: "COPY"; }
+export interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; }
+export interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; }
+export interface HideStatement extends StatementBase<string[]> { op: "HIDE"; }
+
+/** SEND signal is a single HTTP-style status code. */
+export interface SendStatement extends StatementBase<number> { op: "SEND"; }
+
+/** EXEC signal is a single runtime tag (e.g., "sh", "node"). */
+export interface ExecStatement extends StatementBase<string> { op: "EXEC"; }
 
 export type PlurnkStatement =
     | FindStatement
@@ -78,6 +84,32 @@ const parseLineMarker = (text: string): LineMarker => {
     return { first, last };
 };
 
+const coerceSendSignal = (raw: string[] | null, pos: Position): number | null => {
+    if (raw === null) return null;
+    if (raw.length === 0) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "SEND signal slot is present but empty");
+    }
+    if (raw.length > 1) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `SEND signal must be a single integer; got ${raw.length} values`);
+    }
+    const text = raw[0]!;
+    if (!/^-?\d+$/.test(text)) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `SEND signal must be an integer; got "${text}"`);
+    }
+    return Number.parseInt(text, 10);
+};
+
+const coerceExecSignal = (raw: string[] | null, pos: Position): string | null => {
+    if (raw === null) return null;
+    if (raw.length === 0) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "EXEC signal slot is present but empty");
+    }
+    if (raw.length > 1) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `EXEC signal must be a single runtime tag; got ${raw.length} values`);
+    }
+    return raw[0]!;
+};
+
 export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     const openTagCtx = ctx.openTag();
     const openTagText = openTagCtx.getText();
@@ -90,10 +122,10 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     };
 
     const signalCtx = ctx.signal();
-    let signal: string[] | null = null;
+    let rawSignal: string[] | null = null;
     if (signalCtx) {
         const text = signalCtx.SIGNAL_TEXT()?.getText() ?? "";
-        signal = text.length > 0 ? text.split(",") : [];
+        rawSignal = text.length > 0 ? text.split(",") : [];
     }
 
     const pathCtx = ctx.path();
@@ -111,6 +143,19 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
 
     const bodyCtx = ctx.body();
     const body: string | null = bodyCtx ? bodyCtx.getText() : null;
+
+    // Per-OP signal coercion
+    let signal: string[] | number | string | null;
+    switch (op) {
+        case "SEND":
+            signal = coerceSendSignal(rawSignal, position);
+            break;
+        case "EXEC":
+            signal = coerceExecSignal(rawSignal, position);
+            break;
+        default:
+            signal = rawSignal;
+    }
 
     return { op, suffix, signal, path, lineMarker, body, position } as PlurnkStatement;
 };

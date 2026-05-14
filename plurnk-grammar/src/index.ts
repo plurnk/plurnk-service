@@ -10,7 +10,10 @@ import {
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import { buildStatement, type PlurnkStatement, type Position } from "./ast.ts";
+import { PlurnkParseError } from "./errors.ts";
 
+export { PlurnkParseError } from "./errors.ts";
+export type { ErrorSource } from "./errors.ts";
 export {
     type PlurnkStatement,
     type PlurnkOp,
@@ -26,20 +29,6 @@ export {
     type SendStatement,
     type ExecStatement,
 } from "./ast.ts";
-
-export class PlurnkParseError extends Error {
-    readonly line: number;
-    readonly column: number;
-    readonly source: "lexer" | "parser";
-
-    constructor(line: number, column: number, source: "lexer" | "parser", message: string) {
-        super(`Plurnk ${source} error at ${line}:${column} — ${message}`);
-        this.name = "PlurnkParseError";
-        this.line = line;
-        this.column = column;
-        this.source = source;
-    }
-}
 
 export type ParseItem =
     | { kind: "statement"; statement: PlurnkStatement }
@@ -115,7 +104,15 @@ export const parse = (input: string): ParseResult => {
                 consumedErrors.add(errForStatement);
                 items.push({ kind: "error", error: errForStatement });
             } else {
-                items.push({ kind: "statement", statement: buildStatement(ctx) });
+                try {
+                    items.push({ kind: "statement", statement: buildStatement(ctx) });
+                } catch (e) {
+                    if (e instanceof PlurnkParseError) {
+                        items.push({ kind: "error", error: e });
+                    } else {
+                        throw e;
+                    }
+                }
             }
         } else if (ctx.symbol?.type === plurnkLexer.TEXT) {
             const position: Position = { line: start.line, column: start.column };

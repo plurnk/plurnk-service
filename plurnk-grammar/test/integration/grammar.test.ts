@@ -177,20 +177,84 @@ test("AST: signal CSV splits on comma", () => {
     assert.deepEqual(item.statement.signal, ["france", "geography"]);
 });
 
-test("AST: single-value signal yields one-element array", () => {
+test("AST: SEND signal is coerced to a number", () => {
     const result = parse("<<SEND[200]:Paris:SEND");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
-    if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.signal, ["200"]);
+    if (item.kind !== "statement" || item.statement.op !== "SEND") return;
+    assert.equal(item.statement.signal, 200);
 });
 
-test("AST: empty signal yields empty array (not null)", () => {
-    const result = parse("<<SEND[]:msg:SEND");
+test("AST: EXEC signal is coerced to a string", () => {
+    const result = parse("<<EXEC[node](./):console.log(1):EXEC");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
-    if (item.kind !== "statement") return;
+    if (item.kind !== "statement" || item.statement.op !== "EXEC") return;
+    assert.equal(item.statement.signal, "node");
+});
+
+test("AST: SEND with no signal slot yields signal=null", () => {
+    const result = parse("<<SEND:msg:SEND");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "SEND") return;
+    assert.equal(item.statement.signal, null);
+});
+
+test("AST: empty signal on tag-bearing OP yields empty array", () => {
+    const result = parse("<<EDIT[](p):body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "EDIT") return;
     assert.deepEqual(item.statement.signal, []);
+});
+
+test("AST: FIND signal is tag filter (string[])", () => {
+    const result = parse("<<FIND[urgent,critical](known://**):pattern:FIND");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    assert.deepEqual(item.statement.signal, ["urgent", "critical"]);
+});
+
+test("AST: COPY signal is tags-to-apply (string[])", () => {
+    const result = parse("<<COPY[archive,2026](known://draft):known://archive/draft:COPY");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
+    assert.deepEqual(item.statement.signal, ["archive", "2026"]);
+});
+
+test("visitor error: SEND with non-numeric signal", () => {
+    const result = parse("<<SEND[abc]:msg:SEND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("visitor error: SEND with multiple signal values", () => {
+    const result = parse("<<SEND[200,extra]:msg:SEND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("visitor error: EXEC with multiple signal values", () => {
+    const result = parse("<<EXEC[node,extra](./):cmd:EXEC");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
+});
+
+test("visitor error: SEND with empty signal []", () => {
+    const result = parse("<<SEND[]:msg:SEND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
 });
 
 test("AST: line marker single position", () => {
