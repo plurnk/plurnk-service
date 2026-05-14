@@ -1,14 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CharStream, CommonTokenStream } from "antlr4ng";
-import { plurnkLexer } from "../../src/generated/plurnkLexer.ts";
-import { plurnkParser } from "../../src/generated/plurnkParser.ts";
-
-const parse = (input: string) => {
-    const lexer = new plurnkLexer(CharStream.fromString(input));
-    const parser = new plurnkParser(new CommonTokenStream(lexer));
-    return parser.document();
-};
+import { parse, PlurnkParseError } from "../../src/index.ts";
 
 test("ex 3 — simple EDIT with body", () => {
     const tree = parse("<<EDIT(known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT");
@@ -64,4 +56,37 @@ test("ex 31 — nested EDIT via suffix discipline", () => {
     const input = "<<EDITouter(known://demo):quoted: <<EDIT(known://inner):hello world:EDIT:EDITouter";
     const tree = parse(input);
     assert.equal(tree.statement().length, 1);
+});
+
+test("fail-hard: missing close tag throws PlurnkParseError", () => {
+    assert.throws(
+        () => parse("<<EDIT(p):body without close"),
+        PlurnkParseError,
+    );
+});
+
+test("fail-hard: unrecognized OP throws PlurnkParseError", () => {
+    assert.throws(
+        () => parse("<<FOOBAR(p):body:FOOBAR"),
+        PlurnkParseError,
+    );
+});
+
+test("fail-hard: missing body colon throws PlurnkParseError", () => {
+    assert.throws(
+        () => parse("<<EDIT(p)body:EDIT"),
+        PlurnkParseError,
+    );
+});
+
+test("fail-hard: error carries line, column, and source", () => {
+    try {
+        parse("<<EDIT(p):body without close");
+        assert.fail("expected throw");
+    } catch (e) {
+        assert.ok(e instanceof PlurnkParseError);
+        assert.equal(typeof e.line, "number");
+        assert.equal(typeof e.column, "number");
+        assert.ok(e.source === "lexer" || e.source === "parser");
+    }
 });
