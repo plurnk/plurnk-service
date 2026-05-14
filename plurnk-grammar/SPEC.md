@@ -217,12 +217,42 @@ body fields; the lexer is unaware):
 - Glob is the catch-all and includes the literal-substring case when
   no metacharacters are present.
 
-**Why not ANTLR sub-grammars for these?** Node's `new URL()` and
+**Implemented validation in the Visitor (Node-native):**
+
+- **Path**: `new URL(raw)` is attempted first (absolute URLs); on
+  failure, `new URL(raw, "file:///")` is attempted (relative paths
+  resolve under `file://`). If both fail, a `PlurnkParseError` with
+  source `"visitor"` is emitted. WHATWG URL is permissive — spaces
+  auto-encode, custom schemes pass through, glob metacharacters in
+  segments are accepted. Validation catches genuine URL-protocol
+  violations (malformed authority, unterminated IPv6 brackets, invalid
+  port, etc.).
+- **Regex body** (matcher-body OPs only, leading `/` and not `//`):
+  the Visitor extracts `pattern` and `flags` (respecting `\/` escapes)
+  and calls `new RegExp(pattern, flags)`. On failure (missing closing
+  `/`, unterminated character class, invalid flag, etc.), a
+  `PlurnkParseError` with source `"visitor"` is emitted.
+
+**Deferred validation (no Node-native parser available):**
+
+- **XPath** bodies — pass through as raw strings. Validation belongs
+  to the runtime where xpath is actually executed against XML/HTML
+  content.
+- **JsonPath** bodies — same as xpath; pass through as raw.
+- **Glob** bodies — pass through as raw; runtime applies whatever glob
+  matcher is appropriate.
+
+These can be promoted to Visitor-level validation later by adopting a
+lightweight npm dependency (e.g., `xpath`, `jsonpath-plus`) — out of
+scope for the grammar package's minimal surface.
+
+**Why not ANTLR sub-grammars for any of these?** Node's `new URL()` and
 `new RegExp()` are authoritative, well-tested, and zero-cost to invoke.
-ANTLR sub-grammars for URI/regex/xpath/jsonpath would add hundreds of
-lines of generated parser code with no validation benefit over the
-native facilities. The Visitor invokes natives where useful and stops
-there.
+ANTLR sub-grammars for URI/regex would add hundreds of lines of
+generated parser code with no validation benefit over the native
+facilities. For xpath/jsonpath, the same principle applies — when
+validation is needed, an npm library is cleaner than re-implementing
+a sub-grammar.
 
 ## 7. Line Markers
 
