@@ -219,14 +219,16 @@ body fields; the lexer is unaware):
 
 **Implemented validation in the Visitor (Node-native):**
 
-- **Path**: `new URL(raw)` is attempted first (absolute URLs); on
-  failure, `new URL(raw, "file:///")` is attempted (relative paths
-  resolve under `file://`). If both fail, a `PlurnkParseError` with
-  source `"visitor"` is emitted. WHATWG URL is permissive — spaces
-  auto-encode, custom schemes pass through, glob metacharacters in
-  segments are accepted. Validation catches genuine URL-protocol
-  violations (malformed authority, unterminated IPv6 brackets, invalid
-  port, etc.).
+- **Path**: the Visitor distinguishes local paths from URLs by the
+  presence of a scheme prefix (`[a-z][a-z0-9+.-]*://`). Local paths
+  (filesystem-style, no scheme) are stored as `{ kind: "local", raw }`
+  without further parsing — `new URL()` is not invoked, so no URL
+  conventions are imposed on what was clearly intended as a local
+  reference. URLs are parsed by `new URL(raw)` and decomposed into
+  components (`scheme`, `username`, `password`, `hostname`, `port`,
+  `pathname`, `search`, `fragment`). Genuine URL-protocol violations
+  (malformed authority, unterminated IPv6 brackets, invalid port, etc.)
+  produce a `PlurnkParseError` with source `"visitor"`.
 - **Regex body** (matcher-body OPs only, leading `/` and not `//`):
   the Visitor extracts `pattern` and `flags` (respecting `\/` escapes)
   and calls `new RegExp(pattern, flags)`. On failure (missing closing
@@ -460,13 +462,37 @@ type PlurnkStatement =
 interface StatementBase<S> {
     suffix: string;          // empty string if no suffix
     signal: S | null;        // null = no [signal] slot; type S varies per OP (see below)
-    path: string | null;     // raw path string; null if no (path) slot
+    path: ParsedPath | null; // typed parse of (path); null if no slot or empty
     lineMarker: LineMarker | null;
     body: string | null;     // raw body string; null if no body
     position: Position;
 }
 
 interface LineMarker { first: number; last: number | null; }
+
+// Path is local (no scheme) or URL (has scheme). The Visitor decides by
+// matching the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed
+// through `new URL()` for component breakdown.
+type ParsedPath = LocalPath | UrlPath;
+
+interface LocalPath {
+    kind: "local";
+    raw: string;             // filesystem path or other non-URL identifier
+}
+
+interface UrlPath {
+    kind: "url";
+    raw: string;
+    scheme: string;          // protocol without trailing ':'
+    username: string | null;
+    password: string | null;
+    hostname: string | null; // first authority segment; for custom schemes like
+                             // `known://entries/foo`, hostname = "entries"
+    port: number | null;
+    pathname: string;        // path component, may be empty
+    search: Record<string, string | string[]>;
+    fragment: string | null;
+}
 
 // Tag-bearing OPs: signal is a CSV array of tag strings (filter or apply, per OP).
 interface FindStatement extends StatementBase<string[]> { op: "FIND"; }
