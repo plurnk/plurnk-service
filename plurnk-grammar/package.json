@@ -15,10 +15,10 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "plurnk": "./bin/plurnk.ts"
+    "plurnk": "./bin/plurnk.js"
   },
   "files": [
-    "bin/plurnk.ts",
+    "bin/plurnk.js",
     "src/*.ts",
     "src/generated/*.ts",
     "SPEC.md",
