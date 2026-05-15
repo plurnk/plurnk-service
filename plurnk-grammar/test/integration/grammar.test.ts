@@ -518,6 +518,122 @@ test("ParsedPath: empty query and fragment are null/empty", () => {
     assert.equal(p.fragment, null);
 });
 
+// -------------------------------------------------------------------------
+// Typed body: MatcherBody, ParsedPath (COPY/MOVE destination), SendBody
+// -------------------------------------------------------------------------
+
+test("MatcherBody: regex returns dialect + compiled regexp", () => {
+    const result = parse("<<FIND(log://x):/foo|bar/i:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    if (b.dialect !== "regex") return;
+    assert.equal(b.pattern, "foo|bar");
+    assert.equal(b.flags, "i");
+    assert.ok(b.regexp instanceof RegExp);
+    assert.equal(b.regexp.test("foo"), true);
+    assert.equal(b.regexp.test("FOO"), true); // i flag works
+});
+
+test("MatcherBody: xpath returns dialect + raw", () => {
+    const result = parse("<<FIND(doc.xml)://user[@role='admin']:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "xpath");
+    assert.equal(b.raw, "//user[@role='admin']");
+});
+
+test("MatcherBody: jsonpath returns dialect + raw", () => {
+    const result = parse("<<READ(lang/en.json):$.greeting:READ");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "jsonpath");
+    assert.equal(b.raw, "$.greeting");
+});
+
+test("MatcherBody: glob returns dialect + raw (no metacharacters)", () => {
+    const result = parse("<<FIND(known://countries/**):Paris*:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "glob");
+    assert.equal(b.raw, "Paris*");
+});
+
+test("COPY body is a ParsedPath", () => {
+    const result = parse("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    if (b.kind !== "url") return;
+    assert.equal(b.scheme, "known");
+    assert.equal(b.hostname, "archive");
+    assert.equal(b.pathname, "/2026-05-14/draft");
+});
+
+test("MOVE body is a ParsedPath", () => {
+    const result = parse("<<MOVE(known://draft):known://final/answer:MOVE");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    if (b.kind !== "url") return;
+    assert.equal(b.scheme, "known");
+    assert.equal(b.hostname, "final");
+    assert.equal(b.pathname, "/answer");
+});
+
+test("MOVE body with local destination is kind=local", () => {
+    const result = parse("<<MOVE(known://draft):./out.txt:MOVE");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.kind, "local");
+    assert.equal(b.raw, "./out.txt");
+});
+
+test("SendBody: JSON-shaped body has parsed json", () => {
+    const result = parse(`<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND`);
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "SEND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.raw, `{"answer":"Paris","confidence":0.95}`);
+    assert.deepEqual(b.json, { answer: "Paris", confidence: 0.95 });
+});
+
+test("SendBody: plain-text body has json=null but raw preserved", () => {
+    const result = parse("<<SEND[200]:Paris:SEND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "SEND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.raw, "Paris");
+    assert.equal(b.json, null);
+});
+
+test("EDIT body remains raw string", () => {
+    const result = parse("<<EDIT(known://entry):line one\nline two:EDIT");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "EDIT") return;
+    assert.equal(item.statement.body, "line one\nline two");
+});
+
+test("EXEC body remains raw string", () => {
+    const result = parse("<<EXEC[node](./):console.log(1+1):EXEC");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "EXEC") return;
+    assert.equal(item.statement.body, "console.log(1+1)");
+});
+
 test("AST: position points to opening << column", () => {
     const result = parse("\n\n  <<EDIT(p):body:EDIT");
     const item = result.items.find((i) => i.kind === "statement");

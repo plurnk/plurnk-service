@@ -68,24 +68,49 @@ interface StatementBase<S> {
     signal: S | null;
     path: ParsedPath | null;
     lineMarker: LineMarker | null;
-    body: string | null;
     position: Position;
 }
 
-/** Tag-bearing signal: CSV of tags (filter or apply, per OP). */
-export interface FindStatement extends StatementBase<string[]> { op: "FIND"; }
-export interface ReadStatement extends StatementBase<string[]> { op: "READ"; }
-export interface EditStatement extends StatementBase<string[]> { op: "EDIT"; }
-export interface CopyStatement extends StatementBase<string[]> { op: "COPY"; }
-export interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; }
-export interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; }
-export interface HideStatement extends StatementBase<string[]> { op: "HIDE"; }
+/**
+ * Typed body for FIND/READ/SHOW/HIDE pattern matchers. The dialect is detected
+ * by the body's leading characters and validated by the Visitor — `xpath` via
+ * `xpath.parse()`, `regex` via `new RegExp()`, `jsonpath` via `jsonpath-plus`,
+ * `glob` is pass-through.
+ */
+export type MatcherBody =
+    | { dialect: "xpath"; raw: string }
+    | { dialect: "regex"; raw: string; pattern: string; flags: string; regexp: RegExp }
+    | { dialect: "jsonpath"; raw: string }
+    | { dialect: "glob"; raw: string };
 
-/** SEND signal is a single HTTP-style status code. */
-export interface SendStatement extends StatementBase<number> { op: "SEND"; }
+/**
+ * Typed body for SEND. The raw payload is always present; `json` holds the
+ * `JSON.parse(raw)` result if the body is valid JSON, null otherwise.
+ * Best-effort: plain-text bodies (`<<SEND[200]:Paris:SEND`) leave json=null.
+ */
+export interface SendBody {
+    raw: string;
+    json: unknown | null;
+}
 
-/** EXEC signal is a single runtime tag (e.g., "sh", "node"). */
-export interface ExecStatement extends StatementBase<string> { op: "EXEC"; }
+/** Matcher OPs: body is a typed pattern matcher (or null if no body). */
+export interface FindStatement extends StatementBase<string[]> { op: "FIND"; body: MatcherBody | null; }
+export interface ReadStatement extends StatementBase<string[]> { op: "READ"; body: MatcherBody | null; }
+export interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; body: MatcherBody | null; }
+export interface HideStatement extends StatementBase<string[]> { op: "HIDE"; body: MatcherBody | null; }
+
+/** EDIT body is arbitrary content (markdown, code, JSON, prose) — kept raw. */
+export interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: string | null; }
+
+/** COPY/MOVE body is the destination URI, parsed identically to the path slot. */
+export interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: ParsedPath | null; }
+export interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
+
+/** SEND body: raw plus best-effort JSON parse. */
+export interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBody | null; }
+
+/** EXEC body is a command or code snippet — kept raw. */
+export interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 
 export type PlurnkStatement =
     | FindStatement
@@ -199,48 +224,55 @@ const detectMatcherDialect = (body: string): MatcherDialect => {
     return "glob";
 };
 
-const validateRegexBody = (body: string, pos: Position): void => {
-    // body has form /pattern/flags ; the leading '/' is the dialect marker
+const parseRegexLiteral = (body: string, pos: Position): { pattern: string; flags: string } => {
     let i = 1;
     while (i < body.length) {
-        if (body[i] === "\\") {
-            i += 2;
-            continue;
-        }
+        if (body[i] === "\\") { i += 2; continue; }
         if (body[i] === "/") break;
         i++;
     }
     if (i >= body.length) {
         throw new PlurnkParseError(pos.line, pos.column, "visitor", "regex body missing closing /");
     }
-    const pattern = body.slice(1, i);
-    const flags = body.slice(i + 1);
-    try {
-        new RegExp(pattern, flags);
-    } catch (e: any) {
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid regex: ${e?.message ?? body}`);
-    }
+    return { pattern: body.slice(1, i), flags: body.slice(i + 1) };
 };
 
-const validateXPathBody = (body: string, pos: Position): void => {
-    try {
-        xpath.parse(body);
-    } catch (e: any) {
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid xpath: ${e?.message ?? body}`);
+const parseMatcherBody = (body: string, pos: Position): MatcherBody => {
+    const dialect = detectMatcherDialect(body);
+    if (dialect === "regex") {
+        const { pattern, flags } = parseRegexLiteral(body, pos);
+        let regexp: RegExp;
+        try {
+            regexp = new RegExp(pattern, flags);
+        } catch (e: any) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid regex: ${e?.message ?? body}`);
+        }
+        return { dialect: "regex", raw: body, pattern, flags, regexp };
     }
+    if (dialect === "xpath") {
+        try {
+            xpath.parse(body);
+        } catch (e: any) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid xpath: ${e?.message ?? body}`);
+        }
+        return { dialect: "xpath", raw: body };
+    }
+    if (dialect === "jsonpath") {
+        try {
+            JSONPath({ path: body, json: {} });
+        } catch (e: any) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid jsonpath: ${e?.message ?? body}`);
+        }
+        return { dialect: "jsonpath", raw: body };
+    }
+    return { dialect: "glob", raw: body };
 };
 
-const validateJsonPathBody = (body: string, pos: Position): void => {
-    // jsonpath-plus parses the expression even when given an empty json target.
-    // Syntax errors throw; no document evaluation occurs against {}.
-    try {
-        JSONPath({ path: body, json: {} });
-    } catch (e: any) {
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid jsonpath: ${e?.message ?? body}`);
-    }
+const parseSendBody = (raw: string): SendBody => {
+    let json: unknown | null = null;
+    try { json = JSON.parse(raw); } catch { /* best-effort: not all SEND bodies are JSON */ }
+    return { raw, json };
 };
-
-const MATCHER_OPS = new Set<PlurnkOp>(["FIND", "READ", "SHOW", "HIDE"]);
 
 export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     const openTagCtx = ctx.openTag();
@@ -275,9 +307,9 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
     }
 
     const bodyCtx = ctx.body();
-    const body: string | null = bodyCtx ? bodyCtx.getText() : null;
+    const rawBody: string | null = bodyCtx ? bodyCtx.getText() : null;
 
-    // Per-OP signal coercion
+    // Per-OP signal coercion.
     let signal: string[] | number | string | null;
     switch (op) {
         case "SEND":
@@ -290,13 +322,26 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
             signal = rawSignal;
     }
 
-    // Native-JS validation of body where applicable (path is already validated by parsePath).
-    if (body !== null && MATCHER_OPS.has(op)) {
-        const dialect = detectMatcherDialect(body);
-        if (dialect === "regex") validateRegexBody(body, position);
-        else if (dialect === "xpath") validateXPathBody(body, position);
-        else if (dialect === "jsonpath") validateJsonPathBody(body, position);
-        // glob: pass-through; runtime validates.
+    // Per-OP body shaping.
+    let body: MatcherBody | ParsedPath | SendBody | string | null;
+    switch (op) {
+        case "FIND":
+        case "READ":
+        case "SHOW":
+        case "HIDE":
+            body = rawBody !== null ? parseMatcherBody(rawBody, position) : null;
+            break;
+        case "COPY":
+        case "MOVE":
+            body = rawBody !== null ? parsePath(rawBody, position) : null;
+            break;
+        case "SEND":
+            body = rawBody !== null ? parseSendBody(rawBody) : null;
+            break;
+        case "EDIT":
+        case "EXEC":
+            body = rawBody;
+            break;
     }
 
     return { op, suffix, signal, path, lineMarker, body, position } as PlurnkStatement;
