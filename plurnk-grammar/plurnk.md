@@ -1,41 +1,26 @@
-# Plurnk
+# Plurnk System Grammar
 
-A protocol for emitting structured operations to an agent. Each statement is one operation. The model emits; the agent executes and may reply with further plurnk.
+YOU MUST ONLY use the HEREDOC-inspired Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC).
 
-## Form
+## Syntax
 
 ```
 <<OPsuffix[signal]?(path)?<L>?:body?:OPsuffix
 ```
 
-Annotated:
-
-```
-<<EDITouter[tag1,tag2](known://entry/path)<3-7>:body content:EDITouter
-^^ ^^^^ ^^^^^ ^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^ ^^^^^ ^^^^^^^^^^^^ ^^^^^^^^
-|  |    |     |         |                   |     |            close tag
-|  |    |     |         |                   |     body
-|  |    |     |         |                   line marker (position or range)
-|  |    |     |         path
-|  |    |     suffix CSV
-|  |    signal slot
-|  OP keyword
-open delimiter
-```
-
 Slot order is fixed. Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty). Close tag's `OPsuffix` must character-match the open.
 
-## OPs
+## Operations
 
 | OP   | `[signal]`    | `(path)` | `<L>`            | body                     |
 |------|---------------|----------|------------------|--------------------------|
-| FIND | filter tags   | required | results `N..M`   | matcher                  |
-| READ | filter tags   | required | lines `N..M`     | matcher                  |
-| EDIT | tags          | required | lines `N..M`     | content (empty = clear)  |
-| COPY | apply tags    | required | lines `N..M`     | destination URI          |
-| MOVE | apply tags    | required | lines `N..M`     | destination URI          |
-| SHOW | filter tags   | required | results `N..M`   | matcher                  |
-| HIDE | filter tags   | required | results `N..M`   | matcher                  |
+| FIND | filter tags   | required | results `N-M`   | matcher                  |
+| READ | filter tags   | required | lines `N-M`     | matcher                  |
+| EDIT | tags          | required | lines `N-M`     | content (empty = clear)  |
+| COPY | apply tags    | required | lines `N-M`     | destination URI          |
+| MOVE | apply tags    | required | lines `N-M`     | destination URI          |
+| SHOW | filter tags   | required | results `N-M`   | matcher                  |
+| HIDE | filter tags   | required | results `N-M`   | matcher                  |
 | SEND | HTTP status   | optional | —                | message (JSON for data)  |
 | EXEC | runtime tag   | required | —                | command or code          |
 
@@ -43,7 +28,7 @@ SEND signal is a single integer. EXEC signal is a single tag (`sh`, `node`, `pyt
 
 ## `<L>`
 
-`<N>` selects position N. `<N-M>` selects the inclusive range N..M. N and M are signed integers. Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append). Range example: `<-3--1>` is positions -3..-1.
+`<N>` selects position N. `<N-M>` selects the inclusive range N-M. N and M are signed integers. Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append). Range example: `<-3--1>` is positions -3..-1.
 
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
@@ -54,32 +39,34 @@ SEND signal is a single integer. EXEC signal is a single tag (`sh`, `node`, `pyt
 | `$`            | jsonpath | `$.field`             |
 | otherwise      | glob     | `pattern`             |
 
-Regex closes with `/` before optional flags `[a-z]*`. Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
+Regex closes with `/` before optional flags. Flags: `i` case-insensitive · `g` global · `m` multiline · `s` dotAll (dot matches newlines) · `u` unicode. Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
 
 ## Paths
 
-URI-shaped: `[scheme://]rest`. Bare paths (no scheme) default to `file://`. Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments. Single `<` is permitted; `<<` is not (it's a statement opener).
+URI-shaped: `[scheme://]rest`.
 
-Recognized schemes:
+* Bare paths (no scheme) default to local relative project file paths.
+* Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
 
-- `known://` — committed entries (resolved knowledge).
-- `unknown://` — open questions / entries pending resolution.
-- `log://<loop>/<turn>/<action>/...` — event log entries; positional path segments.
-- `file://`, `http(s)://` — standard.
-- Any scheme matching `[a-z][a-z0-9+.-]*://` is grammatically valid.
+Internal schemes:
+
+- `known://` — committed entries.
+- `unknown://` — pending / open questions.
+- `log://<loop>/<turn>/<action>/...` — event log.
+- `stream://` — live data streams.
 
 ## Context
 
 The agent maintains two contexts:
 
-- **Active** — entries visible to the model on subsequent turns.
-- **Extended** — entries indexed but archived; out of working memory.
+- **Index** — entries listed in the active index.
+- **Archive** — entries archived; out of working memory (HIDE), but promotable (SHOW) by path or pattern lookup.
 
-`SHOW` promotes matching entries to active. `HIDE` demotes to extended. The model curates its own working memory by issuing these between substantive operations. New entries created via `EDIT` enter active by default.
+`SHOW` promotes matching entries to the active index. `HIDE` demotes to archive. The model curates its own working memory by issuing these between substantive operations. New entries created via `EDIT` enter active index by default.
 
 ## Suffix
 
-For nested plurnk inside a body (recording, quoting, demonstrating), the outer statement uses a non-empty suffix so its close tag is distinct from inner close tags. Empty suffix is default. The suffix character class is `[A-Za-z0-9_]`.
+For nested Plurnk Operations inside a body (recording, quoting, demonstrating), the outer statement uses an optional non-empty suffix so its close tag is distinct from inner close tags. Empty suffix is default. The suffix character class is `[A-Za-z0-9_]`.
 
 ```
 <<EDITouter(known://demo):
@@ -87,96 +74,32 @@ quoted: <<EDIT(known://inner):hello:EDIT
 :EDITouter
 ```
 
-## Responses
-
-Agent replies arrive as `SEND` statements. Read structured response bodies with READ + jsonpath:
-
-```
-<<READ(log://reply/last):$.answer:READ
-```
-
-Status code families:
-
-- `1xx` informational; continue the loop.
-- `2xx` success; `200` is terminal delivery.
-- `3xx` redirection; handoff.
-- `4xx` your statement was malformed; correct and retry.
-- `5xx` runtime/system error; not your fault; report or retry.
-
 ## Examples
 
 ```
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
-```
-
-```
 <<READ(lang/??.json):$.greeting:READ
-```
-
-```
 <<READ(https://en.wikipedia.org/wiki/Paris)<426-465>::READ
-```
-
-```
-<<EDIT(known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
-```
-
-```
+<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
-```
-
-```
-<<EDIT(known://plan):
+<<EDIT[plan,france,task](known://plan):
 - [ ] Decompose prompt into unknowns
 - [ ] Discover capital of France
 - [ ] Deliver
 :EDIT
-```
-
-```
 <<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
-```
-
-```
 <<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-```
-
-```
 <<EDIT(known://countries/france/capital)::EDIT
-```
-
-```
 <<COPY[archive,2026-05-14](known://draft):known://archive/2026-05-14/draft:COPY
-```
-
-```
 <<MOVE(known://draft):known://final/answer:MOVE
-```
-
-```
 <<SHOW[france](known://countries/**):Paris*:SHOW
-```
-
-```
 <<HIDE(log://**/get)<101-200>::HIDE
-```
-
-```
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
-```
-
-```
 <<EXEC[node](./):
 const sum = [1, 2, 3].reduce((a, b) => a + b, 0);
 console.log(sum);
 :EXEC
-```
-
-```
 <<SEND[102]:decomposed prompt; plan initialized:SEND
-```
-
-```
 <<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND
 ```
 
