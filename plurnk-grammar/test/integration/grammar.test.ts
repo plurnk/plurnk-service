@@ -634,6 +634,55 @@ test("EXEC body remains raw string", () => {
     assert.equal(item.statement.body, "console.log(1+1)");
 });
 
+// -------------------------------------------------------------------------
+// Error message text — protocol vocabulary, no parser jargon
+// -------------------------------------------------------------------------
+
+const firstError = (input: string) => {
+    const r = parse(input);
+    const e = r.items.find((i) => i.kind === "error");
+    if (!e || e.kind !== "error") throw new Error("no error in result");
+    return e.error;
+};
+
+test("error message: missing close tag uses 'close tag' wording", () => {
+    const e = firstError("<<EDIT(p):body without close");
+    assert.match(e.message, /close tag/);
+    assert.doesNotMatch(e.message, /CLOSE_TAG|EOF|<EOF>|RPAREN|LBRACKET/);
+});
+
+test("error message: << inside path says 'in path'", () => {
+    const e = firstError("<<EDIT(<<broken):body:EDIT");
+    assert.match(e.message, /unrecognized character '<<' in path/);
+});
+
+test("error message: << inside signal says 'in signal'", () => {
+    const e = firstError("<<EDIT[<<broken](p):body:EDIT");
+    assert.match(e.message, /unrecognized character '<<' in signal/);
+});
+
+test("error message: stray char after path says 'in statement header'", () => {
+    const e = firstError("<<EDIT(p)X:body:EDIT");
+    assert.match(e.message, /unrecognized character 'X' in statement header/);
+});
+
+test("error message: no ANTLR-y terminology leaks through", () => {
+    const inputs = [
+        "<<EDIT(p):body without close",
+        "<<EDIT(p)X:body:EDIT",
+        "<<EDIT(<<x):body:EDIT",
+        "<<EDIT[<<x](p):body:EDIT",
+    ];
+    const forbidden = /token recognition|mismatched|extraneous|expecting|no viable|RPAREN|LBRACKET|RBRACKET|LPAREN|COLON|CLOSE_TAG|BODY_TEXT|<EOF>|ATN/;
+    for (const input of inputs) {
+        const r = parse(input);
+        for (const item of r.items) {
+            if (item.kind !== "error") continue;
+            assert.doesNotMatch(item.error.message, forbidden, `forbidden text in: ${item.error.message}`);
+        }
+    }
+});
+
 test("AST: position points to opening << column", () => {
     const result = parse("\n\n  <<EDIT(p):body:EDIT");
     const item = result.items.find((i) => i.kind === "statement");

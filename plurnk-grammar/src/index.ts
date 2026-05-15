@@ -2,7 +2,6 @@ import {
     BaseErrorListener,
     CharStream,
     CommonTokenStream,
-    DefaultErrorStrategy,
     type RecognitionException,
     type Recognizer,
     type Token,
@@ -11,6 +10,7 @@ import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import { buildStatement, type PlurnkStatement, type Position } from "./ast.ts";
 import { PlurnkParseError } from "./errors.ts";
+import { PlurnkErrorStrategy, translateLexerMessage } from "./error-strategy.ts";
 
 export { PlurnkParseError } from "./errors.ts";
 export type { ErrorSource } from "./errors.ts";
@@ -51,14 +51,17 @@ class RecordingListener extends BaseErrorListener {
     }
 
     override syntaxError(
-        _recognizer: Recognizer<any>,
+        recognizer: Recognizer<any>,
         _offendingSymbol: Token | null,
         line: number,
         column: number,
         msg: string,
         _e: RecognitionException | null,
     ): void {
-        this.errors.push(new PlurnkParseError(line, column, this.source, msg));
+        const translated = this.source === "lexer"
+            ? translateLexerMessage(recognizer as plurnkLexer, msg)
+            : msg;
+        this.errors.push(new PlurnkParseError(line, column, this.source, translated));
     }
 }
 
@@ -83,7 +86,7 @@ export const parse = (input: string): ParseResult => {
     const parser = new plurnkParser(tokenStream);
     parser.removeErrorListeners();
     parser.addErrorListener(new RecordingListener("parser", errors));
-    parser.errorHandler = new DefaultErrorStrategy();
+    parser.errorHandler = new PlurnkErrorStrategy();
 
     const tree = parser.document();
 
