@@ -343,10 +343,23 @@ test("invalid xpath body (stray operators) produces visitor error", () => {
     assert.equal(errors[0].error.source, "visitor");
 });
 
-test("jsonpath body ($ prefix) skips regex validation", () => {
+test("valid jsonpath body ($.greeting) accepted", () => {
     const result = parse("<<READ(lang/en.json):$.greeting:READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("valid jsonpath body with descendant and wildcard accepted", () => {
+    const result = parse("<<READ(books.json):$..book[*].price:READ");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
+test("invalid jsonpath body (unclosed paren) produces visitor error", () => {
+    const result = parse("<<READ(books.json):$[(:READ");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    if (errors[0].kind !== "error") return;
+    assert.equal(errors[0].error.source, "visitor");
 });
 
 test("glob body (no special prefix) skips regex validation", () => {

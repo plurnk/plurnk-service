@@ -1,6 +1,7 @@
 import type { StatementContext } from "./generated/plurnkParser.ts";
 import { PlurnkParseError } from "./errors.ts";
 import * as xpath from "xpath";
+import { JSONPath } from "jsonpath-plus";
 
 // The xpath package's .d.ts omits its `parse` function (it only types the
 // document-evaluation surface). Augment the type here — `parse` is exported
@@ -229,6 +230,16 @@ const validateXPathBody = (body: string, pos: Position): void => {
     }
 };
 
+const validateJsonPathBody = (body: string, pos: Position): void => {
+    // jsonpath-plus parses the expression even when given an empty json target.
+    // Syntax errors throw; no document evaluation occurs against {}.
+    try {
+        JSONPath({ path: body, json: {} });
+    } catch (e: any) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid jsonpath: ${e?.message ?? body}`);
+    }
+};
+
 const MATCHER_OPS = new Set<PlurnkOp>(["FIND", "READ", "SHOW", "HIDE"]);
 
 export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
@@ -284,7 +295,8 @@ export const buildStatement = (ctx: StatementContext): PlurnkStatement => {
         const dialect = detectMatcherDialect(body);
         if (dialect === "regex") validateRegexBody(body, position);
         else if (dialect === "xpath") validateXPathBody(body, position);
-        // jsonpath / glob: pass-through; runtime validates.
+        else if (dialect === "jsonpath") validateJsonPathBody(body, position);
+        // glob: pass-through; runtime validates.
     }
 
     return { op, suffix, signal, path, lineMarker, body, position } as PlurnkStatement;
