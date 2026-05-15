@@ -6,7 +6,10 @@
   "private": true,
   "license": "MIT",
   "engines": {
-    "node": ">=22"
+    "node": ">=23.6"
+  },
+  "bin": {
+    "plurnk": "./bin/plurnk.ts"
   },
   "scripts": {
     "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",

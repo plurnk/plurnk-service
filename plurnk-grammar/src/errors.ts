@@ -12,4 +12,14 @@ export class PlurnkParseError extends Error {
         this.column = column;
         this.source = source;
     }
+
+    /** JSON serialization — `JSON.stringify` picks this up automatically. */
+    toJSON(): { line: number; column: number; source: ErrorSource; message: string } {
+        return {
+            line: this.line,
+            column: this.column,
+            source: this.source,
+            message: this.message,
+        };
+    }
 }
