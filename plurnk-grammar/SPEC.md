@@ -541,6 +541,21 @@ type per-branch: `switch (s.op) { case "EDIT": /* s is EditStatement */ }`.
 **ANTLR types do not leak.** All `antlr4ng` types are internal to this
 package; consumers receive only the types listed above.
 
+### CLI
+
+The package also exposes a `plurnk` CLI for local development and tooling:
+
+```
+plurnk [file]      Parse plurnk source from a file (or stdin if omitted or '-')
+                   and print the parse result as JSON.
+plurnk --help      Show usage.
+```
+
+Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
+`1` otherwise. `RegExp` values inside `MatcherBody` serialize as their
+`/pattern/flags` string form; `PlurnkParseError` instances serialize via
+their `toJSON()` method to `{ line, column, source, message }`.
+
 ## 13. Error Format
 
 `PlurnkParseError` is a JSON-serializable Error subclass:
