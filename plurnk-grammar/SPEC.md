@@ -150,8 +150,8 @@ content matches `body` (if present).
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |
 | MOVE | status; destination path on success |
-| SHOW | status; list of paths moved into Active Context |
-| HIDE | status; list of paths moved into Extended Context |
+| SHOW | status; list of paths moved into the Index |
+| HIDE | status; list of paths moved into the Archive |
 | SEND | status; recipient ack if applicable |
 | EXEC | exit code, stdout, stderr |
 

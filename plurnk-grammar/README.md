@@ -71,7 +71,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 2. Read hello in every language
 	<<READ(lang/??.json):$.greeting:READ
 
-3. Write a known entry to active context
+3. Write a known entry to the index
 	<<EDIT(known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 
 4. Read an entry in full
