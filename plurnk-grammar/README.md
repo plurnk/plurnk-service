@@ -1,41 +1,69 @@
-# Plurnk Grammar
+# plurnk-grammar
 
-The Pattern-Lookup Unknowns Resolution Node Kit (plurnk) possesses an ANTLR4-dialect EBNF state machine grammar.
+Parser for the Plurnk protocol — a HEREDOC-style DSL for LLM agents.
 
-## Plurnk Machine
+## install
 
-The Plurnk Machine consists of an Active Context that is visible to the model and
-an unlimited Extended Context that the model can exploit to optimize the
-relevance and efficiency of its Active Context. Plurnk's HEREDOC-style grammar
-requires the model to own, remember, and optimize for its context token budget.
+```
+npm install plurnk-grammar
+```
 
-## Plurnk Syntax
+Requires Node ≥ 23.6 (native TypeScript support).
 
-<<OPsuffix[signal](path)<L>:body:OPsuffix
+## use
 
-OP: Operation Code (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC)
-suffix: Optional suffix; reserved for nesting and `:OPkeyword` escape (see SPEC.md §8)
-signal: Optional CSV; OP-specific interpretation (see SPEC.md §4)
-path: URI-style address; bare paths default to `file://`
-L: Optional line marker; `<N>` for a single position or `<N-M>` for an inclusive range. N and M are signed integers.
-:body: The body is fenced by `:` on the header side and `:OPsuffix` on the close. Body is fully opaque between the colons.
-body: OP-specific meaning (see SPEC.md §4): content, destination, payload, command, or pattern matcher
+```ts
+import { parse } from "plurnk-grammar";
+const result = parse(input);
+// result.items: Array<{kind:"statement"|"error"|"text", ...}>
+// result.unparsedTail?: { from, reason }
+```
 
-* Bulk Pattern Matching: Use glob, regex, jsonpath, or xpath syntax
+Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE SHOW HIDE SEND EXEC`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
-## Plurnk Operation Codes
+## cli
 
-FIND: List matching paths
-READ: Retrieve the contents of a given path
-EDIT: Write content (empty body clears the entry)
-COPY: Copy from pathSrc to pathDest
-MOVE: Move from pathSrc to pathDest
-SHOW: Add path from Extended Context to Active Context
-HIDE: Remove path from Active Context to Extended Context
-SEND: Send a message (body)
-EXEC: Execute a command or code snippet in a runtime (shell by default; language selectable via [signal])
+```
+plurnk [file]      parse to JSON; file or stdin
+plurnk --help
+```
 
-## Plurnk Examples
+Exit `0` on clean parse, `1` on any error or unparsed tail.
+
+## syntax
+
+```
+<<OPsuffix [signal]? (path)? <L>? : body? :OPsuffix
+```
+
+| slot     | shape                                              |
+|----------|----------------------------------------------------|
+| `OP`     | `FIND READ EDIT COPY MOVE SHOW HIDE SEND EXEC`     |
+| `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
+| `[…]`    | optional CSV; per-OP semantics                     |
+| `(…)`    | optional URI                                       |
+| `<L>`    | optional `<N>` or `<N-M>`; N, M ∈ signed integers  |
+| `:body:` | optional; opaque between fences                    |
+
+| OP   | signal           | body                  | line marker        |
+|------|------------------|-----------------------|--------------------|
+| FIND | tag filter       | matcher               | result-set range   |
+| READ | tag filter       | matcher               | per-entry lines    |
+| EDIT | tags             | content (empty=clear) | entry lines        |
+| COPY | tags-to-apply    | destination URI       | entry lines        |
+| MOVE | tags-to-apply    | destination URI       | entry lines        |
+| SHOW | tag filter       | matcher               | result-set range   |
+| HIDE | tag filter       | matcher               | result-set range   |
+| SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
+| EXEC | runtime tag      | command or code       | n/a                |
+
+Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · else glob.
+
+Path scheme detection: `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
+
+Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a non-empty suffix so its close `:OPsuffix` is distinct.
+
+## examples
 
 1. List all xml files containing the admin user role.
 	<<FIND(config/**/*.xml)://user[@role='admin']:FIND
@@ -142,3 +170,15 @@ EXEC: Execute a command or code snippet in a runtime (shell by default; language
 	The following is a quoted plurnk operation, preserved verbatim:
 	<<EDIT(known://inner):hello world:EDIT
 	:EDITouter
+
+## error format
+
+Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `source` ∈ `lexer | parser | visitor`. Messages use protocol vocabulary (`unrecognized character '<<' in path`, `expected close tag; got end of input`).
+
+## spec
+
+[SPEC.md](SPEC.md) — full grammar specification: canonical form, per-OP semantics, matcher dialects, path decomposition, error model, whitespace rules, implementation notes.
+
+## license
+
+MIT.
