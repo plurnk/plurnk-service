@@ -10,9 +10,20 @@
   "engines": {
     "node": ">=23.6"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "plurnk": "./bin/plurnk.ts"
   },
+  "files": [
+    "bin/plurnk.ts",
+    "src/*.ts",
+    "src/generated/*.ts",
+    "SPEC.md",
+    "plurnk.md"
+  ],
   "scripts": {
     "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",
     "antlr:tokens": "testrig src/generated/plurnk document --tokens",
@@ -22,7 +33,8 @@
     "test:unit": "node --test test/unit/*.test.ts",
     "test:intg": "node --test test/integration/*.test.ts",
     "test:demo": "node --test test/demo/*.test.ts",
-    "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo"
+    "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
+    "prepublishOnly": "npm run build:grammar && npm run test:all"
   },
   "dependencies": {
     "antlr4ng": "^3.0.0",
