@@ -239,20 +239,24 @@ body fields; the lexer is unaware):
   parser-only, no DOM execution). On failure (unterminated predicate,
   invalid operator, etc.), a `PlurnkParseError` with source `"visitor"`
   is emitted.
+- **JsonPath body** (matcher-body OPs only, leading `$`): the Visitor
+  calls `JSONPath({ path: body, json: {} })` from the `jsonpath-plus`
+  npm package. The empty `{}` ensures syntax parsing happens without
+  document evaluation. Syntax errors (unclosed parens, malformed
+  filter expressions, etc.) throw and become `PlurnkParseError` with
+  source `"visitor"`.
 
 **Deferred validation:**
 
-- **JsonPath** bodies — pass through as raw. To be promoted by
-  adopting `jsonpath-plus` (parallel to the xpath integration).
 - **Glob** bodies — pass through as raw; runtime applies whatever
   glob matcher is appropriate.
 
 **Why not ANTLR sub-grammars for any of these?** Node's `new URL()`
 and `new RegExp()` are authoritative, well-tested, and zero-cost to
-invoke; `xpath` is the de facto Node XPath 1.0 parser. ANTLR
-sub-grammars for any of these would add hundreds of lines of
-generated parser code with no validation benefit over the native or
-library facilities.
+invoke; `xpath` and `jsonpath-plus` are the de facto Node parsers for
+their respective dialects. ANTLR sub-grammars for any of these would
+add hundreds of lines of generated parser code with no validation
+benefit over the native or library facilities.
 
 ## 7. Line Markers
 
