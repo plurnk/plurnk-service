@@ -570,9 +570,32 @@ runtime constructs this; the parser provides the fields):
     "line": 1,
     "column": 12,
     "source": "parser",
-    "message": "missing CLOSE_TAG at '<EOF>'"
+    "message": "expected close tag; got end of input"
 }
 ```
+
+**Message style rules** (enforced by `PlurnkErrorStrategy` and the
+lexer message translator):
+
+- **Protocol vocabulary only.** Messages refer to plurnk concepts (open
+  tag, close tag, signal, path, line marker, body, statement header,
+  between statements) — never ANTLR or parser-internal terms (no
+  "token recognition error," "extraneous input," "RPAREN," "no viable
+  alternative," "<EOF>", etc.).
+- **Terse but complete.** One short sentence naming what was wrong.
+  No suggestions, no recovery hints, no extra context. The model
+  receives `line`/`column` separately and doesn't need duplication.
+- **Slot/feature references**, not rule references. "in path" rather
+  than "in rule path"; "expected close tag" rather than "expected
+  CLOSE_TAG."
+
+Examples of canonical messages:
+
+- `unrecognized character '<<' in path`
+- `unrecognized character ':' in signal`
+- `unrecognized character 'X' in statement header`
+- `expected close tag; got end of input`
+- `expected ')'; got ':'`
 
 **Per-statement semantics.** A single statement produces at most one
 error (fail-hard within a statement; first error wins, no cascading
