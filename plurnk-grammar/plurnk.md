@@ -14,17 +14,17 @@ Slot order is fixed. Slots between `<<OPsuffix` and `:body:` are all optional. `
 
 | OP   | `[signal]`    | `(path)` | `<L>`            | body                     |
 |------|---------------|----------|------------------|--------------------------|
-| FIND | filter tags   | required | results `N-M`   | matcher                  |
-| READ | filter tags   | required | lines `N-M`     | matcher                  |
-| EDIT | tags          | required | lines `N-M`     | content (empty = clear)  |
-| COPY | apply tags    | required | lines `N-M`     | destination URI          |
-| MOVE | apply tags    | required | lines `N-M`     | destination URI          |
-| SHOW | filter tags   | required | results `N-M`   | matcher                  |
-| HIDE | filter tags   | required | results `N-M`   | matcher                  |
+| FIND | filter tags   | required | results `N-M`    | matcher                  |
+| READ | filter tags   | required | lines `N-M`      | matcher                  |
+| EDIT | tags          | required | lines `N-M`      | content (empty = clear)  |
+| COPY | apply tags    | required | lines `N-M`      | destination URI          |
+| MOVE | apply tags    | required | lines `N-M`      | destination URI          |
+| SHOW | filter tags   | required | results `N-M`    | matcher                  |
+| HIDE | filter tags   | required | results `N-M`    | matcher                  |
 | SEND | HTTP status   | optional | —                | message (JSON for data)  |
-| EXEC | runtime tag   | required | —                | command or code          |
+| EXEC | Runtime Tag   | required | —                | command or code          |
 
-SEND signal is a single integer. EXEC signal is a single tag (`sh`, `node`, `python`, etc.). All other signals are CSV.
+SEND signal is a single integer. EXEC signal is a single Runtime Tag (`sh`, `node`, `python`, etc.). All other signals are CSV.
 
 ## `<L>`
 
@@ -35,11 +35,11 @@ SEND signal is a single integer. EXEC signal is a single tag (`sh`, `node`, `pyt
 | leading prefix | dialect  | form                  |
 |----------------|----------|-----------------------|
 | `//`           | xpath    | `//selector`          |
-| `/`            | regex    | `/pattern/flags`      |
+| `/`            | regex    | `/pattern/[igmsu]?`   |
 | `$`            | jsonpath | `$.field`             |
 | otherwise      | glob     | `pattern`             |
 
-Regex closes with `/` before optional flags. Flags: `i` case-insensitive · `g` global · `m` multiline · `s` dotAll (dot matches newlines) · `u` unicode. Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
+Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
 
 ## Paths
 
@@ -50,8 +50,9 @@ URI-shaped: `[scheme://]rest`.
 
 Internal schemes:
 
-- `known://` — committed entries.
 - `unknown://` — pending / open questions.
+- `known://` — knowledgebase entries.
+- `skill://` — available skill entries.
 - `log://<loop>/<turn>/<action>/...` — event log.
 - `stream://` — live data streams.
 
