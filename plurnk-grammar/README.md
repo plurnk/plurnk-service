@@ -5,7 +5,7 @@ Parser for the Plurnk protocol — a HEREDOC-style DSL for LLM agents.
 ## install
 
 ```
-npm install plurnk-grammar
+npm install @plurnk/plurnk-grammar
 ```
 
 Requires Node ≥ 23.6 (native TypeScript support).

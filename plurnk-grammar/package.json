@@ -1,5 +1,5 @@
 {
-  "name": "plurnk-grammar",
+  "name": "@plurnk/plurnk-grammar",
   "version": "0.1.0",
   "description": "ANTLR4 grammar for the Plurnk LLM agent protocol",
   "type": "module",
