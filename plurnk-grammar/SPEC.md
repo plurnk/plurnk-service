@@ -466,8 +466,8 @@ interface StatementBase<S> {
     signal: S | null;        // null = no [signal] slot; type S varies per OP (see below)
     path: ParsedPath | null; // typed parse of (path); null if no slot or empty
     lineMarker: LineMarker | null;
-    body: string | null;     // raw body string; null if no body
     position: Position;
+    // body type varies per OP — declared on each concrete statement (below).
 }
 
 interface LineMarker { first: number; last: number | null; }
@@ -496,20 +496,40 @@ interface UrlPath {
     fragment: string | null;
 }
 
-// Tag-bearing OPs: signal is a CSV array of tag strings (filter or apply, per OP).
-interface FindStatement extends StatementBase<string[]> { op: "FIND"; }
-interface ReadStatement extends StatementBase<string[]> { op: "READ"; }
-interface EditStatement extends StatementBase<string[]> { op: "EDIT"; }
-interface CopyStatement extends StatementBase<string[]> { op: "COPY"; }
-interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; }
-interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; }
-interface HideStatement extends StatementBase<string[]> { op: "HIDE"; }
+// Typed body for FIND/READ/SHOW/HIDE — dialect dispatch with compiled regex.
+type MatcherBody =
+    | { dialect: "xpath"; raw: string }
+    | { dialect: "regex"; raw: string; pattern: string; flags: string; regexp: RegExp }
+    | { dialect: "jsonpath"; raw: string }
+    | { dialect: "glob"; raw: string };
 
-// SEND: signal is a single integer (HTTP status code).
-interface SendStatement extends StatementBase<number> { op: "SEND"; }
+// Typed body for SEND — best-effort JSON parse alongside raw.
+interface SendBody {
+    raw: string;
+    json: unknown | null;    // parsed value if body is valid JSON, else null
+}
 
-// EXEC: signal is a single string (runtime tag).
-interface ExecStatement extends StatementBase<string> { op: "EXEC"; }
+// Each variant declares its own body type. Tag-bearing OPs share signal=string[];
+// SEND uses number; EXEC uses string.
+
+// Matcher OPs — body is a typed pattern matcher.
+interface FindStatement extends StatementBase<string[]> { op: "FIND"; body: MatcherBody | null; }
+interface ReadStatement extends StatementBase<string[]> { op: "READ"; body: MatcherBody | null; }
+interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; body: MatcherBody | null; }
+interface HideStatement extends StatementBase<string[]> { op: "HIDE"; body: MatcherBody | null; }
+
+// EDIT — body is arbitrary content (markdown, code, prose). Raw.
+interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: string | null; }
+
+// COPY/MOVE — body is the destination URI, parsed identically to the path slot.
+interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: ParsedPath | null; }
+interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
+
+// SEND — body is raw + best-effort JSON.
+interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBody | null; }
+
+// EXEC — body is a command or code snippet. Raw.
+interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 ```
 
 The `op` field is the discriminator. TypeScript narrows the statement
