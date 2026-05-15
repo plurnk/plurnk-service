@@ -29,7 +29,7 @@ test("ex 02: READ hello in every language", () => {
 });
 
 test("ex 03: EDIT — write a known entry", () => {
-    expectOneClean("<<EDIT(known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT");
+    expectOneClean("<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT");
 });
 
 test("ex 04: READ an entry in full", () => {
@@ -45,7 +45,7 @@ test("ex 06: EDIT — create unknown entry with tags", () => {
 });
 
 test("ex 07: EDIT — multi-line plan", () => {
-    expectOneClean(`<<EDIT(known://plan):
+    expectOneClean(`<<EDIT[plan,france,task](known://plan):
 - [ ] Decompose prompt into unknowns
 - [ ] Discover capital of France
 - [ ] Deliver

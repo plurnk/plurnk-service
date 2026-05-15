@@ -72,7 +72,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<READ(lang/??.json):$.greeting:READ
 
 3. Write a known entry to the index
-	<<EDIT(known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
+	<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 
 4. Read an entry in full
 	<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)::READ
@@ -84,7 +84,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
 
 7. Create a multi-line plan
-	<<EDIT(known://plan):
+	<<EDIT[plan,france,task](known://plan):
 	- [ ] Decompose prompt into unknowns
 	- [ ] Discover capital of France
 	- [ ] Deliver
