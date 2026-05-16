@@ -1,0 +1,13 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Params.json",
+    "title": "Params",
+    "description": "URL query parameters parsed into a JSON object. Single-value keys map to strings; multi-value keys (repeated in the original query string) map to arrays of strings. Empty object when the URL has no query string; nullable usages wrap this schema in a oneOf with null.",
+    "type": "object",
+    "additionalProperties": {
+        "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+        ]
+    }
+}

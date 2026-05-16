@@ -9,10 +9,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parse } from "../../src/index.ts";
+import { PlurnkParser } from "../../src/index.ts";
 
 const expectOneClean = (input: string) => {
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     const statements = result.items.filter((i) => i.kind === "statement");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(statements.length, 1, `expected 1 statement, got ${statements.length}`);

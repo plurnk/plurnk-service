@@ -1,0 +1,18 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Agent.json",
+    "title": "Agent",
+    "description": "Top-level singleton. Owns the default scheme registry and the active provider declaration. Sessions, runs, and below derive from their own tables (queried by FK to the singleton agent).",
+    "type": "object",
+    "required": ["version", "provider", "scheme_registry"],
+    "additionalProperties": false,
+    "properties": {
+        "version": { "type": "integer", "minimum": 0 },
+        "provider": { "$ref": "https://schemas.plurnk.dev/v0/ProviderDeclaration.json" },
+        "scheme_registry": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.dev/v0/SchemeRegistration.json" },
+            "description": "Agent-wide default scheme registrations. The v0 inventory ships with `plurnk`, `known`, `unknown`; everything else is plugin-registered."
+        }
+    }
+}

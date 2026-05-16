@@ -1,0 +1,64 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Packet.json",
+    "title": "Packet",
+    "description": "One turn's full exchange with the provider: { system, user, assistant, assistantRaw }. system aggregates durable + accumulating context (definition, persona, indexed entries, in-scope log rows). user carries the per-turn ephemera. assistant is the provider-normalized output. assistantRaw is opaque.",
+    "type": "object",
+    "required": ["tokens", "system", "user", "assistant", "assistantRaw"],
+    "additionalProperties": false,
+    "properties": {
+        "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total packet tokens — sum of section subtotals."
+        },
+        "system": {
+            "type": "object",
+            "required": ["tokens", "system_definition", "persona", "index", "log"],
+            "additionalProperties": false,
+            "properties": {
+                "tokens": { "type": "integer", "minimum": 0 },
+                "system_definition": { "type": "string", "description": "text/markdown — plurnk grammar + scheme registry refs." },
+                "persona": { "type": "string", "description": "text/markdown — identity / mission." },
+                "index": {
+                    "type": "array",
+                    "items": { "$ref": "https://schemas.plurnk.dev/v0/Entry.json" }
+                },
+                "log": {
+                    "type": "array",
+                    "items": { "$ref": "https://schemas.plurnk.dev/v0/LogEntry.json" }
+                }
+            }
+        },
+        "user": {
+            "type": "object",
+            "required": ["tokens", "prompt", "turn", "system_requirements"],
+            "additionalProperties": false,
+            "properties": {
+                "tokens": { "type": "integer", "minimum": 0 },
+                "prompt": { "type": "string", "description": "Copy of loop.prompt — never null on a continuation turn." },
+                "turn": { "type": "string", "description": "text/markdown — dynamically generated tables for budget/status/counts." },
+                "system_requirements": { "type": "string", "description": "text/markdown — per-turn rules." }
+            }
+        },
+        "assistant": {
+            "type": "object",
+            "required": ["tokens", "content", "ops", "reasoning"],
+            "additionalProperties": true,
+            "properties": {
+                "tokens": { "type": "integer", "minimum": 0 },
+                "content": { "type": "string", "description": "Raw DSL string emitted by the model." },
+                "ops": {
+                    "type": "array",
+                    "items": { "$ref": "https://schemas.plurnk.dev/v0/PlurnkStatement.json" },
+                    "description": "Parsed PlurnkStatement[] derived from `content`."
+                },
+                "reasoning": {
+                    "type": ["string", "null"],
+                    "description": "text/plain — provider-exposed CoT when present, null otherwise."
+                }
+            }
+        },
+        "assistantRaw": true
+    }
+}

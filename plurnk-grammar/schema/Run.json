@@ -1,0 +1,21 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Run.json",
+    "title": "Run",
+    "description": "A stretch of work within a session. Forkable via parent_run_id. Owns per-run logs and visibility state.",
+    "type": "object",
+    "required": ["id", "version", "session_id", "created_at", "parent_run_id", "cost_pico"],
+    "additionalProperties": false,
+    "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "session_id": { "type": "integer", "minimum": 1 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "parent_run_id": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "FK to parent run when this is a fork; null for the trunk run."
+        },
+        "cost_pico": { "type": "integer", "minimum": 0, "description": "Cumulative cost across this run's turns, in pico-units of the active provider's currency." }
+    }
+}

@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Loop.json",
+    "title": "Loop",
+    "description": "An iteration within a run. Bounded by status: 102 (continuing, more turns expected), 200 (terminal success), 499 (terminal cancellation). The loop's prompt is replayed on every turn within it; turn.packet.user.prompt is a copy.",
+    "type": "object",
+    "required": ["id", "version", "run_id", "sequence", "status", "prompt"],
+    "additionalProperties": false,
+    "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "run_id": { "type": "integer", "minimum": 1 },
+        "sequence": { "type": "integer", "minimum": 1, "description": "1-based within the run." },
+        "status": {
+            "enum": [102, 200, 499],
+            "description": "102 = continuing; 200 = terminal success; 499 = terminal cancellation."
+        },
+        "prompt": { "type": "string", "description": "The original user prompt for this loop, replayed on every turn." }
+    }
+}

@@ -1,0 +1,100 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/LogEntry.json",
+    "title": "LogEntry",
+    "description": "An immutable, append-only event log row. Structured as the parsed AST of one executed plurnk statement plus turn-coordinate context plus the response. Addressable via log://<loop>/<turn>/<action>.",
+    "type": "object",
+    "required": [
+        "id", "version",
+        "run_id", "loop_id", "turn_id", "action_index",
+        "at", "origin",
+        "op", "suffix", "signal",
+        "target_scheme", "target_username", "target_password", "target_hostname", "target_port", "target_pathname", "target_params", "target_fragment",
+        "lineMarker",
+        "tx", "mimetype_tx",
+        "rx", "mimetype_rx", "status_rx",
+        "tokens"
+    ],
+    "additionalProperties": false,
+    "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "run_id": { "type": "integer", "minimum": 1 },
+        "loop_id": { "type": "integer", "minimum": 1 },
+        "turn_id": { "type": "integer", "minimum": 1 },
+        "action_index": { "type": "integer", "minimum": 0 },
+        "at": { "type": "string", "format": "date-time" },
+        "origin": { "enum": ["model", "client", "system", "plugin"] },
+        "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"] },
+        "suffix": { "type": "string" },
+        "signal": {
+            "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "number" },
+                { "type": "string" },
+                { "type": "null" }
+            ]
+        },
+        "target_scheme": { "type": ["string", "null"], "minLength": 1 },
+        "target_username": { "type": ["string", "null"] },
+        "target_password": { "type": ["string", "null"] },
+        "target_hostname": { "type": ["string", "null"] },
+        "target_port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "target_pathname": { "type": ["string", "null"] },
+        "target_params": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
+                { "type": "null" }
+            ]
+        },
+        "target_fragment": {
+            "type": ["string", "null"],
+            "description": "Channel selector at request time. Names the channel the op targeted; null when the op used the scheme's default channel."
+        },
+        "lineMarker": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "type": "null" }
+            ]
+        },
+        "tx": { "type": "string", "description": "Raw request payload. For origin=model: the literal plurnk DSL substring of assistant.content. For origin=system/client/plugin: whatever the originator emitted, with `mimetype_tx` declaring the structure." },
+        "mimetype_tx": { "type": "string", "minLength": 1, "description": "Mimetype of `tx`. Typically `text/x-plurnk` for model-origin rows; arbitrary per-origin for system/client/plugin." },
+        "rx": { "type": "string", "description": "Raw response payload bytes/string." },
+        "mimetype_rx": { "type": "string", "minLength": 1 },
+        "status_rx": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "tokens": { "type": "integer", "minimum": 0 }
+    },
+    "allOf": [
+        {
+            "if": { "properties": { "op": { "const": "SEND" } } },
+            "then": {
+                "properties": {
+                    "signal": { "type": ["number", "null"] },
+                    "lineMarker": { "type": "null" }
+                }
+            }
+        },
+        {
+            "if": { "properties": { "op": { "const": "EXEC" } } },
+            "then": {
+                "properties": {
+                    "signal": { "type": ["string", "null"] },
+                    "lineMarker": { "type": "null" }
+                }
+            }
+        },
+        {
+            "if": { "properties": { "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE"] } } },
+            "then": {
+                "properties": {
+                    "signal": {
+                        "oneOf": [
+                            { "type": "array", "items": { "type": "string" } },
+                            { "type": "null" }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

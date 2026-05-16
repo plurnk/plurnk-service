@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Session.json",
+    "title": "Session",
+    "description": "A durable user-named workspace. Never ends except by explicit removal. Shares session-scoped entries and any scheme-registry additions across all its runs.",
+    "type": "object",
+    "required": ["id", "version", "name", "created_at", "cost_pico", "scheme_registry_additions"],
+    "additionalProperties": false,
+    "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1, "description": "Unique within the agent. Default form: `{modelAlias}-{unixtime}` until renamed." },
+        "created_at": { "type": "string", "format": "date-time" },
+        "cost_pico": { "type": "integer", "minimum": 0, "description": "Cumulative cost across this session's runs." },
+        "scheme_registry_additions": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.dev/v0/SchemeRegistration.json" }
+        }
+    }
+}

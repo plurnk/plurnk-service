@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-grammar",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "ANTLR4 grammar for the Plurnk LLM agent protocol",
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=23.6"
+    "node": ">=25"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -21,11 +21,13 @@
     "bin/plurnk.js",
     "src/*.ts",
     "src/generated/*.ts",
-    "SPEC.md",
+    "schema/*.json",
     "plurnk.md"
   ],
   "scripts": {
     "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",
+    "build:types": "node scriptify/generate-types.ts",
+    "build": "npm run build:grammar && npm run build:types",
     "antlr:tokens": "testrig src/generated/plurnk document --tokens",
     "antlr:trace": "testrig src/generated/plurnk document --trace",
     "antlr:parse": "testrig src/generated/plurnk document --tree",
@@ -34,9 +36,11 @@
     "test:intg": "node --test test/integration/*.test.ts",
     "test:demo": "node --test test/demo/*.test.ts",
     "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
-    "prepublishOnly": "npm run build:grammar && npm run test:all"
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm run test:all"
   },
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "antlr4ng": "^3.0.0",
     "jsonpath-plus": "^10.4.0",
     "xpath": "^0.0.34"
@@ -44,6 +48,7 @@
   "devDependencies": {
     "@types/node": "^25.8.0",
     "antlr-ng": "^1.0.10",
+    "json-schema-to-typescript": "^15.0.4",
     "typescript": "^6.0.3"
   }
 }

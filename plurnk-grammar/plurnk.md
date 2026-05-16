@@ -8,7 +8,7 @@ YOU MUST ONLY use the HEREDOC-inspired Plurnk Operations (FIND|READ|EDIT|COPY|MO
 <<OPsuffix[signal]?(path)?<L>?:body?:OPsuffix
 ```
 
-Slot order is fixed. Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty). Close tag's `OPsuffix` must character-match the open.
+Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty). Close tag's `OPsuffix` must character-match the open. Emit slots in the canonical order shown; the grammar tolerates other orderings.
 
 ## Operations
 
@@ -21,8 +21,8 @@ Slot order is fixed. Slots between `<<OPsuffix` and `:body:` are all optional. `
 | MOVE | apply tags    | required | lines `N-M`      | destination URI          |
 | SHOW | filter tags   | required | results `N-M`    | matcher                  |
 | HIDE | filter tags   | required | results `N-M`    | matcher                  |
-| SEND | HTTP status   | optional | —                | message (JSON for data)  |
-| EXEC | Runtime Tag   | required | —                | command or code          |
+| SEND | HTTP status   | recipient | —               | message (JSON for data)  |
+| EXEC | Runtime Tag   | cwd       | —               | command or code          |
 
 SEND signal is a single integer. EXEC signal is a single Runtime Tag (`sh`, `node`, `python`, etc.). All other signals are CSV.
 
@@ -54,7 +54,7 @@ Internal schemes:
 - `known://` — knowledgebase entries.
 - `skill://` — available skill entries.
 - `log://<loop>/<turn>/<action>/...` — event log.
-- `stream://` — live data streams.
+- `exec://` — actions and external interactions; each entry carries the request (TX) and response (RX).
 
 ## Context
 

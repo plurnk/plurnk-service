@@ -1,0 +1,51 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Entry.json",
+    "title": "Entry",
+    "description": "The unit of canonical state at agent or session scope. Pure state — no interaction forensics. Identity is `(scope, scheme, pathname)`; `session_id` discriminates session-scoped rows. Content lives in one or more named channels (e.g. `body`, `stdout`/`stderr` for exec, `body`/`headers` for https). The scheme registry declares each scheme's default channel.",
+    "type": "object",
+    "required": [
+        "id", "version", "scope", "session_id",
+        "scheme", "username", "password", "hostname", "port", "pathname", "params",
+        "channels",
+        "attributes", "tags"
+    ],
+    "additionalProperties": false,
+    "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "scope": { "enum": ["agent", "session"] },
+        "session_id": { "type": ["integer", "null"], "minimum": 1 },
+        "scheme": { "type": ["string", "null"], "minLength": 1 },
+        "username": { "type": ["string", "null"] },
+        "password": { "type": ["string", "null"] },
+        "hostname": { "type": ["string", "null"] },
+        "port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "pathname": { "type": "string" },
+        "params": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
+                { "type": "null" }
+            ]
+        },
+        "channels": {
+            "type": "object",
+            "description": "Named channels on this entry. Keys are channel names (lowercase identifiers); values are ChannelContent. Must be non-empty. The scheme registry declares which channel is the default for unspecified ops.",
+            "minProperties": 1,
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
+            "additionalProperties": { "$ref": "https://schemas.plurnk.dev/v0/ChannelContent.json" }
+        },
+        "attributes": { "type": "object" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+    },
+    "allOf": [
+        {
+            "if": { "properties": { "scope": { "const": "session" } } },
+            "then": { "properties": { "session_id": { "type": "integer" } } }
+        },
+        {
+            "if": { "properties": { "scope": { "const": "agent" } } },
+            "then": { "properties": { "session_id": { "type": "null" } } }
+        }
+    ]
+}

@@ -1,0 +1,51 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ParsedPath.json",
+    "title": "ParsedPath",
+    "description": "A parsed path slot from a plurnk statement. Discriminated on `kind`: either a bare local path (no scheme) or a fully decomposed URL.",
+    "oneOf": [
+        { "$ref": "#/$defs/LocalPath" },
+        { "$ref": "#/$defs/UrlPath" }
+    ],
+    "$defs": {
+        "LocalPath": {
+            "title": "LocalPath",
+            "description": "A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.",
+            "type": "object",
+            "required": ["kind", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "local" },
+                "raw": { "type": "string" }
+            }
+        },
+        "UrlPath": {
+            "title": "UrlPath",
+            "description": "A path with a `scheme://` prefix, fully decomposed via WHATWG URL.",
+            "type": "object",
+            "required": [
+                "kind", "raw", "scheme",
+                "username", "password",
+                "hostname", "port",
+                "pathname", "params", "fragment"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "url" },
+                "raw": { "type": "string" },
+                "scheme": { "type": "string", "minLength": 1 },
+                "username": { "type": ["string", "null"] },
+                "password": { "type": ["string", "null"] },
+                "hostname": { "type": ["string", "null"] },
+                "port": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "maximum": 65535
+                },
+                "pathname": { "type": "string" },
+                "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
+                "fragment": { "type": ["string", "null"] }
+            }
+        }
+    }
+}

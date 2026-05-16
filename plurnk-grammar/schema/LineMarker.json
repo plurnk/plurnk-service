@@ -1,0 +1,13 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/LineMarker.json",
+    "title": "LineMarker",
+    "description": "A parsed `<L>` slot. `first` is a signed integer with sentinel meanings (0 = prepend anchor, -1 = append anchor). `last` is the second position in a range marker `<N-M>`, or null for a single-position marker `<N>`.",
+    "type": "object",
+    "required": ["first", "last"],
+    "additionalProperties": false,
+    "properties": {
+        "first": { "type": "integer" },
+        "last": { "type": ["integer", "null"] }
+    }
+}

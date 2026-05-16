@@ -1,6 +1,6 @@
 export type ErrorSource = "lexer" | "parser" | "visitor";
 
-export class PlurnkParseError extends Error {
+export default class PlurnkParseError extends Error {
     readonly line: number;
     readonly column: number;
     readonly source: ErrorSource;
@@ -13,7 +13,6 @@ export class PlurnkParseError extends Error {
         this.source = source;
     }
 
-    /** JSON serialization — `JSON.stringify` picks this up automatically. */
     toJSON(): { line: number; column: number; source: ErrorSource; message: string } {
         return {
             line: this.line,

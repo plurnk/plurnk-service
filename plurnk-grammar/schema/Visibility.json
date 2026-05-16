@@ -1,0 +1,17 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Visibility.json",
+    "title": "Visibility",
+    "description": "Per-run, per-channel visibility row. Pairs an (entry, channel) with an `indexed` boolean — true means the channel appears in the run's Index (visible to the model); false means Archive (out of working memory but addressable). Allows fine-grained promotion (e.g. exec://run-tests#stdout indexed while #stderr archived).",
+    "type": "object",
+    "required": ["entry_id", "channel", "indexed"],
+    "additionalProperties": false,
+    "properties": {
+        "entry_id": { "type": "integer", "minimum": 1 },
+        "channel": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "indexed": { "type": "boolean" }
+    }
+}

@@ -1,18 +1,32 @@
 lexer grammar plurnkLexer;
 
-tokens { LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, SIGNAL_TEXT, PATH_TEXT, BODY_TEXT, CLOSE_TAG, TEXT }
+tokens {
+    LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, COMMA,
+    INT, IDENT, TAG,
+    PATH_TEXT, BODY_TEXT, CLOSE_TAG, TEXT
+}
 
 // ============================================================================
-// Lexer state — captures the open tag (OP + suffix) so the body-mode
-// close-tag predicate can verify the matching `:OPsuffix` literal.
+// Lexer state — captures the open tag (OP + suffix) so subsequent modes can
+// dispatch on op family for signal-type, and the body-mode close-tag predicate
+// can verify the matching `:OPsuffix` literal.
 // ============================================================================
 
 @lexer::members {
 private openTag: string = "";
+private openTagLine: number = 0;
+private openTagColumn: number = 0;
 
 private setOpenTag(): void {
     this.openTag = this.text.substring(2);
+    // Capture where the open tag began, for reference in mismatched-close-tag errors.
+    this.openTagLine = (this as any).currentTokenStartLine;
+    this.openTagColumn = (this as any).currentTokenColumn;
 }
+
+public getOpenTag(): string { return this.openTag; }
+public getOpenTagLine(): number { return this.openTagLine; }
+public getOpenTagColumn(): number { return this.openTagColumn; }
 
 private atColonCloseTag(): boolean {
     if (this.inputStream.LA(1) !== 0x3A /* ':' */) return false;
@@ -41,8 +55,6 @@ private consumeRestOfCloseTagAfterColon(): void {
 }
 
 private isOpKeywordAfterLtLt(): boolean {
-    // Called from TEXT rule after '<<' has been matched.
-    // LA(1) is the first char after '<<'.
     const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
     for (const op of ops) {
         let matches = true;
@@ -56,6 +68,9 @@ private isOpKeywordAfterLtLt(): boolean {
     }
     return false;
 }
+
+private isSendOp(): boolean { return this.openTag.startsWith("SEND"); }
+private isExecOp(): boolean { return this.openTag.startsWith("EXEC"); }
 }
 
 // ============================================================================
@@ -66,92 +81,87 @@ fragment SUFFIX    : [A-Za-z0-9_]+ ;
 fragment L_PATTERN : '<' '-'? [0-9]+ ('-' '-'? [0-9]+)? '>' ;
 
 // ============================================================================
-// DEFAULT MODE — between statements; recognize statement openers.
+// DEFAULT — between statements; recognize statement openers.
 // ============================================================================
 
-OPEN_FIND : '<<FIND' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_READ : '<<READ' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_EDIT : '<<EDIT' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_COPY : '<<COPY' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_MOVE : '<<MOVE' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_SHOW : '<<SHOW' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_HIDE : '<<HIDE' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
-OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(OPENED) ;
+OPEN_FIND : '<<FIND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_READ : '<<READ' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_EDIT : '<<EDIT' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_COPY : '<<COPY' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_MOVE : '<<MOVE' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_SHOW : '<<SHOW' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_HIDE : '<<HIDE' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
-// Interstatement content: anything that isn't a recognized statement opener.
-// A '<<' is part of TEXT only if the chars following aren't a valid OP keyword.
 TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[<])+ ;
 
 // ============================================================================
-// OPENED — after the open tag; allows signal, path, L, or body-`:`.
+// SLOTS — after open tag. Accepts any slot opener (`[`, `(`, `<L>`) in any
+// order, plus `:` to enter the body. Signal-mode entry dispatches on op
+// family so the signal slot lexes as the right token type. At-most-once-
+// per-slot is enforced by the parser's permutation rules.
 // ============================================================================
 
-mode OPENED;
-OPENED_WS       : [ \t\r\n]+ -> skip ;
-OPENED_LBRACKET : '[' -> type(LBRACKET), mode(SIGNAL) ;
-OPENED_LPAREN   : '(' -> type(LPAREN), mode(PATH) ;
-OPENED_L        : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-OPENED_COLON    : ':' -> type(COLON), mode(BODY) ;
+mode SLOTS;
+SLOTS_WS       : [ \t\r\n]+ -> skip ;
+SLOTS_LB_TAGS  : '[' { !this.isSendOp() && !this.isExecOp() }? -> type(LBRACKET), mode(SIGNAL_TAGS) ;
+SLOTS_LB_INT   : '[' { this.isSendOp() }?                       -> type(LBRACKET), mode(SIGNAL_INT) ;
+SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
+SLOTS_LPAREN   : '(' -> type(LPAREN), mode(PATH) ;
+SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
+SLOTS_COLON    : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
-// POST_SIGNAL — after signal; allows path, L, or body-`:`.
+// SIGNAL_TAGS — inside `[...]` for FIND/READ/EDIT/COPY/MOVE/SHOW/HIDE.
+// Tag character class permits single '<'; rejects '<<' so a malformed signal
+// can't silently swallow a subsequent statement opener.
 // ============================================================================
 
-mode POST_SIGNAL;
-PS_WS     : [ \t\r\n]+ -> skip ;
-PS_LPAREN : '(' -> type(LPAREN), mode(PATH) ;
-PS_L      : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-PS_COLON  : ':' -> type(COLON), mode(BODY) ;
+mode SIGNAL_TAGS;
+ST_WS    : [ \t]+ -> skip ;
+ST_COMMA : ',' -> type(COMMA) ;
+ST_TAG   : (~[\],<\r\n \t] | '<' ~[\],<\r\n \t])+ -> type(TAG) ;
+ST_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// POST_PATH — after path; allows L or body-`:`.
+// SIGNAL_INT — inside `[...]` for SEND. Single signed integer literal only.
+// `<<SEND[admin]` fails here with "expected INT".
 // ============================================================================
 
-mode POST_PATH;
-PP_WS    : [ \t\r\n]+ -> skip ;
-PP_L     : L_PATTERN -> type(L_MARKER), mode(POST_L) ;
-PP_COLON : ':' -> type(COLON), mode(BODY) ;
+mode SIGNAL_INT;
+SI_WS  : [ \t]+ -> skip ;
+SI_INT : '-'? [0-9]+ -> type(INT) ;
+SI_END : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// POST_L — after line marker; only body-`:` is valid.
+// SIGNAL_IDENT — inside `[...]` for EXEC. Single runtime tag identifier only.
+// `<<EXEC[1,2]` fails here.
 // ============================================================================
 
-mode POST_L;
-PL_WS    : [ \t\r\n]+ -> skip ;
-PL_COLON : ':' -> type(COLON), mode(BODY) ;
+mode SIGNAL_IDENT;
+SD_WS    : [ \t]+ -> skip ;
+SD_IDENT : [a-zA-Z_] [a-zA-Z0-9_.\-+]* -> type(IDENT) ;
+SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// SIGNAL — inside `[...]`.
-// ============================================================================
-
-mode SIGNAL;
-// Permit single '<' inside signal content (rare but valid); reject '<<' so a
-// malformed signal can't silently swallow a subsequent statement opener.
-SIGNAL_INNER : (~[\]<\r\n] | '<' ~[\]<\r\n])+ -> type(SIGNAL_TEXT) ;
-SIGNAL_END   : ']' -> type(RBRACKET), mode(POST_SIGNAL) ;
-
-// ============================================================================
-// PATH — inside `(...)`.
+// PATH — inside `(...)`. Content kept as opaque PATH_TEXT; WHATWG URL parsing
+// and local-vs-URL discrimination happen in the visitor (runtime library job).
 // ============================================================================
 
 mode PATH;
-// Permit single '<' inside path content (e.g., URI fragments); reject '<<' so
-// a malformed path can't silently swallow a subsequent statement opener.
 PATH_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(PATH_TEXT) ;
-PATH_END   : ')' -> type(RPAREN), mode(POST_PATH) ;
+PATH_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 
 // ============================================================================
-// BODY — opaque body; close-tag detection via predicate matching the
-// `:OPsuffix` literal. BODY_RUN bundles runs of non-colon characters into
-// single tokens for efficiency; individual `:` characters that don't begin
-// a close tag are emitted as body content.
+// BODY — opaque body content. Close-tag detection via predicate matching the
+// `:OPsuffix` literal. Matcher dialect dispatch (xpath/regex/jsonpath/glob)
+// happens in the visitor — labeling by leading character is content
+// interpretation, not BNF structure.
 // ============================================================================
 
 mode BODY;
-BODY_CLOSE
-    : { this.atColonCloseTag() }? ':' . { this.consumeRestOfCloseTagAfterColon(); }
-      -> type(CLOSE_TAG), mode(DEFAULT_MODE)
-    ;
-BODY_RUN   : ~[:]+ -> type(BODY_TEXT) ;
-BODY_COLON : ':' -> type(BODY_TEXT) ;
+B_CLOSE : { this.atColonCloseTag() }? ':' . { this.consumeRestOfCloseTagAfterColon(); }
+           -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
+B_RUN   : ~[:]+ -> type(BODY_TEXT) ;
+B_COLON : ':' -> type(BODY_TEXT) ;

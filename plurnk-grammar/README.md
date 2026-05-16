@@ -8,13 +8,13 @@ Parser for the Plurnk protocol — a HEREDOC-style DSL for LLM agents.
 npm install @plurnk/plurnk-grammar
 ```
 
-Requires Node ≥ 23.6 (native TypeScript support).
+Requires Node ≥ 25 (native TypeScript support).
 
 ## use
 
 ```ts
-import { parse } from "plurnk-grammar";
-const result = parse(input);
+import { PlurnkParser } from "plurnk-grammar";
+const result = PlurnkParser.parse(input);
 // result.items: Array<{kind:"statement"|"error"|"text", ...}>
 // result.unparsedTail?: { from, reason }
 ```

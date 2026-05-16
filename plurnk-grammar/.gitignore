@@ -1,6 +1,7 @@
 AGENTS.md
 node_modules/
 src/generated/
+src/types.generated.ts
 *.tokens
 *.interp
 

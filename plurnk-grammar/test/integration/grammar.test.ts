@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parse, PlurnkParseError } from "../../src/index.ts";
+import { PlurnkParser, PlurnkParseError } from "../../src/index.ts";
 
 const statementsOf = (input: string) =>
-    parse(input).items.filter((i) => i.kind === "statement");
+    PlurnkParser.parse(input).items.filter((i) => i.kind === "statement");
 
 const errorsOf = (input: string) =>
-    parse(input).items.filter((i) => i.kind === "error").map((i) => i.error);
+    PlurnkParser.parse(input).items.filter((i) => i.kind === "error").map((i) => i.error);
 
 const textsOf = (input: string) =>
-    parse(input).items.filter((i) => i.kind === "text").map((i) => i.text);
+    PlurnkParser.parse(input).items.filter((i) => i.kind === "text").map((i) => i.text);
 
 // -------------------------------------------------------------------------
 // Single-statement parses
@@ -66,14 +66,14 @@ test("ex 31 — nested EDIT via suffix discipline", () => {
 
 test("two statements in sequence", () => {
     const input = "<<EDIT(p)::EDIT<<READ(q)::READ";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("interstatement whitespace captured as text", () => {
     const input = "<<EDIT(p)::EDIT\n\n<<READ(q)::READ";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     const texts = result.items.filter((i) => i.kind === "text");
     assert.ok(texts.length >= 1);
     assert.ok(texts.some((t) => t.kind === "text" && t.text.includes("\n")));
@@ -81,7 +81,7 @@ test("interstatement whitespace captured as text", () => {
 
 test("interstatement prose captured as text", () => {
     const input = "Let me first check the path.\n<<READ(p)::READ\nNow editing it.\n<<EDIT(p):body:EDIT";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     const texts = textsOf(input);
     assert.ok(texts.some((t) => t.includes("Let me first check")));
@@ -90,7 +90,7 @@ test("interstatement prose captured as text", () => {
 
 test("stray <<FOOBAR (unrecognized OP) is captured as text, not an error", () => {
     const input = "<<EDIT(p)::EDIT<<FOOBAR not a real op<<READ(q)::READ";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     const texts = textsOf(input);
     assert.ok(texts.some((t) => t.includes("<<FOOBAR")));
@@ -102,7 +102,7 @@ test("stray <<FOOBAR (unrecognized OP) is captured as text, not an error", () =>
 
 test("three valid statements in sequence parse independently", () => {
     const input = "<<EDIT(p1):one:EDIT\n<<EDIT(p2):two:EDIT\n<<EDIT(p3):three:EDIT";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 3);
 });
 
@@ -111,7 +111,7 @@ test("malformed path (unclosed paren) produces error, not silent swallowing", ()
     // the lexer rejects `<<` inside path content and produces an error
     // instead of greedily consuming statement 3.
     const input = "<<EDIT(p1):one:EDIT<<EDIT(broken<<EDIT(p3):three:EDIT";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     const errors = result.items.filter((i) => i.kind === "error");
     assert.ok(errors.length >= 1, "expected at least one error from malformed path");
 });
@@ -119,7 +119,7 @@ test("malformed path (unclosed paren) produces error, not silent swallowing", ()
 test("error carries line, column, and source", () => {
     // Malformed: missing close.
     const input = "<<EDIT(p):body without close";
-    const result = parse(input);
+    const result = PlurnkParser.parse(input);
     const errs = errorsOf(input);
     assert.ok(errs.length >= 1 || result.unparsedTail);
     if (errs.length >= 1) {
@@ -133,12 +133,12 @@ test("error carries line, column, and source", () => {
 
 test("boundary-destroying error produces unparsedTail", () => {
     // No close tag at all: lexer stuck in BODY mode at EOF.
-    const result = parse("<<EDIT(p):body never closed");
+    const result = PlurnkParser.parse("<<EDIT(p):body never closed");
     assert.ok(result.unparsedTail, "expected unparsedTail to be set");
 });
 
 test("clean parse has no unparsedTail", () => {
-    const result = parse("<<EDIT(p):body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p):body:EDIT");
     assert.equal(result.unparsedTail, undefined);
 });
 
@@ -147,7 +147,7 @@ test("clean parse has no unparsedTail", () => {
 // -------------------------------------------------------------------------
 
 test("AST: minimal EDIT extracts op, suffix, body", () => {
-    const result = parse("<<EDIT(p):hello:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p):hello:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -162,7 +162,7 @@ test("AST: minimal EDIT extracts op, suffix, body", () => {
 });
 
 test("AST: suffix is extracted on nested outer", () => {
-    const result = parse("<<EDITouter(p):body:EDITouter");
+    const result = PlurnkParser.parse("<<EDITouter(p):body:EDITouter");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -171,7 +171,7 @@ test("AST: suffix is extracted on nested outer", () => {
 });
 
 test("AST: signal CSV splits on comma", () => {
-    const result = parse("<<EDIT[france,geography](p):body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT[france,geography](p):body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -179,7 +179,7 @@ test("AST: signal CSV splits on comma", () => {
 });
 
 test("AST: SEND signal is coerced to a number", () => {
-    const result = parse("<<SEND[200]:Paris:SEND");
+    const result = PlurnkParser.parse("<<SEND[200]:Paris:SEND");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "SEND") return;
@@ -187,7 +187,7 @@ test("AST: SEND signal is coerced to a number", () => {
 });
 
 test("AST: EXEC signal is coerced to a string", () => {
-    const result = parse("<<EXEC[node](./):console.log(1):EXEC");
+    const result = PlurnkParser.parse("<<EXEC[node](./):console.log(1):EXEC");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "EXEC") return;
@@ -195,7 +195,7 @@ test("AST: EXEC signal is coerced to a string", () => {
 });
 
 test("AST: SEND with no signal slot yields signal=null", () => {
-    const result = parse("<<SEND:msg:SEND");
+    const result = PlurnkParser.parse("<<SEND:msg:SEND");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "SEND") return;
@@ -203,7 +203,7 @@ test("AST: SEND with no signal slot yields signal=null", () => {
 });
 
 test("AST: empty signal on tag-bearing OP yields empty array", () => {
-    const result = parse("<<EDIT[](p):body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT[](p):body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "EDIT") return;
@@ -211,7 +211,7 @@ test("AST: empty signal on tag-bearing OP yields empty array", () => {
 });
 
 test("AST: FIND signal is tag filter (string[])", () => {
-    const result = parse("<<FIND[urgent,critical](known://**):pattern:FIND");
+    const result = PlurnkParser.parse("<<FIND[urgent,critical](known://**):pattern:FIND");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
@@ -219,43 +219,73 @@ test("AST: FIND signal is tag filter (string[])", () => {
 });
 
 test("AST: COPY signal is tags-to-apply (string[])", () => {
-    const result = parse("<<COPY[archive,2026](known://draft):known://archive/draft:COPY");
+    const result = PlurnkParser.parse("<<COPY[archive,2026](known://draft):known://archive/draft:COPY");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     assert.deepEqual(item.statement.signal, ["archive", "2026"]);
 });
 
-test("visitor error: SEND with non-numeric signal", () => {
-    const result = parse("<<SEND[abc]:msg:SEND");
+test("lexer error: SEND with non-numeric signal", () => {
+    const result = PlurnkParser.parse("<<SEND[abc]:msg:SEND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
+    assert.ok(errors.length >= 1);
     if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors[0].error.source, "lexer");
+    assert.match(errors[0].error.message, /expected integer for SEND/);
 });
 
-test("visitor error: SEND with multiple signal values", () => {
-    const result = parse("<<SEND[200,extra]:msg:SEND");
+test("lexer error: SEND with multiple signal values", () => {
+    const result = PlurnkParser.parse("<<SEND[200,extra]:msg:SEND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
+    assert.ok(errors.length >= 1);
     if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors[0].error.source, "lexer");
 });
 
-test("visitor error: EXEC with multiple signal values", () => {
-    const result = parse("<<EXEC[node,extra](./):cmd:EXEC");
+test("lexer error: EXEC with multiple signal values", () => {
+    const result = PlurnkParser.parse("<<EXEC[node,extra](./):cmd:EXEC");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
+    assert.ok(errors.length >= 1);
     if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors[0].error.source, "lexer");
+    assert.match(errors[0].error.message, /expected Runtime Tag for EXEC/);
 });
 
-test("visitor error: SEND with empty signal []", () => {
-    const result = parse("<<SEND[]:msg:SEND");
-    const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+test("permissive: SEND with empty signal [] yields signal=null", () => {
+    const result = PlurnkParser.parse("<<SEND[]:msg:SEND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "SEND") return;
+    assert.equal(item.statement.signal, null);
+});
+
+test("permissive: EXEC with empty signal [] yields signal=null", () => {
+    const result = PlurnkParser.parse("<<EXEC[](./):cmd:EXEC");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "EXEC") return;
+    assert.equal(item.statement.signal, null);
+});
+
+test("permissive: tag signal tolerates stray commas", () => {
+    const result = PlurnkParser.parse("<<FIND[,a,,b,](p):m:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    assert.deepEqual(item.statement.signal, ["a", "b"]);
+});
+
+test("permissive: tag signal accepts whitespace-separated tags", () => {
+    const result = PlurnkParser.parse("<<FIND[a b c](p):m:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    assert.deepEqual(item.statement.signal, ["a", "b", "c"]);
 });
 
 // -------------------------------------------------------------------------
@@ -263,23 +293,23 @@ test("visitor error: SEND with empty signal []", () => {
 // -------------------------------------------------------------------------
 
 test("valid path (https URL) accepted", () => {
-    const result = parse("<<READ(https://example.com/page)::READ");
+    const result = PlurnkParser.parse("<<READ(https://example.com/page)::READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("valid path (custom scheme) accepted", () => {
-    const result = parse("<<READ(known://entries/foo)::READ");
+    const result = PlurnkParser.parse("<<READ(known://entries/foo)::READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("valid path (relative, falls back to file://) accepted", () => {
-    const result = parse("<<READ(./README.md)::READ");
+    const result = PlurnkParser.parse("<<READ(./README.md)::READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("valid path (glob pattern under file://) accepted", () => {
-    const result = parse("<<FIND(config/**/*.xml)::FIND");
+    const result = PlurnkParser.parse("<<FIND(config/**/*.xml)::FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
@@ -287,7 +317,7 @@ test("invalid path (unterminated IPv6 bracket) produces visitor error", () => {
     // WHATWG URL accepts many surprising things (spaces auto-encode, custom schemes
     // pass through, etc.), but it rejects malformed authority forms like an
     // unclosed IPv6 bracket — and similar URL-protocol violations.
-    const result = parse("<<READ(http://[bad):body:READ");
+    const result = PlurnkParser.parse("<<READ(http://[bad):body:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     if (errors[0].kind !== "error") return;
@@ -295,13 +325,13 @@ test("invalid path (unterminated IPv6 bracket) produces visitor error", () => {
 });
 
 test("valid regex body accepted", () => {
-    const result = parse("<<FIND(log://errors):/timeout|deadline/i:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://errors):/timeout|deadline/i:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("regex body missing closing slash produces visitor error", () => {
-    const result = parse("<<FIND(log://x):/unclosed-regex:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     if (errors[0].kind !== "error") return;
@@ -309,7 +339,7 @@ test("regex body missing closing slash produces visitor error", () => {
 });
 
 test("invalid regex pattern (unterminated character class) produces visitor error", () => {
-    const result = parse("<<FIND(log://x):/[abc/:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://x):/[abc/:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     if (errors[0].kind !== "error") return;
@@ -317,18 +347,18 @@ test("invalid regex pattern (unterminated character class) produces visitor erro
 });
 
 test("valid xpath body (//user[@role='admin']) accepted", () => {
-    const result = parse("<<FIND(config/x.xml)://user[@role='admin']:FIND");
+    const result = PlurnkParser.parse("<<FIND(config/x.xml)://user[@role='admin']:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("valid xpath body with complex predicate accepted", () => {
-    const result = parse("<<FIND(doc.xml)://book[price>10 and @lang='en']/title:FIND");
+    const result = PlurnkParser.parse("<<FIND(doc.xml)://book[price>10 and @lang='en']/title:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("invalid xpath body (unterminated predicate) produces visitor error", () => {
-    const result = parse("<<FIND(doc.xml)://book[unterminated:FIND");
+    const result = PlurnkParser.parse("<<FIND(doc.xml)://book[unterminated:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     if (errors[0].kind !== "error") return;
@@ -336,7 +366,7 @@ test("invalid xpath body (unterminated predicate) produces visitor error", () =>
 });
 
 test("invalid xpath body (stray operators) produces visitor error", () => {
-    const result = parse("<<FIND(doc.xml)://**/<<<:FIND");
+    const result = PlurnkParser.parse("<<FIND(doc.xml)://**/<<<:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.ok(errors.length >= 1);
     if (errors[0].kind !== "error") return;
@@ -344,18 +374,18 @@ test("invalid xpath body (stray operators) produces visitor error", () => {
 });
 
 test("valid jsonpath body ($.greeting) accepted", () => {
-    const result = parse("<<READ(lang/en.json):$.greeting:READ");
+    const result = PlurnkParser.parse("<<READ(lang/en.json):$.greeting:READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("valid jsonpath body with descendant and wildcard accepted", () => {
-    const result = parse("<<READ(books.json):$..book[*].price:READ");
+    const result = PlurnkParser.parse("<<READ(books.json):$..book[*].price:READ");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("invalid jsonpath body (unclosed paren) produces visitor error", () => {
-    const result = parse("<<READ(books.json):$[(:READ");
+    const result = PlurnkParser.parse("<<READ(books.json):$[(:READ");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     if (errors[0].kind !== "error") return;
@@ -363,19 +393,19 @@ test("invalid jsonpath body (unclosed paren) produces visitor error", () => {
 });
 
 test("glob body (no special prefix) skips regex validation", () => {
-    const result = parse("<<FIND(known://**):Paris*:FIND");
+    const result = PlurnkParser.parse("<<FIND(known://**):Paris*:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("non-matcher OP body never triggers regex validation", () => {
     // EDIT body starting with '/' is content, not regex; should not be validated.
-    const result = parse("<<EDIT(p):/this looks like regex but is EDIT content/x:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p):/this looks like regex but is EDIT content/x:EDIT");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("AST: line marker single position", () => {
-    const result = parse("<<EDIT(p)<5>:line:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)<5>:line:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -383,7 +413,7 @@ test("AST: line marker single position", () => {
 });
 
 test("AST: line marker positive range", () => {
-    const result = parse("<<EDIT(p)<4-7>:body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)<4-7>:body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -391,7 +421,7 @@ test("AST: line marker positive range", () => {
 });
 
 test("AST: line marker append sentinel", () => {
-    const result = parse("<<EDIT(p)<-1>:body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)<-1>:body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -399,7 +429,7 @@ test("AST: line marker append sentinel", () => {
 });
 
 test("AST: line marker negative range like <0--5>", () => {
-    const result = parse("<<EDIT(p)<0--5>:body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)<0--5>:body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -407,7 +437,7 @@ test("AST: line marker negative range like <0--5>", () => {
 });
 
 test("AST: line marker range with negative start <-3--1>", () => {
-    const result = parse("<<EDIT(p)<-3--1>:body:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)<-3--1>:body:EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -415,7 +445,7 @@ test("AST: line marker range with negative start <-3--1>", () => {
 });
 
 test("AST: empty body is null, not empty string", () => {
-    const result = parse("<<EDIT(p)::EDIT");
+    const result = PlurnkParser.parse("<<EDIT(p)::EDIT");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -423,7 +453,7 @@ test("AST: empty body is null, not empty string", () => {
 });
 
 test("AST: missing path is null", () => {
-    const result = parse("<<SEND[200]:msg:SEND");
+    const result = PlurnkParser.parse("<<SEND[200]:msg:SEND");
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
@@ -435,7 +465,7 @@ test("AST: missing path is null", () => {
 // -------------------------------------------------------------------------
 
 test("ParsedPath: bare path is kind=local", () => {
-    const result = parse("<<READ(./README.md)::READ");
+    const result = PlurnkParser.parse("<<READ(./README.md)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -445,7 +475,7 @@ test("ParsedPath: bare path is kind=local", () => {
 });
 
 test("ParsedPath: glob path is kind=local", () => {
-    const result = parse("<<FIND(config/**/*.xml)::FIND");
+    const result = PlurnkParser.parse("<<FIND(config/**/*.xml)::FIND");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -455,7 +485,7 @@ test("ParsedPath: glob path is kind=local", () => {
 });
 
 test("ParsedPath: https URL decomposed fully", () => {
-    const result = parse("<<READ(https://user:pass@sub.example.com:8080/foo/bar?q=1&q=2#frag)::READ");
+    const result = PlurnkParser.parse("<<READ(https://user:pass@sub.example.com:8080/foo/bar?q=1&q=2#frag)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -467,12 +497,12 @@ test("ParsedPath: https URL decomposed fully", () => {
     assert.equal(p.hostname, "sub.example.com");
     assert.equal(p.port, 8080);
     assert.equal(p.pathname, "/foo/bar");
-    assert.deepEqual(p.search, { q: ["1", "2"] });
+    assert.deepEqual(p.params, { q: ["1", "2"] });
     assert.equal(p.fragment, "frag");
 });
 
 test("ParsedPath: known:// scheme parses (hostname is first segment)", () => {
-    const result = parse("<<READ(known://entries/foo/bar)::READ");
+    const result = PlurnkParser.parse("<<READ(known://entries/foo/bar)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -484,7 +514,7 @@ test("ParsedPath: known:// scheme parses (hostname is first segment)", () => {
 });
 
 test("ParsedPath: log:// scheme parses correctly", () => {
-    const result = parse("<<READ(log://1/turn/2/action/3/get)::READ");
+    const result = PlurnkParser.parse("<<READ(log://1/turn/2/action/3/get)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -496,7 +526,7 @@ test("ParsedPath: log:// scheme parses correctly", () => {
 });
 
 test("ParsedPath: file:///… scheme parses, empty hostname", () => {
-    const result = parse("<<READ(file:///tmp/foo.txt)::READ");
+    const result = PlurnkParser.parse("<<READ(file:///tmp/foo.txt)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
@@ -508,13 +538,13 @@ test("ParsedPath: file:///… scheme parses, empty hostname", () => {
 });
 
 test("ParsedPath: empty query and fragment are null/empty", () => {
-    const result = parse("<<READ(https://example.com/foo)::READ");
+    const result = PlurnkParser.parse("<<READ(https://example.com/foo)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.path;
     assert.ok(p);
     if (p.kind !== "url") return;
-    assert.deepEqual(p.search, {});
+    assert.deepEqual(p.params, {});
     assert.equal(p.fragment, null);
 });
 
@@ -523,7 +553,7 @@ test("ParsedPath: empty query and fragment are null/empty", () => {
 // -------------------------------------------------------------------------
 
 test("MatcherBody: regex returns dialect + compiled regexp", () => {
-    const result = parse("<<FIND(log://x):/foo|bar/i:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://x):/foo|bar/i:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
@@ -531,13 +561,14 @@ test("MatcherBody: regex returns dialect + compiled regexp", () => {
     if (b.dialect !== "regex") return;
     assert.equal(b.pattern, "foo|bar");
     assert.equal(b.flags, "i");
-    assert.ok(b.regexp instanceof RegExp);
-    assert.equal(b.regexp.test("foo"), true);
-    assert.equal(b.regexp.test("FOO"), true); // i flag works
+    // Consumers reconstruct via `new RegExp(pattern, flags)` when they need the compiled object.
+    const rx = new RegExp(b.pattern, b.flags);
+    assert.equal(rx.test("foo"), true);
+    assert.equal(rx.test("FOO"), true); // i flag works
 });
 
 test("MatcherBody: xpath returns dialect + raw", () => {
-    const result = parse("<<FIND(doc.xml)://user[@role='admin']:FIND");
+    const result = PlurnkParser.parse("<<FIND(doc.xml)://user[@role='admin']:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
@@ -547,7 +578,7 @@ test("MatcherBody: xpath returns dialect + raw", () => {
 });
 
 test("MatcherBody: jsonpath returns dialect + raw", () => {
-    const result = parse("<<READ(lang/en.json):$.greeting:READ");
+    const result = PlurnkParser.parse("<<READ(lang/en.json):$.greeting:READ");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "READ") return;
     const b = item.statement.body;
@@ -557,7 +588,7 @@ test("MatcherBody: jsonpath returns dialect + raw", () => {
 });
 
 test("MatcherBody: glob returns dialect + raw (no metacharacters)", () => {
-    const result = parse("<<FIND(known://countries/**):Paris*:FIND");
+    const result = PlurnkParser.parse("<<FIND(known://countries/**):Paris*:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
@@ -567,7 +598,7 @@ test("MatcherBody: glob returns dialect + raw (no metacharacters)", () => {
 });
 
 test("COPY body is a ParsedPath", () => {
-    const result = parse("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
+    const result = PlurnkParser.parse("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     const b = item.statement.body;
@@ -579,7 +610,7 @@ test("COPY body is a ParsedPath", () => {
 });
 
 test("MOVE body is a ParsedPath", () => {
-    const result = parse("<<MOVE(known://draft):known://final/answer:MOVE");
+    const result = PlurnkParser.parse("<<MOVE(known://draft):known://final/answer:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
     const b = item.statement.body;
@@ -591,7 +622,7 @@ test("MOVE body is a ParsedPath", () => {
 });
 
 test("MOVE body with local destination is kind=local", () => {
-    const result = parse("<<MOVE(known://draft):./out.txt:MOVE");
+    const result = PlurnkParser.parse("<<MOVE(known://draft):./out.txt:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
     const b = item.statement.body;
@@ -601,7 +632,7 @@ test("MOVE body with local destination is kind=local", () => {
 });
 
 test("SendBody: JSON-shaped body has parsed json", () => {
-    const result = parse(`<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND`);
+    const result = PlurnkParser.parse(`<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND`);
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") return;
     const b = item.statement.body;
@@ -611,7 +642,7 @@ test("SendBody: JSON-shaped body has parsed json", () => {
 });
 
 test("SendBody: plain-text body has json=null but raw preserved", () => {
-    const result = parse("<<SEND[200]:Paris:SEND");
+    const result = PlurnkParser.parse("<<SEND[200]:Paris:SEND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") return;
     const b = item.statement.body;
@@ -621,14 +652,14 @@ test("SendBody: plain-text body has json=null but raw preserved", () => {
 });
 
 test("EDIT body remains raw string", () => {
-    const result = parse("<<EDIT(known://entry):line one\nline two:EDIT");
+    const result = PlurnkParser.parse("<<EDIT(known://entry):line one\nline two:EDIT");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") return;
     assert.equal(item.statement.body, "line one\nline two");
 });
 
 test("EXEC body remains raw string", () => {
-    const result = parse("<<EXEC[node](./):console.log(1+1):EXEC");
+    const result = PlurnkParser.parse("<<EXEC[node](./):console.log(1+1):EXEC");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EXEC") return;
     assert.equal(item.statement.body, "console.log(1+1)");
@@ -639,7 +670,7 @@ test("EXEC body remains raw string", () => {
 // -------------------------------------------------------------------------
 
 const firstError = (input: string) => {
-    const r = parse(input);
+    const r = PlurnkParser.parse(input);
     const e = r.items.find((i) => i.kind === "error");
     if (!e || e.kind !== "error") throw new Error("no error in result");
     return e.error;
@@ -656,14 +687,15 @@ test("error message: << inside path says 'in path'", () => {
     assert.match(e.message, /unrecognized character '<<' in path/);
 });
 
-test("error message: << inside signal says 'in signal'", () => {
+test("error message: << inside signal says 'in tag signal'", () => {
     const e = firstError("<<EDIT[<<broken](p):body:EDIT");
-    assert.match(e.message, /unrecognized character '<<' in signal/);
+    assert.match(e.message, /unrecognized character '<<' in tag signal/);
 });
 
-test("error message: stray char after path says 'in statement header'", () => {
+test("error message: stray char in slot region names what's allowed", () => {
     const e = firstError("<<EDIT(p)X:body:EDIT");
-    assert.match(e.message, /unrecognized character 'X' in statement header/);
+    assert.match(e.message, /unrecognized character 'X' in slot region/);
+    assert.match(e.message, /\[signal\].*\(path\).*<L>.*:body:/);
 });
 
 test("error message: no ANTLR-y terminology leaks through", () => {
@@ -675,7 +707,7 @@ test("error message: no ANTLR-y terminology leaks through", () => {
     ];
     const forbidden = /token recognition|mismatched|extraneous|expecting|no viable|RPAREN|LBRACKET|RBRACKET|LPAREN|COLON|CLOSE_TAG|BODY_TEXT|<EOF>|ATN/;
     for (const input of inputs) {
-        const r = parse(input);
+        const r = PlurnkParser.parse(input);
         for (const item of r.items) {
             if (item.kind !== "error") continue;
             assert.doesNotMatch(item.error.message, forbidden, `forbidden text in: ${item.error.message}`);
@@ -684,7 +716,7 @@ test("error message: no ANTLR-y terminology leaks through", () => {
 });
 
 test("AST: position points to opening << column", () => {
-    const result = parse("\n\n  <<EDIT(p):body:EDIT");
+    const result = PlurnkParser.parse("\n\n  <<EDIT(p):body:EDIT");
     const item = result.items.find((i) => i.kind === "statement");
     assert.ok(item);
     if (item?.kind !== "statement") return;
@@ -693,10 +725,120 @@ test("AST: position points to opening << column", () => {
 });
 
 test("AST: discriminated union narrows correctly per op", () => {
-    const result = parse("<<EDIT(p):body:EDIT<<READ(q)::READ");
+    const result = PlurnkParser.parse("<<EDIT(p):body:EDIT<<READ(q)::READ");
     const statements = result.items.filter((i) => i.kind === "statement");
     assert.equal(statements.length, 2);
     if (statements[0].kind !== "statement" || statements[1].kind !== "statement") return;
     assert.equal(statements[0].statement.op, "EDIT");
     assert.equal(statements[1].statement.op, "READ");
+});
+
+test("unparsedTail: mismatched close-tag suffix names the open tag", () => {
+    const result = PlurnkParser.parse("<<EDITouter(p):body:EDIT");
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail!.reason, /`<<EDITouter`/);
+    assert.match(result.unparsedTail!.reason, /add `:EDITouter`/);
+});
+
+test("unparsedTail: unclosed signal slot names what's missing", () => {
+    const result = PlurnkParser.parse("<<EDIT[tag");
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail!.reason, /signal slot of `<<EDIT`/);
+    assert.match(result.unparsedTail!.reason, /add `]`/);
+});
+
+test("unparsedTail: unclosed path slot names what's missing", () => {
+    const result = PlurnkParser.parse("<<EDIT(path");
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail!.reason, /path slot of `<<EDIT`/);
+    assert.match(result.unparsedTail!.reason, /add `\)`/);
+});
+
+test("error message: slot region errors enumerate the four slots", () => {
+    const e = firstError("<<EDIT(p)X:body:EDIT");
+    assert.match(e.message, /any order/);
+});
+
+test("slot order: canonical [signal](path)<L> parses", () => {
+    const result = PlurnkParser.parse("<<FIND[a,b](p)<1-5>:m:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
+    assert.deepEqual(item.statement.signal, ["a", "b"]);
+    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.lineMarker?.first, 1);
+});
+
+test("slot order: (path)[signal]<L> accepted (reordered)", () => {
+    const result = PlurnkParser.parse("<<FIND(p)[a,b]<1-5>:m:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
+    assert.deepEqual(item.statement.signal, ["a", "b"]);
+    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.lineMarker?.first, 1);
+});
+
+test("slot order: <L>(path)[signal] accepted (reordered)", () => {
+    const result = PlurnkParser.parse("<<FIND<1-5>(p)[a,b]:m:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
+    assert.deepEqual(item.statement.signal, ["a", "b"]);
+    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.lineMarker?.first, 1);
+});
+
+test("slot order: all 6 permutations of 3-slot FIND yield equivalent ASTs", () => {
+    const variants = [
+        "<<FIND[t](p)<2>:m:FIND",
+        "<<FIND[t]<2>(p):m:FIND",
+        "<<FIND(p)[t]<2>:m:FIND",
+        "<<FIND(p)<2>[t]:m:FIND",
+        "<<FIND<2>[t](p):m:FIND",
+        "<<FIND<2>(p)[t]:m:FIND",
+    ];
+    for (const input of variants) {
+        const result = PlurnkParser.parse(input);
+        assert.equal(result.items.filter((i) => i.kind === "error").length, 0, `errors for: ${input}`);
+        const item = result.items[0];
+        if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail(`not FIND for: ${input}`); return; }
+        assert.deepEqual(item.statement.signal, ["t"], `signal mismatch for: ${input}`);
+        assert.equal(item.statement.path?.kind, "local", `path mismatch for: ${input}`);
+        assert.equal(item.statement.lineMarker?.first, 2, `L mismatch for: ${input}`);
+    }
+});
+
+test("slot order: SEND with (path)[signal] reversed", () => {
+    const result = PlurnkParser.parse("<<SEND(agent://named)[200]:msg:SEND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("not SEND"); return; }
+    assert.equal(item.statement.signal, 200);
+    assert.equal(item.statement.path?.kind, "url");
+});
+
+test("slot order: duplicate signal slots rejected", () => {
+    const result = PlurnkParser.parse("<<FIND[a][b](p):m:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1);
+});
+
+test("slot order: duplicate path slots rejected", () => {
+    const result = PlurnkParser.parse("<<FIND(p1)(p2):m:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1);
+});
+
+test("slot order: duplicate line markers rejected", () => {
+    const result = PlurnkParser.parse("<<FIND<1><2>(p):m:FIND");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1);
+});
+
+test("SEND/EXEC: <L> slot is rejected (not just unused)", () => {
+    const r1 = PlurnkParser.parse("<<SEND[200]<1>:msg:SEND");
+    assert.ok(r1.items.filter((i) => i.kind === "error").length >= 1);
+    const r2 = PlurnkParser.parse("<<EXEC[node]<1>(./):cmd:EXEC");
+    assert.ok(r2.items.filter((i) => i.kind === "error").length >= 1);
 });

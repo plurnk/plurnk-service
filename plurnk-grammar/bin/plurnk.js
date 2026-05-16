@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { parse } from "../src/index.ts";
+import { PlurnkParser } from "../src/index.ts";
 
 const USAGE = `Usage:
   plurnk [file]      Parse plurnk source from a file (or stdin if omitted or '-')
@@ -30,7 +30,7 @@ const input = !target || target === "-"
     ? readFileSync(0, "utf8")
     : readFileSync(target, "utf8");
 
-const result = parse(input);
+const result = PlurnkParser.parse(input);
 
 const serialized = JSON.stringify(
     result,

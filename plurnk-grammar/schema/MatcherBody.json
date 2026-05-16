@@ -1,0 +1,60 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
+    "title": "MatcherBody",
+    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "oneOf": [
+        { "$ref": "#/$defs/XPathBody" },
+        { "$ref": "#/$defs/RegexBody" },
+        { "$ref": "#/$defs/JsonPathBody" },
+        { "$ref": "#/$defs/GlobBody" }
+    ],
+    "$defs": {
+        "XPathBody": {
+            "title": "XPathBody",
+            "description": "XPath 1.0 expression. Validated at parse time via the xpath library.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "xpath" },
+                "raw": { "type": "string", "minLength": 2 }
+            }
+        },
+        "RegexBody": {
+            "title": "RegexBody",
+            "description": "JavaScript regex literal `/pattern/flags`. Pattern and flags are split out for direct use. `raw` preserves the literal form for round-tripping.",
+            "type": "object",
+            "required": ["dialect", "raw", "pattern", "flags"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "regex" },
+                "raw": { "type": "string", "minLength": 2 },
+                "pattern": { "type": "string" },
+                "flags": { "type": "string" }
+            }
+        },
+        "JsonPathBody": {
+            "title": "JsonPathBody",
+            "description": "JSONPath expression. Validated at parse time via jsonpath-plus.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "jsonpath" },
+                "raw": { "type": "string", "minLength": 1 }
+            }
+        },
+        "GlobBody": {
+            "title": "GlobBody",
+            "description": "Pattern with no dialect prefix; treated as a glob/literal match.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "glob" },
+                "raw": { "type": "string" }
+            }
+        }
+    }
+}

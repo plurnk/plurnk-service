@@ -1,0 +1,31 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/SchemeRegistration.json",
+    "title": "SchemeRegistration",
+    "description": "A scheme entry in the agent's scheme registry. Defines what `<name>://` resolves to and how it's accessible.",
+    "type": "object",
+    "required": ["name", "model_visible", "category", "default_scope", "default_channel", "writable_by", "volatile", "handler"],
+    "additionalProperties": false,
+    "properties": {
+        "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9+.\\-]*$",
+            "description": "Scheme name without `://`. Matches the URL scheme character class."
+        },
+        "model_visible": { "type": "boolean" },
+        "category": { "type": "string", "minLength": 1 },
+        "default_scope": { "enum": ["agent", "session"] },
+        "default_channel": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "description": "Channel name selected when an op against this scheme has no fragment. Conventionally `body`; exec schemes typically declare `stdout`."
+        },
+        "writable_by": {
+            "type": "array",
+            "items": { "enum": ["model", "client", "system", "plugin"] },
+            "uniqueItems": true
+        },
+        "volatile": { "type": "boolean" },
+        "handler": { "type": ["string", "null"] }
+    }
+}
