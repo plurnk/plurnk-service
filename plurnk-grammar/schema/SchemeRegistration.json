@@ -20,6 +20,12 @@
             "pattern": "^[a-z][a-z0-9_-]*$",
             "description": "Channel name selected when an op against this scheme has no fragment. Conventionally `body`; exec schemes typically declare `stdout`."
         },
+        "channel_orientations": {
+            "type": "object",
+            "description": "Per-channel content-orientation hints. `head` = whole-document or front-anchored (readers care about the beginning); `tail` = append-temporal stream (readers care about the latest content). Channels not listed default to `head`. Renderers use this to pick truncation direction; the amount to render is a core/runtime concern, not a contract field.",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
+            "additionalProperties": { "enum": ["head", "tail"] }
+        },
         "writable_by": {
             "type": "array",
             "items": { "enum": ["model", "client", "system", "plugin"] },

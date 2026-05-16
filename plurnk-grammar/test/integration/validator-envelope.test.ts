@@ -163,6 +163,64 @@ test("Validator: SchemeRegistration rejects unknown writable_by tier", () => {
     assert.equal(valid, false);
 });
 
+test("Validator: SchemeRegistration accepts omitted channel_orientations (defaults apply)", () => {
+    const reg = minimalSchemeReg();
+    const { valid, errors } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration accepts empty channel_orientations object", () => {
+    const reg = { ...minimalSchemeReg(), channel_orientations: {} };
+    const { valid, errors } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration accepts channel_orientations with tail channels (exec-style)", () => {
+    const reg = {
+        ...minimalSchemeReg(),
+        name: "exec",
+        channel_orientations: { stdout: "tail", stderr: "tail" },
+    };
+    const { valid, errors } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration accepts mixed head/tail orientations", () => {
+    const reg = {
+        ...minimalSchemeReg(),
+        channel_orientations: { body: "head", events: "tail" },
+    };
+    const { valid, errors } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration rejects unknown orientation value", () => {
+    const reg = {
+        ...minimalSchemeReg(),
+        channel_orientations: { body: "middle" },
+    };
+    const { valid } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, false);
+});
+
+test("Validator: SchemeRegistration rejects channel_orientations key with uppercase", () => {
+    const reg = {
+        ...minimalSchemeReg(),
+        channel_orientations: { Body: "head" },
+    };
+    const { valid } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, false);
+});
+
+test("Validator: SchemeRegistration rejects nested object for channel_orientations value", () => {
+    const reg = {
+        ...minimalSchemeReg(),
+        channel_orientations: { body: { orientation: "head" } },
+    };
+    const { valid } = Validator.validateSchemeRegistration(reg);
+    assert.equal(valid, false);
+});
+
 // -------------------------------------------------------------------------
 // ProviderDeclaration
 // -------------------------------------------------------------------------
