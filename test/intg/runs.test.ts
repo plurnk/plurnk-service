@@ -1,12 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
-import { openMigrated } from "./_helpers.ts";
-
-const insertSession = (db: DatabaseSync, name: string): number => {
-    const result = db.prepare("INSERT INTO sessions (name) VALUES (?) RETURNING id").get(name) as { id: number };
-    return result.id;
-};
+import { openMigrated, insertSession } from "./_helpers.ts";
 
 test("runs: table is STRICT", async () => {
     const db = await openMigrated();

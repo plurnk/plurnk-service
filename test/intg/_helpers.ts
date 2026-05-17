@@ -11,3 +11,15 @@ export const openMigrated = async (): Promise<DatabaseSync> => {
     await new Migrator({ db, dir: MIGRATIONS_DIR }).migrate();
     return db;
 };
+
+export const insertSession = (db: DatabaseSync, name: string): number => {
+    const row = db.prepare("INSERT INTO sessions (name) VALUES (?) RETURNING id").get(name) as { id: number };
+    return row.id;
+};
+
+export const insertRun = (db: DatabaseSync, sessionId: number, parentRunId: number | null = null): number => {
+    const row = db
+        .prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?) RETURNING id")
+        .get(sessionId, parentRunId) as { id: number };
+    return row.id;
+};
