@@ -42,12 +42,16 @@ export type {
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-// Package-relative paths to non-code artifacts shipped in the tarball.
-// Consumers use these to locate migrations + the system prompt without
-// hardcoding installation paths.
+// Package-relative paths to non-code artifacts.
+//
+// `migrations` ships in this package's tarball.
+// `instructionsSystem` resolves to `plurnk.md` IN THE GRAMMAR PACKAGE — single
+// source of truth lives upstream. Plurnk-service doesn't carry its own copy;
+// the grammar agent owns the prose.
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
 
 export const PATHS = {
     migrations: resolve(PACKAGE_ROOT, "migrations"),
-    instructionsSystem: resolve(PACKAGE_ROOT, "instructions-system.md"),
+    instructionsSystem: resolve(GRAMMAR_ROOT, "plurnk.md"),
 };
