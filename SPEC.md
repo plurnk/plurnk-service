@@ -209,6 +209,18 @@ A mimetype handler interprets channel content for validation, structural extract
 
 `<mimetype-id>` follows IANA conventions (`text/plain`, `application/json`, `text/vnd.<vendor>`, etc.). Collisions fail-hard at boot per §9.
 
+The handler class declares two required identifiers as instance properties:
+
+```ts
+class TextMarkdown implements MimetypeHandler {
+    readonly mimetype = "text/markdown";
+    readonly glyph = "📝";
+    // ... methods (§4.2)
+}
+```
+
+`mimetype` is the IANA-shaped identifier — must match the manifest `name`. `glyph` is a single emoji representing this mimetype, used by clients rendering log waterfalls, channel tiles, and any structural index. Every handler MUST declare both. The engine treats an absent `glyph` as a contract violation at registration time, parallel to absent `mimetype`.
+
 ### §4.2 Methods
 
 ```ts
@@ -231,6 +243,17 @@ Promises:
 ### §4.4 Bundled handlers
 
 `text/plain` and `text/markdown` ship in `plurnk-service`'s `src/mimetypes/`. `application/json` and the DSL mimetype (`text/vnd.plurnk` pending grammar issue #6; currently `text/x-plurnk`) land when they have consumers — not before. See §10.
+
+Locked glyph assignments for the bundled set:
+
+| Mimetype                          | Glyph | Rationale                                                       |
+|-----------------------------------|-------|-----------------------------------------------------------------|
+| `text/plain`                      | 📄    | Page-facing-up — generic content, no structure                  |
+| `text/markdown`                   | 📝    | Memo with pencil — narrative writing                            |
+| `application/json` *(deferred)*   | 🗂    | Card index dividers — structured data                           |
+| `text/vnd.plurnk` *(deferred)*    | 📜    | Scroll — a scripted instruction set, HEREDOC-shaped             |
+
+Deferred handlers reserve their glyphs now so external packages don't collide.
 
 ---
 
