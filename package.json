@@ -11,6 +11,9 @@
     "exports": {
         "./package.json": "./package.json"
     },
+    "bin": {
+        "plurnk-service": "./bin/plurnk-service.js"
+    },
     "files": [
         "src/**/*.ts",
         "migrations/**/*.sql",
