@@ -59,4 +59,4 @@ for (const file of files) {
 }
 
 await writeFile(OUTPUT_FILE, combined.trimEnd() + "\n");
-process.stdout.write(`Generated ${OUTPUT_FILE}: ${emitted.size} types from ${files.length} schemas.\n`);
+process.stderr.write(`Generated ${OUTPUT_FILE}: ${emitted.size} types from ${files.length} schemas.\n`);

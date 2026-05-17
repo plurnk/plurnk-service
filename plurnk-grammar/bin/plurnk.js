@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { PlurnkParser } from "../src/index.ts";
+import { PlurnkParser } from "../dist/src/index.js";
 
 const USAGE = `Usage:
   plurnk [file]      Parse plurnk source from a file (or stdin if omitted or '-')
