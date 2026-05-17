@@ -61,15 +61,22 @@ const migrate = async () => {
 };
 
 const start = async () => {
+    const dbPath = requireEnv("PLURNK_DB_PATH");
     const host = process.env.PLURNK_HOST ?? "127.0.0.1";
     const port = Number(process.env.PLURNK_PORT ?? "3044");
-    const daemon = new Daemon();
+    const dir = resolve(projectRoot, "migrations");
+
+    const db = openDb(dbPath);
+    await new Migrator({ db, dir }).migrate();
+    const daemon = new Daemon({ db });
     const addr = await daemon.start({ host, port });
     process.stdout.write(`plurnk-service: listening on ws://${addr.host}:${addr.port}\n`);
+    process.stdout.write(`plurnk-service: db ${dbPath}\n`);
 
     const shutdown = async (signal) => {
         process.stdout.write(`plurnk-service: ${signal} received; shutting down\n`);
         await daemon.stop();
+        db.close();
         process.exit(0);
     };
     process.on("SIGINT", () => shutdown("SIGINT"));

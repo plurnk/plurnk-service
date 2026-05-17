@@ -1,10 +1,15 @@
 // Per-WebSocket-client JSON-RPC dispatch. One instance per connected client.
-// Handles inbound request → handler lookup → response, plus outbound
-// notification dispatch. SPEC §13.2 (protocol) and §13.8 (errors).
+// Owns session attachment state, calls into the engine for auto-create on
+// first requiresInit RPC, closes the client loop on disconnect.
+//
+// SPEC §13.2 (protocol), §13.7 (lifecycle), §13.8 (errors).
 
 import type { WebSocket } from "ws";
+import type { DatabaseSync } from "node:sqlite";
 import type MethodRegistry from "./MethodRegistry.ts";
-import type { HandlerContext } from "./MethodRegistry.ts";
+import type { HandlerContext, NotifyTarget } from "./MethodRegistry.ts";
+import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
+import type { ClientEnvelope } from "./envelope.ts";
 
 // JSON-RPC 2.0 standard error codes (SPEC §13.8).
 const ERR_PARSE = -32700;
@@ -35,15 +40,30 @@ interface JsonRpcNotification {
     params?: unknown;
 }
 
+export interface ClientConnectionOptions {
+    ws: WebSocket;
+    registry: MethodRegistry;
+    db: DatabaseSync;
+    broadcast: (target: NotifyTarget, from: ClientConnection, method: string, params?: unknown) => void;
+}
+
 export default class ClientConnection {
     #ws: WebSocket;
     #registry: MethodRegistry;
-    #sessionAttached = false;
+    #db: DatabaseSync;
+    #broadcast: ClientConnectionOptions["broadcast"];
+    #session: ClientEnvelope | null = null;
 
-    constructor({ ws, registry }: { ws: WebSocket; registry: MethodRegistry }) {
+    constructor({ ws, registry, db, broadcast }: ClientConnectionOptions) {
         this.#ws = ws;
         this.#registry = registry;
+        this.#db = db;
+        this.#broadcast = broadcast;
         this.#ws.on("message", (data) => this.#handleMessage(data));
+    }
+
+    get session(): ClientEnvelope | null {
+        return this.#session;
     }
 
     sendNotification(method: string, params?: unknown): void {
@@ -52,11 +72,11 @@ export default class ClientConnection {
         this.#send(notification);
     }
 
-    setSessionAttached(value: boolean): void {
-        this.#sessionAttached = value;
-    }
-
     close(): void {
+        if (this.#session !== null) {
+            closeClientLoop(this.#db, this.#session.clientLoopId, 200);
+            this.#session = null;
+        }
         if (this.#ws.readyState === 1) this.#ws.terminate();
     }
 
@@ -85,12 +105,33 @@ export default class ClientConnection {
             return;
         }
 
-        if (registration.requiresInit && !this.#sessionAttached) {
-            this.#sendError(id, ERR_NOT_INITIALIZED, `method '${request.method}' requires a session attach`);
-            return;
+        if (registration.requiresInit && this.#session === null) {
+            try {
+                const envelope = createClientEnvelope(this.#db, { prefix: "auto" });
+                this.#session = envelope;
+                this.#broadcast("all", this, "session/created", {
+                    id: envelope.sessionId,
+                    name: envelope.sessionName,
+                });
+            } catch (cause) {
+                const message = cause instanceof Error ? cause.message : String(cause);
+                this.#sendError(id, ERR_NOT_INITIALIZED, `auto-create envelope failed: ${message}`);
+                return;
+            }
         }
 
-        const ctx: HandlerContext = { registry: this.#registry };
+        const ctx: HandlerContext = {
+            registry: this.#registry,
+            db: this.#db,
+            session: this.#session,
+            attachSession: (envelope) => {
+                if (this.#session !== null) {
+                    throw new Error("connection already has a session attached");
+                }
+                this.#session = envelope;
+            },
+            notify: (target, method, params) => this.#broadcast(target, this, method, params),
+        };
 
         try {
             const result = await registration.handler(request.params ?? {}, ctx);
