@@ -1,1 +1,51 @@
-export default class Known {}
+import type { DatabaseSync } from "node:sqlite";
+import type { EditStatement } from "@plurnk/plurnk-grammar";
+
+type EditContext = { db: DatabaseSync; statement: EditStatement; sessionId: number; runId: number };
+type EditResult = { status: number; entryId: number | null };
+
+export default class Known {
+    async edit({ db, statement, sessionId, runId }: EditContext): Promise<EditResult> {
+        if (statement.path === null) return { status: 400, entryId: null };
+        if (statement.lineMarker !== null) return { status: 501, entryId: null };
+
+        const pathname = this.#pathnameOf(statement);
+        const existing = db
+            .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = 'known' AND pathname = ?")
+            .get(sessionId, pathname) as { id: number } | undefined;
+
+        let entryId: number;
+        let createdNow: boolean;
+        if (existing === undefined) {
+            const row = db
+                .prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, 'known', ?) RETURNING id")
+                .get(sessionId, pathname) as { id: number };
+            entryId = row.id;
+            createdNow = true;
+        } else {
+            entryId = existing.id;
+            createdNow = false;
+        }
+
+        db.prepare(
+            "INSERT OR REPLACE INTO entry_channels (entry_id, name, content, mimetype, tokens, state) VALUES (?, 'body', ?, 'text/markdown', 0, 'static')",
+        ).run(entryId, statement.body ?? "");
+
+        if (Array.isArray(statement.signal)) {
+            const insertTag = db.prepare("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, ?)");
+            for (const tag of statement.signal) insertTag.run(entryId, tag);
+        }
+
+        db.prepare("INSERT OR IGNORE INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'body', 1)")
+            .run(runId, entryId);
+
+        return { status: createdNow ? 201 : 200, entryId };
+    }
+
+    #pathnameOf(statement: EditStatement): string {
+        const path = statement.path;
+        if (path === null) throw new Error("unreachable");
+        if (path.kind === "url") return path.pathname;
+        return path.raw;
+    }
+}
