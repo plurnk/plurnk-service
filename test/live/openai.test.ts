@@ -32,7 +32,46 @@ const buildProvider = (): OpenAI => new OpenAI({
     think: requireEnv("OPENAI_THINK") === "1",
 });
 
-test("live OpenAI: runTurn against macher produces a valid turn end-to-end", async () => {
+test("live OpenAI: runLoop multi-turn against macher — model drives loop to terminal", async () => {
+    const provider = buildProvider();
+    const db = await openMigrated();
+    try {
+        const sessionId = insertSession(db, `live-loop-${crypto.randomUUID()}`);
+        const runId = insertRun(db, sessionId);
+        const loopId = insertLoop(db, runId, 1, "Build up knowledge across turns then compare");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+
+        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known://city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known://city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
+
+        const start = Date.now();
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, maxTurns: 6,
+            messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: userPrompt },
+            ],
+        });
+        const elapsed = Date.now() - start;
+
+        console.log(`\n=== multi-turn run (${result.turnIds.length} turns, final ${result.finalStatus}, ${elapsed}ms wall) ===`);
+        for (const [i, turnId] of result.turnIds.entries()) {
+            const turn = db.prepare("SELECT status, packet, usage_completion FROM turns WHERE id = ?").get(turnId) as { status: number; packet: string; usage_completion: number };
+            const packet = JSON.parse(turn.packet) as { assistant: { content: string; reasoning: string | null } };
+            console.log(`\n--- turn ${i + 1} (status ${turn.status}, ${turn.usage_completion} tokens, ${packet.assistant.reasoning?.length ?? 0} reasoning chars) ---`);
+            console.log(packet.assistant.content);
+        }
+
+        const entries = db.prepare("SELECT scheme, pathname FROM entries ORDER BY pathname").all() as { scheme: string; pathname: string }[];
+        console.log("\n=== entries written ===");
+        for (const e of entries) console.log(`  ${e.scheme}://${e.pathname}`);
+
+        // Loose assertions — model behavior is stochastic. We care about:
+        assert.ok(result.turnIds.length >= 1, "at least one turn ran");
+        assert.ok([200, 499].includes(result.finalStatus), "loop terminated cleanly");
+    } finally { db.close(); }
+});
+
+test("live OpenAI: runTurn single-shot smoke", async () => {
     const provider = buildProvider();
     const db = await openMigrated();
     try {
