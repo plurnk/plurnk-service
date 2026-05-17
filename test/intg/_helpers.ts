@@ -23,3 +23,10 @@ export const insertRun = (db: DatabaseSync, sessionId: number, parentRunId: numb
         .get(sessionId, parentRunId) as { id: number };
     return row.id;
 };
+
+export const insertLoop = (db: DatabaseSync, runId: number, sequence: number, prompt: string = ""): number => {
+    const row = db
+        .prepare("INSERT INTO loops (run_id, sequence, prompt) VALUES (?, ?, ?) RETURNING id")
+        .get(runId, sequence, prompt) as { id: number };
+    return row.id;
+};
