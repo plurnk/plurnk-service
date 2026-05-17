@@ -1,5 +1,7 @@
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
 export type MockAssistant = {
     tokens: number;
     content: string;
@@ -23,7 +25,7 @@ export default class Mock {
 
     get contextSize(): number { return this.#contextSize; }
 
-    async generate(_: { prompt: string }): Promise<{ assistant: MockAssistant; assistantRaw: unknown }> {
+    async generate(_: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockAssistant; assistantRaw: unknown }> {
         const next = this.#queue.shift();
         if (next === undefined) throw new Error("Mock provider exhausted: no more queued responses");
         return { assistant: next.assistant, assistantRaw: next.assistantRaw ?? null };
