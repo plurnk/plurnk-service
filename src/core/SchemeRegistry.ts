@@ -1,0 +1,30 @@
+import Plurnk from "../schemes/Plurnk.ts";
+import Log from "../schemes/Log.ts";
+import Exec from "../schemes/Exec.ts";
+import Known from "../schemes/Known.ts";
+import Unknown from "../schemes/Unknown.ts";
+
+type SchemeHandler = object;
+
+export default class SchemeRegistry {
+    #handlers = new Map<string, SchemeHandler>();
+
+    constructor() {
+        this.register("plurnk",  new Plurnk());
+        this.register("log",     new Log());
+        this.register("exec",    new Exec());
+        this.register("known",   new Known());
+        this.register("unknown", new Unknown());
+    }
+
+    register(name: string, handler: SchemeHandler): void {
+        if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
+        this.#handlers.set(name, handler);
+    }
+
+    get(name: string): SchemeHandler | undefined { return this.#handlers.get(name); }
+
+    has(name: string): boolean { return this.#handlers.has(name); }
+
+    list(): string[] { return [...this.#handlers.keys()].toSorted(); }
+}
