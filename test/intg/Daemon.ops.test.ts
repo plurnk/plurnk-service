@@ -245,18 +245,16 @@ test("op.* methods require init: rejected without prior session attach? Auto-cre
     });
 });
 
-test("op.find with empty body returns 200 (engine returns 501 for non-glob today; status 200 is the success route)", async () => {
-    // Today the Known scheme doesn't implement `find`; dispatch returns 501.
-    // This test pins the contract: op.find IS exposed; engine semantics
-    // determine the status. Floor-scope PR adds find to Known/Unknown/Skill.
+test("op.find on empty scope returns 200 with empty results", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "find-test" });
             const response = await rpcCall(ws, 2, "op.find", { scope: "known://" });
-            const result = response.result as { status: number };
-            // Currently: 501 (Known.find not implemented)
-            assert.equal(result.status, 501);
+            const result = response.result as { status: number; results: string[]; content: string };
+            assert.equal(result.status, 200);
+            assert.deepEqual(result.results, []);
+            assert.equal(result.content, "");
         } finally { ws.close(); }
     });
 });
