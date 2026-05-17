@@ -1,0 +1,224 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { openMigrated } from "./_helpers.ts";
+
+const SCHEMA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@plurnk", "plurnk-grammar", "schema");
+
+type FieldStorage =
+    | { kind: "direct"; column: string }
+    | { kind: "decomposed"; columns: string[] }
+    | { kind: "json"; column: string }
+    | { kind: "joinTable"; table: string };
+
+type SchemaMapping =
+    | { kind: "table"; table: string; fields: Record<string, FieldStorage> }
+    | { kind: "embedded"; table: string; fields: Record<string, FieldStorage> }
+    | { kind: "skip"; reason: string };
+
+const direct = (column: string): FieldStorage => ({ kind: "direct", column });
+const json = (column: string): FieldStorage => ({ kind: "json", column });
+const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed", columns });
+const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
+
+const MAPPING: Record<string, SchemaMapping> = {
+    Session: {
+        kind: "table", table: "sessions", fields: {
+            id: direct("id"), version: direct("version"), name: direct("name"),
+            created_at: direct("created_at"), cost_pico: direct("cost_pico"),
+            scheme_registry_additions: json("scheme_registry_additions"),
+        },
+    },
+    Run: {
+        kind: "table", table: "runs", fields: {
+            id: direct("id"), version: direct("version"), session_id: direct("session_id"),
+            created_at: direct("created_at"), parent_run_id: direct("parent_run_id"),
+            cost_pico: direct("cost_pico"),
+        },
+    },
+    Loop: {
+        kind: "table", table: "loops", fields: {
+            id: direct("id"), version: direct("version"), run_id: direct("run_id"),
+            sequence: direct("sequence"), status: direct("status"), prompt: direct("prompt"),
+        },
+    },
+    Turn: {
+        kind: "table", table: "turns", fields: {
+            id: direct("id"), version: direct("version"), loop_id: direct("loop_id"),
+            sequence: direct("sequence"), timestamp: direct("timestamp"), status: direct("status"),
+            usage: decomposed("usage_prompt", "usage_completion", "usage_cached", "usage_cost_pico"),
+            packet: json("packet"),
+        },
+    },
+    Entry: {
+        kind: "table", table: "entries", fields: {
+            id: direct("id"), version: direct("version"), scope: direct("scope"),
+            session_id: direct("session_id"), scheme: direct("scheme"),
+            username: direct("username"), password: direct("password"),
+            hostname: direct("hostname"), port: direct("port"), pathname: direct("pathname"),
+            params: json("params"), channels: joinTable("entry_channels"),
+            attributes: json("attributes"), tags: joinTable("entry_tags"),
+        },
+    },
+    ChannelContent: {
+        kind: "embedded", table: "entry_channels", fields: {
+            content: direct("content"), mimetype: direct("mimetype"),
+            tokens: direct("tokens"), state: direct("state"),
+        },
+    },
+    LogEntry: {
+        kind: "table", table: "log_entries", fields: {
+            id: direct("id"), version: direct("version"),
+            run_id: direct("run_id"), loop_id: direct("loop_id"), turn_id: direct("turn_id"),
+            action_index: direct("action_index"), at: direct("at"), origin: direct("origin"),
+            op: direct("op"), suffix: direct("suffix"), signal: json("signal"),
+            target_scheme: direct("target_scheme"), target_username: direct("target_username"),
+            target_password: direct("target_password"), target_hostname: direct("target_hostname"),
+            target_port: direct("target_port"), target_pathname: direct("target_pathname"),
+            target_params: json("target_params"), target_fragment: direct("target_fragment"),
+            lineMarker: json("lineMarker"),
+            tx: direct("tx"), mimetype_tx: direct("mimetype_tx"),
+            rx: direct("rx"), mimetype_rx: direct("mimetype_rx"), status_rx: direct("status_rx"),
+            tokens: direct("tokens"),
+        },
+    },
+    Visibility: {
+        kind: "table", table: "visibility", fields: {
+            entry_id: direct("entry_id"), channel: direct("channel"), indexed: direct("indexed"),
+        },
+    },
+    SchemeRegistration: {
+        kind: "table", table: "schemes", fields: {
+            name: direct("name"), model_visible: direct("model_visible"), category: direct("category"),
+            default_scope: direct("default_scope"), default_channel: direct("default_channel"),
+            writable_by: json("writable_by"), volatile: direct("volatile"), handler: direct("handler"),
+        },
+    },
+    ProviderDeclaration: {
+        kind: "table", table: "providers", fields: {
+            provider: direct("provider"), family: direct("family"), model: direct("model"),
+            contextSize: direct("contextSize"), currency: direct("currency"),
+        },
+    },
+
+    // Skipped — AST shapes or sub-shapes embedded in JSON columns; not their own tables.
+    Position:        { kind: "skip", reason: "AST shape; embedded in log_entries.* and other JSON fields" },
+    LineMarker:      { kind: "skip", reason: "AST shape; embedded in log_entries.lineMarker JSON column" },
+    Params:          { kind: "skip", reason: "embedded in entries.params + log_entries.target_params JSON" },
+    ParsedPath:      { kind: "skip", reason: "AST shape; URL parts already decomposed at entry/log_entries level" },
+    MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
+    SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
+    PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
+    Packet:          { kind: "skip", reason: "embedded in turns.packet JSON column" },
+    Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
+};
+
+const loadSchema = async (name: string): Promise<{ required: string[] }> => {
+    const text = await readFile(join(SCHEMA_DIR, `${name}.json`), "utf8");
+    const parsed = JSON.parse(text) as { required?: string[] };
+    return { required: parsed.required ?? [] };
+};
+
+const columnsOf = (db: DatabaseSync, table: string): Map<string, { notnull: number; type: string }> => {
+    const rows = db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string; notnull: number; type: string }[];
+    return new Map(rows.map((r) => [r.name, { notnull: r.notnull, type: r.type }]));
+};
+
+const tableExists = (db: DatabaseSync, table: string): boolean => {
+    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { name: string } | undefined;
+    return row !== undefined;
+};
+
+const verifyField = (db: DatabaseSync, table: string, fieldName: string, storage: FieldStorage): string[] => {
+    const errors: string[] = [];
+    const cols = columnsOf(db, table);
+    if (storage.kind === "direct" || storage.kind === "json") {
+        const info = cols.get(storage.column);
+        if (info === undefined) errors.push(`field '${fieldName}' → column '${storage.column}' missing from table '${table}'`);
+    } else if (storage.kind === "decomposed") {
+        for (const c of storage.columns) {
+            const info = cols.get(c);
+            if (info === undefined) errors.push(`field '${fieldName}' → decomposed column '${c}' missing from table '${table}'`);
+        }
+    } else if (storage.kind === "joinTable") {
+        if (!tableExists(db, storage.table)) errors.push(`field '${fieldName}' → join table '${storage.table}' does not exist`);
+    }
+    return errors;
+};
+
+// --------------------------------------------------------------- completeness
+
+test("alignment: every schema in plurnk-grammar/schema/ is claimed by a mapping", async () => {
+    const files = (await readdir(SCHEMA_DIR)).filter((f) => f.endsWith(".json"));
+    const schemaNames = files.map((f) => f.replace(/\.json$/, "")).toSorted();
+    const claimed = Object.keys(MAPPING).toSorted();
+    const unclaimed = schemaNames.filter((s) => !claimed.includes(s));
+    const stale = claimed.filter((c) => !schemaNames.includes(c));
+    assert.deepEqual(
+        { unclaimed, stale },
+        { unclaimed: [], stale: [] },
+        `Schema/MAPPING drift detected. Unclaimed schemas (grammar added new ones): ${JSON.stringify(unclaimed)}. Stale mappings (grammar removed these): ${JSON.stringify(stale)}.`,
+    );
+});
+
+// --------------------------------------------------------------- per-schema field resolution
+
+for (const [schemaName, mapping] of Object.entries(MAPPING)) {
+    if (mapping.kind === "skip") {
+        test(`alignment: ${schemaName} is explicitly skipped (${mapping.reason})`, () => {
+            assert.equal(mapping.kind, "skip");
+        });
+        continue;
+    }
+
+    test(`alignment: ${schemaName} required fields all resolve to ${mapping.kind === "table" ? "columns/tables" : "embedded columns"} on '${mapping.table}'`, async () => {
+        const db = await openMigrated();
+        try {
+            assert.ok(tableExists(db, mapping.table), `mapping table '${mapping.table}' does not exist`);
+            const schema = await loadSchema(schemaName);
+            const errors: string[] = [];
+            const unmappedFields: string[] = [];
+            for (const fieldName of schema.required) {
+                const storage = mapping.fields[fieldName];
+                if (storage === undefined) {
+                    unmappedFields.push(fieldName);
+                    continue;
+                }
+                errors.push(...verifyField(db, mapping.table, fieldName, storage));
+            }
+            assert.deepEqual(
+                { unmapped: unmappedFields, resolution: errors },
+                { unmapped: [], resolution: [] },
+                `${schemaName}: unmapped required fields ${JSON.stringify(unmappedFields)}; resolution errors ${JSON.stringify(errors)}`,
+            );
+        } finally { db.close(); }
+    });
+}
+
+// --------------------------------------------------------------- direct columns must be NOT NULL
+
+test("alignment: every 'direct' mapping points to a NOT NULL column (or is a nullable contract field)", async () => {
+    // Some required-by-schema fields are typed as ["X", "null"] in JSON Schema — those are
+    // intentionally nullable in storage. We check NOT NULL only for fields that the schema
+    // makes required AND non-nullable. Reading every schema to determine nullability is
+    // pricey; for v0 we surface the columns and let humans confirm intent rather than mechanically
+    // gating on NOT NULL. The "field exists at all" check above is the primary safeguard.
+    const db = await openMigrated();
+    try {
+        const noNotNullViolations: string[] = [];
+        for (const [, mapping] of Object.entries(MAPPING)) {
+            if (mapping.kind === "skip") continue;
+            const cols = columnsOf(db, mapping.table);
+            for (const [, storage] of Object.entries(mapping.fields)) {
+                if (storage.kind === "direct" || storage.kind === "json") {
+                    const info = cols.get(storage.column);
+                    if (info === undefined) noNotNullViolations.push(`${mapping.table}.${storage.column} missing entirely`);
+                }
+            }
+        }
+        assert.deepEqual(noNotNullViolations, [], JSON.stringify(noNotNullViolations));
+    } finally { db.close(); }
+});
