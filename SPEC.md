@@ -4,7 +4,7 @@ Single source of truth for what plurnk-service IS — the contracts it exposes, 
 
 Section numbers are stable. Future anchor-to-test wiring binds individual promises here to integration / live / demo tests, giving semi-deterministic specification-testing alignment.
 
-This is v0 — expected to evolve as floor-scope PRs surface gaps. The day the floor-scope intg test lands green, this document promotes to v1.0.
+Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-end). This document evolves with each phase; the upcoming mimetype / channel-state / transaction-lifecycle work will surface refinements to §4 / §5 / §7.
 
 ---
 
@@ -283,7 +283,6 @@ The mimetype of a channel is declared by the scheme's manifest (§3.1) or — fo
 
 Implications:
 - Cross-mimetype COPY/MOVE crashes (`415 Unsupported Media Type`) — never coerces. See §6.4.
-- The current `_entry-ops.ts:43` hardcode of `'text/markdown'` is a bug to be removed in PR2 of floor scope.
 
 ### §5.4 Orientation hint
 
@@ -412,7 +411,7 @@ Two modes:
 
 AST: `{ op: "EXEC", path: ParsedPath (cwd), body: string | null (command), signal: string | null (runtime tag) }`.
 
-Deferred — out of scope for v0 floor. See §10 and the deferred items in AGENTS.md.
+Deferred. The `exec` scheme is in §10's bundled set but lacks a working handler; calls return 501. Sandboxing design and process-lifecycle semantics are the substance to figure out, drawing on rummy's exec plugin as prior art.
 
 ---
 
@@ -519,8 +518,8 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 - `mock` — fake provider used exclusively in `intg` for deterministic engine tests. Also serves as a minimal worked example for authors of external `@plurnk/plurnk-providers-*` packages.
 
 **Mimetypes** (in `src/mimetypes/`):
-- `text/plain` — lands in floor scope PR1.
-- `text/markdown` — lands in floor scope PR1, with heading-outline `symbols()` extractor.
+- `text/plain` — landed (#80). Identity validate; head-truncated preview.
+- `text/markdown` — landed (#80). Identity validate; heading-outline `symbols()` extractor; preview falls back to heading outline or head-truncated content.
 - `application/json` — deferred; lands when first consumer arrives.
 - DSL mimetype (`text/vnd.plurnk` pending grammar #6; currently `text/x-plurnk`) — deferred; lands when log-rendering structural summaries become necessary.
 
@@ -562,6 +561,8 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 ### §11.3 Open contract gaps surfaced to grammar
 
 - **#6** — request to consider `text/vnd.plurnk` as the DSL mimetype (currently `text/x-plurnk`; RFC 6648 deprecates `x-*`; `vnd.*` is the modern equivalent). Filed; awaiting grammar agent decision.
+- **#7** — request to expose a public `parsePath` helper. Currently the grammar's path parser is private (`AstBuilder.#parsePath`); plurnk-service's RPC layer works around it via build-heredoc-and-parse round-trip in `src/server/dsl.ts`. A public helper would let consumers honor grammar's per-scheme path semantics directly.
+- **#8** — observation that `plurnk.md`'s SEND examples only show the broadcast form (no path); a model with weak DSL grasp can put body content in the path slot, getting 400s. Suggested clarification: tighten examples and/or table cell wording, or close as a model-training concern. Plurnk-service adopts whatever grammar lands on.
 
 When future gaps surface, they get filed as grammar issues (not redesigned in plurnk-service), and the relevant SPEC.md section notes the pending request.
 
@@ -803,4 +804,4 @@ Error responses MAY include `data: { ... }` with structured context (the path th
 
 `plurnk-service` exposes a `protocolVersion` field in `discover`'s response (semver). Major version mismatches are a contract break — clients SHOULD refuse to operate on a major mismatch. Minor/patch increments are backward-compatible.
 
-v0 of this SPEC corresponds to `protocolVersion: "0.1.0"`. Promotes to `1.0.0` when the floor scope lands green and the daemon implementation has run against at least the TUI and one external client (neovim plugin or Telegram bot).
+Current: `protocolVersion: "0.1.0"`. The floor is green and the daemon has been exercised end-to-end via the `plurnk` TUI client (which now graduates to its own agent). Promotes to `1.0.0` when an independent external client (neovim plugin or Telegram bot) lands AND the mimetype/channel/transaction work below has settled.
