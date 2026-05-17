@@ -143,7 +143,7 @@ test("Known.edit: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.edit: visibility row idempotent across multiple EDITs of same path", async () => {
+test("Known.edit: visibility rows idempotent across multiple EDITs of same path", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -151,12 +151,15 @@ test("Known.edit: visibility row idempotent across multiple EDITs of same path",
         const r = await k.edit({ db, statement: editStatement({ path, body: "a" }), sessionId, runId });
         await k.edit({ db, statement: editStatement({ path, body: "b" }), sessionId, runId });
         await k.edit({ db, statement: editStatement({ path, body: "c" }), sessionId, runId });
+        // Default-channel EDIT writes body + preview per SPEC §5.1 — two visibility rows per (run, entry).
         const count = (db.prepare("SELECT COUNT(*) AS n FROM visibility WHERE entry_id = ?").get(r.entryId) as { n: number }).n;
-        assert.equal(count, 1, "INSERT OR IGNORE produces exactly one visibility row");
+        assert.equal(count, 2, "INSERT OR IGNORE produces exactly one visibility row per channel (body, preview)");
+        const channels = (db.prepare("SELECT channel FROM visibility WHERE entry_id = ? ORDER BY channel").all(r.entryId) as { channel: string }[]).map((r) => r.channel);
+        assert.deepEqual(channels, ["body", "preview"]);
     } finally { db.close(); }
 });
 
-test("Known.edit: visibility is per-run — same entry edited in different runs gets two rows", async () => {
+test("Known.edit: visibility is per-run — same entry edited in different runs gets fresh rows", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const runB = insertRun(db, sessionId);
@@ -164,9 +167,12 @@ test("Known.edit: visibility is per-run — same entry edited in different runs 
         const path = urlPath("known", "/multirun");
         const r = await k.edit({ db, statement: editStatement({ path, body: "a" }), sessionId, runId });
         await k.edit({ db, statement: editStatement({ path, body: "b" }), sessionId, runId: runB });
-        const rows = db.prepare("SELECT run_id, indexed FROM visibility WHERE entry_id = ? ORDER BY run_id").all(r.entryId) as { run_id: number; indexed: number }[];
-        assert.equal(rows.length, 2);
+        // 2 runs × 2 channels (body, preview) = 4 visibility rows
+        const rows = db.prepare("SELECT run_id, channel, indexed FROM visibility WHERE entry_id = ? ORDER BY run_id, channel").all(r.entryId) as { run_id: number; channel: string; indexed: number }[];
+        assert.equal(rows.length, 4);
         assert.equal(rows.every((r) => r.indexed === 1), true);
+        const runIds = [...new Set(rows.map((r) => r.run_id))];
+        assert.equal(runIds.length, 2, "two distinct runs");
     } finally { db.close(); }
 });
 
