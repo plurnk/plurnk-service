@@ -4,10 +4,14 @@ import type { EditStatement, LineMarker, LocalPath, ParsedPath, UrlPath } from "
 import Known from "../../src/schemes/Known.ts";
 import { openMigrated, insertSession, insertRun } from "./_helpers.ts";
 
-// Constructing EditStatement objects directly rather than parsing via PlurnkParser.
-// Node 25 refuses to strip types from files under node_modules/, and the grammar
-// package ships .ts-only sources at 0.2.1. Type-only imports erase cleanly; value
-// imports of PlurnkParser would fail at runtime. Surfaced in the PR description.
+// Tests construct EditStatement objects directly. PlurnkParser is now
+// runtime-importable (grammar 0.2.2's compiled JS), but its WHATWG URL parse
+// of internal-scheme paths like `known://countries/france/capital` treats
+// `countries` as hostname and `/france/capital` as pathname — that's a real
+// path-semantics gap with the grammar's docs/examples and needs resolution
+// before the engine wires parser → handler. Tests here verify the handler's
+// behavior on well-formed AST inputs; the parser-input integration path is
+// pending the gap resolution.
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,

@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openMigrated } from "./_helpers.ts";
 
-const SCHEMA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@plurnk", "plurnk-grammar", "schema");
+const SCHEMA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@plurnk", "plurnk-grammar", "dist", "schema");
 
 type FieldStorage =
     | { kind: "direct"; column: string }
