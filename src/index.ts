@@ -14,6 +14,7 @@ export { default as Skill } from "./schemes/Skill.ts";
 export { default as Log } from "./schemes/Log.ts";
 export { default as Plurnk } from "./schemes/Plurnk.ts";
 export { default as Exec } from "./schemes/Exec.ts";
+export { default as File } from "./schemes/File.ts";
 
 export { default as Mock } from "./providers/Mock.ts";
 export type { MockResponse, MockAssistant, ChatMessage } from "./providers/Mock.ts";

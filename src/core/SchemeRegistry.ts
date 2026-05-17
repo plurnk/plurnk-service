@@ -4,6 +4,7 @@ import Exec from "../schemes/Exec.ts";
 import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
+import File from "../schemes/File.ts";
 
 type SchemeHandler = object;
 
@@ -17,6 +18,7 @@ export default class SchemeRegistry {
         this.register("known",   new Known());
         this.register("unknown", new Unknown());
         this.register("skill",   new Skill());
+        this.register("file",    new File());
     }
 
     register(name: string, handler: SchemeHandler): void {

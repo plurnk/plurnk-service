@@ -4,9 +4,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import Plurnk from "../../src/schemes/Plurnk.ts";
 
-test("SchemeRegistry: constructor registers all six bundled schemes", () => {
+test("SchemeRegistry: constructor registers all seven bundled schemes", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list(), ["exec", "known", "log", "plurnk", "skill", "unknown"]);
+    assert.deepEqual(r.list(), ["exec", "file", "known", "log", "plurnk", "skill", "unknown"]);
 });
 
 test("SchemeRegistry: get(name) returns the registered handler instance", () => {
@@ -49,7 +49,7 @@ test("SchemeRegistry: list() is sorted and exhaustive", () => {
     class FakeHttps {}
     r.register("wss", new FakeWs());
     r.register("https", new FakeHttps());
-    assert.deepEqual(r.list(), ["exec", "https", "known", "log", "plurnk", "skill", "unknown", "wss"]);
+    assert.deepEqual(r.list(), ["exec", "file", "https", "known", "log", "plurnk", "skill", "unknown", "wss"]);
 });
 
 test("SchemeRegistry: two independent registries don't share state", () => {
