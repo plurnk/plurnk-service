@@ -7,6 +7,7 @@
 export { default as Engine } from "./core/Engine.ts";
 export { default as Migrator } from "./core/Migrator.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
+export { default as MimetypeRegistry } from "./core/MimetypeRegistry.ts";
 
 export { default as Known } from "./schemes/Known.ts";
 export { default as Unknown } from "./schemes/Unknown.ts";
@@ -15,6 +16,10 @@ export { default as Log } from "./schemes/Log.ts";
 export { default as Plurnk } from "./schemes/Plurnk.ts";
 export { default as Exec } from "./schemes/Exec.ts";
 export { default as File } from "./schemes/File.ts";
+
+export { default as TextPlain } from "./mimetypes/TextPlain.ts";
+export { default as TextMarkdown } from "./mimetypes/TextMarkdown.ts";
+export type { MimetypeHandler } from "./mimetypes/_types.ts";
 
 export { default as Mock } from "./providers/Mock.ts";
 export type { MockResponse, MockAssistant, ChatMessage } from "./providers/Mock.ts";
