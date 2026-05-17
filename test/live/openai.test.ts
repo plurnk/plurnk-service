@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import OpenAI from "@plurnk/plurnk-providers-openai";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const SYSTEM_PROMPT = await readFile(resolve(PROJECT_ROOT, "instructions-system.md"), "utf8");
 
 const requireEnv = (name: string): string => {
     const value = process.env[name];
@@ -25,22 +31,6 @@ const buildProvider = (): OpenAI => new OpenAI({
     fetchTimeoutMs: Number(requireEnv("OPENAI_FETCH_TIMEOUT_MS")),
     think: requireEnv("OPENAI_THINK") === "1",
 });
-
-const SYSTEM_PROMPT = `You are a plurnk agent. You communicate exclusively via the plurnk DSL.
-
-Plurnk operations have the form: <<OP[signal]?(path)?:body:OP
-
-The four operations you'll use today:
-- <<EDIT(known://path/to/topic):body:EDIT — store knowledge at a path.
-- <<READ(known://path/to/topic)::READ — retrieve previously stored knowledge.
-- <<SEND[102]:internal thought:SEND — continue working (more turns expected).
-- <<SEND[200]:final answer to user:SEND — terminal response to the user.
-
-Every response MUST end with exactly one SEND statement. Status 200 ends the loop; status 102 continues.
-
-Example response:
-<<EDIT(known://france/capital):The capital of France is Paris.:EDIT
-<<SEND[200]:The capital of France is Paris.:SEND`;
 
 test("live OpenAI: runTurn against macher produces a valid turn end-to-end", async () => {
     const provider = buildProvider();
@@ -64,7 +54,12 @@ test("live OpenAI: runTurn against macher produces a valid turn end-to-end", asy
         console.log("op statuses:", result.statuses);
 
         // Turn was inserted
-        const turn = db.prepare("SELECT id, status, packet FROM turns WHERE id = ?").get(result.turnId) as { id: number; status: number; packet: string };
+        const turn = db.prepare("SELECT id, status, packet, usage_completion FROM turns WHERE id = ?").get(result.turnId) as { id: number; status: number; packet: string; usage_completion: number };
+        const packetPreview = JSON.parse(turn.packet) as { assistant: { reasoning: string | null; content: string } };
+        console.log("system prompt tokens (approx chars/4):", Math.ceil(SYSTEM_PROMPT.length / 4));
+        console.log("completion tokens (from provider):", turn.usage_completion);
+        console.log("reasoning length (chars):", packetPreview.assistant.reasoning?.length ?? 0);
+        console.log("content length (chars):", packetPreview.assistant.content.length);
         assert.ok(turn.id >= 1, "turn row should exist");
         assert.ok(turn.status >= 100 && turn.status <= 599, "turn status in HTTP range");
 
