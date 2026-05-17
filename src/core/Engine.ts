@@ -38,6 +38,35 @@ export default class Engine {
         this.#schemes = schemes;
     }
 
+    async runLoop({
+        provider, messages, sessionId, runId, loopId, maxTurns = 50, origin = "model", signal,
+    }: {
+        provider: Provider;
+        messages: ChatMessage[];
+        sessionId: number; runId: number; loopId: number;
+        maxTurns?: number;
+        origin?: Origin;
+        signal?: AbortSignal;
+    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean }> {
+        const turnIds: number[] = [];
+
+        while (true) {
+            signal?.throwIfAborted();
+
+            const row = this.#db.prepare("SELECT status FROM loops WHERE id = ?").get(loopId) as { status: number } | undefined;
+            if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
+            if (row.status !== 102) return { turnIds, finalStatus: row.status, hitMaxTurns: false };
+
+            if (turnIds.length >= maxTurns) {
+                this.#db.prepare("UPDATE loops SET status = 499 WHERE id = ?").run(loopId);
+                return { turnIds, finalStatus: 499, hitMaxTurns: true };
+            }
+
+            const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal });
+            turnIds.push(turn.turnId);
+        }
+    }
+
     async runTurn({
         provider, messages, sessionId, runId, loopId, origin = "model", signal,
     }: {
