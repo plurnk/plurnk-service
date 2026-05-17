@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PlurnkStatement, ParsedPath, LineMarker } from "@plurnk/plurnk-grammar";
 import type SchemeRegistry from "./SchemeRegistry.ts";
+import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 
 type Origin = "model" | "client" | "system" | "plugin";
 
@@ -29,6 +30,17 @@ type DispatchContext = {
 type DispatchResult = { status: number; [key: string]: unknown };
 
 type SchemeMethod = (ctx: { db: DatabaseSync; statement: PlurnkStatement; sessionId: number; runId: number; loopId: number; turnId: number }) => Promise<DispatchResult>;
+
+interface SchemeWithCrud {
+    readEntry?: (ctx: { db: DatabaseSync; sessionId: number; pathname: string }) => Promise<ReadEntryResult>;
+    writeEntry?: (ctx: { db: DatabaseSync; sessionId: number; pathname: string; entry: EntryData; runId: number }) => Promise<WriteEntryResult>;
+    deleteEntry?: (ctx: { db: DatabaseSync; sessionId: number; pathname: string }) => Promise<DeleteEntryResult>;
+}
+
+const pathnameFromPath = (path: ParsedPath): string => {
+    if (path.kind === "url") return path.pathname;
+    return path.raw;
+};
 
 export default class Engine {
     #db: DatabaseSync;
@@ -131,12 +143,107 @@ export default class Engine {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch } = context;
-        const result = statement.op === "SEND" && statement.path === null
-            ? this.#handleSendBroadcast(statement, loopId)
-            : await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
+        let result: DispatchResult;
+        if (statement.op === "SEND" && statement.path === null) {
+            result = this.#handleSendBroadcast(statement, loopId);
+        } else if (statement.op === "COPY") {
+            result = await this.#handleCopy(statement, { sessionId, runId });
+        } else if (statement.op === "MOVE") {
+            result = await this.#handleMove(statement, { sessionId, runId });
+        } else {
+            result = await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
+        }
         const logEntryId = this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
         onDispatch?.(logEntryId);
         return result;
+    }
+
+    async #handleCopy(statement: PlurnkStatement, ctx: { sessionId: number; runId: number }): Promise<DispatchResult> {
+        if (statement.op !== "COPY") throw new Error("unreachable");
+        const srcPath = statement.path;
+        const dstPath = statement.body;
+        if (srcPath === null) return { status: 400, error: "COPY requires source path" };
+        if (dstPath === null) return { status: 400, error: "COPY requires destination path (in body slot)" };
+        return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
+    }
+
+    async #handleMove(statement: PlurnkStatement, ctx: { sessionId: number; runId: number }): Promise<DispatchResult> {
+        if (statement.op !== "MOVE") throw new Error("unreachable");
+        const srcPath = statement.path;
+        const dstPath = statement.body;
+        if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
+
+        const srcSchemeName = this.#schemeNameOf(srcPath);
+        if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
+        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
+        if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
+
+        // Null-body MOVE = delete the source entry (per SPEC §6.5)
+        if (dstPath === null) {
+            const srcPathname = pathnameFromPath(srcPath);
+            const delResult = await srcHandler.deleteEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+            return { status: delResult.status };
+        }
+
+        // Relocation: COPY then DELETE source
+        const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
+        if (copyResult.status >= 400) return copyResult;
+        const srcPathname = pathnameFromPath(srcPath);
+        const delResult = await srcHandler.deleteEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+        if (delResult.status >= 400) return { status: delResult.status };
+        return copyResult;
+    }
+
+    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
+        statement: PlurnkStatement;
+        srcPath: ParsedPath;
+        dstPath: ParsedPath;
+        ctx: { sessionId: number; runId: number };
+    }): Promise<DispatchResult> {
+        const srcSchemeName = this.#schemeNameOf(srcPath);
+        const dstSchemeName = this.#schemeNameOf(dstPath);
+        if (srcSchemeName === null || dstSchemeName === null) return { status: 400, error: "COPY/MOVE require URL paths with schemes" };
+
+        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
+        const dstHandler = this.#schemes.get(dstSchemeName) as SchemeWithCrud | undefined;
+        if (srcHandler === undefined || dstHandler === undefined) return { status: 501 };
+        if (typeof srcHandler.readEntry !== "function" || typeof dstHandler.writeEntry !== "function") return { status: 501 };
+
+        const srcPathname = pathnameFromPath(srcPath);
+        const dstPathname = pathnameFromPath(dstPath);
+
+        const srcResult = await srcHandler.readEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };
+        const entry = srcResult.entry;
+
+        // Conflict check on destination
+        if (typeof dstHandler.readEntry === "function") {
+            const dstExists = await dstHandler.readEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: dstPathname });
+            if (dstExists.status === 200) return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
+        }
+
+        // Mimetype compatibility check against the destination scheme's manifest
+        const dstChannels = (dstHandler.constructor as { channels?: Record<string, string> }).channels ?? {};
+        for (const [channelName, channelData] of Object.entries(entry.channels)) {
+            const expectedMimetype = dstChannels[channelName];
+            if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
+                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` };
+            }
+        }
+
+        // Tag resolution: signal = replace; absent/empty = carry from source
+        const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
+            ? statement.signal
+            : entry.tags;
+
+        const writeResult = await dstHandler.writeEntry({
+            db: this.#db,
+            sessionId: ctx.sessionId,
+            pathname: dstPathname,
+            entry: { channels: entry.channels, tags },
+            runId: ctx.runId,
+        });
+        return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
     #handleSendBroadcast(statement: PlurnkStatement, loopId: number): DispatchResult {
