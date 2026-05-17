@@ -28,6 +28,8 @@ import { register as registerOpExec } from "./methods/op_exec.ts";
 import { register as registerOpDispatch } from "./methods/op_dispatch.ts";
 import { register as registerOpParse } from "./methods/op_parse.ts";
 import { register as registerLoopRun } from "./methods/loop_run.ts";
+import { register as registerEntryRead } from "./methods/entry_read.ts";
+import { register as registerLogRead } from "./methods/log_read.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -117,6 +119,8 @@ export default class Daemon {
         registerOpDispatch(this.#registry);
         registerOpParse(this.#registry);
         registerLoopRun(this.#registry);
+        registerEntryRead(this.#registry);
+        registerLogRead(this.#registry);
     }
 
     #registerNotifications(): void {
