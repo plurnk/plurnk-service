@@ -5,8 +5,12 @@
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { DatabaseSync } from "node:sqlite";
+import { resolve } from "node:path";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
+import MimetypeRegistry from "../core/MimetypeRegistry.ts";
+import type { MimetypeHandler } from "../mimetypes/_types.ts";
+import { discoverPlugins, loadPlugin } from "../core/PluginLoader.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { NotifyTarget, Provider } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
@@ -44,15 +48,29 @@ export interface DaemonAddress {
 export default class Daemon {
     #db: DatabaseSync;
     #engine: Engine;
+    #schemes: SchemeRegistry;
+    #mimetypes: MimetypeRegistry;
     #provider: Provider | null;
     #registry: MethodRegistry;
+    #nodeModulesPath: string;
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
 
-    constructor({ db, schemes, provider }: { db: DatabaseSync; schemes?: SchemeRegistry; provider?: Provider | null }) {
+    constructor({
+        db, schemes, mimetypes, provider, nodeModulesPath,
+    }: {
+        db: DatabaseSync;
+        schemes?: SchemeRegistry;
+        mimetypes?: MimetypeRegistry;
+        provider?: Provider | null;
+        nodeModulesPath?: string;
+    }) {
         this.#db = db;
-        this.#engine = new Engine({ db, schemes: schemes ?? new SchemeRegistry() });
+        this.#schemes = schemes ?? new SchemeRegistry();
+        this.#mimetypes = mimetypes ?? new MimetypeRegistry();
+        this.#engine = new Engine({ db, schemes: this.#schemes });
         this.#provider = provider ?? null;
+        this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();
         this.#registerNotifications();
@@ -61,9 +79,13 @@ export default class Daemon {
     get registry(): MethodRegistry { return this.#registry; }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
+    get schemes(): SchemeRegistry { return this.#schemes; }
+    get mimetypes(): MimetypeRegistry { return this.#mimetypes; }
 
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
+
+        await this.#discoverAndLoadPlugins();
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
@@ -152,6 +174,25 @@ export default class Daemon {
             conn.close();
             this.#connections.delete(conn);
         });
+    }
+
+    async #discoverAndLoadPlugins(): Promise<void> {
+        const plugins = await discoverPlugins(this.#nodeModulesPath);
+        for (const plugin of plugins) {
+            // Skip providers — they need config-driven construction; the single
+            // provider stays wired via the bin script until ProviderRegistry lands.
+            if (plugin.manifest.kind === "provider") continue;
+
+            const instance = await loadPlugin(plugin);
+            switch (plugin.manifest.kind) {
+                case "scheme":
+                    this.#schemes.register(plugin.manifest.name, instance as object);
+                    break;
+                case "mimetype":
+                    this.#mimetypes.register(instance as MimetypeHandler);
+                    break;
+            }
+        }
     }
 
     #broadcast(target: NotifyTarget, from: ClientConnection | null, method: string, params?: unknown): void {
