@@ -6,6 +6,7 @@
 
 import type { WebSocket } from "ws";
 import type { DatabaseSync } from "node:sqlite";
+import type Engine from "../core/Engine.ts";
 import type MethodRegistry from "./MethodRegistry.ts";
 import type { HandlerContext, NotifyTarget } from "./MethodRegistry.ts";
 import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
@@ -44,6 +45,7 @@ export interface ClientConnectionOptions {
     ws: WebSocket;
     registry: MethodRegistry;
     db: DatabaseSync;
+    engine: Engine;
     broadcast: (target: NotifyTarget, from: ClientConnection, method: string, params?: unknown) => void;
 }
 
@@ -51,13 +53,15 @@ export default class ClientConnection {
     #ws: WebSocket;
     #registry: MethodRegistry;
     #db: DatabaseSync;
+    #engine: Engine;
     #broadcast: ClientConnectionOptions["broadcast"];
     #session: ClientEnvelope | null = null;
 
-    constructor({ ws, registry, db, broadcast }: ClientConnectionOptions) {
+    constructor({ ws, registry, db, engine, broadcast }: ClientConnectionOptions) {
         this.#ws = ws;
         this.#registry = registry;
         this.#db = db;
+        this.#engine = engine;
         this.#broadcast = broadcast;
         this.#ws.on("message", (data) => this.#handleMessage(data));
     }
@@ -123,6 +127,7 @@ export default class ClientConnection {
         const ctx: HandlerContext = {
             registry: this.#registry,
             db: this.#db,
+            engine: this.#engine,
             session: this.#session,
             attachSession: (envelope) => {
                 if (this.#session !== null) {

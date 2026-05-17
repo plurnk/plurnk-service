@@ -652,30 +652,43 @@ The minimum v0 surface. Methods are grouped by concern.
 | Method            | Params              | Result            | Notes |
 |-------------------|---------------------|-------------------|-------|
 | `session.create`  | `name?: string`     | `{ id, name }`    | Creates new session; auto-name from timestamp if unprovided. |
-| `session.list`    | none                | `Session[]`       | Lists all sessions. |
+| `session.list`    | none                | `{ sessions: Session[] }` | Lists all sessions. |
 | `session.attach`  | `id: number`        | `{ id, name }`    | Binds this connection to an existing session; subsequent ops use it. |
 
 If a client issues a method requiring init (`requiresInit: true`) without first calling `session.attach` or `session.create`, the daemon auto-creates the envelope on demand: session → run → client loop, all persisted normally. Auto-creation is a convenience for one-off invocations (Telegram quick-queries, neovim ad-hoc dispatches, `plurnk "prompt"` CLI shots); the records carry through the same way explicitly-created ones do. **Auto-created ≠ auto-deleted.** Records persist for the log's forensic value. If a client wants active cleanup, that's a future `session.delete` / `session.archive` endpoint, opt-in.
 
-**Loops + dispatches**
+**Loops (model-driven)**
 
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
 | `loop.run`    | `prompt`, `maxTurns?`               | `{ loopId, turnIds, finalStatus, hitMaxTurns }` | Model-driven loop. Streams `log/entry` notifications during. `longRunning: true`. |
-| `op.dispatch` | `op: PlurnkStatement`               | `{ status, ... }`      | Single client-origin dispatch. Creates a turn in the connection's client loop (§13.7). |
 
-**Reads**
+**DSL operations (client-driven, mirror the grammar)**
 
-| Method        | Params                              | Result                 | Notes |
-|---------------|-------------------------------------|------------------------|-------|
-| `entry.read`  | `path`, `sessionId?`                | `{ entry } \| { status: 404 }` | Reads an entry by path. |
-| `log.read`    | `loopId?`, `turnId?`, `limit?`      | `LogEntry[]`           | Reads log rows; for catch-up after reconnect. |
+Per the **Speak in DSL, not plumbing** rule (AGENTS.md Standing Rules): RPC methods for client-driven ops construct DSL statements internally and dispatch through the same `Engine.dispatch` path the model uses. Param shapes are ergonomic (semantic names, not HEREDOC slot positions); the semantics ARE the DSL's.
+
+Each `op.*` call creates a turn in the connection's client loop (§13.7) with the constructed statement as a single action, dispatches it, fires a `log/entry` notification to attached clients of the session, returns the dispatch result.
+
+| Method        | Params                                                  | Notes |
+|---------------|---------------------------------------------------------|-------|
+| `op.find`     | `scope: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FIND>>`. |
+| `op.read`     | `path: string`, `matcher?: string`, `lineRange?: LineMarker`, `tags?: string[]` | Mirrors `<<READ>>`. |
+| `op.edit`     | `path: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
+| `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<COPY>>`. |
+| `op.move`     | `source: string`, `destination?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<MOVE>>`. Missing `destination` = delete (null-body MOVE). |
+| `op.show`     | `path: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<SHOW>>`. |
+| `op.hide`     | `path: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<HIDE>>`. |
+| `op.send`     | `status: number`, `recipient?: string`, `body?: string` | Mirrors `<<SEND>>`. |
+| `op.exec`     | `cwd?: string`, `runtime?: string`, `command?: string`  | Mirrors `<<EXEC>>`. |
+| `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
+| `op.parse`    | `text: string`                                          | Convenience: daemon parses raw DSL text via the grammar, dispatches each statement as actions of one turn, returns `{ results: DispatchResult[] }`. |
+
+All `op.*` methods return `{ status: number, ...op-specific-extras }`. They are `requiresInit: true`. They are NOT `longRunning` (one dispatch per call; result returns when the engine returns).
 
 Future-reserved (post-v0):
 
-- `entry.find` — server-side glob/regex search over entries (mirrors `<<FIND>>` from the wire side).
 - `subscription.list` — list active streaming subscriptions (§7).
-- `subscription.cancel` — analog of `SEND[499]` over RPC.
+- `subscription.cancel` — analog of `SEND[499]` over RPC, though `op.send({status: 499, recipient: path})` does the same thing today.
 
 ### §13.6 Notifications
 

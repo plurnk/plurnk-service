@@ -23,6 +23,7 @@ type DispatchContext = {
     turnId: number;
     actionIndex: number;
     origin: Origin;
+    onDispatch?: (logEntryId: number) => void;
 };
 
 type DispatchResult = { status: number; [key: string]: unknown };
@@ -39,7 +40,7 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, sessionId, runId, loopId, maxTurns = 50, origin = "model", signal,
+        provider, messages, sessionId, runId, loopId, maxTurns = 50, origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
         messages: ChatMessage[];
@@ -47,6 +48,7 @@ export default class Engine {
         maxTurns?: number;
         origin?: Origin;
         signal?: AbortSignal;
+        onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean }> {
         const turnIds: number[] = [];
 
@@ -62,19 +64,20 @@ export default class Engine {
                 return { turnIds, finalStatus: 499, hitMaxTurns: true };
             }
 
-            const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal });
+            const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal, onDispatch });
             turnIds.push(turn.turnId);
         }
     }
 
     async runTurn({
-        provider, messages, sessionId, runId, loopId, origin = "model", signal,
+        provider, messages, sessionId, runId, loopId, origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
         messages: ChatMessage[];
         sessionId: number; runId: number; loopId: number;
         origin?: Origin;
         signal?: AbortSignal;
+        onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnId: number; status: number; statuses: number[] }> {
         const response = await provider.generate({ messages, signal });
 
@@ -95,7 +98,7 @@ export default class Engine {
         const statuses: number[] = [];
         for (const [actionIndex, statement] of response.assistant.ops.entries()) {
             const result = await this.dispatch({
-                statement, sessionId, runId, loopId, turnId, actionIndex, origin,
+                statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch,
             });
             statuses.push(result.status);
         }
@@ -127,11 +130,12 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, actionIndex, origin } = context;
+        const { statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch } = context;
         const result = statement.op === "SEND" && statement.path === null
             ? this.#handleSendBroadcast(statement, loopId)
             : await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
-        this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
+        const logEntryId = this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
+        onDispatch?.(logEntryId);
         return result;
     }
 
@@ -170,26 +174,27 @@ export default class Engine {
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         runId: number; loopId: number; turnId: number; actionIndex: number; origin: Origin;
-    }): void {
+    }): number {
         const target = this.#extractTarget(statement.path);
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
             ? JSON.stringify(statement.lineMarker as LineMarker)
             : null;
-        this.#db.prepare(
+        const row = this.#db.prepare(
             `INSERT INTO log_entries (
                 run_id, loop_id, turn_id, action_index, origin, op, suffix, signal,
                 target_scheme, target_username, target_password, target_hostname, target_port,
                 target_pathname, target_params, target_fragment, lineMarker,
                 tx, mimetype_tx, rx, mimetype_rx, status_rx
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        ).get(
             runId, loopId, turnId, actionIndex, origin, statement.op, statement.suffix,
             this.#signalToJson(statement.signal),
             target.scheme, target.username, target.password, target.hostname, target.port,
             target.pathname, target.params, target.fragment, lineMarkerJson,
             JSON.stringify(statement), "application/json",
             JSON.stringify(result), "application/json", result.status,
-        );
+        ) as { id: number };
+        return row.id;
     }
 
     #extractTarget(path: ParsedPath | null): {

@@ -1,18 +1,32 @@
-// Top-level daemon orchestrator. Owns the DB connection, the method
-// registry, the WebSocketServer, and the active client connections.
+// Top-level daemon orchestrator. Owns the DB connection, engine, registries,
+// the WebSocketServer, and the active client connections.
 // SPEC §13.
 
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { DatabaseSync } from "node:sqlite";
+import Engine from "../core/Engine.ts";
+import SchemeRegistry from "../core/SchemeRegistry.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { NotifyTarget } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
+
 import { register as registerPing } from "./methods/ping.ts";
 import { register as registerDiscover } from "./methods/discover.ts";
 import { register as registerSessionCreate } from "./methods/session_create.ts";
 import { register as registerSessionList } from "./methods/session_list.ts";
 import { register as registerSessionAttach } from "./methods/session_attach.ts";
+import { register as registerOpEdit } from "./methods/op_edit.ts";
+import { register as registerOpRead } from "./methods/op_read.ts";
+import { register as registerOpFind } from "./methods/op_find.ts";
+import { register as registerOpShow } from "./methods/op_show.ts";
+import { register as registerOpHide } from "./methods/op_hide.ts";
+import { register as registerOpCopy } from "./methods/op_copy.ts";
+import { register as registerOpMove } from "./methods/op_move.ts";
+import { register as registerOpSend } from "./methods/op_send.ts";
+import { register as registerOpExec } from "./methods/op_exec.ts";
+import { register as registerOpDispatch } from "./methods/op_dispatch.ts";
+import { register as registerOpParse } from "./methods/op_parse.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -26,23 +40,21 @@ export interface DaemonAddress {
 
 export default class Daemon {
     #db: DatabaseSync;
+    #engine: Engine;
     #registry: MethodRegistry;
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
 
-    constructor({ db }: { db: DatabaseSync }) {
+    constructor({ db, schemes }: { db: DatabaseSync; schemes?: SchemeRegistry }) {
         this.#db = db;
+        this.#engine = new Engine({ db, schemes: schemes ?? new SchemeRegistry() });
         this.#registry = new MethodRegistry();
-        registerPing(this.#registry);
-        registerDiscover(this.#registry);
-        registerSessionCreate(this.#registry);
-        registerSessionList(this.#registry);
-        registerSessionAttach(this.#registry);
+        this.#registerBuiltins();
+        this.#registerNotifications();
     }
 
-    get registry(): MethodRegistry {
-        return this.#registry;
-    }
+    get registry(): MethodRegistry { return this.#registry; }
+    get engine(): Engine { return this.#engine; }
 
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
@@ -83,11 +95,38 @@ export default class Daemon {
         this.#wss = null;
     }
 
+    #registerBuiltins(): void {
+        registerPing(this.#registry);
+        registerDiscover(this.#registry);
+        registerSessionCreate(this.#registry);
+        registerSessionList(this.#registry);
+        registerSessionAttach(this.#registry);
+        registerOpEdit(this.#registry);
+        registerOpRead(this.#registry);
+        registerOpFind(this.#registry);
+        registerOpShow(this.#registry);
+        registerOpHide(this.#registry);
+        registerOpCopy(this.#registry);
+        registerOpMove(this.#registry);
+        registerOpSend(this.#registry);
+        registerOpExec(this.#registry);
+        registerOpDispatch(this.#registry);
+        registerOpParse(this.#registry);
+    }
+
+    #registerNotifications(): void {
+        this.#registry.registerNotification("log/entry", {
+            description: "A new log_entries row was written; scoped to the connection's attached session.",
+            params: { entry: "LogEntry — wire-shape log_entries row" },
+        });
+    }
+
     #onConnection(ws: WebSocket): void {
         const conn = new ClientConnection({
             ws,
             registry: this.#registry,
             db: this.#db,
+            engine: this.#engine,
             broadcast: (target, from, method, params) => this.#broadcast(target, from, method, params),
         });
         this.#connections.add(conn);
@@ -97,13 +136,22 @@ export default class Daemon {
         });
     }
 
-    #broadcast(target: NotifyTarget, from: ClientConnection, method: string, params?: unknown): void {
+    #broadcast(target: NotifyTarget, from: ClientConnection | null, method: string, params?: unknown): void {
         if (target === "this") {
-            from.sendNotification(method, params);
+            from?.sendNotification(method, params);
             return;
         }
+        if (target === "all") {
+            for (const conn of this.#connections) {
+                conn.sendNotification(method, params);
+            }
+            return;
+        }
+        const sessionId = target.sessionId;
         for (const conn of this.#connections) {
-            conn.sendNotification(method, params);
+            if (conn.session?.sessionId === sessionId) {
+                conn.sendNotification(method, params);
+            }
         }
     }
 }
