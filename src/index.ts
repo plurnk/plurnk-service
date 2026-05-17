@@ -10,6 +10,7 @@ export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 
 export { default as Known } from "./schemes/Known.ts";
 export { default as Unknown } from "./schemes/Unknown.ts";
+export { default as Skill } from "./schemes/Skill.ts";
 export { default as Log } from "./schemes/Log.ts";
 export { default as Plurnk } from "./schemes/Plurnk.ts";
 export { default as Exec } from "./schemes/Exec.ts";
