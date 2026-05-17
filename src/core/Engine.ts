@@ -4,6 +4,17 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 
 type Origin = "model" | "client" | "system" | "plugin";
 
+type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+type ProviderResponse = {
+    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
+    assistantRaw: unknown;
+};
+
+type Provider = {
+    generate: (args: { messages: ChatMessage[]; signal?: AbortSignal }) => Promise<ProviderResponse>;
+};
+
 type DispatchContext = {
     statement: PlurnkStatement;
     sessionId: number;
@@ -25,6 +36,65 @@ export default class Engine {
     constructor({ db, schemes }: { db: DatabaseSync; schemes: SchemeRegistry }) {
         this.#db = db;
         this.#schemes = schemes;
+    }
+
+    async runTurn({
+        provider, messages, sessionId, runId, loopId, origin = "model", signal,
+    }: {
+        provider: Provider;
+        messages: ChatMessage[];
+        sessionId: number; runId: number; loopId: number;
+        origin?: Origin;
+        signal?: AbortSignal;
+    }): Promise<{ turnId: number; status: number; statuses: number[] }> {
+        const response = await provider.generate({ messages, signal });
+
+        const sendOp = response.assistant.ops.findLast(
+            (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
+                op.op === "SEND" && typeof op.signal === "number",
+        );
+        if (sendOp === undefined) throw new Error("Engine.runTurn: assistant ops contain no SEND with a numeric status; cannot determine turn.status");
+        const turnStatus = sendOp.signal;
+
+        const seq = (this.#db.prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = ?").get(loopId) as { next: number }).next;
+        const packet = this.#buildPacket(messages, response);
+        const turnRow = this.#db
+            .prepare("INSERT INTO turns (loop_id, sequence, status, packet, usage_completion) VALUES (?, ?, ?, ?, ?) RETURNING id")
+            .get(loopId, seq, turnStatus, JSON.stringify(packet), response.assistant.tokens) as { id: number };
+        const turnId = turnRow.id;
+
+        const statuses: number[] = [];
+        for (const [actionIndex, statement] of response.assistant.ops.entries()) {
+            const result = await this.dispatch({
+                statement, sessionId, runId, loopId, turnId, actionIndex, origin,
+            });
+            statuses.push(result.status);
+        }
+
+        return { turnId, status: turnStatus, statuses };
+    }
+
+    #buildPacket(messages: ChatMessage[], response: ProviderResponse): object {
+        const byRole = (role: ChatMessage["role"]): string =>
+            messages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
+        return {
+            tokens: response.assistant.tokens,
+            system: {
+                tokens: 0,
+                system_definition: byRole("system"),
+                persona: "",
+                index: [],
+                log: [],
+            },
+            user: {
+                tokens: 0,
+                prompt: byRole("user"),
+                turn: "",
+                system_requirements: "",
+            },
+            assistant: response.assistant,
+            assistantRaw: response.assistantRaw,
+        };
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
