@@ -28,16 +28,16 @@ test("Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
     const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
-    const a = await mock.generate({ prompt: "anything" });
-    const b = await mock.generate({ prompt: "anything" });
+    const a = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
+    const b = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
     assert.equal(a.assistant.content, "first");
     assert.equal(b.assistant.content, "second");
 });
 
 test("Mock.provider: exhausted queue throws", async () => {
     const mock = new Mock({ contextSize: 100, responses: [response("only", [])] });
-    await mock.generate({ prompt: "x" });
-    await assert.rejects(() => mock.generate({ prompt: "y" }), /Mock provider exhausted/);
+    await mock.generate({ messages: [{ role: "user", content: "x" }] });
+    await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
 test("Mock.provider: assistant shape carries content + ops + reasoning + tokens", async () => {
@@ -50,7 +50,7 @@ test("Mock.provider: assistant shape carries content + ops + reasoning + tokens"
         },
     };
     const mock = new Mock({ contextSize: 100, responses: [r] });
-    const result = await mock.generate({ prompt: "x" });
+    const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
     assert.equal(result.assistant.tokens, 42);
     assert.equal(result.assistant.content, "<<SEND[200]:done:SEND");
     assert.equal(result.assistant.ops.length, 1);
@@ -63,8 +63,8 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
         contextSize: 100,
         responses: [response("alpha", []), response("alpha", [])],
     });
-    const a = await mock.generate({ prompt: "completely different" });
-    const b = await mock.generate({ prompt: "completely different" });
+    const a = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
+    const b = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
     assert.equal(a.assistant.content, "alpha");
     assert.equal(b.assistant.content, "alpha");
 });
@@ -73,8 +73,8 @@ test("Mock.provider: assistantRaw defaults to null; explicit value is passed thr
     const r1: MockResponse = { assistant: { tokens: 0, content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { tokens: 0, content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
     const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
-    const a = await mock.generate({ prompt: "" });
-    const b = await mock.generate({ prompt: "" });
+    const a = await mock.generate({ messages: [] });
+    const b = await mock.generate({ messages: [] });
     assert.equal(a.assistantRaw, null);
     assert.deepEqual(b.assistantRaw, { vendor: "anthropic", id: "msg_123" });
 });
@@ -85,16 +85,16 @@ test("Mock.provider: remaining count tracks unconsumed responses", async () => {
         responses: [response("a", []), response("b", []), response("c", [])],
     });
     assert.equal(mock.remaining, 3);
-    await mock.generate({ prompt: "" });
+    await mock.generate({ messages: [] });
     assert.equal(mock.remaining, 2);
-    await mock.generate({ prompt: "" });
-    await mock.generate({ prompt: "" });
+    await mock.generate({ messages: [] });
+    await mock.generate({ messages: [] });
     assert.equal(mock.remaining, 0);
 });
 
 test("Mock.provider: empty ops array is valid (model emitting no operations)", async () => {
     const mock = new Mock({ contextSize: 100, responses: [response("", [])] });
-    const result = await mock.generate({ prompt: "" });
+    const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.assistant.ops, []);
 });
 
@@ -106,7 +106,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
     ];
     const content = "<<EDIT(known://a):1:EDIT\n<<EDIT(known://b):2:EDIT\n<<SEND[102]:continuing:SEND";
     const mock = new Mock({ contextSize: 100, responses: [response(content, ops)] });
-    const result = await mock.generate({ prompt: "" });
+    const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops.length, 3);
     assert.deepEqual(result.assistant.ops.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
 });

@@ -34,7 +34,7 @@ const dispatchTurn = async (
     engine: Engine, provider: Mock, db: DatabaseSync,
     ctx: { sessionId: number; runId: number; loopId: number },
 ): Promise<{ turnId: number; statuses: number[] }> => {
-    const { assistant } = await provider.generate({ prompt: "" });
+    const { assistant } = await provider.generate({ messages: [] });
     const seq = (db.prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = ?").get(ctx.loopId) as { next: number }).next;
     const sendOp = assistant.ops.find((o): o is SendStatement => o.op === "SEND");
     const turnStatus = sendOp?.signal ?? 200;
