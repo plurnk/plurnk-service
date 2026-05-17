@@ -30,3 +30,28 @@ export const insertLoop = (db: DatabaseSync, runId: number, sequence: number, pr
         .get(runId, sequence, prompt) as { id: number };
     return row.id;
 };
+
+const MIN_PACKET = JSON.stringify({
+    tokens: 0,
+    system: { tokens: 0, system_definition: "", persona: "", index: [], log: [] },
+    user: { tokens: 0, prompt: "", turn: "", system_requirements: "" },
+    assistant: { tokens: 0, content: "", ops: [], reasoning: null },
+    assistantRaw: null,
+});
+
+export const insertTurn = (db: DatabaseSync, loopId: number, sequence: number, status: number = 200): number => {
+    const row = db
+        .prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, ?, ?) RETURNING id")
+        .get(loopId, sequence, status, MIN_PACKET) as { id: number };
+    return row.id;
+};
+
+export const seedEnvelope = (db: DatabaseSync, label: string): {
+    sessionId: number; runId: number; loopId: number; turnId: number;
+} => {
+    const sessionId = insertSession(db, label);
+    const runId = insertRun(db, sessionId);
+    const loopId = insertLoop(db, runId, 1);
+    const turnId = insertTurn(db, loopId, 1);
+    return { sessionId, runId, loopId, turnId };
+};
