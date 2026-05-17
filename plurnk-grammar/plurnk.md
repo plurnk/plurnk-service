@@ -24,7 +24,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | SEND | HTTP status   | recipient | —               | message (JSON for data)  |
 | EXEC | Runtime Tag   | cwd       | —               | command or code          |
 
-SEND signal is a single integer. EXEC signal is a single Runtime Tag (`sh`, `node`, `python`, etc.). All other signals are CSV.
+SEND signal is a single integer. SEND broadcasts when path is omitted; with a path it is directed (path must be a URI). EXEC signal is a single Runtime Tag (`sh`, `node`, `python`, etc.). All other signals are tags.
 
 ## `<L>`
 
