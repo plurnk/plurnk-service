@@ -58,7 +58,7 @@
             ]
         },
         "tx": { "type": "string", "description": "Raw request payload. For origin=model: the literal plurnk DSL substring of assistant.content. For origin=system/client/plugin: whatever the originator emitted, with `mimetype_tx` declaring the structure." },
-        "mimetype_tx": { "type": "string", "minLength": 1, "description": "Mimetype of `tx`. Typically `text/x-plurnk` for model-origin rows; arbitrary per-origin for system/client/plugin." },
+        "mimetype_tx": { "type": "string", "minLength": 1, "description": "Mimetype of `tx`. Typically `text/vnd.plurnk` for model-origin rows; arbitrary per-origin for system/client/plugin." },
         "rx": { "type": "string", "description": "Raw response payload bytes/string." },
         "mimetype_rx": { "type": "string", "minLength": 1 },
         "status_rx": { "type": "integer", "minimum": 100, "maximum": 599 },

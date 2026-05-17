@@ -324,7 +324,7 @@ const minimalLogEntry = () => ({
     target_fragment: null,
     lineMarker: null,
     tx: "<<EDIT[philosophy,existentialism](known://philosophy/meaning):The meaning of life is 42:EDIT",
-    mimetype_tx: "text/x-plurnk",
+    mimetype_tx: "text/vnd.plurnk",
     rx: "",
     mimetype_rx: "text/plain",
     status_rx: 201,
