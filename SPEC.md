@@ -111,11 +111,14 @@ class Known {
         body: "text/markdown",
         preview: "text/markdown",
     };
+    static defaultChannel = "body";
     // ...
 }
 ```
 
 Each entry in `channels` names a channel and pins its mimetype. The engine consults this manifest before writing channels. Schemes whose mimetypes are content-dynamic (file, eventually exec) supply mimetype per-call instead; the engine accepts either path but never accepts an unset mimetype (see §5).
+
+`defaultChannel` is REQUIRED for any scheme that accepts EDIT or READ on fragment-less paths. It names which channel of the entry is targeted when the path has no `#fragment`. See §5.5 for the channel-selection semantic.
 
 ### §3.2 CRUD Primitives (uniform across schemes)
 
@@ -286,6 +289,37 @@ Implications:
 
 The grammar's `SchemeRegistration.channel_orientations` declares each scheme's channels as `head` or `tail` — "which end of the content matters for preview." Mimetype handlers consult this hint when truncating. Channels not listed default to `head`. Per grammar 0.3.0.
 
+### §5.5 Channel selection in the DSL
+
+The DSL targets a specific channel of an entry via the URL **fragment** — the `#name` segment of the path. Per the grammar's `UrlPath` shape (0.3.0+), every parsed path has a nullable `fragment` field; this section defines its semantic for the engine.
+
+Rules:
+
+1. **Fragment-less paths target the scheme's `defaultChannel`.** For `known` / `unknown` / `skill` that's `body`. The path `known://philosophy/meaning` writes/reads the body channel of that entry; equivalent to `known://philosophy/meaning#body` made explicit.
+2. **Paths with a fragment target the named channel.** `known://philosophy/meaning#preview` targets the preview channel.
+3. **Unknown channel name → 404 (channel not found) or 400 (bad request) per the scheme's error policy.** The channel name must appear in the scheme's `channels` manifest (§3.1). Engine never writes to an undeclared channel.
+4. **Schemes without `defaultChannel` reject fragment-less EDIT/READ.** Streaming schemes like `sse://feed/x` may require an explicit fragment (`#data`, `#error`, etc.) and have no default.
+
+Examples:
+
+| URI | Scheme's interpretation |
+|---|---|
+| `known://france/capital` | body channel of the entry (text/markdown) |
+| `known://france/capital#preview` | preview channel (text/markdown structural summary) |
+| `exec://run/abc#stdout` | stdout channel of the exec invocation |
+| `exec://run/abc#stderr` | stderr channel |
+| `sse://feed/y#data` | named channel for the SSE "data" event type (§7) |
+| `log://N/T/A` | log entry at coordinates; no channel concept (log entries are atomic rows) |
+
+Implications for operations:
+
+- **EDIT** writes the body to the resolved channel. If the channel doesn't exist in the manifest → 400. If the scheme doesn't support EDIT to that channel (e.g., exec stdout is read-only) → 405.
+- **READ** returns content + mimetype from the resolved channel.
+- **SHOW / HIDE** flip visibility for the resolved channel only — channel-specific visibility is achievable via fragments. Fragment-less SHOW/HIDE flips ALL channels of the entry per §5.2 (existing behavior).
+- **COPY / MOVE** with a fragment is a per-channel operation; deferred design pass needed before specifying (out of scope for v0).
+
+The clean-shape RPC params (§13.5) carry the fragment naturally inside the `path` string: `{ path: "known://x#preview" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+
 ---
 
 ## §6 Op Surface
@@ -297,9 +331,10 @@ Per-op semantics for `FIND | READ | EDIT | COPY | MOVE | SHOW | HIDE | SEND | EX
 AST: `{ op: "EDIT", path: ParsedPath, body: string | null, signal: tags | null, lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.edit(ctx)`. Scheme:
-- Resolves the (scheme, channel) mimetype from its manifest (§3.1) — crashes if absent.
-- Writes both `body` and `preview` channels in one transaction.
-- Indexes both channels in the current run (visibility = 1).
+- Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
+- Writes the body to the resolved channel.
+- For entry-bearing schemes (known/unknown/skill), also writes the `preview` channel in the same transaction when writing `body` (engine-managed companion; v0 is `preview = body` verbatim per §5.1).
+- Indexes the written channels in the current run (visibility = 1).
 - Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates.
 - `body: null` clears the content (writes empty string).
 - Tags from `signal[]` are applied via `entry_tags` (additive on update for the v0 entry schemes; final policy may vary by scheme).
