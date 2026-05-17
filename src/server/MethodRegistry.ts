@@ -3,6 +3,7 @@
 // may emit. Both have metadata that surfaces via `discover` (SPEC §13.4).
 
 import type { DatabaseSync } from "node:sqlite";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type Engine from "../core/Engine.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
@@ -10,10 +11,23 @@ export type NotifyTarget = "this" | "all" | { sessionId: number };
 
 export type MethodHandler = (params: unknown, ctx: HandlerContext) => Promise<unknown>;
 
+export interface Provider {
+    generate: (args: { messages: Array<{ role: "system" | "user" | "assistant"; content: string }>; signal?: AbortSignal }) => Promise<{
+        assistant: {
+            tokens: number;
+            content: string;
+            ops: PlurnkStatement[];
+            reasoning: string | null;
+        };
+        assistantRaw: unknown;
+    }>;
+}
+
 export interface HandlerContext {
     registry: MethodRegistry;
     db: DatabaseSync;
     engine: Engine;
+    provider: Provider | null;
     session: ClientEnvelope | null;
     attachSession: (envelope: ClientEnvelope) => void;
     notify: (target: NotifyTarget, method: string, params?: unknown) => void;

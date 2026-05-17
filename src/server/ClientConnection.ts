@@ -8,7 +8,7 @@ import type { WebSocket } from "ws";
 import type { DatabaseSync } from "node:sqlite";
 import type Engine from "../core/Engine.ts";
 import type MethodRegistry from "./MethodRegistry.ts";
-import type { HandlerContext, NotifyTarget } from "./MethodRegistry.ts";
+import type { HandlerContext, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
@@ -46,6 +46,7 @@ export interface ClientConnectionOptions {
     registry: MethodRegistry;
     db: DatabaseSync;
     engine: Engine;
+    provider: Provider | null;
     broadcast: (target: NotifyTarget, from: ClientConnection, method: string, params?: unknown) => void;
 }
 
@@ -54,14 +55,16 @@ export default class ClientConnection {
     #registry: MethodRegistry;
     #db: DatabaseSync;
     #engine: Engine;
+    #provider: Provider | null;
     #broadcast: ClientConnectionOptions["broadcast"];
     #session: ClientEnvelope | null = null;
 
-    constructor({ ws, registry, db, engine, broadcast }: ClientConnectionOptions) {
+    constructor({ ws, registry, db, engine, provider, broadcast }: ClientConnectionOptions) {
         this.#ws = ws;
         this.#registry = registry;
         this.#db = db;
         this.#engine = engine;
+        this.#provider = provider;
         this.#broadcast = broadcast;
         this.#ws.on("message", (data) => this.#handleMessage(data));
     }
@@ -128,6 +131,7 @@ export default class ClientConnection {
             registry: this.#registry,
             db: this.#db,
             engine: this.#engine,
+            provider: this.#provider,
             session: this.#session,
             attachSession: (envelope) => {
                 if (this.#session !== null) {
