@@ -18,10 +18,10 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src",
-        "test:intg": "node --env-file-if-exists=.env --test test/intg",
-        "test:live": "node --env-file-if-exists=.env --test test/live",
-        "test:demo": "node --env-file-if-exists=.env --test test/demo",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test:intg": "node --env-file-if-exists=.env --test test/intg/*.test.ts",
+        "test:live": "node --env-file-if-exists=.env --test test/live/*.test.ts",
+        "test:demo": "node --env-file-if-exists=.env --test test/demo/*.test.ts",
         "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo"
     },
     "dependencies": {
