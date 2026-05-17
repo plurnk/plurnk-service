@@ -36,10 +36,12 @@
     },
     "dependencies": {
         "@plurnk/plurnk-grammar": "github:plurnk/plurnk-grammar",
-        "@plurnk/plurnk-providers-openai": "github:plurnk/plurnk-providers-openai"
+        "@plurnk/plurnk-providers-openai": "github:plurnk/plurnk-providers-openai",
+        "ws": "^8.20.1"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
+        "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
     }
 }

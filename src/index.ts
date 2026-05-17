@@ -9,6 +9,15 @@ export { default as Migrator } from "./core/Migrator.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 export { default as MimetypeRegistry } from "./core/MimetypeRegistry.ts";
 
+export { default as Daemon } from "./server/Daemon.ts";
+export { default as MethodRegistry } from "./server/MethodRegistry.ts";
+export type {
+    MethodHandler,
+    MethodRegistration,
+    NotificationRegistration,
+    Catalog,
+} from "./server/MethodRegistry.ts";
+
 export { default as Known } from "./schemes/Known.ts";
 export { default as Unknown } from "./schemes/Unknown.ts";
 export { default as Skill } from "./schemes/Skill.ts";
