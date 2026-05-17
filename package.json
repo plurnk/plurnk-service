@@ -1,0 +1,35 @@
+{
+    "name": "@plurnk/plurnk-service",
+    "version": "0.0.0",
+    "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
+    "type": "module",
+    "license": "MIT",
+    "private": true,
+    "engines": {
+        "node": ">=25"
+    },
+    "exports": {
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "src/**/*.ts",
+        "migrations/**/*.sql",
+        "lang/**/*.json"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src",
+        "test:intg": "node --env-file-if-exists=.env --test test/intg",
+        "test:live": "node --env-file-if-exists=.env --test test/live",
+        "test:demo": "node --env-file-if-exists=.env --test test/demo",
+        "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
+        "build:ddl": "node --env-file-if-exists=.env src/build/generate-ddl.ts"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-grammar": "^0.2.1"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
