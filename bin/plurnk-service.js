@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Migrator from "../src/core/Migrator.ts";
+import Daemon from "../src/server/Daemon.ts";
 
 try { process.loadEnvFile(".env"); } catch { /* .env is optional */ }
 
@@ -15,6 +16,7 @@ in @plurnk/plurnk (separate package).
 
 subcommands:
   migrate    apply pending migrations against PLURNK_DB_PATH
+  start      run the daemon (WebSocket RPC on PLURNK_HOST:PLURNK_PORT)
   stop       signal a running engine to shut down (not yet implemented)
   status     query the running engine's state (not yet implemented)
 
@@ -23,6 +25,8 @@ options:
 
 env:
   PLURNK_DB_PATH   sqlite file path (required for migrate)
+  PLURNK_HOST      bind address for start (default 127.0.0.1)
+  PLURNK_PORT      bind port for start (default 3044)
 `;
 
 const die = (code, message) => {
@@ -56,6 +60,22 @@ const migrate = async () => {
     } finally { db.close(); }
 };
 
+const start = async () => {
+    const host = process.env.PLURNK_HOST ?? "127.0.0.1";
+    const port = Number(process.env.PLURNK_PORT ?? "3044");
+    const daemon = new Daemon();
+    const addr = await daemon.start({ host, port });
+    process.stdout.write(`plurnk-service: listening on ws://${addr.host}:${addr.port}\n`);
+
+    const shutdown = async (signal) => {
+        process.stdout.write(`plurnk-service: ${signal} received; shutting down\n`);
+        await daemon.stop();
+        process.exit(0);
+    };
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+};
+
 const notYet = (subcommand) => () => die(64, `${subcommand}: not yet implemented`);
 
 const { positionals, values } = parseArgs({
@@ -71,6 +91,7 @@ if (rest.length > 0) die(64, `unexpected arguments: ${rest.join(" ")}\n\n${USAGE
 
 const dispatch = {
     migrate,
+    start,
     stop: notYet("stop"),
     status: notYet("status"),
 };
