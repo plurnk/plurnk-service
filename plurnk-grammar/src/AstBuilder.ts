@@ -152,7 +152,7 @@ export default class AstBuilder {
             op: "COPY",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
             ...slots,
-            body: raw !== null ? AstBuilder.#parsePath(raw, position) : null,
+            body: raw !== null ? AstBuilder.parsePath(raw, position) : null,
             position,
         };
     }
@@ -165,7 +165,7 @@ export default class AstBuilder {
             op: "MOVE",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_MOVE().getText(), "MOVE"),
             ...slots,
-            body: raw !== null ? AstBuilder.#parsePath(raw, position) : null,
+            body: raw !== null ? AstBuilder.parsePath(raw, position) : null,
             position,
         };
     }
@@ -249,7 +249,7 @@ export default class AstBuilder {
     static #pathFromCtx(ctx: PathContext | null, pos: Position): ParsedPath | null {
         if (ctx === null) return null;
         const text = ctx.PATH_TEXT()?.getText() ?? "";
-        return AstBuilder.#parsePath(text, pos);
+        return AstBuilder.parsePath(text, pos);
     }
 
     static #lineMarkerFromCtx(ctx: LineMarkerContext | null): LineMarker | null {
@@ -288,7 +288,15 @@ export default class AstBuilder {
         return { first, last };
     }
 
-    static #parsePath(raw: string, pos: Position): ParsedPath | null {
+    /**
+     * Parse a path string into a ParsedPath, mirroring how the AST visitor
+     * decomposes path slots inside HEREDOC statements. Public for consumers
+     * (RPC layers, scheme handlers) that need to honor the grammar's
+     * authority-vs-opaque cleavage without round-tripping through a fake
+     * HEREDOC. Returns null when `raw` is empty. Throws PlurnkParseError
+     * when `raw` starts with `scheme://` but WHATWG URL rejects it.
+     */
+    static parsePath(raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null {
         if (raw.length === 0) return null;
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
