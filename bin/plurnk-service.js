@@ -6,28 +6,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Migrator from "../src/core/Migrator.ts";
 import Daemon from "../src/server/Daemon.ts";
+import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
 
 try { process.loadEnvFile(".env"); } catch { /* .env is optional */ }
-
-const USAGE = `usage: plurnk-service <subcommand> [options]
-
-Admin CLI for the plurnk engine library. User-facing run behavior lives
-in @plurnk/plurnk (separate package).
-
-subcommands:
-  migrate    apply pending migrations against PLURNK_DB_PATH
-  start      run the daemon (WebSocket RPC on PLURNK_HOST:PLURNK_PORT)
-  stop       signal a running engine to shut down (not yet implemented)
-  status     query the running engine's state (not yet implemented)
-
-options:
-  -h, --help   print this message and exit
-
-env:
-  PLURNK_DB_PATH   sqlite file path (required for migrate)
-  PLURNK_HOST      bind address for start (default 127.0.0.1)
-  PLURNK_PORT      bind port for start (default 3044)
-`;
 
 const die = (code, message) => {
     process.stderr.write(`${message}\n`);
@@ -41,6 +22,30 @@ const requireEnv = (name) => {
 };
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+// Auto-derive flags from .env.example. Each PLURNK_* var becomes a
+// --kebab-cased flag; comments above each var become the -h description.
+const flagDescriptors = await parseEnvExample(resolve(projectRoot, ".env.example"));
+const flagOptions = {};
+for (const f of flagDescriptors) {
+    flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };
+}
+
+const USAGE = `usage: plurnk-service <subcommand> [options]
+
+Admin CLI for the plurnk engine library. User-facing run behavior lives
+in @plurnk/plurnk (separate package).
+
+subcommands:
+  migrate    apply pending migrations against PLURNK_DB_PATH
+  start      run the daemon (WebSocket RPC on PLURNK_HOST:PLURNK_PORT)
+  stop       signal a running engine to shut down (not yet implemented)
+  status     query the running engine's state (not yet implemented)
+
+${formatFlagsHelp(flagDescriptors)}
+
+  -h, --help   print this message and exit
+`;
 
 const openDb = (dbPath) => {
     const db = new DatabaseSync(dbPath);
@@ -61,9 +66,6 @@ const migrate = async () => {
 };
 
 const loadOpenAIProvider = async () => {
-    // Vendor-specific env vars stay in the vendor's namespace. The bin script
-    // reads them and constructs the provider; plurnk-service's .env.example
-    // never documents OPENAI_* — see the provider package's README.
     if (process.env.OPENAI_BASE_URL === undefined || process.env.OPENAI_BASE_URL === "") {
         process.stdout.write("plurnk-service: OPENAI_BASE_URL not set; loop.run will return 501\n");
         return null;
@@ -115,8 +117,17 @@ const notYet = (subcommand) => () => die(64, `${subcommand}: not yet implemented
 
 const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { help: { type: "boolean", short: "h" } },
+    options: { help: { type: "boolean", short: "h" }, ...flagOptions },
 });
+
+// CLI flags override .env values. Set the corresponding PLURNK_* env var
+// for any flag that was provided.
+for (const f of flagDescriptors) {
+    const key = f.flagName.replace(/^--/, "");
+    if (typeof values[key] === "string") {
+        process.env[f.envName] = values[key];
+    }
+}
 
 if (values.help) { process.stdout.write(USAGE); process.exit(0); }
 if (positionals.length === 0) { process.stdout.write(USAGE); process.exit(64); }
