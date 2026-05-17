@@ -1,11 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { EditStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
 import { readEntry, writeEntry, deleteEntry } from "./_entry-crud.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import { sendToSessionEntry } from "./_entry-send.ts";
 import type { SendResult } from "./_entry-send.ts";
+import { findSessionEntries } from "./_entry-find.ts";
+import type { FindResult } from "./_entry-find.ts";
 
 const SCHEME = "known";
 
@@ -47,5 +49,9 @@ export default class Known {
 
     async send(ctx: { db: DatabaseSync; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
         return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
+    }
+
+    async find(ctx: { db: DatabaseSync; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
+        return findSessionEntries({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
     }
 }
