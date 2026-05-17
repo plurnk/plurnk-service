@@ -501,7 +501,7 @@ test("ParsedPath: https URL decomposed fully", () => {
     assert.equal(p.fragment, "frag");
 });
 
-test("ParsedPath: known:// scheme parses (hostname is first segment)", () => {
+test("ParsedPath: known:// is opaque — hostname null, pathname is full segment", () => {
     const result = PlurnkParser.parse("<<READ(known://entries/foo/bar)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
@@ -509,11 +509,11 @@ test("ParsedPath: known:// scheme parses (hostname is first segment)", () => {
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "known");
-    assert.equal(p.hostname, "entries");
-    assert.equal(p.pathname, "/foo/bar");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "entries/foo/bar");
 });
 
-test("ParsedPath: log:// scheme parses correctly", () => {
+test("ParsedPath: log:// is opaque — pathname carries the full address", () => {
     const result = PlurnkParser.parse("<<READ(log://1/turn/2/action/3/get)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
@@ -521,8 +521,8 @@ test("ParsedPath: log:// scheme parses correctly", () => {
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "log");
-    assert.equal(p.hostname, "1");
-    assert.equal(p.pathname, "/turn/2/action/3/get");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "1/turn/2/action/3/get");
 });
 
 test("ParsedPath: file:///… scheme parses, empty hostname", () => {
@@ -546,6 +546,86 @@ test("ParsedPath: empty query and fragment are null/empty", () => {
     if (p.kind !== "url") return;
     assert.deepEqual(p.params, {});
     assert.equal(p.fragment, null);
+});
+
+// -------------------------------------------------------------------------
+// Authority-vs-opaque cleavage — issue #5
+// -------------------------------------------------------------------------
+
+test("ParsedPath cleavage: HTTPS retains authority decomposition", () => {
+    const result = PlurnkParser.parse("<<READ(https://user:pw@example.com:8080/api/data?q=1#frag)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "https");
+    assert.equal(p.username, "user");
+    assert.equal(p.password, "pw");
+    assert.equal(p.hostname, "example.com");
+    assert.equal(p.port, 8080);
+    assert.equal(p.pathname, "/api/data");
+    assert.deepEqual(p.params, { q: "1" });
+    assert.equal(p.fragment, "frag");
+});
+
+test("ParsedPath cleavage: exec:// is opaque — no host, raw pathname", () => {
+    const result = PlurnkParser.parse("<<READ(exec://run-tests)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "exec");
+    assert.equal(p.username, null);
+    assert.equal(p.password, null);
+    assert.equal(p.hostname, null);
+    assert.equal(p.port, null);
+    assert.equal(p.pathname, "run-tests");
+});
+
+test("ParsedPath cleavage: wiki:// is opaque — single-segment pathname survives", () => {
+    const result = PlurnkParser.parse("<<READ(wiki://Paris)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "wiki");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "Paris");
+});
+
+test("ParsedPath cleavage: opaque scheme preserves params and fragment", () => {
+    const result = PlurnkParser.parse("<<READ(wiki://Paris?lang=fr#History)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "wiki");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "Paris");
+    assert.deepEqual(p.params, { lang: "fr" });
+    assert.equal(p.fragment, "History");
+});
+
+test("ParsedPath cleavage: known:// nested path stays whole", () => {
+    const result = PlurnkParser.parse("<<READ(known://philosophy/existentialism/meaning)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "known");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "philosophy/existentialism/meaning");
+});
+
+test("ParsedPath cleavage: file:// stays authority-bearing", () => {
+    const result = PlurnkParser.parse("<<READ(file:///tmp/foo.txt)::READ");
+    const item = result.items[0];
+    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    const p = item.statement.path;
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "file");
+    assert.equal(p.hostname, null);
+    assert.equal(p.pathname, "/tmp/foo.txt");
 });
 
 // -------------------------------------------------------------------------
@@ -605,8 +685,8 @@ test("COPY body is a ParsedPath", () => {
     assert.ok(b);
     if (b.kind !== "url") return;
     assert.equal(b.scheme, "known");
-    assert.equal(b.hostname, "archive");
-    assert.equal(b.pathname, "/2026-05-14/draft");
+    assert.equal(b.hostname, null);
+    assert.equal(b.pathname, "archive/2026-05-14/draft");
 });
 
 test("MOVE body is a ParsedPath", () => {
@@ -617,8 +697,8 @@ test("MOVE body is a ParsedPath", () => {
     assert.ok(b);
     if (b.kind !== "url") return;
     assert.equal(b.scheme, "known");
-    assert.equal(b.hostname, "final");
-    assert.equal(b.pathname, "/answer");
+    assert.equal(b.hostname, null);
+    assert.equal(b.pathname, "final/answer");
 });
 
 test("MOVE body with local destination is kind=local", () => {

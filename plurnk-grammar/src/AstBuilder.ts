@@ -57,6 +57,16 @@ type ExecSlots = { signal: string | null; path: ParsedPath | null };
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
+    // Schemes whose `://X/Y` form actually carries an authority (host/userinfo/port).
+    // Everything else is opaque: the first segment after `://` is just the first
+    // segment of the path, not a host.
+    static #AUTHORITY_SCHEMES = new Set([
+        "http", "https",
+        "ws", "wss",
+        "ftp", "ftps",
+        "file",
+    ]);
+
     static build(ctx: StatementContext): PlurnkStatement {
         const find = ctx.findStatement(); if (find) return AstBuilder.#buildFind(find);
         const read = ctx.readStatement(); if (read) return AstBuilder.#buildRead(read);
@@ -289,8 +299,53 @@ export default class AstBuilder {
         } catch (e: any) {
             throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${e?.message ?? raw}`);
         }
+        const scheme = url.protocol.replace(/:$/, "");
+        const params = AstBuilder.#paramsFrom(url.searchParams);
+        const fragment = url.hash ? url.hash.slice(1) : null;
+
+        if (AstBuilder.#AUTHORITY_SCHEMES.has(scheme)) {
+            return {
+                kind: "url",
+                raw,
+                scheme,
+                username: url.username || null,
+                password: url.password || null,
+                hostname: url.hostname || null,
+                port: url.port ? Number.parseInt(url.port, 10) : null,
+                pathname: url.pathname,
+                params,
+                fragment,
+            };
+        }
+        // Opaque scheme: the first segment after `://` is just the first segment
+        // of the path, not a host. Take the substring between `scheme://` and
+        // the first `?`/`#` boundary as the pathname; authority fields are null.
+        const afterScheme = raw.slice(scheme.length + 3);
+        const qIdx = afterScheme.indexOf("?");
+        const hIdx = afterScheme.indexOf("#");
+        let pathnameEnd = afterScheme.length;
+        if (qIdx >= 0 && (hIdx < 0 || qIdx < hIdx)) {
+            pathnameEnd = qIdx;
+        } else if (hIdx >= 0) {
+            pathnameEnd = hIdx;
+        }
+        return {
+            kind: "url",
+            raw,
+            scheme,
+            username: null,
+            password: null,
+            hostname: null,
+            port: null,
+            pathname: afterScheme.slice(0, pathnameEnd),
+            params,
+            fragment,
+        };
+    }
+
+    static #paramsFrom(sp: URLSearchParams): Record<string, string | string[]> {
         const params: Record<string, string | string[]> = {};
-        for (const [key, value] of url.searchParams) {
+        for (const [key, value] of sp) {
             const existing = params[key];
             if (existing === undefined) {
                 params[key] = value;
@@ -300,18 +355,7 @@ export default class AstBuilder {
                 params[key] = [existing, value];
             }
         }
-        return {
-            kind: "url",
-            raw,
-            scheme: url.protocol.replace(/:$/, ""),
-            username: url.username || null,
-            password: url.password || null,
-            hostname: url.hostname || null,
-            port: url.port ? Number.parseInt(url.port, 10) : null,
-            pathname: url.pathname,
-            params,
-            fragment: url.hash ? url.hash.slice(1) : null,
-        };
+        return params;
     }
 
     static #detectMatcherDialect(body: string): "xpath" | "regex" | "jsonpath" | "glob" {
