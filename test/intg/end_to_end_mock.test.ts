@@ -60,7 +60,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
-        assert.deepEqual(result.statuses, [201, 400], "EDIT created → 201; SEND with null path → 400 for now (SEND-broadcast handling is future work)");
+        assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND[200] broadcast terminal → 200");
 
         const entry = db.prepare("SELECT pathname FROM entries WHERE scheme = 'known'").get() as { pathname: string };
         assert.equal(entry.pathname, "/france/capital");
@@ -73,7 +73,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         assert.equal(logRows[0]?.target_pathname, "/france/capital");
         assert.equal(logRows[1]?.op, "SEND");
         assert.equal(logRows[1]?.action_index, 1);
-        assert.equal(logRows[1]?.status_rx, 400);
+        assert.equal(logRows[1]?.status_rx, 200);
         assert.equal(logRows[1]?.target_pathname, null);
     } finally { db.close(); }
 });
@@ -91,7 +91,7 @@ test("e2e: three EDITs in one turn — action_index 0/1/2, three entries written
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
-        assert.deepEqual(result.statuses, [201, 201, 201, 400]);
+        assert.deepEqual(result.statuses, [201, 201, 201, 102]);
 
         const entries = db.prepare("SELECT pathname FROM entries WHERE scheme = 'known' ORDER BY pathname").all() as { pathname: string }[];
         assert.deepEqual(entries.map((e) => e.pathname), ["/a", "/b", "/c"]);
@@ -122,8 +122,8 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         const turn1 = await dispatchTurn(engine, provider, db, env);
         const turn2 = await dispatchTurn(engine, provider, db, env);
         assert.notEqual(turn1.turnId, turn2.turnId);
-        assert.deepEqual(turn1.statuses, [201, 400]);
-        assert.deepEqual(turn2.statuses, [200, 400], "READ → 200; SEND with null path → 400 placeholder");
+        assert.deepEqual(turn1.statuses, [201, 102]);
+        assert.deepEqual(turn2.statuses, [200, 200], "READ → 200; terminal SEND broadcast → 200");
 
         const turn2Reads = db.prepare("SELECT action_index, status_rx, target_pathname FROM log_entries WHERE turn_id = ? AND op = 'READ'").all(turn2.turnId) as { action_index: number; status_rx: number; target_pathname: string }[];
         assert.equal(turn2Reads.length, 1);

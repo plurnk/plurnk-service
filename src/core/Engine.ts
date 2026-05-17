@@ -29,10 +29,21 @@ export default class Engine {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, sessionId, runId, loopId, turnId, actionIndex, origin } = context;
-        const schemeName = this.#schemeNameOf(statement.path);
-        const result = await this.#run(schemeName, statement, { sessionId, runId, loopId, turnId });
+        const result = statement.op === "SEND" && statement.path === null
+            ? this.#handleSendBroadcast(statement, loopId)
+            : await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
         this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
         return result;
+    }
+
+    #handleSendBroadcast(statement: PlurnkStatement, loopId: number): DispatchResult {
+        if (statement.op !== "SEND") throw new Error("unreachable");
+        const status = statement.signal;
+        if (status === null) return { status: 400 };
+        if (status === 200 || status === 499) {
+            this.#db.prepare("UPDATE loops SET status = ? WHERE id = ?").run(status, loopId);
+        }
+        return { status };
     }
 
     async #run(
