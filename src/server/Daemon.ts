@@ -8,7 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import MethodRegistry from "./MethodRegistry.ts";
-import type { NotifyTarget } from "./MethodRegistry.ts";
+import type { NotifyTarget, Provider } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
 
 import { register as registerPing } from "./methods/ping.ts";
@@ -27,6 +27,7 @@ import { register as registerOpSend } from "./methods/op_send.ts";
 import { register as registerOpExec } from "./methods/op_exec.ts";
 import { register as registerOpDispatch } from "./methods/op_dispatch.ts";
 import { register as registerOpParse } from "./methods/op_parse.ts";
+import { register as registerLoopRun } from "./methods/loop_run.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -41,13 +42,15 @@ export interface DaemonAddress {
 export default class Daemon {
     #db: DatabaseSync;
     #engine: Engine;
+    #provider: Provider | null;
     #registry: MethodRegistry;
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
 
-    constructor({ db, schemes }: { db: DatabaseSync; schemes?: SchemeRegistry }) {
+    constructor({ db, schemes, provider }: { db: DatabaseSync; schemes?: SchemeRegistry; provider?: Provider | null }) {
         this.#db = db;
         this.#engine = new Engine({ db, schemes: schemes ?? new SchemeRegistry() });
+        this.#provider = provider ?? null;
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();
         this.#registerNotifications();
@@ -55,6 +58,7 @@ export default class Daemon {
 
     get registry(): MethodRegistry { return this.#registry; }
     get engine(): Engine { return this.#engine; }
+    get provider(): Provider | null { return this.#provider; }
 
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
@@ -112,12 +116,21 @@ export default class Daemon {
         registerOpExec(this.#registry);
         registerOpDispatch(this.#registry);
         registerOpParse(this.#registry);
+        registerLoopRun(this.#registry);
     }
 
     #registerNotifications(): void {
         this.#registry.registerNotification("log/entry", {
             description: "A new log_entries row was written; scoped to the connection's attached session.",
             params: { entry: "LogEntry — wire-shape log_entries row" },
+        });
+        this.#registry.registerNotification("loop/terminated", {
+            description: "A loop has reached a terminal status; scoped to the connection's attached session.",
+            params: {
+                loopId: "number",
+                finalStatus: "number — terminal status code (200, 499, etc.)",
+                hitMaxTurns: "boolean",
+            },
         });
     }
 
@@ -127,6 +140,7 @@ export default class Daemon {
             registry: this.#registry,
             db: this.#db,
             engine: this.#engine,
+            provider: this.#provider,
             broadcast: (target, from, method, params) => this.#broadcast(target, from, method, params),
         });
         this.#connections.add(conn);

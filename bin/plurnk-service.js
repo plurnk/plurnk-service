@@ -60,6 +60,33 @@ const migrate = async () => {
     } finally { db.close(); }
 };
 
+const loadOpenAIProvider = async () => {
+    // Vendor-specific env vars stay in the vendor's namespace. The bin script
+    // reads them and constructs the provider; plurnk-service's .env.example
+    // never documents OPENAI_* — see the provider package's README.
+    if (process.env.OPENAI_BASE_URL === undefined || process.env.OPENAI_BASE_URL === "") {
+        process.stdout.write("plurnk-service: OPENAI_BASE_URL not set; loop.run will return 501\n");
+        return null;
+    }
+    try {
+        const mod = await import("@plurnk/plurnk-providers-openai");
+        const OpenAI = mod.default;
+        const provider = new OpenAI({
+            baseUrl: process.env.OPENAI_BASE_URL,
+            apiKey: process.env.OPENAI_API_KEY ?? "",
+            model: process.env.OPENAI_MODEL ?? "",
+            contextSize: Number(process.env.OPENAI_CONTEXT_SIZE ?? "8192"),
+            fetchTimeoutMs: Number(process.env.OPENAI_FETCH_TIMEOUT_MS ?? "60000"),
+            think: process.env.OPENAI_THINK === "1",
+        });
+        process.stdout.write(`plurnk-service: provider openai (${process.env.OPENAI_MODEL ?? "<model unset>"})\n`);
+        return provider;
+    } catch (cause) {
+        process.stderr.write(`plurnk-service: failed to load OpenAI provider: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        return null;
+    }
+};
+
 const start = async () => {
     const dbPath = requireEnv("PLURNK_DB_PATH");
     const host = process.env.PLURNK_HOST ?? "127.0.0.1";
@@ -68,7 +95,8 @@ const start = async () => {
 
     const db = openDb(dbPath);
     await new Migrator({ db, dir }).migrate();
-    const daemon = new Daemon({ db });
+    const provider = await loadOpenAIProvider();
+    const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host, port });
     process.stdout.write(`plurnk-service: listening on ws://${addr.host}:${addr.port}\n`);
     process.stdout.write(`plurnk-service: db ${dbPath}\n`);
