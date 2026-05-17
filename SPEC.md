@@ -539,6 +539,10 @@ Every plurnk-service deployment configures via env vars. Cascade: `.env.example`
 | Var                                  | Default            | Purpose                                                              |
 |--------------------------------------|--------------------|----------------------------------------------------------------------|
 | `PLURNK_DB_PATH`                     | `./plurnk_dev.db`  | SQLite file path. Dev uses `plurnk_dev.db`; prod uses `plurnk.db`.   |
+| `PLURNK_HOST`                        | `127.0.0.1`        | Bind address for the daemon WebSocket. Local-only by default.        |
+| `PLURNK_PORT`                        | `3044`             | TCP port for the daemon WebSocket.                                   |
+| `PLURNK_MAX_TURNS`                   | `50`               | Default safety cap on turns per `loop.run` (overridable per call).   |
+| `PLURNK_RPC_TIMEOUT`                 | `30000`            | Timeout in ms for non-`longRunning` RPC handlers.                    |
 | `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel head/tail token budget for index preview tiles.          |
 | `PLURNK_SUBSCRIPTION_BURST`          | `64`               | Max chunks delivered into `packet.system.log[]` per turn per subscription. |
 | `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop (vs. boundaries only). |
@@ -547,3 +551,208 @@ Every plurnk-service deployment configures via env vars. Cascade: `.env.example`
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
 External provider/scheme/mimetype plugins declare their own env vars in their own `.env.example` files; plurnk-service merges them at boot via the cascading-env convention.
+
+The admin CLI (`bin/plurnk-service.js`) auto-derives flags from `.env.example`. Every `PLURNK_*` env var becomes a `--<kebab-cased-name>` flag (prefix stripped, lowercased, underscores → dashes). A comment immediately above the env line (no blank line between) becomes the flag's `-h` description. Vars without a comment are still accepted as flags but hidden from `-h`. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor-specific config belongs to the vendor's package, not to plurnk-service's namespace.
+
+---
+
+## §13 RPC Surface
+
+`plurnk-service` runs as a daemon — a long-lived process owning the engine, DB, providers, schemes, and mimetypes. Clients (TUI, CLI, neovim plugin, Telegram bot, web app, anything) connect over a network protocol and drive the agent through a self-describing RPC contract.
+
+This section defines the wire. Implementing a new client should require reading only §13 — no source diving, no protocol guessing.
+
+### §13.1 Transport
+
+WebSocket via the `ws` npm package. One message per `ws.send`. UTF-8 JSON payloads. Single full-duplex connection per client.
+
+Configuration via §12:
+
+- `PLURNK_PORT` (default `3044`) — TCP port to bind.
+- `PLURNK_HOST` (default `127.0.0.1`) — bind address. Local-only by default; explicit operator action to expose beyond loopback.
+
+Out of scope for v0: authentication, TLS, multiplexing. Local-loopback + filesystem permissions are the access control. Network exposure gets its own design pass with auth.
+
+### §13.2 Protocol
+
+JSON-RPC 2.0 (https://www.jsonrpc.org/specification). Two message kinds:
+
+- **Request:** `{ "jsonrpc": "2.0", "id": "...", "method": "...", "params": {...} }`. Server replies with a matching `id`.
+- **Notification:** `{ "jsonrpc": "2.0", "method": "...", "params": {...} }`. No `id`; no reply expected. Server-initiated for live events.
+
+Server responses are `{ "jsonrpc": "2.0", "id": "...", "result": {...} }` on success or `{ "jsonrpc": "2.0", "id": "...", "error": { "code": ..., "message": "...", "data": {...} } }` on failure.
+
+Wire envelope matches rummy's; clients written against rummy translate with cosmetic renames only.
+
+### §13.3 Method registration
+
+Every RPC method is registered on the daemon with metadata:
+
+```ts
+registry.register("loop.run", {
+    handler: async (params, ctx) => { /* ... */ },
+    description: "Run a model-driven loop with a prompt; streams log/entry notifications.",
+    params: {
+        prompt: "string — the user prompt for the loop",
+        sessionId: "number? — defaults to current attached session",
+        maxTurns: "number? — defaults to PLURNK_MAX_TURNS",
+    },
+    requiresInit: true,
+    longRunning: true,
+});
+```
+
+Metadata fields:
+
+- `handler(params, ctx) -> Promise<result>` — the implementation.
+- `description: string` — one-line human description; surfaced by `discover`.
+- `params: Record<string, string>` — per-param descriptions; surfaced by `discover`. The string format is `"type — meaning"` with `?` suffix for optional types. Self-documenting, not enforced.
+- `requiresInit: boolean` — if true, server rejects this method until a session is attached.
+- `longRunning: boolean` — exempt from the RPC timeout (`PLURNK_RPC_TIMEOUT`). Use for methods that intentionally take many seconds (running a loop).
+
+### §13.4 Discovery
+
+The `discover` method returns the entire method + notification catalog:
+
+```json
+{
+    "methods": {
+        "ping": { "description": "Liveness check.", "params": {} },
+        "loop.run": { "description": "Run a model-driven loop.", "params": {...} },
+        "...": "..."
+    },
+    "notifications": {
+        "log/entry": { "description": "A new log_entries row was written.", "params": {...} },
+        "loop/terminated": { "description": "A loop reached a terminal status.", "params": {...} },
+        "...": "..."
+    },
+    "capabilities": {
+        "providers": [...],
+        "schemes": [...],
+        "mimetypes": [...]
+    }
+}
+```
+
+`capabilities` lists the registered plug-ins by `(kind, name)` so clients can show "what's available" without polling separate endpoints. A client connecting cold calls `discover` first, then renders its UI accordingly. No hardcoding of method names or capability lists in any client.
+
+### §13.5 Core method set
+
+The minimum v0 surface. Methods are grouped by concern.
+
+**Liveness + introspection**
+
+| Method     | Params | Result | Notes |
+|------------|--------|--------|-------|
+| `ping`     | none   | `{}`   | Liveness. No init required. |
+| `discover` | none   | catalog (§13.4) | No init required. |
+
+**Sessions**
+
+| Method            | Params              | Result            | Notes |
+|-------------------|---------------------|-------------------|-------|
+| `session.create`  | `name?: string`     | `{ id, name }`    | Creates new session; auto-name from timestamp if unprovided. |
+| `session.list`    | none                | `Session[]`       | Lists all sessions. |
+| `session.attach`  | `id: number`        | `{ id, name }`    | Binds this connection to an existing session; subsequent ops use it. |
+
+If a client issues a method requiring init (`requiresInit: true`) without first calling `session.attach` or `session.create`, the daemon auto-creates the envelope on demand: session → run → client loop, all persisted normally. Auto-creation is a convenience for one-off invocations (Telegram quick-queries, neovim ad-hoc dispatches, `plurnk "prompt"` CLI shots); the records carry through the same way explicitly-created ones do. **Auto-created ≠ auto-deleted.** Records persist for the log's forensic value. If a client wants active cleanup, that's a future `session.delete` / `session.archive` endpoint, opt-in.
+
+**Loops + dispatches**
+
+| Method        | Params                              | Result                 | Notes |
+|---------------|-------------------------------------|------------------------|-------|
+| `loop.run`    | `prompt`, `maxTurns?`               | `{ loopId, turnIds, finalStatus, hitMaxTurns }` | Model-driven loop. Streams `log/entry` notifications during. `longRunning: true`. |
+| `op.dispatch` | `op: PlurnkStatement`               | `{ status, ... }`      | Single client-origin dispatch. Creates a turn in the connection's client loop (§13.7). |
+
+**Reads**
+
+| Method        | Params                              | Result                 | Notes |
+|---------------|-------------------------------------|------------------------|-------|
+| `entry.read`  | `path`, `sessionId?`                | `{ entry } \| { status: 404 }` | Reads an entry by path. |
+| `log.read`    | `loopId?`, `turnId?`, `limit?`      | `LogEntry[]`           | Reads log rows; for catch-up after reconnect. |
+
+Future-reserved (post-v0):
+
+- `entry.find` — server-side glob/regex search over entries (mirrors `<<FIND>>` from the wire side).
+- `subscription.list` — list active streaming subscriptions (§7).
+- `subscription.cancel` — analog of `SEND[499]` over RPC.
+
+### §13.6 Notifications
+
+Server-initiated events streamed to the client over the same WebSocket. Critical for live waterfall rendering.
+
+| Notification       | Params                              | When fired |
+|--------------------|-------------------------------------|------------|
+| `log/entry`        | `{ entry: LogEntry }`               | Every time a `log_entries` row is written. |
+| `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | When a loop reaches a terminal status. |
+| `session/created`  | `{ session: Session }`              | When a session is created (any client's action; gives multi-client awareness). |
+
+Future-reserved: `stream/event` for the stream model (§7) — chunks accumulating, subscriptions opening/closing.
+
+Notifications are scoped to the connection's attached session — a client attached to session A does NOT receive `log/entry` notifications for actions on session B. (Cross-session observation is a future feature; v0 keeps the scope tight.)
+
+### §13.7 Connection lifecycle
+
+```
+[client]                                          [daemon]
+   |                                                 |
+   |-- ws.connect ----------------------------------->|
+   |<------- on('open') --------------------------- |
+   |                                                 |
+   |-- discover() ---------------------------------->|
+   |<------- { methods, notifications, capabilities }|
+   |                                                 |
+   |-- session.attach(id=42) ------------------------>|
+   |<------- { id: 42, name: "demo-session" }       |
+   |   (daemon opens a client loop in session 42)    |
+   |                                                 |
+   |-- loop.run(prompt="...") ----------------------->|
+   |<-- notification: log/entry { ... }              |
+   |<-- notification: log/entry { ... }              |
+   |<-- notification: loop/terminated { ... }        |
+   |<------- { loopId, turnIds, finalStatus: 200 }   |
+   |                                                 |
+   |-- op.dispatch(op=...) -------------------------->|
+   |<-- notification: log/entry { ... }              |
+   |<------- { status: 201 }                         |
+   |                                                 |
+   |-- ws.close ------------------------------------->|
+   |   (daemon closes the client loop; session keeps)|
+```
+
+The **client loop** is the envelope for client-origin actions. When a session is attached (explicit or auto-created), the daemon opens a loop in the session's current run (auto-creating the run too if absent) with `origin = "client"`. Every `op.dispatch` call creates a turn in that loop. On disconnect, the loop's `status` transitions to a closed terminal but the rows persist. Multiple connections to the same session each get their own client loop; they coexist.
+
+`loop.run` creates a separate, normal loop (origin = "model") for the model-driven turn sequence. It coexists with the client loop in the same run.
+
+### §13.8 Errors
+
+Standard JSON-RPC error codes:
+
+| Code   | Meaning                       |
+|--------|-------------------------------|
+| -32700 | Parse error (malformed JSON)  |
+| -32600 | Invalid request               |
+| -32601 | Method not found              |
+| -32602 | Invalid params                |
+| -32603 | Internal error                |
+
+Plurnk-specific extensions in the `-32000` to `-32099` range:
+
+| Code   | Meaning                                            |
+|--------|----------------------------------------------------|
+| -32000 | Not initialized (method requires session attach)   |
+| -32001 | Session not found                                  |
+| -32002 | Loop not found                                     |
+| -32003 | Entry not found (404 from the engine layer)        |
+| -32004 | Provider unavailable                               |
+| -32005 | Scheme unavailable                                 |
+| -32006 | Mimetype unavailable                               |
+| -32007 | Timeout                                            |
+
+Error responses MAY include `data: { ... }` with structured context (the path that was 404'd, the method that timed out, etc.) for client error rendering.
+
+### §13.9 Versioning
+
+`plurnk-service` exposes a `protocolVersion` field in `discover`'s response (semver). Major version mismatches are a contract break — clients SHOULD refuse to operate on a major mismatch. Minor/patch increments are backward-compatible.
+
+v0 of this SPEC corresponds to `protocolVersion: "0.1.0"`. Promotes to `1.0.0` when the floor scope lands green and the daemon implementation has run against at least the TUI and one external client (neovim plugin or Telegram bot).
