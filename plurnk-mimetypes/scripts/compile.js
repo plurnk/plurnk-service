@@ -101,6 +101,10 @@ const BUILDS = [
 		grammarDir: "scala/scala2",
 		g4: ["Scala.g4"],
 	},
+	// scala3 deferred: vendor/grammars-v4/scala/scala3 ships a 532-line
+	// Scala3LexerBase.java (Dotty-style INDENT/DEDENT injector with region
+	// tracking) but no JS port. Wiring it up requires hand-porting that base
+	// class. Revisit when upstream ships a JS port or when there is demand.
 	{
 		id: "cobol85",
 		grammarDir: "cobol85",
