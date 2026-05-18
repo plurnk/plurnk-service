@@ -65,3 +65,44 @@ export const seedEnvelope = async (db: Db, label: string): Promise<{
     const turnId = await insertTurn(db, loopId, 1);
     return { sessionId, runId, loopId, turnId };
 };
+
+// Seed an entry with one channel + visibility row, bypassing scheme handlers.
+// Used by tests that need precise DB state for render / visibility / streaming
+// assertions.
+export const seedEntryWithChannel = async (
+    db: Db,
+    opts: {
+        sessionId: number;
+        runId?: number;
+        scheme?: string;
+        pathname?: string;
+        channel?: string;
+        content?: string;
+        mimetype?: string;
+        state?: "static" | "active" | "closed" | "errored";
+        indexed?: 0 | 1;
+    },
+): Promise<number> => {
+    const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+        session_id: opts.sessionId,
+        scheme: opts.scheme ?? "known",
+        pathname: opts.pathname ?? "x",
+    });
+    if (entry === undefined) throw new Error("seedEntryWithChannel: insert returned no row");
+    await (db.test_seed_channel as PrepMethod).run({
+        entry_id: entry.id,
+        name: opts.channel ?? "body",
+        content: opts.content ?? "",
+        mimetype: opts.mimetype ?? "text/plain",
+        state: opts.state ?? "static",
+    });
+    if (opts.runId !== undefined) {
+        await (db.test_seed_visibility as PrepMethod).run({
+            run_id: opts.runId,
+            entry_id: entry.id,
+            channel: opts.channel ?? "body",
+            indexed: opts.indexed ?? 1,
+        });
+    }
+    return entry.id;
+};
