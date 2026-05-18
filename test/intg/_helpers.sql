@@ -133,3 +133,30 @@ SELECT pathname FROM entries WHERE id = $id;
 
 -- PREP: test_first_log_entry_for_turn
 SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index LIMIT 1;
+
+-- PREP: test_set_loop_status
+UPDATE loops SET status = $status WHERE id = $id;
+
+-- PREP: test_read_log_entries_for_turn_by_op
+SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
+
+-- PREP: test_delete_entry
+DELETE FROM entries WHERE id = $id;
+
+-- PREP: test_delete_run
+DELETE FROM runs WHERE id = $id;
+
+-- PREP: test_count_subscriptions_for_entry
+SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
+
+-- PREP: test_count_subscriptions_for_run
+SELECT COUNT(*) AS n FROM subscriptions WHERE run_id = $run_id;
+
+-- PREP: test_invalid_subscription_only_closed_at
+-- Used to verify the closed_at + close_status pairing CHECK constraint.
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, closed_at)
+VALUES ($run_id, $entry_id, 'sse', 'h', '2026-01-01T00:00:00Z');
+
+-- PREP: test_invalid_subscription_only_close_status
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, close_status)
+VALUES ($run_id, $entry_id, 'sse', 'h', 200);

@@ -5,6 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Mock from "../../src/providers/Mock.ts";
 import type { MockResponse } from "../../src/providers/Mock.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -57,12 +58,12 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
         assert.equal(result.finalStatus, 200);
         assert.equal(result.hitMaxTurns, false);
 
-        const entryCount = (db.prepare("SELECT COUNT(*) AS n FROM entries").get() as { n: number }).n;
+        const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(entryCount, 3);
 
-        const loopStatus = (db.prepare("SELECT status FROM loops WHERE id = ?").get(loopId) as { status: number }).status;
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: maxTurns hit — force-terminate with 499 and hitMaxTurns flag", async () => {
@@ -79,15 +80,15 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 499 and hitMaxTurns 
         assert.equal(result.turnIds.length, 3);
         assert.equal(result.finalStatus, 499);
         assert.equal(result.hitMaxTurns, true);
-        const loopStatus = (db.prepare("SELECT status FROM loops WHERE id = ?").get(loopId) as { status: number }).status;
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 499);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        db.prepare("UPDATE loops SET status = 200 WHERE id = ?").run(loopId);
+        await (db.test_set_loop_status as PrepMethod).run({ status: 200, id: loopId });
         const provider = new Mock({ contextSize: 100000, responses: [response([sendStmt(200, "")])] });
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId,
@@ -97,7 +98,7 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
         assert.equal(result.finalStatus, 200);
         assert.equal(result.hitMaxTurns, false);
         assert.equal(provider.remaining, 1, "provider untouched");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: 499 model-emitted termination", async () => {
@@ -114,7 +115,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
         assert.equal(result.turnIds.length, 2);
         assert.equal(result.finalStatus, 499);
         assert.equal(result.hitMaxTurns, false);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
@@ -138,9 +139,9 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             messages: [{ role: "user", content: "store then retrieve" }],
         });
         assert.equal(result.turnIds.length, 2);
-        const readLog = db.prepare("SELECT status_rx FROM log_entries WHERE turn_id = ? AND op = 'READ'").get(result.turnIds[1]) as { status_rx: number };
-        assert.equal(readLog.status_rx, 200, "READ in turn 2 found the entry written in turn 1");
-    } finally { db.close(); }
+        const readLog = await (db.test_read_log_entries_for_turn_by_op as PrepMethod).get<{ status_rx: number }>({ turn_id: result.turnIds[1], op: "READ" });
+        assert.equal(readLog?.status_rx, 200, "READ in turn 2 found the entry written in turn 1");
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: signal abort between turns throws AbortError", async () => {
@@ -151,13 +152,12 @@ test("Engine.runLoop: signal abort between turns throws AbortError", async () =>
             contextSize: 100000,
             responses: [response([sendStmt(102, "1")]), response([sendStmt(102, "2")]), response([sendStmt(200, "3")])],
         });
-        // Abort partway through — easiest way is to abort before any turn runs.
         controller.abort();
         await assert.rejects(
             () => engine.runLoop({ provider, sessionId, runId, loopId, messages: [], signal: controller.signal }),
             { name: "AbortError" },
         );
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runLoop: turn sequence numbers monotonic", async () => {
@@ -172,7 +172,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
             ],
         });
         await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
-        const seqs = db.prepare("SELECT sequence FROM turns WHERE loop_id = ? ORDER BY sequence").all(loopId) as { sequence: number }[];
+        const seqs = await (db.test_list_turns_in_loop as PrepMethod).all<{ sequence: number }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
