@@ -1,13 +1,11 @@
 // Tests for daemon's stream/event notification. SPEC §7.9 + §13.6.
-// Verifies notifications fire when ChannelWrite helpers update channels, and
-// are scoped to the session containing the entry.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
-import type { DatabaseSync } from "node:sqlite";
 import Daemon from "../../src/server/Daemon.ts";
 import { appendToChannel, setChannelState } from "../../src/core/ChannelWrite.ts";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
 interface RpcResponse {
@@ -41,12 +39,12 @@ const subscribeNotifications = (ws: WebSocket, method: string): (() => unknown[]
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 
-const withDaemon = async <T>(fn: (db: DatabaseSync, daemon: Daemon, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
+const withDaemon = async <T>(fn: (db: Db, daemon: Daemon, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
     try { return await fn(db, daemon, addr); }
-    finally { await daemon.stop(); db.close(); }
+    finally { await daemon.stop(); await db.close(); }
 };
 
 const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
@@ -56,13 +54,14 @@ const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
         ws.once("error", reject);
     });
 
-const seedEntryWithChannel = (db: DatabaseSync, sessionId: number, channelName: string, content: string, state: string) => {
-    const entry = db
-        .prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, 'known', 'x') RETURNING id")
-        .get(sessionId) as { id: number };
-    db.prepare(
-        "INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state) VALUES (?, ?, ?, 'text/plain', 0, ?)",
-    ).run(entry.id, channelName, content, state);
+const seedEntryWithChannel = async (db: Db, sessionId: number, channelName: string, content: string, state: string): Promise<number> => {
+    const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+        session_id: sessionId, scheme: "known", pathname: "x",
+    });
+    if (entry === undefined) throw new Error("seed entry failed");
+    await (db.test_seed_channel as PrepMethod).run({
+        entry_id: entry.id, name: channelName, content, mimetype: "text/plain", state,
+    });
     return entry.id;
 };
 
@@ -85,10 +84,8 @@ test("notifyStreamEvent broadcasts to clients attached to the entry's session", 
             const sessionId = (sessionResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
 
-            // Seed an entry + channel directly
-            const entryId = seedEntryWithChannel(db, sessionId, "body", "hello", "active");
+            const entryId = await seedEntryWithChannel(db, sessionId, "body", "hello", "active");
 
-            // Fire a stream/event manually via the daemon API
             daemon.notifyStreamEvent(sessionId, { entryId, channel: "body", state: "active", contentLength: 5 });
             await flush();
 
@@ -109,18 +106,18 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
             const sessionResp = await rpcCall(ws, 1, "session.create", { name: "append-test" });
             const sessionId = (sessionResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = seedEntryWithChannel(db, sessionId, "body", "hi", "active");
+            const entryId = await seedEntryWithChannel(db, sessionId, "body", "hi", "active");
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
-            appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
-            appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
+            await appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
+            await appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
             await flush();
 
             const events = captured() as Array<{ contentLength: number }>;
             assert.equal(events.length, 2);
-            assert.equal(events[0].contentLength, 3);  // "hi" + "!"
-            assert.equal(events[1].contentLength, 4);  // "hi!" + "?"
+            assert.equal(events[0].contentLength, 3);
+            assert.equal(events[1].contentLength, 4);
         } finally { ws.close(); }
     });
 });
@@ -132,9 +129,9 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
             const sessionResp = await rpcCall(ws, 1, "session.create", { name: "state-test" });
             const sessionId = (sessionResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = seedEntryWithChannel(db, sessionId, "body", "done", "active");
+            const entryId = await seedEntryWithChannel(db, sessionId, "body", "done", "active");
 
-            setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
+            await setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
             await flush();
 
             const events = captured() as Array<{ state: string }>;
@@ -157,22 +154,18 @@ test("stream/event is session-scoped — other sessions don't see it", async () 
             const aEvents = subscribeNotifications(wsA, "stream/event");
             const bEvents = subscribeNotifications(wsB, "stream/event");
 
-            // Seed an entry in session A
-            const entryIdA = seedEntryWithChannel(db, sessionA, "body", "hi", "active");
+            const entryIdA = await seedEntryWithChannel(db, sessionA, "body", "hi", "active");
             daemon.notifyStreamEvent(sessionA, { entryId: entryIdA, channel: "body", state: "active", contentLength: 2 });
 
-            // Seed an entry in session B
-            const entryIdB = seedEntryWithChannel(db, sessionB, "body", "yo", "active");
+            const entryIdB = await seedEntryWithChannel(db, sessionB, "body", "yo", "active");
             daemon.notifyStreamEvent(sessionB, { entryId: entryIdB, channel: "body", state: "active", contentLength: 2 });
 
             await flush();
 
-            // A sees only its own event
             const aCaptured = aEvents() as Array<{ entryId: number }>;
             assert.equal(aCaptured.length, 1);
             assert.equal(aCaptured[0].entryId, entryIdA);
 
-            // B sees only its own event
             const bCaptured = bEvents() as Array<{ entryId: number }>;
             assert.equal(bCaptured.length, 1);
             assert.equal(bCaptured[0].entryId, entryIdB);
