@@ -8,12 +8,20 @@ import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import MimetypeRegistry from "../../src/core/MimetypeRegistry.ts";
-import TextMarkdown from "../../src/mimetypes/TextMarkdown.ts";
+import TextMarkdown from "@plurnk/plurnk-mimetypes-text-markdown";
 import TextPlain from "../../src/mimetypes/TextPlain.ts";
 import Mock from "../../src/providers/Mock.ts";
 import type { MimetypeHandler } from "../../src/mimetypes/_types.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
+
+// Bundle text/markdown explicitly; the bundled MimetypeRegistry only ships
+// text/plain. In production Daemon's plugin discovery registers markdown.
+const makeMimetypes = (): MimetypeRegistry => {
+    const r = new MimetypeRegistry();
+    r.register(new TextMarkdown());
+    return r;
+};
 
 const sendStmt = (status: number): SendStatement => ({
     op: "SEND", suffix: "", signal: status, path: null,
@@ -67,7 +75,7 @@ test("[§4-handlers-fire-render-time] Engine invokes mimetype.preview when assem
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         const body = "# Title\n\nSome paragraph.\n\n## Sub\n\nMore.";
         await seedEntry(db, {
@@ -91,7 +99,7 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         const md = "# Heading\n\nbody text";
         const plain = "raw\nplain\ntext";
@@ -116,7 +124,7 @@ test("[§5.2-render-filters-by-indexed] hidden channels (indexed=0) do not appea
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "visible",
@@ -140,7 +148,7 @@ test("[§5.6-engine-does-not-branch-on-state] active (mid-stream) channels rende
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "stream",
@@ -161,7 +169,7 @@ test("empty index when run has no visible channels", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         const result = await runTurnOnce(db, env, engine);
         const packet = await readPacket(db, result.turnId);
@@ -207,7 +215,7 @@ test("[§4-handlers-fire-render-time] unknown mimetype falls back to verbatim co
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "weird",
@@ -226,7 +234,7 @@ test("index entries carry tags from entry_tags", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: new MimetypeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
 
         const entryId = await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "tagged",
