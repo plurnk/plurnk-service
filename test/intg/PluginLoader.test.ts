@@ -5,7 +5,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import { discoverPlugins } from "../../src/core/PluginLoader.ts";
+import { discoverPlugins, assertIdentityMatch } from "../../src/core/PluginLoader.ts";
+import type { DiscoveredPlugin } from "../../src/core/PluginLoader.ts";
+
+const fakePlugin = (kind: "mimetype" | "scheme" | "provider", name: string): DiscoveredPlugin => ({
+    packageName: `@plurnk/plurnk-${kind}s-${name.replace(/\//g, "-")}`,
+    packagePath: `/tmp/fake/${name}`,
+    manifest: { kind, name },
+});
 
 // Helpers to build a synthetic node_modules layout
 const makeTempNodeModules = async (): Promise<string> => {
@@ -104,6 +111,43 @@ test("discoverPlugins accepts all three valid kinds: provider, scheme, mimetype"
         const kinds = plugins.map((p) => p.manifest.kind).toSorted();
         assert.deepEqual(kinds, ["mimetype", "provider", "scheme"]);
     } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("assertIdentityMatch: mimetype instance.mimetype must match manifest.name", () => {
+    const plugin = fakePlugin("mimetype", "text/markdown");
+    assertIdentityMatch(plugin, { mimetype: "text/markdown" });  // ok
+    assert.throws(
+        () => assertIdentityMatch(plugin, { mimetype: "text/plain" }),
+        /identity mismatch.*text\/markdown.*text\/plain/,
+    );
+});
+
+test("assertIdentityMatch: mimetype instance without mimetype field rejected", () => {
+    const plugin = fakePlugin("mimetype", "text/markdown");
+    assert.throws(
+        () => assertIdentityMatch(plugin, {}),
+        /must declare a string `mimetype` field/,
+    );
+});
+
+test("assertIdentityMatch: scheme class manifest.name must match manifest.name when present", () => {
+    const plugin = fakePlugin("scheme", "known");
+    class GoodScheme { static manifest = { name: "known" }; }
+    class BadScheme { static manifest = { name: "wrong" }; }
+    class NoManifestScheme {}  // transitional — bundled schemes don't have static manifest yet
+    assertIdentityMatch(plugin, new GoodScheme());  // ok
+    assertIdentityMatch(plugin, new NoManifestScheme());  // ok (transitional)
+    assert.throws(
+        () => assertIdentityMatch(plugin, new BadScheme()),
+        /identity mismatch.*known.*wrong/,
+    );
+});
+
+test("assertIdentityMatch: providers skip identity check (vendor name vs model identity separation)", () => {
+    const plugin = fakePlugin("provider", "openai");
+    // Providers don't carry a top-level identity matching manifest.name; model is per-config.
+    assertIdentityMatch(plugin, { model: "gpt-5" });  // no throw
+    assertIdentityMatch(plugin, {});  // no throw even with empty instance
 });
 
 test("discoverPlugins skips packages with unparseable package.json", async () => {
