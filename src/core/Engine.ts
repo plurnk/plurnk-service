@@ -100,6 +100,59 @@ const TURN_STATUS_NO_OPS = 422;
 // SOFT_FAILURE_OUTCOMES = {"not_found", "unparsed"}.
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 501]);
 
+const DEFAULT_MIN_CYCLES = 3;
+const DEFAULT_MAX_CYCLE_PERIOD = 4;
+
+const readPositiveInt = (envVar: string, fallback: number): number => {
+    const raw = process.env[envVar];
+    if (raw === undefined || raw.length === 0) return fallback;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) return fallback;
+    return n;
+};
+
+// Per-op fingerprint: op verb + target URI. Body deliberately excluded so the
+// model writing varied content to the same target still trips. Path kind is
+// included as a discriminator (url vs local). Rummy parallel: scheme +
+// sorted attributes joined by '='.
+const fingerprintOp = (stmt: PlurnkStatement): string => {
+    const path = stmt.path;
+    if (path === null) return `${stmt.op}|(no-path)`;
+    if (path.kind === "url") return `${stmt.op}|${path.scheme}://${path.pathname}`;
+    return `${stmt.op}|local:${path.raw}`;
+};
+
+// Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
+// within a turn doesn't matter — we want the SET of activities.
+export const fingerprintTurn = (ops: ReadonlyArray<PlurnkStatement>): string => {
+    return ops.map(fingerprintOp).toSorted().join(",");
+};
+
+// Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
+// check whether the last k*minCycles entries form minCycles repetitions of the
+// same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny. Rummy
+// parallel: src/plugins/error/error.js detectCycle.
+export const detectCycle = (
+    history: ReadonlyArray<string>,
+    minCycles: number,
+    maxCyclePeriod: number,
+): { detected: false } | { detected: true; period: number; cycles: number } => {
+    for (let k = 1; k <= maxCyclePeriod; k++) {
+        const needed = k * minCycles;
+        if (history.length < needed) continue;
+        const tail = history.slice(-needed);
+        const cycle = tail.slice(0, k);
+        let match = true;
+        outer: for (let rep = 0; rep < minCycles; rep++) {
+            for (let j = 0; j < k; j++) {
+                if (tail[rep * k + j] !== cycle[j]) { match = false; break outer; }
+            }
+        }
+        if (match) return { detected: true, period: k, cycles: minCycles };
+    }
+    return { detected: false };
+};
+
 export default class Engine {
     #db: Db;
     #schemes: SchemeRegistry;
@@ -112,7 +165,8 @@ export default class Engine {
     // Rail #38 strike state per loop. `streak` = consecutive struck turns;
     // resets on a clean turn. `turnErrors` is bumped externally by per-turn
     // rails (cycle detection #39, etc.) — read and reset at end of each turn.
-    #strikeState = new Map<number, { streak: number; turnErrors: number }>();
+    // `history` holds per-turn fingerprints for rail #39 cycle detection.
+    #strikeState = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
 
     constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: MimetypeRegistry }) {
         this.#db = db;
@@ -135,13 +189,19 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, sessionId, runId, loopId, maxTurns = 50, maxStrikes = readMaxStrikes(), origin = "model", signal, onDispatch,
+        provider, messages, sessionId, runId, loopId,
+        maxTurns = 50, maxStrikes = readMaxStrikes(),
+        minCycles = readPositiveInt("PLURNK_MIN_CYCLES", DEFAULT_MIN_CYCLES),
+        maxCyclePeriod = readPositiveInt("PLURNK_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
+        origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
         messages: ChatMessage[];
         sessionId: number; runId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
+        minCycles?: number;
+        maxCyclePeriod?: number;
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -173,13 +233,29 @@ export default class Engine {
             const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal, onDispatch });
             turnIds.push(turn.turnId);
 
+            // Rail #39: cycle detection. Push this turn's fingerprint to
+            // history, scan for repetition patterns. Detection bumps
+            // turnErrors so the strike system handles abandonment naturally.
+            const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
+            state.history.push(turn.fingerprint);
+            const cycle = detectCycle(state.history, minCycles, maxCyclePeriod);
+            if (cycle.detected) {
+                state.turnErrors++;
+                this.#pushTelemetry(loopId, {
+                    kind: "cycle",
+                    period: cycle.period,
+                    cycles: cycle.cycles,
+                    message: `repeating pattern detected: ${cycle.cycles}× period-${cycle.period}; vary your approach`,
+                });
+            }
+            this.#strikeState.set(loopId, state);
+
             // Rail #38: strike accounting. Three sources strike a turn:
             //  1. recordedFailed — any action-entry at hard failure status
             //     (>= 400 and not in SOFT_FAILURE_STATUSES).
             //  2. noOps — turn.status === TURN_STATUS_NO_OPS (per #41).
             //  3. turnErrors — externally bumped by per-turn rails (#39 cycle).
             // Struck → streak++; clean → streak = 0. Threshold → abandon.
-            const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0 };
             const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
             const noOps = turn.status === TURN_STATUS_NO_OPS;
             const struck = noOps || recordedFailed || state.turnErrors > 0;
@@ -225,7 +301,7 @@ export default class Engine {
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnId: number; status: number; statuses: number[] }> {
+    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
         const response = await provider.generate({ messages, signal });
 
         const opsCount = response.assistant.ops.length;
@@ -275,7 +351,7 @@ export default class Engine {
             });
         }
 
-        return { turnId, status: turnStatus, statuses };
+        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(response.assistant.ops) };
     }
 
     async #buildPacket(messages: ChatMessage[], response: ProviderResponse, runId: number, loopId: number): Promise<object> {

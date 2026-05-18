@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Mock from "../../src/providers/Mock.ts";
@@ -173,9 +173,11 @@ test("Engine.runLoop: sudden_death fires inside the window, not before", async (
     try {
         // maxTurns=5, maxStrikes=2 → threshold=3. Warnings on turns 3, 4.
         // After turn 5 the maxTurns guard cancels.
+        // Vary per-turn fingerprint (different EDIT path each turn) so rail
+        // #39 cycle detection stays orthogonal.
         const provider = new Mock({
             contextSize: 100000,
-            responses: Array.from({ length: 6 }, () => response([sendStmt(102, "go")])),
+            responses: Array.from({ length: 6 }, (_, i) => response([editStmt(`/var-${i}`, "v"), sendStmt(102, "go")])),
         });
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
@@ -228,18 +230,20 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
     try {
         // READ a missing unknown:// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
-        const readMissing = (): ReadStatement => ({
+        // Vary path each turn to keep rail #39 cycle detection orthogonal
+        // (per rummy's same-pattern test).
+        const readMissing = (suffix: string): ReadStatement => ({
             op: "READ", suffix: "", signal: null,
-            path: urlPath("unknown", "/not-there"),
+            path: urlPath("unknown", `/not-there-${suffix}`),
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                response([readMissing(), sendStmt(102, "1")]),
-                response([readMissing(), sendStmt(102, "2")]),
-                response([readMissing(), sendStmt(102, "3")]),
-                response([readMissing(), sendStmt(200, "done")]),
+                response([readMissing("a"), sendStmt(102, "1")]),
+                response([readMissing("b"), sendStmt(102, "2")]),
+                response([readMissing("c"), sendStmt(102, "3")]),
+                response([readMissing("d"), sendStmt(200, "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -336,6 +340,104 @@ test("Engine.runLoop: strike telemetry surfaces in next packet with streak count
         const t3strike = t3packet.user.telemetry.errors.find((e) => e.kind === "strike");
         assert.equal(t2strike?.streak, 1);
         assert.equal(t3strike?.streak, 2);
+    } finally { await db.close(); }
+});
+
+// Rail #39: cycle detection. Identical-fingerprint turns repeated MIN_CYCLES
+// times trip the detector, bumping turnErrors (which the strike system reads).
+
+test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumulate", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Same fingerprint each turn: EDIT known:///fixed + SEND[102].
+        // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → turnErrors++
+        // → strike. After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: Array.from({ length: 8 }, () => response([editStmt("/fixed", "v"), sendStmt(102, "go")])),
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(result.turnIds.length, 5, "cycle fires on turn 3; 3 consecutive cycle strikes (3, 4, 5) abandon");
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Vary EDIT path each turn → distinct fingerprints → no cycle.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([editStmt("/a", "1"), sendStmt(102, "1")]),
+                response([editStmt("/b", "2"), sendStmt(102, "2")]),
+                response([editStmt("/c", "3"), sendStmt(102, "3")]),
+                response([editStmt("/d", "4"), sendStmt(102, "4")]),
+                response([editStmt("/e", "5"), sendStmt(200, "done")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
+        });
+        assert.equal(result.finalStatus, 200);
+        assert.equal(result.turnIds.length, 5);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Pattern: A, B, A, B, A, B, A, B... detectCycle k=2 needs 6 turns.
+        // After turn 6: cycle detected → strike streak=1. maxStrikes=2 →
+        // turn 7 still cycles → streak=2 → ABANDON.
+        const A = (): EditStatement => editStmt("/A", "v");
+        const B = (): EditStatement => editStmt("/B", "v");
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([A(), sendStmt(102, "1")]),
+                response([B(), sendStmt(102, "2")]),
+                response([A(), sendStmt(102, "3")]),
+                response([B(), sendStmt(102, "4")]),
+                response([A(), sendStmt(102, "5")]),
+                response([B(), sendStmt(102, "6")]),
+                response([A(), sendStmt(102, "7")]),
+                response([B(), sendStmt(102, "8")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.reason, "strike_threshold");
+        assert.ok(result.turnIds.length >= 6 && result.turnIds.length <= 8, `period-2 cycle abandons in the 7th-8th turn (got ${result.turnIds.length})`);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: cycle telemetry surfaces with period and pattern", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Plenty of responses so Mock doesn't exhaust before abandon.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), sendStmt(102, "go")])),
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
+        });
+        // Turn 4's packet is built BEFORE turn 4 dispatch; it drains telemetry
+        // pushed during turn 3 (when cycle fired).
+        const t4 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[3] });
+        const packet = JSON.parse(t4?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string; period?: number; cycles?: number }> } };
+        };
+        const cycleEntry = packet.user.telemetry.errors.find((e) => e.kind === "cycle");
+        assert.ok(cycleEntry, "turn 4's packet has cycle telemetry from turn 3 detection");
+        assert.equal(cycleEntry?.period, 1);
+        assert.equal(cycleEntry?.cycles, 3);
     } finally { await db.close(); }
 });
 
