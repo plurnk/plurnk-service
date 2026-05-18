@@ -48,7 +48,7 @@ export default class Known {
     }
 
     async send(ctx: { db: DatabaseSync; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
-        return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
+        return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, runId: ctx.runId, scheme: SCHEME });
     }
 
     async find(ctx: { db: DatabaseSync; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
