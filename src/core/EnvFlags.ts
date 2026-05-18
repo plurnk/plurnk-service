@@ -71,17 +71,18 @@ export const parseEnvExample = async (path: string): Promise<FlagDescriptor[]> =
     return parseEnvExampleContent(content);
 };
 
-// Format flag list as -h help text. Hidden flags (no description) are omitted.
+// One-line-per-flag terse format. Descriptions, when present, share the
+// flag's line; otherwise the env name and default carry the meaning.
 export const formatFlagsHelp = (flags: FlagDescriptor[]): string => {
-    const documented = flags.filter((f) => f.description !== null);
-    if (documented.length === 0) return "";
-
-    const lines: string[] = ["options:"];
-    const flagWidth = Math.max(...documented.map((f) => f.flagName.length));
-    for (const f of documented) {
+    if (flags.length === 0) return "";
+    const lines: string[] = [];
+    const flagWidth = Math.max(...flags.map((f) => f.flagName.length));
+    for (const f of flags) {
         const pad = " ".repeat(Math.max(0, flagWidth - f.flagName.length) + 2);
-        lines.push(`  ${f.flagName}${pad}${f.description}`);
-        lines.push(`  ${" ".repeat(flagWidth + 2)}(default: ${JSON.stringify(f.defaultValue)}, env: ${f.envName})`);
+        const trailer = f.description !== null
+            ? `${f.description}  (${f.envName}=${f.defaultValue})`
+            : `${f.envName}=${f.defaultValue}`;
+        lines.push(`  ${f.flagName}${pad}${trailer}`);
     }
     return lines.join("\n");
 };

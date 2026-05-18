@@ -695,17 +695,22 @@ When future gaps surface, they get filed as grammar issues (not redesigned in pl
 
 ## §12 Operator Configuration
 
-Every plurnk-service deployment configures via env vars. Cascade: `.env.example` < `.env` < `.env.<profile>` < shell. `.env.example` declares every var with a sane default inline; no boot-time validators; read fails crash with the env-var path included.
+Every plurnk-service deployment configures via env vars. Cascade: `.env.example` (shipped defaults) < `.env` (project) < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example` so the daemon starts on `./bin/plurnk-service.js` with no setup required.
 
 | Var                                  | Default            | Purpose                                                              |
 |--------------------------------------|--------------------|----------------------------------------------------------------------|
-| `PLURNK_DB_PATH`                     | `./plurnk_dev.db`  | SQLite file path. Dev uses `plurnk_dev.db`; prod uses `plurnk.db`.   |
+| `PLURNK_DB_PATH`                     | `./plurnk.db`      | SQLite file path.                                                    |
 | `PLURNK_HOST`                        | `127.0.0.1`        | Bind address for the daemon WebSocket. Local-only by default.        |
 | `PLURNK_PORT`                        | `3044`             | TCP port for the daemon WebSocket.                                   |
-| `PLURNK_MAX_TURNS`                   | `50`               | Default safety cap on turns per `loop.run` (overridable per call).   |
-| `PLURNK_RPC_TIMEOUT`                 | `30000`            | Timeout in ms for non-`longRunning` RPC handlers.                    |
+| `PLURNK_MAX_TURNS`                   | `999`              | Per-loop turn cap (overridable per `loop.run` call).                 |
+| `PLURNK_MAX_COMMANDS`                | `99`               | Per-turn op cap.                                                     |
+| `PLURNK_RPC_TIMEOUT`                 | `30000`            | ms timeout for non-`longRunning` RPC handlers.                       |
+| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | ms wall-clock budget for a single `loop.run`.                        |
+| `PLURNK_MAX_STRIKES`                 | `3`                | Strike threshold + sudden-death lead time (§38–§40 rails).           |
+| `PLURNK_MIN_CYCLES`                  | `3`                | Min repetitions before cycle detection fires (§39).                  |
+| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | Max period length cycle detection examines (§39).                    |
 | `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel preview budget for index tiles (characters; §14.2).      |
-| `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop (vs. boundaries only). |
+| `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop.              |
 | `PLURNK_LOG_LEVEL`                   | `info`             | Stdout boot/crash banners only — runtime logging is DB rows.         |
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
