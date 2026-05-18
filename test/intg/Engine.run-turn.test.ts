@@ -150,6 +150,69 @@ test("Engine.runTurn: no-SEND failure surfaces in NEXT packet's user.telemetry.e
     } finally { await db.close(); }
 });
 
+// Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
+// window before maxTurns. Soft: no strike, no loop-status change.
+
+test("Engine.runLoop: sudden_death fires inside the window, not before", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // maxTurns=5, maxStrikes=2 → threshold=3. Warnings on turns 3, 4.
+        // After turn 5 the maxTurns guard cancels.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: Array.from({ length: 6 }, () => response([sendStmt(102, "go")])),
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
+        });
+        assert.equal(result.hitMaxTurns, true);
+        assert.equal(result.turnIds.length, 5);
+
+        // Inspect each turn's packet to see when sudden_death first appeared.
+        const turnPackets = await Promise.all(result.turnIds.map(async (id) => {
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
+            const packet = JSON.parse(row?.packet ?? "{}") as {
+                user: { telemetry: { errors: Array<{ kind: string }> } };
+            };
+            return packet.user.telemetry.errors.some((e) => e.kind === "sudden_death");
+        }));
+        // Sudden-death pushed AFTER turn 3 → surfaces in turn 4's packet.
+        // Pushed AFTER turn 4 → surfaces in turn 5's packet.
+        assert.deepEqual(turnPackets, [false, false, false, true, true]);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: sudden_death silent when loop terminates cleanly inside the window", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // maxTurns=5, maxStrikes=2 → threshold=3. Model emits SEND[200] on
+        // turn 3, so the warning is buffered but the loop terminates before
+        // any turn-4 packet build drains it. No leak; buffer just gets gc'd.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([sendStmt(102, "1")]),
+                response([sendStmt(102, "2")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
+        });
+        assert.equal(result.hitMaxTurns, false);
+        assert.equal(result.finalStatus, 200);
+        // None of turns 1-3 should have seen sudden_death in their packet.
+        for (const id of result.turnIds) {
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
+            const packet = JSON.parse(row?.packet ?? "{}") as {
+                user: { telemetry: { errors: Array<{ kind: string }> } };
+            };
+            const sd = packet.user.telemetry.errors.filter((e) => e.kind === "sudden_death");
+            assert.equal(sd.length, 0, `turn ${id} should not see sudden_death`);
+        }
+    } finally { await db.close(); }
+});
+
 test("Engine.runTurn: telemetry buffer drains — failure shows once, then clears", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {

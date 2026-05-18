@@ -10,12 +10,21 @@ import type { SchemeManifest, WriterTier } from "./scheme-types.ts";
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
 
 const DEFAULT_PREVIEW_BUDGET = 256;
+const DEFAULT_MAX_STRIKES = 3;
 
 const readBudget = (): number => {
     const raw = process.env.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS;
     if (raw === undefined || raw.length === 0) return DEFAULT_PREVIEW_BUDGET;
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n <= 0) return DEFAULT_PREVIEW_BUDGET;
+    return n;
+};
+
+const readMaxStrikes = (): number => {
+    const raw = process.env.PLURNK_MAX_STRIKES;
+    if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) return DEFAULT_MAX_STRIKES;
     return n;
 };
 
@@ -114,17 +123,19 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, sessionId, runId, loopId, maxTurns = 50, origin = "model", signal, onDispatch,
+        provider, messages, sessionId, runId, loopId, maxTurns = 50, maxStrikes = readMaxStrikes(), origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
         messages: ChatMessage[];
         sessionId: number; runId: number; loopId: number;
         maxTurns?: number;
+        maxStrikes?: number;
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean }> {
         const turnIds: number[] = [];
+        const suddenDeathThreshold = maxTurns - maxStrikes;
 
         while (true) {
             signal?.throwIfAborted();
@@ -140,6 +151,18 @@ export default class Engine {
 
             const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal, onDispatch });
             turnIds.push(turn.turnId);
+
+            // Rail #40: sudden-death soft warning. When the loop enters the
+            // last maxStrikes-sized window before maxTurns, push a warning
+            // each turn so the model can wrap up before the hard cancel.
+            // Soft: no strike, no loop-status change. SPEC §15.1.
+            if (turnIds.length >= suddenDeathThreshold && turnIds.length < maxTurns) {
+                this.#pushTelemetry(loopId, {
+                    kind: "sudden_death",
+                    message: `approaching max turns: ${turnIds.length} of ${maxTurns}; emit SEND[200] to complete`,
+                    remaining: maxTurns - turnIds.length,
+                });
+            }
         }
     }
 
