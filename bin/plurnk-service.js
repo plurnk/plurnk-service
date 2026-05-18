@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Daemon from "../src/server/Daemon.ts";
 import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
+import { loadActiveProvider, resolveActiveAlias } from "../src/core/ProviderRegistry.ts";
 
 const die = (code, message) => {
     process.stderr.write(`${message}\n`);
@@ -65,29 +66,18 @@ const migrate = async () => {
     finally { await db.close(); }
 };
 
-const loadOpenAIProvider = async () => {
-    if (!process.env.OPENAI_BASE_URL) return null;
-    const mod = await import("@plurnk/plurnk-providers-openai");
-    return new mod.default({
-        baseUrl: process.env.OPENAI_BASE_URL,
-        apiKey: process.env.OPENAI_API_KEY ?? "",
-        model: process.env.OPENAI_MODEL ?? "",
-        contextSize: Number(process.env.OPENAI_CONTEXT_SIZE ?? "8192"),
-        fetchTimeoutMs: Number(process.env.OPENAI_FETCH_TIMEOUT_MS ?? "60000"),
-        think: process.env.OPENAI_THINK === "1",
-    });
-};
-
 const start = async () => {
     const dbPath = process.env.PLURNK_DB_PATH;
     const host = process.env.PLURNK_HOST;
     const port = Number(process.env.PLURNK_PORT);
 
     const db = await openDb(dbPath);
-    const provider = await loadOpenAIProvider();
+    const alias = resolveActiveAlias();
+    const provider = alias === null ? null : await loadActiveProvider();
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host, port });
-    process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} db=${dbPath}\n`);
+    const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
+    process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} db=${dbPath} ${aliasStr}\n`);
 
     const shutdown = async () => { await daemon.stop(); await db.close(); process.exit(0); };
     process.on("SIGINT", shutdown);

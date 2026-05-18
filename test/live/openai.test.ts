@@ -1,40 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import OpenAI from "@plurnk/plurnk-providers-openai";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
+import { loadActiveProvider, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
+import type { Provider } from "../../src/core/ProviderRegistry.ts";
+import { PATHS } from "../../src/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SYSTEM_PROMPT = await readFile(resolve(PROJECT_ROOT, "instructions-system.md"), "utf8");
+const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
 
-const requireEnv = (name: string): string => {
-    const value = process.env[name];
-    if (value === undefined) {
+const buildProvider = async (): Promise<Provider> => {
+    const alias = resolveActiveAlias();
+    if (alias === null) {
         throw new Error(
-            `${name} is not set. Live tests require the OpenAI cascade configured:\n` +
-            `  OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_CONTEXT_SIZE, OPENAI_FETCH_TIMEOUT_MS, OPENAI_THINK\n` +
-            `  Copy .env.example to .env, or export the vars in your shell.`,
+            "PLURNK_MODEL not set. Live tests require a configured model alias:\n" +
+            "  PLURNK_MODEL_<alias>=<provider>/<model>\n" +
+            "  PLURNK_MODEL=<alias>\n" +
+            "Plus provider-specific env (OPENAI_BASE_URL etc).",
         );
     }
-    return value;
+    const provider = await loadActiveProvider();
+    if (provider === null) throw new Error("loadActiveProvider returned null despite resolveActiveAlias succeeding");
+    return provider;
 };
 
-const buildProvider = (): OpenAI => new OpenAI({
-    baseUrl: requireEnv("OPENAI_BASE_URL"),
-    apiKey: process.env.OPENAI_API_KEY ?? "",
-    model: requireEnv("OPENAI_MODEL"),
-    contextSize: Number(requireEnv("OPENAI_CONTEXT_SIZE")),
-    fetchTimeoutMs: Number(requireEnv("OPENAI_FETCH_TIMEOUT_MS")),
-    think: requireEnv("OPENAI_THINK") === "1",
-});
-
 test("live OpenAI: runLoop multi-turn against macher — model drives loop to terminal", async () => {
-    const provider = buildProvider();
+    const provider = await buildProvider();
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `live-loop-${crypto.randomUUID()}`);
@@ -72,7 +65,7 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
 });
 
 test("live OpenAI: runTurn single-shot smoke", async () => {
-    const provider = buildProvider();
+    const provider = await buildProvider();
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `live-${crypto.randomUUID()}`);

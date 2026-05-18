@@ -31,7 +31,7 @@ ORDER BY action_index;
 SELECT status FROM loops WHERE id = $id;
 
 -- PREP: test_get_turn
-SELECT loop_id, sequence, status, usage_completion, packet
+SELECT id, loop_id, sequence, status, usage_completion, packet
 FROM turns WHERE id = $id;
 
 -- PREP: test_get_session_cost
