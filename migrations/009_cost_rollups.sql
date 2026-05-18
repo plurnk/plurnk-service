@@ -1,4 +1,5 @@
-CREATE TRIGGER turns_cost_rollup_insert_run
+-- INIT: cost_rollups
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_run
 AFTER INSERT ON turns
 BEGIN
     UPDATE runs
@@ -6,7 +7,7 @@ BEGIN
      WHERE id = (SELECT run_id FROM loops WHERE id = NEW.loop_id);
 END;
 
-CREATE TRIGGER turns_cost_rollup_insert_session
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_session
 AFTER INSERT ON turns
 BEGIN
     UPDATE sessions
@@ -19,7 +20,7 @@ BEGIN
      );
 END;
 
-CREATE TRIGGER turns_cost_rollup_update_run
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_run
 AFTER UPDATE OF usage_cost_pico ON turns
 WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN
@@ -28,7 +29,7 @@ BEGIN
      WHERE id = (SELECT run_id FROM loops WHERE id = NEW.loop_id);
 END;
 
-CREATE TRIGGER turns_cost_rollup_update_session
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_session
 AFTER UPDATE OF usage_cost_pico ON turns
 WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN

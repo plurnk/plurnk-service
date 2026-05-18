@@ -5,7 +5,6 @@
 // is the contract for external use.
 
 export { default as Engine } from "./core/Engine.ts";
-export { default as Migrator } from "./core/Migrator.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 export { default as MimetypeRegistry } from "./core/MimetypeRegistry.ts";
 

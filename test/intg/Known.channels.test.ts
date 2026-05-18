@@ -34,8 +34,8 @@ const hideStmt = (path: UrlPath): HideStatement => ({
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     return { db, sessionId, runId };
 };
 

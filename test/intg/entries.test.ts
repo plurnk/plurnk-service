@@ -47,7 +47,7 @@ test("entries: agent-scoped insert — session_id null, defaults populate", asyn
 test("entries: session-scoped insert — session_id required", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-entries-session");
+        const sessionId = await insertSession(db, "ws-entries-session");
         insertSessionEntry(db, sessionId, "known", "foo");
         const row = db.prepare("SELECT scope, session_id FROM entries").get() as { scope: string; session_id: number };
         assert.equal(row.scope, "session");
@@ -58,7 +58,7 @@ test("entries: session-scoped insert — session_id required", async () => {
 test("entries: scope='agent' with non-null session_id rejected by invariant CHECK", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-entries-badagent");
+        const sessionId = await insertSession(db, "ws-entries-badagent");
         assert.throws(
             () => db.prepare("INSERT INTO entries (scope, session_id, pathname) VALUES ('agent', ?, ?)").run(sessionId, "/x"),
             /CHECK constraint failed/,
@@ -100,7 +100,7 @@ test("entries: agent-scope identity UNIQUE — duplicate (scheme, pathname) reje
 test("entries: session-scope identity UNIQUE — duplicate (session_id, scheme, pathname) rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-entries-dupid");
+        const sessionId = await insertSession(db, "ws-entries-dupid");
         insertSessionEntry(db, sessionId, "known", "france");
         assert.throws(
             () => insertSessionEntry(db, sessionId, "known", "france"),
@@ -112,7 +112,7 @@ test("entries: session-scope identity UNIQUE — duplicate (session_id, scheme, 
 test("entries: cross-scope same (scheme, pathname) is allowed — agent and session can both hold it", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-entries-crossscope");
+        const sessionId = await insertSession(db, "ws-entries-crossscope");
         insertAgentEntry(db, "known", "france");
         insertSessionEntry(db, sessionId, "known", "france");
         const count = (db.prepare("SELECT COUNT(*) AS n FROM entries").get() as { n: number }).n;
@@ -123,8 +123,8 @@ test("entries: cross-scope same (scheme, pathname) is allowed — agent and sess
 test("entries: cross-session same (scheme, pathname) is allowed — different sessions can both hold it", async () => {
     const db = await openMigrated();
     try {
-        const sessionA = insertSession(db, "ws-entries-sessA");
-        const sessionB = insertSession(db, "ws-entries-sessB");
+        const sessionA = await insertSession(db, "ws-entries-sessA");
+        const sessionB = await insertSession(db, "ws-entries-sessB");
         insertSessionEntry(db, sessionA, "known", "france");
         insertSessionEntry(db, sessionB, "known", "france");
         const count = (db.prepare("SELECT COUNT(*) AS n FROM entries").get() as { n: number }).n;
@@ -145,7 +145,7 @@ test("entries: session_id FK — insert with non-existent session rejected", asy
 test("entries: ON DELETE CASCADE via session — entries removed when session removed", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-entries-cascade");
+        const sessionId = await insertSession(db, "ws-entries-cascade");
         insertSessionEntry(db, sessionId, "known", "a");
         insertSessionEntry(db, sessionId, "known", "b");
         insertAgentEntry(db, "known", "c");
@@ -352,7 +352,7 @@ test("entry_channels: ON DELETE CASCADE via entry — channels removed when entr
 test("entry_channels: CASCADE chain session→entries→entry_channels", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-channels-chain");
+        const sessionId = await insertSession(db, "ws-channels-chain");
         const entryId = insertSessionEntry(db, sessionId, "known", "a");
         db.prepare("INSERT INTO entry_channels (entry_id, name, content, mimetype) VALUES (?, 'body', 'x', 'text/plain')").run(entryId);
         db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);

@@ -36,8 +36,8 @@ const editStatement = (opts: {
 
 const setupContext = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     return { db, sessionId, runId };
 };
 
@@ -162,7 +162,7 @@ test("Known.edit: visibility rows idempotent across multiple EDITs of same path"
 test("Known.edit: visibility is per-run — same entry edited in different runs gets fresh rows", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
-        const runB = insertRun(db, sessionId);
+        const runB = await insertRun(db, sessionId);
         const k = new Known();
         const path = urlPath("known", "/multirun");
         const r = await k.edit({ db, statement: editStatement({ path, body: "a" }), sessionId, runId });

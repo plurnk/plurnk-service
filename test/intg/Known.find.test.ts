@@ -27,8 +27,8 @@ const regex = (raw: string): MatcherBody => ({ dialect: "regex", raw: `/${raw}/`
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     return { db, sessionId, runId };
 };
 
@@ -134,8 +134,8 @@ test("[§6.6-scoped-isolation] Known.find is scoped to the session (doesn't leak
         await seedEntries(db, sessionId, runId, [["here", "x"]]);
 
         // Create another session and seed there
-        const otherSessionId = insertSession(db, "other-session");
-        const otherRunId = insertRun(db, otherSessionId);
+        const otherSessionId = await insertSession(db, "other-session");
+        const otherRunId = await insertRun(db, otherSessionId);
         const k = new Known();
         await k.edit({ db, sessionId: otherSessionId, runId: otherRunId, statement: editStmt(url("elsewhere"), "y") });
 

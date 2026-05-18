@@ -2,7 +2,7 @@
 // Per SPEC §3.2 — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "../core/Db.ts";
 
 export interface EntryData {
     channels: Record<string, { content: string; mimetype: string }>;
@@ -25,14 +25,14 @@ export interface DeleteEntryResult {
 }
 
 interface ReadCtx {
-    db: DatabaseSync;
+    db: Db;
     sessionId: number;
     scheme: string;
     pathname: string;
 }
 
 interface WriteCtx {
-    db: DatabaseSync;
+    db: Db;
     sessionId: number;
     scheme: string;
     pathname: string;
@@ -41,78 +41,62 @@ interface WriteCtx {
 }
 
 interface DeleteCtx {
-    db: DatabaseSync;
+    db: Db;
     sessionId: number;
     scheme: string;
     pathname: string;
 }
 
-export const readEntry = ({ db, sessionId, scheme, pathname }: ReadCtx): ReadEntryResult => {
-    const entry = db
-        .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number } | undefined;
+export const readEntry = async ({ db, sessionId, scheme, pathname }: ReadCtx): Promise<ReadEntryResult> => {
+    const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (entry === undefined) return { status: 404, entry: null };
 
-    const channelRows = db
-        .prepare("SELECT name, content, mimetype FROM entry_channels WHERE entry_id = ?")
-        .all(entry.id) as Array<{ name: string; content: string; mimetype: string }>;
+    const channelRows = await (db.crud_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: entry.id });
     const channels: EntryData["channels"] = {};
     for (const row of channelRows) {
         channels[row.name] = { content: row.content, mimetype: row.mimetype };
     }
 
-    const tagRows = db
-        .prepare("SELECT tag FROM entry_tags WHERE entry_id = ? ORDER BY tag")
-        .all(entry.id) as Array<{ tag: string }>;
+    const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
     const tags = tagRows.map((r) => r.tag);
 
     return { status: 200, entry: { channels, tags } };
 };
 
-export const writeEntry = ({ db, sessionId, scheme, pathname, entry, runId }: WriteCtx): WriteEntryResult => {
-    const existing = db
-        .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number } | undefined;
+export const writeEntry = async ({ db, sessionId, scheme, pathname, entry, runId }: WriteCtx): Promise<WriteEntryResult> => {
+    const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
     let entryId: number;
     let created: boolean;
     if (existing === undefined) {
-        const row = db
-            .prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, ?, ?) RETURNING id")
-            .get(sessionId, scheme, pathname) as { id: number };
+        const row = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        if (row === undefined) throw new Error("writeEntry: insert returned no row");
         entryId = row.id;
         created = true;
     } else {
         entryId = existing.id;
         created = false;
-        // Clear existing channels + tags before re-writing
-        db.prepare("DELETE FROM entry_channels WHERE entry_id = ?").run(entryId);
-        db.prepare("DELETE FROM entry_tags WHERE entry_id = ?").run(entryId);
+        await (db.crud_delete_channels as PrepMethod).run({ entry_id: entryId });
+        await (db.crud_delete_tags as PrepMethod).run({ entry_id: entryId });
     }
 
-    const writeChannel = db.prepare(
-        "INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state) VALUES (?, ?, ?, ?, 0, 'static')",
-    );
-    const writeVisibility = db.prepare(
-        "INSERT OR IGNORE INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, ?, 1)",
-    );
     for (const [channelName, channelData] of Object.entries(entry.channels)) {
-        writeChannel.run(entryId, channelName, channelData.content, channelData.mimetype);
-        writeVisibility.run(runId, entryId, channelName);
+        await (db.crud_write_channel as PrepMethod).run({
+            entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
+        });
+        await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: channelName });
     }
-
-    const insertTag = db.prepare("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, ?)");
-    for (const tag of entry.tags) insertTag.run(entryId, tag);
+    for (const tag of entry.tags) {
+        await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
+    }
 
     return { status: created ? 201 : 200, created, entryId };
 };
 
-export const deleteEntry = ({ db, sessionId, scheme, pathname }: DeleteCtx): DeleteEntryResult => {
-    const existing = db
-        .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number } | undefined;
+export const deleteEntry = async ({ db, sessionId, scheme, pathname }: DeleteCtx): Promise<DeleteEntryResult> => {
+    const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (existing === undefined) return { status: 404 };
-    db.prepare("DELETE FROM entries WHERE id = ?").run(existing.id);
+    await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
     // CASCADE on entry_channels, entry_tags, visibility per FK constraints.
     return { status: 200 };
 };

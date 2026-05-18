@@ -13,7 +13,7 @@ test("runs: table is STRICT", async () => {
 test("runs: trunk run insert — null parent_run_id, defaults populate", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-trunk");
+        const sessionId = await insertSession(db, "ws-trunk");
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(sessionId);
         const row = db.prepare("SELECT * FROM runs WHERE session_id = ?").get(sessionId) as {
             id: number;
@@ -35,7 +35,7 @@ test("runs: trunk run insert — null parent_run_id, defaults populate", async (
 test("runs: fork insert — non-null parent_run_id pointing at trunk run", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-fork");
+        const sessionId = await insertSession(db, "ws-fork");
         const trunkId = (db.prepare("INSERT INTO runs (session_id) VALUES (?) RETURNING id").get(sessionId) as { id: number }).id;
         const forkId = (db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?) RETURNING id").get(sessionId, trunkId) as { id: number }).id;
         const fork = db.prepare("SELECT parent_run_id FROM runs WHERE id = ?").get(forkId) as { parent_run_id: number };
@@ -66,7 +66,7 @@ test("runs: session_id FK — insert against non-existent session rejected", asy
 test("runs: parent_run_id FK — insert against non-existent parent rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-badparent");
+        const sessionId = await insertSession(db, "ws-badparent");
         assert.throws(
             () => db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?)").run(sessionId, 99999),
             /FOREIGN KEY constraint failed/,
@@ -77,7 +77,7 @@ test("runs: parent_run_id FK — insert against non-existent parent rejected", a
 test("runs: parent_run_id self-reference CHECK — parent != id rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-self");
+        const sessionId = await insertSession(db, "ws-self");
         const runId = (db.prepare("INSERT INTO runs (session_id) VALUES (?) RETURNING id").get(sessionId) as { id: number }).id;
         assert.throws(
             () => db.prepare("UPDATE runs SET parent_run_id = ? WHERE id = ?").run(runId, runId),
@@ -89,8 +89,8 @@ test("runs: parent_run_id self-reference CHECK — parent != id rejected", async
 test("runs: ON DELETE CASCADE via session — deleting session removes all its runs", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cascade");
-        const otherSessionId = insertSession(db, "ws-untouched");
+        const sessionId = await insertSession(db, "ws-cascade");
+        const otherSessionId = await insertSession(db, "ws-untouched");
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(sessionId);
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(sessionId);
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(otherSessionId);
@@ -107,7 +107,7 @@ test("runs: ON DELETE CASCADE via session — deleting session removes all its r
 test("runs: ON DELETE CASCADE via parent_run_id — deleting a parent run removes its forks", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-forkcascade");
+        const sessionId = await insertSession(db, "ws-forkcascade");
         const trunkId = (db.prepare("INSERT INTO runs (session_id) VALUES (?) RETURNING id").get(sessionId) as { id: number }).id;
         const forkAId = (db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?) RETURNING id").get(sessionId, trunkId) as { id: number }).id;
         db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?)").run(sessionId, trunkId);
@@ -123,7 +123,7 @@ test("runs: ON DELETE CASCADE via parent_run_id — deleting a parent run remove
 test("runs: negative cost_pico rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-negcost");
+        const sessionId = await insertSession(db, "ws-negcost");
         assert.throws(
             () => db.prepare("INSERT INTO runs (session_id, cost_pico) VALUES (?, ?)").run(sessionId, -1),
             /CHECK constraint failed/,
@@ -134,7 +134,7 @@ test("runs: negative cost_pico rejected by CHECK", async () => {
 test("runs: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-negversion");
+        const sessionId = await insertSession(db, "ws-negversion");
         assert.throws(
             () => db.prepare("INSERT INTO runs (session_id, version) VALUES (?, ?)").run(sessionId, -1),
             /CHECK constraint failed/,
@@ -161,7 +161,7 @@ test("runs: index runs_parent_run_id exists", async () => {
 test("runs: id auto-assigns on insert (INTEGER PRIMARY KEY rowid alias)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-autoid");
+        const sessionId = await insertSession(db, "ws-autoid");
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(sessionId);
         db.prepare("INSERT INTO runs (session_id) VALUES (?)").run(sessionId);
         const rows = db.prepare("SELECT id FROM runs WHERE session_id = ? ORDER BY id").all(sessionId) as { id: number }[];
@@ -173,7 +173,7 @@ test("runs: id auto-assigns on insert (INTEGER PRIMARY KEY rowid alias)", async 
 test("runs: trunk-run lookup uses the (session_id, created_at) index — many trunks across sessions", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-trunklookup");
+        const sessionId = await insertSession(db, "ws-trunklookup");
         const trunkId = (db.prepare("INSERT INTO runs (session_id) VALUES (?) RETURNING id").get(sessionId) as { id: number }).id;
         db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?)").run(sessionId, trunkId);
         db.prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?)").run(sessionId, trunkId);

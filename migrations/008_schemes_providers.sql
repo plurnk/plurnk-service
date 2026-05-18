@@ -1,4 +1,5 @@
-CREATE TABLE schemes (
+-- INIT: schemes_providers
+CREATE TABLE IF NOT EXISTS schemes (
     name                 TEXT    NOT NULL PRIMARY KEY CHECK (length(name) > 0),
     model_visible        INTEGER NOT NULL             CHECK (model_visible IN (0, 1)),
     category             TEXT    NOT NULL             CHECK (length(category) > 0),
@@ -10,7 +11,7 @@ CREATE TABLE schemes (
     handler              TEXT
 ) STRICT, WITHOUT ROWID;
 
-CREATE TABLE providers (
+CREATE TABLE IF NOT EXISTS providers (
     id          INTEGER NOT NULL PRIMARY KEY,
     version     INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     provider    TEXT    NOT NULL           CHECK (length(provider) > 0),
@@ -21,4 +22,4 @@ CREATE TABLE providers (
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
-CREATE INDEX providers_created_at ON providers (created_at);
+CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);

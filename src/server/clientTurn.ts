@@ -2,7 +2,7 @@
 // client-origin RPC dispatch (op.*) creates one such turn with a synthetic
 // packet matching the same shape as model turns but with empty content.
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "../core/Db.ts";
 
 const CLIENT_TURN_PACKET = JSON.stringify({
     tokens: 0,
@@ -12,12 +12,12 @@ const CLIENT_TURN_PACKET = JSON.stringify({
     assistantRaw: null,
 });
 
-export const insertClientTurn = (db: DatabaseSync, loopId: number): number => {
-    const seq = (db
-        .prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = ?")
-        .get(loopId) as { next: number }).next;
-    const row = db
-        .prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, 200, ?) RETURNING id")
-        .get(loopId, seq, CLIENT_TURN_PACKET) as { id: number };
+export const insertClientTurn = async (db: Db, loopId: number): Promise<number> => {
+    const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
+    if (seqRow === undefined) throw new Error("insertClientTurn: next-sequence query returned no row");
+    const row = await (db.client_turn_insert as PrepMethod).get<{ id: number }>({
+        loop_id: loopId, sequence: seqRow.next, packet: CLIENT_TURN_PACKET,
+    });
+    if (row === undefined) throw new Error("insertClientTurn: insert returned no row");
     return row.id;
 };

@@ -4,6 +4,7 @@
 
 import { readFile } from "node:fs/promises";
 import type MethodRegistry from "../MethodRegistry.ts";
+import type { PrepMethod } from "../../core/Db.ts";
 import { fetchLogEntry } from "../logEntry.ts";
 import { PATHS } from "../../index.ts";
 
@@ -28,18 +29,19 @@ export const register = (registry: MethodRegistry): void => {
             const { sessionId, runId } = ctx.session;
             const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
 
-            // Create a new model loop in the run (separate from the client loop).
-            const seq = (ctx.db
-                .prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM loops WHERE run_id = ?")
-                .get(runId) as { next: number }).next;
-            const loop = ctx.db
-                .prepare("INSERT INTO loops (run_id, sequence, status, prompt) VALUES (?, ?, 102, ?) RETURNING id")
-                .get(runId, seq, p.prompt) as { id: number };
+            const seqRow = await (ctx.db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
+            if (seqRow === undefined) throw new Error("loop.run: next-sequence query returned no row");
+            const loop = await (ctx.db.loop_run_insert_loop as PrepMethod).get<{ id: number }>({
+                run_id: runId, sequence: seqRow.next, prompt: p.prompt,
+            });
+            if (loop === undefined) throw new Error("loop.run: loop insert returned no row");
             const loopId = loop.id;
 
             const onDispatch = (logEntryId: number): void => {
-                const entry = fetchLogEntry(ctx.db, logEntryId);
-                ctx.notify({ sessionId }, "log/entry", { entry });
+                void (async () => {
+                    const entry = await fetchLogEntry(ctx.db, logEntryId);
+                    ctx.notify({ sessionId }, "log/entry", { entry });
+                })();
             };
 
             const result = await ctx.engine.runLoop({

@@ -33,7 +33,7 @@ test("log_entries: table is STRICT", async () => {
 test("log_entries: minimal insert — defaults populate version, at, suffix='', tokens=0", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-defaults");
+        const ctx = await seedEnvelope(db, "ws-log-defaults");
         const id = (db.prepare("INSERT INTO log_entries (run_id, loop_id, turn_id, action_index, origin, op, target_pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx) VALUES (?, ?, ?, 0, 'model', 'READ', '/x', '', 'text/x-plurnk', '', 'text/plain', 200) RETURNING id")
             .get(ctx.runId, ctx.loopId, ctx.turnId) as { id: number }).id;
         const row = db.prepare("SELECT * FROM log_entries WHERE id = ?").get(id) as {
@@ -51,7 +51,7 @@ test("log_entries: minimal insert — defaults populate version, at, suffix='', 
 test("log_entries: action_index UNIQUE within turn — duplicate rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-actionuniq");
+        const ctx = await seedEnvelope(db, "ws-log-actionuniq");
         minimalLog(db, ctx, { action_index: 0 });
         assert.throws(
             () => minimalLog(db, ctx, { action_index: 0 }),
@@ -63,7 +63,7 @@ test("log_entries: action_index UNIQUE within turn — duplicate rejected", asyn
 test("log_entries: action_index >= 0 enforced — negative rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-actionneg");
+        const ctx = await seedEnvelope(db, "ws-log-actionneg");
         assert.throws(
             () => minimalLog(db, ctx, { action_index: -1 }),
             /CHECK constraint failed/,
@@ -74,7 +74,7 @@ test("log_entries: action_index >= 0 enforced — negative rejected", async () =
 test("log_entries: origin enum — all four accepted, others rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-origin");
+        const ctx = await seedEnvelope(db, "ws-log-origin");
         for (const [i, origin] of ["model", "client", "system", "plugin"].entries()) {
             minimalLog(db, ctx, { action_index: i, origin });
         }
@@ -88,7 +88,7 @@ test("log_entries: origin enum — all four accepted, others rejected", async ()
 test("log_entries: op enum — all nine accepted, others rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-op");
+        const ctx = await seedEnvelope(db, "ws-log-op");
         const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
         for (const [i, op] of ops.entries()) {
             minimalLog(db, ctx, { action_index: i, op });
@@ -103,7 +103,7 @@ test("log_entries: op enum — all nine accepted, others rejected", async () => 
 test("log_entries: status_rx range 100..599 — boundaries accepted, out-of-range rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-statusrx");
+        const ctx = await seedEnvelope(db, "ws-log-statusrx");
         for (const [i, s] of [100, 200, 499, 599].entries()) {
             minimalLog(db, ctx, { action_index: i, status_rx: s });
         }
@@ -119,7 +119,7 @@ test("log_entries: status_rx range 100..599 — boundaries accepted, out-of-rang
 test("log_entries: mimetype_tx + mimetype_rx NOT NULL + length CHECK", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-mimetypes");
+        const ctx = await seedEnvelope(db, "ws-log-mimetypes");
         assert.throws(() => minimalLog(db, ctx, { mimetype_tx: "" }), /CHECK constraint failed/);
         assert.throws(() => minimalLog(db, ctx, { mimetype_rx: "" }), /CHECK constraint failed/);
     } finally { db.close(); }
@@ -128,7 +128,7 @@ test("log_entries: mimetype_tx + mimetype_rx NOT NULL + length CHECK", async () 
 test("log_entries: target_scheme nullable; non-empty CHECK when not null", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-tscheme");
+        const ctx = await seedEnvelope(db, "ws-log-tscheme");
         minimalLog(db, ctx, { action_index: 0, target_scheme: null });
         assert.throws(
             () => minimalLog(db, ctx, { action_index: 1, target_scheme: "" }),
@@ -140,7 +140,7 @@ test("log_entries: target_scheme nullable; non-empty CHECK when not null", async
 test("log_entries: target_port range — 0..65535 accepted, out-of-range rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-tport");
+        const ctx = await seedEnvelope(db, "ws-log-tport");
         minimalLog(db, ctx, { action_index: 0, target_port: 443 });
         minimalLog(db, ctx, { action_index: 1, target_port: 0 });
         minimalLog(db, ctx, { action_index: 2, target_port: 65535 });
@@ -153,7 +153,7 @@ test("log_entries: target_port range — 0..65535 accepted, out-of-range rejecte
 test("log_entries: target_params + signal + lineMarker — null accepted; JSON-valid accepted; invalid rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-json");
+        const ctx = await seedEnvelope(db, "ws-log-json");
         minimalLog(db, ctx, { action_index: 0, target_params: null, signal: null, lineMarker: null });
         minimalLog(db, ctx, { action_index: 1, target_params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
         assert.throws(() => minimalLog(db, ctx, { action_index: 2, target_params: "{not json" }), /CHECK constraint failed/);
@@ -165,7 +165,7 @@ test("log_entries: target_params + signal + lineMarker — null accepted; JSON-v
 test("log_entries: signal polymorphism — array, number, string, null all storable as JSON", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-sigpoly");
+        const ctx = await seedEnvelope(db, "ws-log-sigpoly");
         minimalLog(db, ctx, { action_index: 0, op: "EDIT",  signal: JSON.stringify(["philosophy"]) });
         minimalLog(db, ctx, { action_index: 1, op: "SEND",  signal: JSON.stringify(200) });
         minimalLog(db, ctx, { action_index: 2, op: "EXEC",  signal: JSON.stringify("node") });
@@ -178,7 +178,7 @@ test("log_entries: signal polymorphism — array, number, string, null all stora
 test("log_entries: run_id NOT NULL — insert without run_id rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-norun");
+        const ctx = await seedEnvelope(db, "ws-log-norun");
         assert.throws(
             () => db.prepare("INSERT INTO log_entries (loop_id, turn_id, action_index, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx) VALUES (?, ?, 0, 'model', 'READ', '', 'text/x-plurnk', '', 'text/plain', 200)").run(ctx.loopId, ctx.turnId),
             /NOT NULL constraint failed: log_entries\.run_id/,
@@ -189,7 +189,7 @@ test("log_entries: run_id NOT NULL — insert without run_id rejected", async ()
 test("log_entries: each FK rejection path", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-fkpaths");
+        const ctx = await seedEnvelope(db, "ws-log-fkpaths");
         assert.throws(() => minimalLog(db, ctx, { run_id: 99999 }),  /FOREIGN KEY constraint failed/);
         assert.throws(() => minimalLog(db, ctx, { loop_id: 99999 }), /FOREIGN KEY constraint failed/);
         assert.throws(() => minimalLog(db, ctx, { turn_id: 99999 }), /FOREIGN KEY constraint failed/);
@@ -199,7 +199,7 @@ test("log_entries: each FK rejection path", async () => {
 test("log_entries: ON DELETE CASCADE via turn", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-turncasc");
+        const ctx = await seedEnvelope(db, "ws-log-turncasc");
         minimalLog(db, ctx, { action_index: 0 });
         minimalLog(db, ctx, { action_index: 1 });
         db.prepare("DELETE FROM turns WHERE id = ?").run(ctx.turnId);
@@ -211,7 +211,7 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
 test("log_entries: full CASCADE chain session→runs→loops→turns→log_entries (5 hops)", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-fullchain");
+        const ctx = await seedEnvelope(db, "ws-log-fullchain");
         minimalLog(db, ctx);
         db.prepare("DELETE FROM sessions WHERE id = ?").run(ctx.sessionId);
         const remaining = (db.prepare("SELECT COUNT(*) AS n FROM log_entries").get() as { n: number }).n;
@@ -222,7 +222,7 @@ test("log_entries: full CASCADE chain session→runs→loops→turns→log_entri
 test("log_entries: immutability trigger — UPDATE rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-immut");
+        const ctx = await seedEnvelope(db, "ws-log-immut");
         const id = minimalLog(db, ctx);
         assert.throws(
             () => db.prepare("UPDATE log_entries SET tx = 'tampered' WHERE id = ?").run(id),
@@ -236,7 +236,7 @@ test("log_entries: immutability trigger — UPDATE rejected", async () => {
 test("log_entries: DELETE is allowed (FK cascade depends on it)", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-delok");
+        const ctx = await seedEnvelope(db, "ws-log-delok");
         const id = minimalLog(db, ctx);
         db.prepare("DELETE FROM log_entries WHERE id = ?").run(id);
         const count = (db.prepare("SELECT COUNT(*) AS n FROM log_entries").get() as { n: number }).n;
@@ -247,7 +247,7 @@ test("log_entries: DELETE is allowed (FK cascade depends on it)", async () => {
 test("log_entries: tokens negative rejected", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-toksneg");
+        const ctx = await seedEnvelope(db, "ws-log-toksneg");
         assert.throws(
             () => minimalLog(db, ctx, { tokens: -1 }),
             /CHECK constraint failed/,
@@ -274,7 +274,7 @@ test("log_entries: indexes exist — (turn_id, action_index) UNIQUE plus run_id,
 test("log_entries: query log://<L>/<T>/<A> address pattern — JOIN through sequences", async () => {
     const db = await openMigrated();
     try {
-        const ctx = seedEnvelope(db, "ws-log-address");
+        const ctx = await seedEnvelope(db, "ws-log-address");
         minimalLog(db, ctx, { action_index: 0 });
         minimalLog(db, ctx, { action_index: 1, op: "SEND" });
         const row = db.prepare(`

@@ -1,33 +1,42 @@
-import { DatabaseSync } from "node:sqlite";
+import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import Migrator from "../../src/core/Migrator.ts";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 
-export const MIGRATIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations");
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
 
-export const openMigrated = async (): Promise<DatabaseSync> => {
-    const db = new DatabaseSync(":memory:");
-    db.exec("PRAGMA foreign_keys = ON");
-    await new Migrator({ db, dir: MIGRATIONS_DIR }).migrate();
+export const openMigrated = async (): Promise<Db> => {
+    const db = (await SqlRite.open({
+        path: ":memory:",
+        dir: [
+            MIGRATIONS_DIR,
+            resolve(PROJECT_ROOT, "src"),
+            resolve(PROJECT_ROOT, "test/intg"),
+        ],
+    })) as unknown as Db;
     return db;
 };
 
-export const insertSession = (db: DatabaseSync, name: string): number => {
-    const row = db.prepare("INSERT INTO sessions (name) VALUES (?) RETURNING id").get(name) as { id: number };
+export const insertSession = async (db: Db, name: string): Promise<number> => {
+    const row = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name });
+    if (row === undefined) throw new Error("insertSession: insert returned no row");
     return row.id;
 };
 
-export const insertRun = (db: DatabaseSync, sessionId: number, parentRunId: number | null = null): number => {
-    const row = db
-        .prepare("INSERT INTO runs (session_id, parent_run_id) VALUES (?, ?) RETURNING id")
-        .get(sessionId, parentRunId) as { id: number };
+export const insertRun = async (db: Db, sessionId: number, parentRunId: number | null = null): Promise<number> => {
+    const row = await (db.test_insert_run as PrepMethod).get<{ id: number }>({
+        session_id: sessionId, parent_run_id: parentRunId,
+    });
+    if (row === undefined) throw new Error("insertRun: insert returned no row");
     return row.id;
 };
 
-export const insertLoop = (db: DatabaseSync, runId: number, sequence: number, prompt: string = ""): number => {
-    const row = db
-        .prepare("INSERT INTO loops (run_id, sequence, prompt) VALUES (?, ?, ?) RETURNING id")
-        .get(runId, sequence, prompt) as { id: number };
+export const insertLoop = async (db: Db, runId: number, sequence: number, prompt: string = ""): Promise<number> => {
+    const row = await (db.test_insert_loop as PrepMethod).get<{ id: number }>({
+        run_id: runId, sequence, prompt,
+    });
+    if (row === undefined) throw new Error("insertLoop: insert returned no row");
     return row.id;
 };
 
@@ -39,19 +48,20 @@ const MIN_PACKET = JSON.stringify({
     assistantRaw: null,
 });
 
-export const insertTurn = (db: DatabaseSync, loopId: number, sequence: number, status: number = 200): number => {
-    const row = db
-        .prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, ?, ?) RETURNING id")
-        .get(loopId, sequence, status, MIN_PACKET) as { id: number };
+export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {
+    const row = await (db.test_insert_turn as PrepMethod).get<{ id: number }>({
+        loop_id: loopId, sequence, status, packet: MIN_PACKET,
+    });
+    if (row === undefined) throw new Error("insertTurn: insert returned no row");
     return row.id;
 };
 
-export const seedEnvelope = (db: DatabaseSync, label: string): {
+export const seedEnvelope = async (db: Db, label: string): Promise<{
     sessionId: number; runId: number; loopId: number; turnId: number;
-} => {
-    const sessionId = insertSession(db, label);
-    const runId = insertRun(db, sessionId);
-    const loopId = insertLoop(db, runId, 1);
-    const turnId = insertTurn(db, loopId, 1);
+}> => {
+    const sessionId = await insertSession(db, label);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1);
+    const turnId = await insertTurn(db, loopId, 1);
     return { sessionId, runId, loopId, turnId };
 };

@@ -28,10 +28,10 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
-    const loopId = insertLoop(db, runId, 1, "test prompt");
-    const turnId = insertTurn(db, loopId, 1, 200);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1, "test prompt");
+    const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, engine, sessionId, runId, loopId, turnId };
 };
@@ -78,8 +78,8 @@ test("Log.read: cross-loop coordinates within a run resolve correctly", async ()
         await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), sessionId, runId, loopId: loop1, turnId: turn1, actionIndex: 0, origin: "model" });
 
         // Add a second loop with its own turn 1, dispatch a different log there
-        const loop2 = insertLoop(db, runId, 2, "second");
-        const turn2 = insertTurn(db, loop2, 1, 200);
+        const loop2 = await insertLoop(db, runId, 2, "second");
+        const turn2 = await insertTurn(db, loop2, 1, 200);
         await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, actionIndex: 0, origin: "model" });
 
         const r1 = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/0")), runId });

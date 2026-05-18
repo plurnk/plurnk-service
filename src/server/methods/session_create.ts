@@ -8,7 +8,7 @@ export const register = (registry: MethodRegistry): void => {
                 throw new Error("connection already has a session attached");
             }
             const p = (params ?? {}) as { name?: string };
-            const envelope = createClientEnvelope(ctx.db, { name: p.name });
+            const envelope = await createClientEnvelope(ctx.db, { name: p.name });
             ctx.attachSession(envelope);
             ctx.notify("all", "session/created", {
                 id: envelope.sessionId,

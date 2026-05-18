@@ -17,8 +17,8 @@ import { openMigrated, insertSession, insertRun } from "./_helpers.ts";
 // ChannelWrite helpers have something to operate on.
 const seedEntryWithChannel = async (channelName: string, channelMime: string, initialContent: string, channelState: "static" | "active" | "closed" | "errored" = "active") => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     const entry = db
         .prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, 'known', 'x') RETURNING id")
         .get(sessionId) as { id: number };

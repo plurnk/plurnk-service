@@ -31,9 +31,9 @@ const response = (ops: PlurnkStatement[], content: string = "", tokens: number =
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
-    const loopId = insertLoop(db, runId, 1, "test prompt");
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1, "test prompt");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, engine, sessionId, runId, loopId };
 };

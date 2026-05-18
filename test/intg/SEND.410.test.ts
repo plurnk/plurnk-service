@@ -27,7 +27,7 @@ const editStmt = (path: UrlPath, body: string | null = null): EditStatement => (
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, ...env, engine };
 };

@@ -19,7 +19,7 @@ export const dispatchAsClient = async (ctx: HandlerContext, statement: PlurnkSta
         throw new Error("dispatchAsClient requires an attached session");
     }
     const { sessionId, runId, clientLoopId } = ctx.session;
-    const turnId = insertClientTurn(ctx.db, clientLoopId);
+    const turnId = await insertClientTurn(ctx.db, clientLoopId);
     const result = await ctx.engine.dispatch({
         statement,
         sessionId,
@@ -29,8 +29,10 @@ export const dispatchAsClient = async (ctx: HandlerContext, statement: PlurnkSta
         actionIndex: 0,
         origin: "client",
         onDispatch: (logEntryId) => {
-            const entry = fetchLogEntry(ctx.db, logEntryId);
-            ctx.notify({ sessionId }, "log/entry", { entry });
+            void (async () => {
+                const entry = await fetchLogEntry(ctx.db, logEntryId);
+                ctx.notify({ sessionId }, "log/entry", { entry });
+            })();
         },
     });
     return result as DispatchAsClientResult;

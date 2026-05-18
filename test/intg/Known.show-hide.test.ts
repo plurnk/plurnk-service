@@ -32,8 +32,8 @@ const hideStmt = (opts: { path?: ParsedPath | null; tags?: string[] | null; body
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     return { db, sessionId, runId };
 };
 
@@ -180,7 +180,7 @@ test("Known.show/hide: round-trip — show, hide, show alternates state and 200/
 test("Known.show/hide: per-run isolation — show in run A doesn't affect run B's view", async () => {
     const ctx = await setup();
     try {
-        const runB = insertRun(ctx.db, ctx.sessionId);
+        const runB = await insertRun(ctx.db, ctx.sessionId);
         const k = new Known();
         const edit = await writeKnown(ctx.db, ctx, "/x");  // run A: indexed=1
         // run B has no visibility row for this entry yet

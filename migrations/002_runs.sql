@@ -1,4 +1,5 @@
-CREATE TABLE runs (
+-- INIT: runs
+CREATE TABLE IF NOT EXISTS runs (
     id            INTEGER NOT NULL PRIMARY KEY,
     version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     session_id    INTEGER NOT NULL,
@@ -9,5 +10,5 @@ CREATE TABLE runs (
     FOREIGN KEY (parent_run_id) REFERENCES runs(id)     ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX runs_session_id_created_at ON runs (session_id, created_at);
-CREATE INDEX runs_parent_run_id         ON runs (parent_run_id);
+CREATE INDEX IF NOT EXISTS runs_session_id_created_at ON runs (session_id, created_at);
+CREATE INDEX IF NOT EXISTS runs_parent_run_id         ON runs (parent_run_id);

@@ -38,7 +38,7 @@ const dispatchTurn = async (
     const seq = (db.prepare("SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = ?").get(ctx.loopId) as { next: number }).next;
     const sendOp = assistant.ops.find((o): o is SendStatement => o.op === "SEND");
     const turnStatus = sendOp?.signal ?? 200;
-    const turnId = insertTurn(db, ctx.loopId, seq, turnStatus);
+    const turnId = await insertTurn(db, ctx.loopId, seq, turnStatus);
     const statuses: number[] = [];
     for (const [actionIndex, statement] of assistant.ops.entries()) {
         const result = await engine.dispatch({
@@ -163,7 +163,7 @@ test("e2e: visibility row from EDIT survives into subsequent reads", async () =>
 });
 
 const seedEnvelopeNoTurn = (db: DatabaseSync, label: string): { sessionId: number; runId: number; loopId: number } => {
-    const { sessionId, runId } = seedEnvelope(db, label);
-    const loopId = insertLoop(db, runId, 2, "another loop");
+    constdb, label);
+    const loopId = await insertLoop(db, runId, 2, "another loop");
     return { sessionId, runId, loopId };
 };

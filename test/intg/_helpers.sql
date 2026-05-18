@@ -1,0 +1,97 @@
+-- Test-fixture PREP blocks. These are loaded only when tests open the DB
+-- via openMigrated() (which scans test/intg/ in addition to migrations + src).
+-- Production boot (bin/plurnk-service.js) does NOT include this directory,
+-- so test fixtures stay out of production.
+
+-- PREP: test_insert_session
+INSERT INTO sessions (name) VALUES ($name) RETURNING id;
+
+-- PREP: test_insert_run
+INSERT INTO runs (session_id, parent_run_id) VALUES ($session_id, $parent_run_id) RETURNING id;
+
+-- PREP: test_insert_loop
+INSERT INTO loops (run_id, sequence, prompt) VALUES ($run_id, $sequence, $prompt) RETURNING id;
+
+-- PREP: test_insert_turn
+-- Minimal turn with empty packet shape.
+INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequence, $status, $packet) RETURNING id;
+
+-- Generic data-access PREPs for test setup/assertion. Avoid one-off SQL in
+-- test bodies — add a PREP here, name it test_*, and call it.
+
+-- PREP: test_count_log_entries_by_turn
+SELECT COUNT(*) AS n FROM log_entries WHERE turn_id = $turn_id;
+
+-- PREP: test_log_action_indexes_by_turn
+SELECT action_index, status_rx, target_pathname, op FROM log_entries
+WHERE turn_id = $turn_id
+ORDER BY action_index;
+
+-- PREP: test_get_loop_status
+SELECT status FROM loops WHERE id = $id;
+
+-- PREP: test_get_turn
+SELECT loop_id, sequence, status, usage_completion, packet
+FROM turns WHERE id = $id;
+
+-- PREP: test_get_session_cost
+SELECT cost_pico FROM sessions WHERE id = $id;
+
+-- PREP: test_get_run_cost
+SELECT cost_pico FROM runs WHERE id = $id;
+
+-- PREP: test_count_turns
+SELECT COUNT(*) AS n FROM turns;
+
+-- PREP: test_count_entries_by_session
+SELECT COUNT(*) AS n FROM entries WHERE session_id = $session_id;
+
+-- PREP: test_get_entry_by_path
+SELECT id FROM entries
+WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
+
+-- PREP: test_get_channel
+SELECT content, mimetype, state FROM entry_channels
+WHERE entry_id = $entry_id AND name = $name;
+
+-- PREP: test_get_visibility
+SELECT indexed FROM visibility
+WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
+
+-- PREP: test_get_visibility_by_channel
+-- Across all entries in a run for a single channel name.
+SELECT indexed FROM visibility WHERE run_id = $run_id AND channel = $channel;
+
+-- PREP: test_count_visibility_indexed
+SELECT COUNT(*) AS n FROM visibility
+WHERE run_id = $run_id AND entry_id = $entry_id AND indexed = 1;
+
+-- PREP: test_list_entry_tags
+SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
+
+-- PREP: test_get_subscription
+SELECT id, run_id, entry_id, scheme, handle, closed_at, close_status
+FROM subscriptions WHERE id = $id;
+
+-- PREP: test_count_active_subscriptions
+SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
+
+-- PREP: test_seed_entry_session
+-- Tests bypass scheme handlers when seeding state for visibility / render tests.
+INSERT INTO entries (scope, session_id, scheme, pathname)
+VALUES ('session', $session_id, $scheme, $pathname)
+RETURNING id;
+
+-- PREP: test_seed_channel
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
+VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
+
+-- PREP: test_seed_visibility
+INSERT INTO visibility (run_id, entry_id, channel, indexed)
+VALUES ($run_id, $entry_id, $channel, $indexed);
+
+-- PREP: test_seed_entry_tag
+INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
+
+-- PREP: test_get_packet
+SELECT packet FROM turns WHERE id = $id;

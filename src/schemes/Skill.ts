@@ -1,7 +1,7 @@
 // PROVISIONAL: this scheme handler exists structurally (parallel to Known/
 // Unknown) but its semantics are NOT yet designed.
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "../core/Db.ts";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -21,39 +21,39 @@ export default class Skill {
     };
     static defaultChannel = "body";
 
-    async edit(ctx: { db: DatabaseSync; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
+    async edit(ctx: { db: Db; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
         return editSessionEntry({ ...ctx, scheme: SCHEME, channels: Skill.channels, defaultChannel: Skill.defaultChannel });
     }
 
-    async read(ctx: { db: DatabaseSync; statement: ReadStatement; sessionId: number }): Promise<ReadResult> {
+    async read(ctx: { db: Db; statement: ReadStatement; sessionId: number }): Promise<ReadResult> {
         return readSessionEntry({ ...ctx, scheme: SCHEME, channels: Skill.channels, defaultChannel: Skill.defaultChannel });
     }
 
-    async show(ctx: { db: DatabaseSync; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
+    async show(ctx: { db: Db; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
         return showSessionEntry({ ...ctx, scheme: SCHEME, channels: Skill.channels, defaultChannel: Skill.defaultChannel });
     }
 
-    async hide(ctx: { db: DatabaseSync; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
+    async hide(ctx: { db: Db; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
         return hideSessionEntry({ ...ctx, scheme: SCHEME, channels: Skill.channels, defaultChannel: Skill.defaultChannel });
     }
 
-    async readEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string }): Promise<ReadEntryResult> {
+    async readEntry(ctx: { db: Db; sessionId: number; pathname: string }): Promise<ReadEntryResult> {
         return readEntry({ ...ctx, scheme: SCHEME });
     }
 
-    async writeEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string; entry: EntryData; runId: number }): Promise<WriteEntryResult> {
+    async writeEntry(ctx: { db: Db; sessionId: number; pathname: string; entry: EntryData; runId: number }): Promise<WriteEntryResult> {
         return writeEntry({ ...ctx, scheme: SCHEME });
     }
 
-    async deleteEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string }): Promise<DeleteEntryResult> {
+    async deleteEntry(ctx: { db: Db; sessionId: number; pathname: string }): Promise<DeleteEntryResult> {
         return deleteEntry({ ...ctx, scheme: SCHEME });
     }
 
-    async send(ctx: { db: DatabaseSync; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
+    async send(ctx: { db: Db; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
         return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, runId: ctx.runId, scheme: SCHEME });
     }
 
-    async find(ctx: { db: DatabaseSync; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
+    async find(ctx: { db: Db; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
         return findSessionEntries({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
     }
 }

@@ -12,7 +12,7 @@ const MIN_PACKET = JSON.stringify({
 
 const setup = async () => {
     const db = await openMigrated();
-    const loopId = insertLoop(db, insertRun(db, insertSession(db, `ws-${crypto.randomUUID()}`)), 1);
+    const loopId = await insertLoop(db, insertRun(db, insertSession(db, `ws-${crypto.randomUUID()}`)), 1);
     return { db, loopId };
 };
 
@@ -96,10 +96,10 @@ test("turns: (loop_id, sequence) UNIQUE — duplicate within loop rejected", asy
 test("turns: sequence resets per loop — same sequence numbers across different loops is fine", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-turns-crossloop");
-        const runId = insertRun(db, sessionId);
-        const loopA = insertLoop(db, runId, 1);
-        const loopB = insertLoop(db, runId, 2);
+        const sessionId = await insertSession(db, "ws-turns-crossloop");
+        const runId = await insertRun(db, sessionId);
+        const loopA = await insertLoop(db, runId, 1);
+        const loopB = await insertLoop(db, runId, 2);
         db.prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, ?, ?)").run(loopA, 1, 200, MIN_PACKET);
         db.prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, ?, ?)").run(loopB, 1, 200, MIN_PACKET);
         const count = (db.prepare("SELECT COUNT(*) AS n FROM turns").get() as { n: number }).n;
@@ -171,9 +171,9 @@ test("turns: ON DELETE CASCADE via loop — deleting loop removes its turns", as
 test("turns: CASCADE chain session→runs→loops→turns — deleting session sweeps turns 3 hops away", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-turns-fullchain");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-turns-fullchain");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         db.prepare("INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, ?, ?, ?)").run(loopId, 1, 200, MIN_PACKET);
         db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
         const remaining = (db.prepare("SELECT COUNT(*) AS n FROM turns").get() as { n: number }).n;

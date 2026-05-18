@@ -34,8 +34,8 @@ const readStatement = (opts: {
 
 const setupContext = async () => {
     const db = await openMigrated();
-    const sessionId = insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = insertRun(db, sessionId);
+    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
     return { db, sessionId, runId };
 };
 
@@ -145,10 +145,10 @@ test("Known.read: bare local path reads by raw pathname", async () => {
 test("Known.read: different sessions see different entries at the same path", async () => {
     const db = await openMigrated();
     try {
-        const sessionA = insertSession(db, "ws-readiso-a");
-        const sessionB = insertSession(db, "ws-readiso-b");
-        const runA = insertRun(db, sessionA);
-        const runB = insertRun(db, sessionB);
+        const sessionA = await insertSession(db, "ws-readiso-a");
+        const sessionB = await insertSession(db, "ws-readiso-b");
+        const runA = await insertRun(db, sessionA);
+        const runB = await insertRun(db, sessionB);
         const k = new Known();
         await k.edit({ db, statement: editStatement({ path: urlPath("known", "/x"), body: "from-A" }), sessionId: sessionA, runId: runA });
         await k.edit({ db, statement: editStatement({ path: urlPath("known", "/x"), body: "from-B" }), sessionId: sessionB, runId: runB });
@@ -162,9 +162,9 @@ test("Known.read: different sessions see different entries at the same path", as
 test("Known.read: read against session A doesn't surface session B's entry", async () => {
     const db = await openMigrated();
     try {
-        const sessionA = insertSession(db, "ws-rd-a");
-        const sessionB = insertSession(db, "ws-rd-b");
-        const runB = insertRun(db, sessionB);
+        const sessionA = await insertSession(db, "ws-rd-a");
+        const sessionB = await insertSession(db, "ws-rd-b");
+        const runB = await insertRun(db, sessionB);
         const k = new Known();
         await k.edit({ db, statement: editStatement({ path: urlPath("known", "/only-b"), body: "B-only" }), sessionId: sessionB, runId: runB });
         const result = await k.read({ db, statement: readStatement({ path: urlPath("known", "/only-b") }), sessionId: sessionA });

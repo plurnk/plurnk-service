@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { DatabaseSync } from "node:sqlite";
+import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import Migrator from "../src/core/Migrator.ts";
 import Daemon from "../src/server/Daemon.ts";
 import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
 
@@ -23,8 +22,6 @@ const requireEnv = (name) => {
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Auto-derive flags from .env.example. Each PLURNK_* var becomes a
-// --kebab-cased flag; comments above each var become the -h description.
 const flagDescriptors = await parseEnvExample(resolve(projectRoot, ".env.example"));
 const flagOptions = {};
 for (const f of flagDescriptors) {
@@ -47,22 +44,20 @@ ${formatFlagsHelp(flagDescriptors)}
   -h, --help   print this message and exit
 `;
 
-const openDb = (dbPath) => {
-    const db = new DatabaseSync(dbPath);
-    db.exec("PRAGMA foreign_keys = ON");
-    db.exec("PRAGMA journal_mode = WAL");
-    return db;
+const openDb = async (dbPath) => {
+    return await SqlRite.open({
+        path: dbPath,
+        dir: [resolve(projectRoot, "migrations"), resolve(projectRoot, "src")],
+    });
 };
 
 const migrate = async () => {
     const dbPath = requireEnv("PLURNK_DB_PATH");
-    const dir = resolve(projectRoot, "migrations");
-    const db = openDb(dbPath);
+    // SqlRite runs -- INIT: blocks on open; opening IS the migration.
+    const db = await openDb(dbPath);
     try {
-        const result = await new Migrator({ db, dir }).migrate();
-        process.stdout.write(`migrate: applied ${result.applied.length}, skipped ${result.skipped.length}\n`);
-        for (const id of result.applied) process.stdout.write(`  + ${id}\n`);
-    } finally { db.close(); }
+        process.stdout.write(`migrate: schema applied against ${dbPath}\n`);
+    } finally { await db.close(); }
 };
 
 const loadOpenAIProvider = async () => {
@@ -93,10 +88,8 @@ const start = async () => {
     const dbPath = requireEnv("PLURNK_DB_PATH");
     const host = process.env.PLURNK_HOST ?? "127.0.0.1";
     const port = Number(process.env.PLURNK_PORT ?? "3044");
-    const dir = resolve(projectRoot, "migrations");
 
-    const db = openDb(dbPath);
-    await new Migrator({ db, dir }).migrate();
+    const db = await openDb(dbPath);
     const provider = await loadOpenAIProvider();
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host, port });
@@ -106,7 +99,7 @@ const start = async () => {
     const shutdown = async (signal) => {
         process.stdout.write(`plurnk-service: ${signal} received; shutting down\n`);
         await daemon.stop();
-        db.close();
+        await db.close();
         process.exit(0);
     };
     process.on("SIGINT", () => shutdown("SIGINT"));
@@ -120,8 +113,6 @@ const { positionals, values } = parseArgs({
     options: { help: { type: "boolean", short: "h" }, ...flagOptions },
 });
 
-// CLI flags override .env values. Set the corresponding PLURNK_* env var
-// for any flag that was provided.
 for (const f of flagDescriptors) {
     const key = f.flagName.replace(/^--/, "");
     if (typeof values[key] === "string") {

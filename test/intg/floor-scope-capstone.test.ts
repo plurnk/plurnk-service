@@ -22,7 +22,7 @@ const parse = (dsl: string): PlurnkStatement[] => {
 
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
     const db = await openMigrated();
-    const env = seedEnvelope(db, "capstone-ws");
+    const env = await seedEnvelope(db, "capstone-ws");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
     const dispatch = async (statement: PlurnkStatement, actionIndex: number) =>

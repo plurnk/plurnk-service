@@ -35,7 +35,7 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
 test("parser roundtrip: <<EDIT[france,europe](known://countries/france/capital):Paris:EDIT writes the right entry", async () => {
     const db = await openMigrated();
     try {
-        const env = seedEnvelope(db, "ws-roundtrip-edit");
+        const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const stmt = parseOne("<<EDIT[france,europe](known://countries/france/capital):Paris:EDIT") as EditStatement;
         const result = await engine.dispatch({
@@ -59,7 +59,7 @@ test("parser roundtrip: <<EDIT[france,europe](known://countries/france/capital):
 test("parser roundtrip: multi-statement text parses + dispatches in order", async () => {
     const db = await openMigrated();
     try {
-        const env = seedEnvelope(db, "ws-roundtrip-multi");
+        const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const text = `<<EDIT(known://a):first:EDIT
 <<EDIT(known://b):second:EDIT
@@ -79,7 +79,7 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
 test("parser roundtrip: <<EDIT…>> followed by <<READ…>> reads back what was written", async () => {
     const db = await openMigrated();
     try {
-        const env = seedEnvelope(db, "ws-roundtrip-readback");
+        const env = await seedEnvelope(db, "ws-roundtrip-readback");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
@@ -101,7 +101,7 @@ test("parser roundtrip: <<EDIT…>> followed by <<READ…>> reads back what was 
 test("parser roundtrip: HTTP-shape path still decomposes authority correctly", async () => {
     const db = await openMigrated();
     try {
-        const env = seedEnvelope(db, "ws-roundtrip-http");
+        const env = await seedEnvelope(db, "ws-roundtrip-http");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const stmt = parseOne("<<READ(https://en.wikipedia.org/wiki/Paris)::READ") as ReadStatement;
@@ -120,7 +120,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
 test("parser roundtrip: real DSL with params + fragment on opaque scheme", async () => {
     const db = await openMigrated();
     try {
-        const env = seedEnvelope(db, "ws-roundtrip-params");
+        const env = await seedEnvelope(db, "ws-roundtrip-params");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const stmt = parseOne("<<READ(known://france?lang=fr#History)::READ") as ReadStatement;

@@ -1,4 +1,5 @@
-CREATE TABLE entries (
+-- INIT: entries
+CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     scope      TEXT    NOT NULL             CHECK (scope IN ('agent', 'session')),
@@ -16,10 +17,10 @@ CREATE TABLE entries (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
-CREATE UNIQUE INDEX entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
+CREATE UNIQUE INDEX IF NOT EXISTS entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
+CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
 
-CREATE TABLE entry_channels (
+CREATE TABLE IF NOT EXISTS entry_channels (
     entry_id INTEGER NOT NULL,
     name     TEXT    NOT NULL             CHECK (length(name) > 0),
     content  TEXT    NOT NULL,
@@ -30,11 +31,11 @@ CREATE TABLE entry_channels (
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
-CREATE TABLE entry_tags (
+CREATE TABLE IF NOT EXISTS entry_tags (
     entry_id INTEGER NOT NULL,
     tag      TEXT    NOT NULL CHECK (length(tag) > 0),
     PRIMARY KEY (entry_id, tag),
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
-CREATE INDEX entry_tags_tag ON entry_tags (tag);
+CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);

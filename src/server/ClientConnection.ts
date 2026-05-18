@@ -5,10 +5,10 @@
 // SPEC §13.2 (protocol), §13.7 (lifecycle), §13.8 (errors).
 
 import type { WebSocket } from "ws";
-import type { DatabaseSync } from "node:sqlite";
 import type Engine from "../core/Engine.ts";
 import type MethodRegistry from "./MethodRegistry.ts";
 import type { HandlerContext, NotifyTarget, Provider } from "./MethodRegistry.ts";
+import type { Db } from "../core/Db.ts";
 import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
@@ -44,7 +44,7 @@ interface JsonRpcNotification {
 export interface ClientConnectionOptions {
     ws: WebSocket;
     registry: MethodRegistry;
-    db: DatabaseSync;
+    db: Db;
     engine: Engine;
     provider: Provider | null;
     broadcast: (target: NotifyTarget, from: ClientConnection, method: string, params?: unknown) => void;
@@ -53,7 +53,7 @@ export interface ClientConnectionOptions {
 export default class ClientConnection {
     #ws: WebSocket;
     #registry: MethodRegistry;
-    #db: DatabaseSync;
+    #db: Db;
     #engine: Engine;
     #provider: Provider | null;
     #broadcast: ClientConnectionOptions["broadcast"];
@@ -81,7 +81,7 @@ export default class ClientConnection {
 
     close(): void {
         if (this.#session !== null) {
-            closeClientLoop(this.#db, this.#session.clientLoopId, 200);
+            void closeClientLoop(this.#db, this.#session.clientLoopId, 200);
             this.#session = null;
         }
         if (this.#ws.readyState === 1) this.#ws.terminate();
@@ -114,7 +114,7 @@ export default class ClientConnection {
 
         if (registration.requiresInit && this.#session === null) {
             try {
-                const envelope = createClientEnvelope(this.#db, { prefix: "auto" });
+                const envelope = await createClientEnvelope(this.#db, { prefix: "auto" });
                 this.#session = envelope;
                 this.#broadcast("all", this, "session/created", {
                     id: envelope.sessionId,

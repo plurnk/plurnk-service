@@ -1,4 +1,5 @@
-CREATE TABLE loops (
+-- INIT: loops
+CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     run_id   INTEGER NOT NULL,
@@ -8,4 +9,4 @@ CREATE TABLE loops (
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX loops_run_id_sequence ON loops (run_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS loops_run_id_sequence ON loops (run_id, sequence);

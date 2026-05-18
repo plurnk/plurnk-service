@@ -286,6 +286,8 @@ Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; fi
 
 Visibility is per-`(run, entry, channel)` — a bit per cell in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of the target entry to `indexed=1`; HIDE flips all to `indexed=0`. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment exists for the entry-bearing schemes; see §5.5.
 
+The engine's render-time index (`packet.system.index`) includes only `indexed=1` channels for the current run. {§5.2-render-filters-by-indexed} Each included channel is passed through its mimetype handler's `preview(content, budget)` per §4 / §5.1, with the result landing in the entry's `channels[name].content` field in the packet.
+
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
 The mimetype of a channel is declared by the scheme's manifest (§3.1) or — for dynamic schemes — supplied per-call. If the engine attempts to write a channel without a declared mimetype, it throws. There is no default mimetype anywhere in the system. This is a reinforcement of the no-fallbacks rule at the channel layer.

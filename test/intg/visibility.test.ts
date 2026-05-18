@@ -20,7 +20,7 @@ test("visibility: table is STRICT and WITHOUT ROWID", async () => {
 test("visibility: insert minimal — indexed defaults to 1", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-default"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-default"));
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'body')").run(runId, entryId);
         const row = db.prepare("SELECT indexed FROM visibility WHERE run_id = ? AND entry_id = ?").get(runId, entryId) as { indexed: number };
@@ -31,7 +31,7 @@ test("visibility: insert minimal — indexed defaults to 1", async () => {
 test("visibility: composite PK (run_id, entry_id, channel) — duplicate rejected", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-pk"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-pk"));
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'body', 1)").run(runId, entryId);
         assert.throws(
@@ -44,9 +44,9 @@ test("visibility: composite PK (run_id, entry_id, channel) — duplicate rejecte
 test("visibility: same channel across different runs is fine — run-scoped state", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-vis-crossrun");
-        const runA = insertRun(db, sessionId);
-        const runB = insertRun(db, sessionId);
+        const sessionId = await insertSession(db, "ws-vis-crossrun");
+        const runA = await insertRun(db, sessionId);
+        const runB = await insertRun(db, sessionId);
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'body', 1)").run(runA, entryId);
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'body', 0)").run(runB, entryId);
@@ -58,7 +58,7 @@ test("visibility: same channel across different runs is fine — run-scoped stat
 test("visibility: same entry, different channels — both can have visibility rows", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-multichan"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-multichan"));
         const entryId = insertAgentEntry(db, "exec", "ls");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'stdout', 1)").run(runId, entryId);
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'stderr', 0)").run(runId, entryId);
@@ -71,7 +71,7 @@ test("visibility: same entry, different channels — both can have visibility ro
 test("visibility: indexed CHECK — only 0 and 1 accepted; other values rejected", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-indexed"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-indexed"));
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'a', 0)").run(runId, entryId);
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, 'b', 1)").run(runId, entryId);
@@ -87,7 +87,7 @@ test("visibility: indexed CHECK — only 0 and 1 accepted; other values rejected
 test("visibility: empty channel rejected by CHECK length > 0", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-emptychan"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-emptychan"));
         const entryId = insertAgentEntry(db, "known", "france");
         assert.throws(
             () => db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, '')").run(runId, entryId),
@@ -99,7 +99,7 @@ test("visibility: empty channel rejected by CHECK length > 0", async () => {
 test("visibility: NOT NULL on run_id, entry_id, channel", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-notnull"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-notnull"));
         const entryId = insertAgentEntry(db, "known", "france");
         assert.throws(() => db.exec(`INSERT INTO visibility (entry_id, channel) VALUES (${entryId}, 'body')`), /NOT NULL constraint failed: visibility\.run_id/);
         assert.throws(() => db.exec(`INSERT INTO visibility (run_id, channel) VALUES (${runId}, 'body')`), /NOT NULL constraint failed: visibility\.entry_id/);
@@ -121,7 +121,7 @@ test("visibility: FK rejection on bad run_id", async () => {
 test("visibility: FK rejection on bad entry_id", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-badentry"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-badentry"));
         assert.throws(
             () => db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'body')").run(runId, 99999),
             /FOREIGN KEY constraint failed/,
@@ -132,7 +132,7 @@ test("visibility: FK rejection on bad entry_id", async () => {
 test("visibility: ON DELETE CASCADE via run", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-runcasc"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-runcasc"));
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'a')").run(runId, entryId);
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'b')").run(runId, entryId);
@@ -145,7 +145,7 @@ test("visibility: ON DELETE CASCADE via run", async () => {
 test("visibility: ON DELETE CASCADE via entry", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-entrycasc"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-entrycasc"));
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'body')").run(runId, entryId);
         db.prepare("DELETE FROM entries WHERE id = ?").run(entryId);
@@ -157,8 +157,8 @@ test("visibility: ON DELETE CASCADE via entry", async () => {
 test("visibility: CASCADE chain via session→runs→visibility", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-vis-sessioncasc");
-        const runId = insertRun(db, sessionId);
+        const sessionId = await insertSession(db, "ws-vis-sessioncasc");
+        const runId = await insertRun(db, sessionId);
         const entryId = insertAgentEntry(db, "known", "france");
         db.prepare("INSERT INTO visibility (run_id, entry_id, channel) VALUES (?, ?, 'body')").run(runId, entryId);
         db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
@@ -170,7 +170,7 @@ test("visibility: CASCADE chain via session→runs→visibility", async () => {
 test("visibility: 'indexed entries in run X' lookup uses PK prefix", async () => {
     const db = await openMigrated();
     try {
-        const runId = insertRun(db, insertSession(db, "ws-vis-indlookup"));
+        const runId = await insertRun(db, insertSession(db, "ws-vis-indlookup"));
         const a = insertAgentEntry(db, "known", "a");
         const b = insertAgentEntry(db, "known", "b");
         const c = insertAgentEntry(db, "known", "c");

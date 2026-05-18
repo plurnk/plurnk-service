@@ -26,9 +26,9 @@ const costs = (db: DatabaseSync, sessionId: number, runId: number) => ({
 test("cost rollups: turn insert propagates to run AND session", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-single");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-single");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         insertTurnWithCost(db, loopId, 1, 1234);
         const c = costs(db, sessionId, runId);
         assert.equal(c.run, 1234);
@@ -39,9 +39,9 @@ test("cost rollups: turn insert propagates to run AND session", async () => {
 test("cost rollups: multiple turns in same loop aggregate", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-multi");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-multi");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         insertTurnWithCost(db, loopId, 1, 100);
         insertTurnWithCost(db, loopId, 2, 250);
         insertTurnWithCost(db, loopId, 3, 75);
@@ -54,10 +54,10 @@ test("cost rollups: multiple turns in same loop aggregate", async () => {
 test("cost rollups: turns in different loops of same run aggregate to that run + session", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-multiloop");
-        const runId = insertRun(db, sessionId);
-        const loopA = insertLoop(db, runId, 1);
-        const loopB = insertLoop(db, runId, 2);
+        const sessionId = await insertSession(db, "ws-cost-multiloop");
+        const runId = await insertRun(db, sessionId);
+        const loopA = await insertLoop(db, runId, 1);
+        const loopB = await insertLoop(db, runId, 2);
         insertTurnWithCost(db, loopA, 1, 100);
         insertTurnWithCost(db, loopA, 2, 200);
         insertTurnWithCost(db, loopB, 1, 300);
@@ -70,11 +70,11 @@ test("cost rollups: turns in different loops of same run aggregate to that run +
 test("cost rollups: turns in different runs of same session aggregate per-run AND to session", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-multirun");
-        const runA = insertRun(db, sessionId);
-        const runB = insertRun(db, sessionId);
-        const loopA = insertLoop(db, runA, 1);
-        const loopB = insertLoop(db, runB, 1);
+        const sessionId = await insertSession(db, "ws-cost-multirun");
+        const runA = await insertRun(db, sessionId);
+        const runB = await insertRun(db, sessionId);
+        const loopA = await insertLoop(db, runA, 1);
+        const loopB = await insertLoop(db, runB, 1);
         insertTurnWithCost(db, loopA, 1, 500);
         insertTurnWithCost(db, loopB, 1, 700);
         const cA = costs(db, sessionId, runA);
@@ -88,11 +88,11 @@ test("cost rollups: turns in different runs of same session aggregate per-run AN
 test("cost rollups: forked run's turn rolls into the same session", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-fork");
-        const trunkId = insertRun(db, sessionId);
-        const forkId = insertRun(db, sessionId, trunkId);
-        const loopT = insertLoop(db, trunkId, 1);
-        const loopF = insertLoop(db, forkId, 1);
+        const sessionId = await insertSession(db, "ws-cost-fork");
+        const trunkId = await insertRun(db, sessionId);
+        const forkId = await insertRun(db, sessionId, trunkId);
+        const loopT = await insertLoop(db, trunkId, 1);
+        const loopF = await insertLoop(db, forkId, 1);
         insertTurnWithCost(db, loopT, 1, 100);
         insertTurnWithCost(db, loopF, 1, 200);
         const trunkCost = (db.prepare("SELECT cost_pico FROM runs WHERE id = ?").get(trunkId) as { cost_pico: number }).cost_pico;
@@ -107,12 +107,12 @@ test("cost rollups: forked run's turn rolls into the same session", async () => 
 test("cost rollups: turns across different sessions are isolated", async () => {
     const db = await openMigrated();
     try {
-        const sA = insertSession(db, "ws-cost-isolA");
-        const sB = insertSession(db, "ws-cost-isolB");
-        const rA = insertRun(db, sA);
-        const rB = insertRun(db, sB);
-        const lA = insertLoop(db, rA, 1);
-        const lB = insertLoop(db, rB, 1);
+        const sA = await insertSession(db, "ws-cost-isolA");
+        const sB = await insertSession(db, "ws-cost-isolB");
+        const rA = await insertRun(db, sA);
+        const rB = await insertRun(db, sB);
+        const lA = await insertLoop(db, rA, 1);
+        const lB = await insertLoop(db, rB, 1);
         insertTurnWithCost(db, lA, 1, 100);
         insertTurnWithCost(db, lB, 1, 200);
         const cA = costs(db, sA, rA);
@@ -125,9 +125,9 @@ test("cost rollups: turns across different sessions are isolated", async () => {
 test("cost rollups: UPDATE OF usage_cost_pico propagates the delta", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-update");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-update");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         const turnId = insertTurnWithCost(db, loopId, 1, 1000);
         let c = costs(db, sessionId, runId);
         assert.equal(c.run, 1000);
@@ -145,9 +145,9 @@ test("cost rollups: UPDATE OF usage_cost_pico propagates the delta", async () =>
 test("cost rollups: UPDATE with same usage_cost_pico is a no-op (WHEN guard)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-noop");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-noop");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         const turnId = insertTurnWithCost(db, loopId, 1, 1000);
         db.prepare("UPDATE turns SET usage_cost_pico = 1000 WHERE id = ?").run(turnId);
         const c = costs(db, sessionId, runId);
@@ -159,9 +159,9 @@ test("cost rollups: UPDATE with same usage_cost_pico is a no-op (WHEN guard)", a
 test("cost rollups: zero-cost turn is a no-op for rollup", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-zero");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-zero");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         insertTurnWithCost(db, loopId, 1, 0);
         const c = costs(db, sessionId, runId);
         assert.equal(c.run, 0);
@@ -172,9 +172,9 @@ test("cost rollups: zero-cost turn is a no-op for rollup", async () => {
 test("cost rollups: large cost values don't overflow (INTEGER pico-units)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = insertSession(db, "ws-cost-large");
-        const runId = insertRun(db, sessionId);
-        const loopId = insertLoop(db, runId, 1);
+        const sessionId = await insertSession(db, "ws-cost-large");
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
         const oneUsdInPico = 1_000_000_000_000; // 10^12
         insertTurnWithCost(db, loopId, 1, oneUsdInPico);
         insertTurnWithCost(db, loopId, 2, oneUsdInPico * 2);

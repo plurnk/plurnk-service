@@ -2,7 +2,7 @@
 // (signal, target_params, lineMarker, tx, rx) so the client receives
 // structured values, not opaque strings.
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "../core/Db.ts";
 
 export interface LogEntryWire {
     id: number;
@@ -38,8 +38,8 @@ const parseJsonOrNull = (v: unknown): unknown => {
     return JSON.parse(v);
 };
 
-export const fetchLogEntry = (db: DatabaseSync, id: number): LogEntryWire => {
-    const row = db.prepare("SELECT * FROM log_entries WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+export const fetchLogEntry = async (db: Db, id: number): Promise<LogEntryWire> => {
+    const row = await (db.log_entry_by_id as PrepMethod).get<Record<string, unknown>>({ id });
     if (row === undefined) throw new Error(`log_entries row ${id} not found`);
     return {
         id: row.id as number,

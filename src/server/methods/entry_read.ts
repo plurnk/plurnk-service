@@ -1,8 +1,8 @@
 // entry.read — return the full entry shape (all channels + tags + metadata)
 // for a given path. SPEC §13.5.
 
-import type { DatabaseSync } from "node:sqlite";
 import type MethodRegistry from "../MethodRegistry.ts";
+import type { Db, PrepMethod } from "../../core/Db.ts";
 
 interface Params {
     path: string;
@@ -19,31 +19,25 @@ interface EntryShape {
     tags: string[];
 }
 
-// Parse path into scheme + pathname. Local paths (no scheme) are rejected
-// because entries are scheme-keyed.
 const parsePath = (s: string): { scheme: string; pathname: string } | null => {
     const m = s.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
     if (m === null) return null;
-    return { scheme: m[1], pathname: m[2].split("#")[0] };  // strip fragment
+    return { scheme: m[1], pathname: m[2].split("#")[0] };
 };
 
-const fetchEntry = (db: DatabaseSync, sessionId: number, scheme: string, pathname: string): EntryShape | null => {
-    const row = db
-        .prepare("SELECT id, scope, session_id, scheme, pathname FROM entries WHERE session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number; scope: string; session_id: number; scheme: string; pathname: string } | undefined;
+const fetchEntry = async (db: Db, sessionId: number, scheme: string, pathname: string): Promise<EntryShape | null> => {
+    const row = await (db.entry_read_lookup as PrepMethod).get<{ id: number; scope: string; session_id: number; scheme: string; pathname: string }>({
+        session_id: sessionId, scheme, pathname,
+    });
     if (row === undefined) return null;
 
-    const channelRows = db
-        .prepare("SELECT name, content, mimetype, tokens, state FROM entry_channels WHERE entry_id = ?")
-        .all(row.id) as Array<{ name: string; content: string; mimetype: string; tokens: number; state: string }>;
+    const channelRows = await (db.entry_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string; tokens: number; state: string }>({ entry_id: row.id });
     const channels: EntryShape["channels"] = {};
     for (const c of channelRows) {
         channels[c.name] = { content: c.content, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
     }
 
-    const tagRows = db
-        .prepare("SELECT tag FROM entry_tags WHERE entry_id = ? ORDER BY tag")
-        .all(row.id) as Array<{ tag: string }>;
+    const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: row.id });
 
     return {
         id: row.id,
@@ -67,7 +61,7 @@ export const register = (registry: MethodRegistry): void => {
             const sessionId = p.sessionId ?? ctx.session?.sessionId;
             if (sessionId === undefined) throw new Error("entry.read requires a sessionId (either via params or session attach)");
 
-            const entry = fetchEntry(ctx.db, sessionId, parsed.scheme, parsed.pathname);
+            const entry = await fetchEntry(ctx.db, sessionId, parsed.scheme, parsed.pathname);
             if (entry === null) return { status: 404, entry: null };
             return { status: 200, entry };
         },
