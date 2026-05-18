@@ -1,5 +1,6 @@
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
+import type { SchemeManifest } from "../core/scheme-types.ts";
 
 type ReadContext = { db: Db; statement: ReadStatement; runId: number };
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
@@ -7,6 +8,17 @@ type ReadResult = { status: number; content: string | null; mimetype: string | n
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)$/;
 
 export default class Log {
+    static manifest: SchemeManifest = {
+        name: "log",
+        channels: {},  // logs render through read(), not channel storage
+        defaultChannel: "",
+        category: "logging",
+        scope: "session",
+        writableBy: ["system"],  // engine-only writes; model & client read
+        volatile: false,
+        modelVisible: true,
+    };
+
     async read({ db, statement, runId }: ReadContext): Promise<ReadResult> {
         if (statement.path === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };

@@ -1,4 +1,5 @@
 import type { Db } from "../core/Db.ts";
+import type { SchemeManifest } from "../core/scheme-types.ts";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -12,11 +13,21 @@ import type { FindResult } from "./_entry-find.ts";
 const SCHEME = "known";
 
 export default class Known {
-    static channels: Record<string, string> = {
-        body: "text/markdown",
-        preview: "text/markdown",
+    static manifest: SchemeManifest = {
+        name: "known",
+        channels: { body: "text/markdown", preview: "text/markdown" },
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client"],
+        volatile: false,
+        modelVisible: true,
     };
-    static defaultChannel = "body";
+
+    // Legacy access points — kept until the engine refactor (#33) reads
+    // these from manifest exclusively. Schemes that import these continue working.
+    static channels: Record<string, string> = Known.manifest.channels;
+    static defaultChannel = Known.manifest.defaultChannel;
 
     async edit(ctx: { db: Db; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
         return editSessionEntry({ ...ctx, scheme: SCHEME, channels: Known.channels, defaultChannel: Known.defaultChannel });

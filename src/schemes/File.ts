@@ -1,11 +1,23 @@
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
+import type { SchemeManifest } from "../core/scheme-types.ts";
 
 type ReadContext = { statement: ReadStatement };
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 
 export default class File {
+    static manifest: SchemeManifest = {
+        name: "file",
+        channels: {},  // dynamic mimetype per file extension
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client", "plugin"],
+        volatile: false,
+        modelVisible: true,
+    };
+
     #workspaceRoot: string | null = null;
 
     #resolveWorkspaceRoot(): string | null {

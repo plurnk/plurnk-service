@@ -2,6 +2,7 @@
 // Unknown) but its semantics are NOT yet designed.
 
 import type { Db } from "../core/Db.ts";
+import type { SchemeManifest } from "../core/scheme-types.ts";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -15,11 +16,19 @@ import type { FindResult } from "./_entry-find.ts";
 const SCHEME = "skill";
 
 export default class Skill {
-    static channels: Record<string, string> = {
-        body: "text/markdown",
-        preview: "text/markdown",
+    static manifest: SchemeManifest = {
+        name: "skill",
+        channels: { body: "text/markdown", preview: "text/markdown" },
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client"],
+        volatile: false,
+        modelVisible: true,
     };
-    static defaultChannel = "body";
+
+    static channels: Record<string, string> = Skill.manifest.channels;
+    static defaultChannel = Skill.manifest.defaultChannel;
 
     async edit(ctx: { db: Db; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
         return editSessionEntry({ ...ctx, scheme: SCHEME, channels: Skill.channels, defaultChannel: Skill.defaultChannel });
