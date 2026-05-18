@@ -5,6 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Mock from "../../src/providers/Mock.ts";
 import type { MockResponse } from "../../src/providers/Mock.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -55,18 +56,19 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(result.status, 200, "turn status from terminal SEND");
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND broadcast → 200");
 
-        const turn = db.prepare("SELECT loop_id, sequence, status, usage_completion FROM turns WHERE id = ?").get(result.turnId) as { loop_id: number; sequence: number; status: number; usage_completion: number };
+        const turn = await (db.test_get_turn as PrepMethod).get<{ loop_id: number; sequence: number; status: number; usage_completion: number }>({ id: result.turnId });
+        if (turn === undefined) throw new Error("turn not found");
         assert.equal(turn.loop_id, loopId);
         assert.equal(turn.sequence, 1);
         assert.equal(turn.status, 200);
         assert.equal(turn.usage_completion, 42);
 
-        const logCount = (db.prepare("SELECT COUNT(*) AS n FROM log_entries WHERE turn_id = ?").get(result.turnId) as { n: number }).n;
+        const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
         assert.equal(logCount, 2);
 
-        const loopStatus = (db.prepare("SELECT status FROM loops WHERE id = ?").get(loopId) as { status: number }).status;
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: packet stores system + user content from messages", async () => {
@@ -81,12 +83,13 @@ test("Engine.runTurn: packet stores system + user content from messages", async 
                 { role: "user", content: "second user msg" },
             ],
         });
-        const packetRaw = (db.prepare("SELECT packet FROM turns WHERE id = ?").get(result.turnId) as { packet: string }).packet;
-        const packet = JSON.parse(packetRaw) as { system: { system_definition: string }; user: { prompt: string }; assistant: unknown };
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        if (row === undefined) throw new Error("turn not found");
+        const packet = JSON.parse(row.packet) as { system: { system_definition: string }; user: { prompt: string }; assistant: unknown };
         assert.equal(packet.system.system_definition, "system prompt body");
         assert.equal(packet.user.prompt, "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
@@ -101,9 +104,9 @@ test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         assert.deepEqual(result.statuses, [201, 201, 201, 200]);
-        const indices = db.prepare("SELECT action_index FROM log_entries WHERE turn_id = ? ORDER BY action_index").all(result.turnId) as { action_index: number }[];
+        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number }>({ turn_id: result.turnId });
         assert.deepEqual(indices.map((r) => r.action_index), [0, 1, 2, 3]);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: throws if assistant.ops has no SEND with numeric status", async () => {
@@ -117,9 +120,9 @@ test("Engine.runTurn: throws if assistant.ops has no SEND with numeric status", 
             () => engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
             /assistant ops contain no SEND/,
         );
-        const turnCount = (db.prepare("SELECT COUNT(*) AS n FROM turns").get() as { n: number }).n;
+        const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(turnCount, 0, "no turn row should be inserted on malformed assistant");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw", async () => {
@@ -134,9 +137,11 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
             }],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const packet = JSON.parse((db.prepare("SELECT packet FROM turns WHERE id = ?").get(result.turnId) as { packet: string }).packet) as { assistantRaw: { vendor: string; id: string } };
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        if (row === undefined) throw new Error("turn not found");
+        const packet = JSON.parse(row.packet) as { assistantRaw: { vendor: string; id: string } };
         assert.deepEqual(packet.assistantRaw, raw);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: sequence increments across multiple turn calls in the same loop", async () => {
@@ -153,11 +158,12 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
         const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const seqs = db.prepare("SELECT id, sequence FROM turns WHERE loop_id = ? ORDER BY sequence").all(loopId) as { id: number; sequence: number }[];
+        const seqs = await (db.test_list_turns_in_loop as PrepMethod).all<{ id: number; sequence: number }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
         assert.deepEqual([t1.turnId, t2.turnId, t3.turnId], seqs.map((s) => s.id));
-        assert.equal((db.prepare("SELECT status FROM loops WHERE id = ?").get(loopId) as { status: number }).status, 200, "loop terminal after final SEND[200]");
-    } finally { db.close(); }
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 200, "loop terminal after final SEND[200]");
+    } finally { await db.close(); }
 });
 
 test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async () => {
@@ -169,7 +175,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         assert.equal(result.status, 200);
-        const turnStatus = (db.prepare("SELECT status FROM turns WHERE id = ?").get(result.turnId) as { status: number }).status;
+        const turnStatus = (await (db.test_get_turn_status as PrepMethod).get<{ status: number }>({ id: result.turnId }))?.status;
         assert.equal(turnStatus, 200);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });

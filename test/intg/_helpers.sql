@@ -95,3 +95,41 @@ INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
 
 -- PREP: test_get_packet
 SELECT packet FROM turns WHERE id = $id;
+
+-- PREP: test_get_turn_status
+SELECT status FROM turns WHERE id = $id;
+
+-- PREP: test_list_turns_in_loop
+SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
+
+-- PREP: test_log_entries_by_turn
+SELECT action_index, status_rx, target_pathname, target_scheme, target_fragment, op, origin, signal, status_rx
+FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index;
+
+-- PREP: test_log_entries_by_run
+SELECT id, op, target_pathname, target_scheme, action_index, turn_id, loop_id, status_rx
+FROM log_entries WHERE run_id = $run_id ORDER BY id;
+
+-- PREP: test_count_log_entries
+SELECT COUNT(*) AS n FROM log_entries;
+
+-- PREP: test_count_entries
+SELECT COUNT(*) AS n FROM entries;
+
+-- PREP: test_count_channels_for_entry
+SELECT COUNT(*) AS n FROM entry_channels WHERE entry_id = $entry_id;
+
+-- PREP: test_list_channels_for_entry
+SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
+
+-- PREP: test_list_visibility_for_run
+SELECT entry_id, channel, indexed FROM visibility WHERE run_id = $run_id ORDER BY entry_id, channel;
+
+-- PREP: test_count_log_entries_by_run
+SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id;
+
+-- PREP: test_get_entry_by_id
+SELECT pathname FROM entries WHERE id = $id;
+
+-- PREP: test_first_log_entry_for_turn
+SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index LIMIT 1;
