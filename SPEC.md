@@ -965,51 +965,47 @@ Each entry: the question, the answer, the rationale, the migration path if revis
 
 ## §15 Packet shape
 
-The canonical packet shape persisted on `turns.packet` and supplied to the model each turn. Engine assembles in `Engine.#buildPacket`; plugins do not augment in v0 (§14.1).
+The canonical packet shape is defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`, ≥0.4.0). Engine assembles in `Engine.#buildPacket`; plugins do not augment in v0 (§14.1). This section describes plurnk-service's responsibilities under that contract — see grammar for the authoritative schema.
 
 ```ts
 type Packet = {
-    tokens: number;                          // total tokens for this turn (assistant completion)
+    tokens: number;
     system: {
         tokens: number;
-        system_definition: string;           // operator-supplied prelude
-        persona: string;                     // session-scoped persona
-        index: PacketEntry[];                // visible entries (§4 / §5)
-        log: PacketLogRow[];                 // chronological action-entries this turn
+        system_definition: string;
+        persona: string;
+        index: PacketEntry[];               // visible entries (§4 / §5)
+        log: PacketLogRow[];                // chronological action-entries (§7 / pending task #44)
     };
     user: {
         tokens: number;
-        prompt: string;                      // the user prompt for the loop
-        telemetry: {                         // model-facing runtime telemetry (§15.1)
-            budget: { used: number; limit: number; unit: "characters" | "tokens" };
-            errors: TelemetryError[];        // actionless failures from the previous turn
-        };
-        system_requirements: string;         // hard constraints injected per turn
+        prompt: string;
+        telemetry: { budget: string; errors: object[] };   // §15.1
+        system_requirements: string;
     };
-    assistant: {                             // last completion (rolling)
-        tokens: number;
-        content: string;
-        ops: PlurnkStatement[];
-        reasoning: string | null;
-    };
-    assistantRaw: unknown;                   // provider-native raw response (audit only)
+    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
+    assistantRaw: unknown;
 };
 ```
 
 ### §15.1 user.telemetry — model-facing runtime telemetry
 
-The slot for telemetry the model MUST react to right now: budget pressure, last-turn errors that didn't produce an action-entry, and (future) strike counts / sudden-death armed signals / cycle warnings.
+The slot for telemetry the model MUST react to right now: budget pressure and last-turn failures that didn't produce an action-entry. Rendered prominently at the bottom of the user section so the model cannot ignore it. Errors here are transient — they appear on the turn AFTER the failure and clear once the model has seen them. The action-entries (`packet.system.log[]`) are the durable audit; `telemetry.errors[]` is the **alert**.
 
-Rendered prominently at the bottom of the user section so the model cannot ignore it. Errors here are transient: they appear on the turn AFTER the failure and clear once the model has seen them. The action-entries themselves (`packet.system.log[]`) are the durable audit; `telemetry.errors[]` is the **alert**.
+**Grammar contract (authoritative, plurnk-grammar 0.4.0):**
 
-```ts
-type TelemetryError = {
-    kind: "parse" | "dispatch_crash" | "no_send" | "watchdog" | "budget_overflow" | "rail";
-    message: string;
-    detail?: unknown;            // kind-specific payload (line/col for parse, op for crash, etc.)
-};
-```
+- `budget: string` — text/markdown. Renderer-provided summary of remaining context / cost / etc. Empty string when nothing to surface.
+- `errors: object[]` — element shape intentionally open at v0. Consumers populate as actionless-failure rendering needs solidify. Empty array when no errors to surface.
 
-`budget` reflects packet build state at this turn. `unit` is `"characters"` per §14.2 until `countTokens` lands.
+**Plurnk-service rendering (v0):**
 
-**No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace. The model reacts in-context; the audit lives in the action-entry log (when an action exists) or transient telemetry (when none does). Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as a one-line summary into `telemetry.errors[]` on the next packet — the same forced-confrontation pattern. The full detail stays queryable via `log://`. {§15.1-no-error-scheme}
+- `budget` is rendered as a short markdown line. Unit follows §14.2 (character count); the exact rendering is engine-internal and may evolve without a schema change.
+- `errors[]` carries one object per actionless failure from the previous turn. Service's working element shape (subject to tightening as needs solidify):
+    ```
+    { kind: "parse" | "dispatch_crash" | "no_send" | "watchdog" | "budget_overflow" | "rail",
+      message: string,
+      detail?: unknown }
+    ```
+- Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as a one-line summary object into `telemetry.errors[]` on the next packet — same forced-confrontation pattern. Full detail stays queryable via `log://`. {§15.1-no-error-scheme}
+
+**No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace.
