@@ -10,6 +10,88 @@ Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-
 
 ---
 
+## §0 Glossary
+
+Canonical meanings. When a doc, comment, test name, or commit message uses one of these words, it means exactly what's written here. Drift is a bug.
+
+### §0.1 Lifecycle terms
+
+| Term | Meaning |
+|---|---|
+| **agent** | The plurnk runtime singleton. Owns agent-scoped state (default scheme registry, agent-wide entries). One per process. |
+| **session** | Durable user-named workspace. Persists across runs and process restarts. Identity: `sessions.id` + unique `sessions.name`. |
+| **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns visibility state and log entries. |
+| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {102, 200, 499}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
+| **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
+| **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `SHOW`, `HIDE`, `EXEC`. One turn produces zero or more ops. |
+| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
+| **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log://<L>/<T>/<S>/<op>`. |
+| **dispatch** | The engine routing a statement to its scheme's op handler. |
+
+### §0.2 Storage terms
+
+| Term | Meaning |
+|---|---|
+| **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
+| **channel** | A named content buffer on an entry. Examples: `body`, `preview`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
+| **scope** | `"agent"` or `"session"`. Determines who reads. Agent-scope entries visible to every run; session-scope entries to that session's runs. |
+| **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. See SCHEMES.md. |
+| **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. See MIMETYPES.md. |
+| **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. See PROVIDERS.md. |
+
+### §0.3 State / visibility / status
+
+Three independent axes on entries and channels. Confusion across them is a recurring source of bugs.
+
+| Term | Type | Meaning |
+|---|---|---|
+| **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue (§3.5). |
+| **visibility** | `0 \| 1` | Per-`(run, entry, channel)` bit. `1 = indexed` (appears in `packet.system.index`), `0 = hidden` (not rendered, recallable via explicit READ). |
+| **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
+| **entry state** | `proposed \| resolved \| cancelled` | Proposal lifecycle. `proposed` = pending client accept; `resolved` = side effect happened; `cancelled` = client rejected. Distinct from channel state. |
+| **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
+
+### §0.4 Writer / authority
+
+| Term | Meaning |
+|---|---|
+| **writer** | The identity authoring a write. One of `model \| client \| system \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
+| **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
+| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, system, plugin}`. Engine rejects writes outside the set with 403 + `error://` entry. |
+
+### §0.5 Engine rails
+
+| Term | Meaning |
+|---|---|
+| **verdict** | End-of-turn ruling from the verdict filter chain. Returns `{continue: boolean, status: number, reason: string}`. Decides whether the loop terminates or another turn fires. |
+| **strike** | A turn whose verdict counts toward `MAX_STRIKES`. Fires when `turnErrors > 0` or cycle detection trips. The streak counter resets on clean turn; reaches `MAX_STRIKES` → loop abandons at 499. |
+| **cycle** | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
+| **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
+| **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only (no side-effecting ops); act = full surface. |
+| **flag** | Per-loop boolean shaping the active toolset: `yolo` (auto-accept proposals), `noWeb`, `noInteraction`, `noProposals`. |
+| **proposal** | A deferred side-effecting action awaiting client accept/reject. State machine: `proposed → resolved` or `proposed → cancelled`. `yolo` short-circuits to immediate. |
+| **resolution** | Client's accept/reject of a proposal via `op.resolve` RPC. |
+
+### §0.6 Packet terms
+
+| Term | Meaning |
+|---|---|
+| **packet** | The turn's full exchange shape: `{system, user, assistant, assistantRaw}`. Persisted on `turns.packet`. |
+| **index** | `packet.system.index`. Entry list visible to the model this turn. Built from `visibility` lattice + mimetype.preview. |
+| **log** | `packet.system.log`. Chronological list of `log_entries` in scope this turn. |
+| **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
+
+### §0.7 Test taxonomy
+
+| Tier | Location | LLM | Substrate |
+|---|---|---|---|
+| **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
+| **intg** | `test/intg/` | No (mock provider) | Real in-memory SqlRite, real engine |
+| **live** | `test/live/` | Real | Wire-level assertions |
+| **demo** | `test/demo/` | Real | Holistic outcome assertions |
+
+---
+
 ## §1 Architecture
 
 `plurnk-service` is an engine library plus an admin CLI. The engine orchestrates a model's interaction with a workspace through three plug points:
