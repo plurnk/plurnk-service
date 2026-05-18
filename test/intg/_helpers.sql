@@ -185,6 +185,15 @@ JOIN entry_tags t ON t.entry_id = e.id
 WHERE e.pathname = $pathname
 ORDER BY tag;
 
+-- PREP: test_set_visibility_indexed
+UPDATE visibility SET indexed = $indexed WHERE run_id = $run_id AND entry_id = $entry_id;
+
+-- PREP: test_list_entry_schemes
+SELECT scheme FROM entries ORDER BY scheme;
+
+-- PREP: test_get_visibility_no_channel
+SELECT indexed FROM visibility WHERE run_id = $run_id AND entry_id = $entry_id LIMIT 1;
+
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
 INSERT INTO subscriptions (run_id, entry_id, scheme, handle, closed_at)
