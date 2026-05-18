@@ -86,11 +86,14 @@ const pathnameFromPath = (path: ParsedPath): string => {
     return path.raw;
 };
 
-// Status assigned to a turn that completed but lacked a terminal SEND op.
-// Loop status stays 102 (no SEND broadcast → no terminal advance), so the
-// model gets another turn with telemetry showing the failure. The action
-// itself routes through telemetry.errors[] (§15.1).
-const TURN_STATUS_NO_SEND = 422;
+// Default turn.status when ops were emitted but no SEND. Model is implicitly
+// continuing; loop.status stays 102 either way (only SEND broadcast advances
+// loop terminal). No strike, no telemetry.
+const TURN_STATUS_IMPLICIT_CONTINUE = 102;
+
+// Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
+// action routes through telemetry.errors[] (§15.1).
+const TURN_STATUS_NO_OPS = 422;
 
 export default class Engine {
     #db: Db;
@@ -178,11 +181,17 @@ export default class Engine {
     }): Promise<{ turnId: number; status: number; statuses: number[] }> {
         const response = await provider.generate({ messages, signal });
 
+        const opsCount = response.assistant.ops.length;
         const sendOp = response.assistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number",
         );
-        const turnStatus = sendOp?.signal ?? TURN_STATUS_NO_SEND;
+        // Rail #41 (revised): the per-turn requirement is "emit at least one
+        // op," not "emit a terminal SEND." SEND is purely a signal verb; many
+        // turns may pass without one. An empty op list is the only strike.
+        const turnStatus = sendOp !== undefined
+            ? sendOp.signal
+            : opsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
@@ -208,13 +217,14 @@ export default class Engine {
             statuses.push(result.status);
         }
 
-        if (sendOp === undefined) {
-            // Rail #41: actionless failure surfaces in the NEXT packet's
-            // user.telemetry.errors[]. Pushed AFTER #buildPacket so the
-            // current turn's drain doesn't consume it.
+        if (opsCount === 0) {
+            // Rail #41 (revised): per-turn requirement is "emit at least one
+            // op." Zero ops = actionless failure. SEND specifically is not
+            // required — any of the 9 grammar ops satisfies. Pushed AFTER
+            // #buildPacket so this turn's drain doesn't consume it.
             this.#pushTelemetry(loopId, {
-                kind: "no_send",
-                message: "turn ended without a terminal SEND op; emit SEND[200] to complete or SEND[102] to continue",
+                kind: "no_ops",
+                message: "turn ended without emitting any op; emit at least one operation per turn",
             });
         }
 

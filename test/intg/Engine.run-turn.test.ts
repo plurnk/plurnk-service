@@ -109,11 +109,11 @@ test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
     } finally { await db.close(); }
 });
 
-// Rail #41: no-SEND turn is not fatal. Turn completes at status 422,
-// ops still dispatch, telemetry buffer captures the failure for next
-// packet's user.telemetry.errors[]. SPEC §15.1.
+// Rail #41 (revised): per-turn requirement is "emit at least one op."
+// SEND is just one of nine grammar ops; any op satisfies the rule.
+// Empty op list is the only strike condition.
 
-test("Engine.runTurn: no-SEND turn completes at status 422; ops still dispatch", async () => {
+test("Engine.runTurn: ops-without-SEND turn completes at status 102 (implicit continue)", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -121,20 +121,35 @@ test("Engine.runTurn: no-SEND turn completes at status 422; ops still dispatch",
             responses: [response([editStmt("/x", "y")])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        assert.equal(result.status, 422, "turn marked unprocessable (no terminal SEND)");
-        assert.deepEqual(result.statuses, [201], "EDIT still dispatched");
+        assert.equal(result.status, 102, "EDIT-only turn is implicitly 'still going'");
+        assert.deepEqual(result.statuses, [201]);
         const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
-        assert.equal(turnCount, 1, "turn row is inserted at 422; the failure is logged, not hidden");
+        assert.equal(turnCount, 1);
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: no-SEND failure surfaces in NEXT packet's user.telemetry.errors[]", async () => {
+test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [response([])],
+        });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        assert.equal(result.status, 422);
+        assert.deepEqual(result.statuses, []);
+        const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
+        assert.equal(turnCount, 1, "turn row inserted at 422; failure is logged, not hidden");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: no_ops failure surfaces in NEXT packet's user.telemetry.errors[]", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                response([editStmt("/a", "1")]),                       // turn 1: no SEND
+                response([]),                                          // turn 1: empty ops
                 response([editStmt("/b", "2"), sendStmt(200, "ok")]),  // turn 2: clean
             ],
         });
@@ -144,9 +159,9 @@ test("Engine.runTurn: no-SEND failure surfaces in NEXT packet's user.telemetry.e
         const packet = JSON.parse(row?.packet ?? "{}") as {
             user: { telemetry: { errors: Array<{ kind: string; message: string }> } };
         };
-        const noSendErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_send");
-        assert.equal(noSendErrors.length, 1, "turn 1's no-SEND surfaces in turn 2's telemetry");
-        assert.match(noSendErrors[0].message, /terminal SEND/);
+        const noOpsErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_ops");
+        assert.equal(noOpsErrors.length, 1, "turn 1's empty-ops surfaces in turn 2's telemetry");
+        assert.match(noOpsErrors[0].message, /at least one operation/);
     } finally { await db.close(); }
 });
 
@@ -219,7 +234,7 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                response([editStmt("/a", "1")]),                       // turn 1: no SEND
+                response([]),                                          // turn 1: empty ops
                 response([editStmt("/b", "2"), sendStmt(102, "go")]),  // turn 2: clean (drains buffer)
                 response([editStmt("/c", "3"), sendStmt(200, "ok")]),  // turn 3: clean
             ],
@@ -231,8 +246,8 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const packet = JSON.parse(row?.packet ?? "{}") as {
             user: { telemetry: { errors: Array<{ kind: string }> } };
         };
-        const noSendErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_send");
-        assert.equal(noSendErrors.length, 0, "no_send drained at turn 2; turn 3 doesn't replay it");
+        const noOpsErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_ops");
+        assert.equal(noOpsErrors.length, 0, "no_ops drained at turn 2; turn 3 doesn't replay it");
     } finally { await db.close(); }
 });
 
