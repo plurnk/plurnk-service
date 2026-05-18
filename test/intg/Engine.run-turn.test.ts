@@ -197,6 +197,148 @@ test("Engine.runLoop: sudden_death fires inside the window, not before", async (
     } finally { await db.close(); }
 });
 
+// Rail #38: strike system. Hard outcomes accumulate consecutive strikes;
+// soft outcomes (404, 501) and clean turns reset the streak.
+
+test("Engine.runLoop: three consecutive hard failures abandon at 499 with strike_threshold reason", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // EDIT log:// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
+        const denied = (): EditStatement => ({
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("log", "/x"),
+            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+        });
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: Array.from({ length: 5 }, () => response([denied(), sendStmt(102, "going")])),
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(result.hitMaxTurns, false);
+        assert.equal(result.turnIds.length, 3, "abandoned on the 3rd consecutive struck turn");
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // READ a missing unknown:// path → 404 (soft). With maxStrikes=2 and
+        // 4 consecutive soft turns, no abandon should fire.
+        const readMissing = (): ReadStatement => ({
+            op: "READ", suffix: "", signal: null,
+            path: urlPath("unknown", "/not-there"),
+            lineMarker: null, body: null, position: { line: 1, column: 1 },
+        });
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([readMissing(), sendStmt(102, "1")]),
+                response([readMissing(), sendStmt(102, "2")]),
+                response([readMissing(), sendStmt(102, "3")]),
+                response([readMissing(), sendStmt(200, "done")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
+        });
+        assert.equal(result.finalStatus, 200);
+        assert.equal(result.reason, "external");
+        assert.equal(result.turnIds.length, 4);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: clean turn between hard failures resets the streak", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const denied = (): EditStatement => ({
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("log", "/x"),
+            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+        });
+        const goodEdit = (p: string): EditStatement => ({
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("known", p),
+            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+        });
+        // maxStrikes=2. Pattern: hard, clean, hard, hard, done.
+        // After turn 1: streak=1. After turn 2: streak=0 (reset). After
+        // turn 3: streak=1. After turn 4: streak=2 → abandon.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([denied(), sendStmt(102, "1")]),
+                response([goodEdit("/ok"), sendStmt(102, "2")]),
+                response([denied(), sendStmt(102, "3")]),
+                response([denied(), sendStmt(102, "4")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(result.turnIds.length, 4, "clean turn 2 reset streak; abandon fired on turn 4");
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Two empty-ops turns in a row with maxStrikes=2 → abandon on turn 2.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [response([]), response([])],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(result.turnIds.length, 2);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: strike telemetry surfaces in next packet with streak count", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const denied = (): EditStatement => ({
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("log", "/x"),
+            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+        });
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([denied(), sendStmt(102, "1")]),
+                response([denied(), sendStmt(102, "2")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
+        });
+        assert.equal(result.finalStatus, 200);
+        // Turn 2's packet should show strike#1 (from turn 1).
+        // Turn 3's packet should show strike#2 (from turn 2).
+        const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
+        const t3 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[2] });
+        const t2packet = JSON.parse(t2?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string; streak: number }> } };
+        };
+        const t3packet = JSON.parse(t3?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string; streak: number }> } };
+        };
+        const t2strike = t2packet.user.telemetry.errors.find((e) => e.kind === "strike");
+        const t3strike = t3packet.user.telemetry.errors.find((e) => e.kind === "strike");
+        assert.equal(t2strike?.streak, 1);
+        assert.equal(t3strike?.streak, 2);
+    } finally { await db.close(); }
+});
+
 test("Engine.runLoop: sudden_death silent when loop terminates cleanly inside the window", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {

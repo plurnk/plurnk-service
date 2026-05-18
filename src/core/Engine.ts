@@ -95,6 +95,11 @@ const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 // action routes through telemetry.errors[] (§15.1).
 const TURN_STATUS_NO_OPS = 422;
 
+// Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
+// to a finding (not_found, op_not_supported); no penalty. Rummy parallel:
+// SOFT_FAILURE_OUTCOMES = {"not_found", "unparsed"}.
+const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 501]);
+
 export default class Engine {
     #db: Db;
     #schemes: SchemeRegistry;
@@ -104,6 +109,10 @@ export default class Engine {
     // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
     // Map<loopId, TelemetryError[]>. SPEC §15.1.
     #telemetryBuffer = new Map<number, object[]>();
+    // Rail #38 strike state per loop. `streak` = consecutive struck turns;
+    // resets on a clean turn. `turnErrors` is bumped externally by per-turn
+    // rails (cycle detection #39, etc.) — read and reset at end of each turn.
+    #strikeState = new Map<number, { streak: number; turnErrors: number }>();
 
     constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: MimetypeRegistry }) {
         this.#db = db;
@@ -136,24 +145,62 @@ export default class Engine {
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean }> {
+    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "external" | null }> {
         const turnIds: number[] = [];
         const suddenDeathThreshold = maxTurns - maxStrikes;
+
+        const cleanup = (): void => {
+            this.#strikeState.delete(loopId);
+            this.#telemetryBuffer.delete(loopId);
+        };
 
         while (true) {
             signal?.throwIfAborted();
 
             const row = await (this.#db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId });
             if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
-            if (row.status !== 102) return { turnIds, finalStatus: row.status, hitMaxTurns: false };
+            if (row.status !== 102) {
+                cleanup();
+                return { turnIds, finalStatus: row.status, hitMaxTurns: false, reason: "external" };
+            }
 
             if (turnIds.length >= maxTurns) {
                 await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
-                return { turnIds, finalStatus: 499, hitMaxTurns: true };
+                cleanup();
+                return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
             }
 
             const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal, onDispatch });
             turnIds.push(turn.turnId);
+
+            // Rail #38: strike accounting. Three sources strike a turn:
+            //  1. recordedFailed — any action-entry at hard failure status
+            //     (>= 400 and not in SOFT_FAILURE_STATUSES).
+            //  2. noOps — turn.status === TURN_STATUS_NO_OPS (per #41).
+            //  3. turnErrors — externally bumped by per-turn rails (#39 cycle).
+            // Struck → streak++; clean → streak = 0. Threshold → abandon.
+            const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0 };
+            const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
+            const noOps = turn.status === TURN_STATUS_NO_OPS;
+            const struck = noOps || recordedFailed || state.turnErrors > 0;
+            if (struck) {
+                state.streak++;
+                this.#pushTelemetry(loopId, {
+                    kind: "strike",
+                    streak: state.streak,
+                    maxStrikes,
+                    reason: noOps ? "no_ops" : recordedFailed ? "recorded_failure" : "rail",
+                });
+                if (state.streak >= maxStrikes) {
+                    await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
+                    cleanup();
+                    return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "strike_threshold" };
+                }
+            } else {
+                state.streak = 0;
+            }
+            state.turnErrors = 0;
+            this.#strikeState.set(loopId, state);
 
             // Rail #40: sudden-death soft warning. When the loop enters the
             // last maxStrikes-sized window before maxTurns, push a warning
