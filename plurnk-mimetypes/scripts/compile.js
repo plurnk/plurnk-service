@@ -98,7 +98,7 @@ const BUILDS = [
 	},
 	{
 		id: "scala",
-		grammarDir: "scala",
+		grammarDir: "scala/scala2",
 		g4: ["Scala.g4"],
 	},
 	{

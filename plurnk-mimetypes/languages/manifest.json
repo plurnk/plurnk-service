@@ -1045,6 +1045,14 @@
     "status": "todo"
   },
   {
+    "id": "geekcode",
+    "grammarDir": "vendor/grammars-v4/geekcode",
+    "g4Files": [
+      "geekcode.g4"
+    ],
+    "status": "todo"
+  },
+  {
     "id": "gff3",
     "grammarDir": "vendor/grammars-v4/gff3",
     "g4Files": [
@@ -1745,6 +1753,14 @@
     "status": "todo"
   },
   {
+    "id": "odin",
+    "grammarDir": "vendor/grammars-v4/odin",
+    "g4Files": [
+      "odin.g4"
+    ],
+    "status": "todo"
+  },
+  {
     "id": "oncrpc",
     "grammarDir": "vendor/grammars-v4/oncrpc",
     "g4Files": [
@@ -1896,8 +1912,8 @@
     "id": "plantUML",
     "grammarDir": "vendor/grammars-v4/plantUML",
     "g4Files": [
-      "PlantUML.g4",
-      "PlantUMLLexer.g4"
+      "PlantUMLLexer.g4",
+      "PlantUMLParser.g4"
     ],
     "status": "todo"
   },
@@ -2276,10 +2292,19 @@
     "status": "todo"
   },
   {
-    "id": "scala",
-    "grammarDir": "vendor/grammars-v4/scala",
+    "id": "scala--scala2",
+    "grammarDir": "vendor/grammars-v4/scala/scala2",
     "g4Files": [
       "Scala.g4"
+    ],
+    "status": "todo"
+  },
+  {
+    "id": "scala--scala3",
+    "grammarDir": "vendor/grammars-v4/scala/scala3",
+    "g4Files": [
+      "Scala3Lexer.g4",
+      "Scala3Parser.g4"
     ],
     "status": "todo"
   },
@@ -2844,8 +2869,10 @@
     "id": "trapc",
     "grammarDir": "vendor/grammars-v4/trapc",
     "g4Files": [
-      "Overrides.g4",
-      "TrapC.g4"
+      "OverridesLexer.g4",
+      "OverridesParser.g4",
+      "TrapCLexer.g4",
+      "TrapCParser.g4"
     ],
     "status": "todo"
   },
