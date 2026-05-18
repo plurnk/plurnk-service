@@ -124,12 +124,13 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
 test("Engine.dispatch: scheme without matching op method returns 501", async () => {
     const { db, engine, env } = await setup();
     try {
+        // exec:// has manifest (model is in writableBy) but no edit() handler yet.
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("plurnk", "/x"), body: "y" }),
+            statement: editStmt({ path: urlPath("exec", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        assert.equal(result.status, 501, "plurnk scheme exists but has no edit() method yet");
+        assert.equal(result.status, 501, "exec scheme exists but has no edit() method yet");
     } finally { await db.close(); }
 });
 
@@ -200,5 +201,101 @@ test("Engine.dispatch: origin field captured in log", async () => {
         }
         const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ origin: string; action_index: number }>({ turn_id: env.turnId });
         assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "system", "plugin"]);
+    } finally { await db.close(); }
+});
+
+// SCHEMES.md §8 {§8-writable-by-enforcement}: writer must be in target scheme's
+// manifest.writableBy or dispatch returns 403 without invoking the handler.
+
+test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['system'])", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 403);
+        assert.match((result as unknown as { error: string }).error, /writer 'model'.*'log'/);
+        // 403 still writes a log row
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; target_scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 403);
+        assert.equal(log?.target_scheme, "log");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: client EDIT plurnk:// rejected with 403 (Plurnk.writableBy=['system','plugin'])", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("plurnk", "/cfg"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "client",
+        });
+        assert.equal(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side op)", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Log scheme has no read() handler yet, so this returns 501 — proves
+        // the writableBy gate did NOT intercept (would have returned 403).
+        const result = await engine.dispatch({
+            statement: readStmt({ path: urlPath("log", "/x") }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.notEqual(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Log has no edit() handler — so this returns 501 (not 403) when allowed.
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "system",
+        });
+        assert.notEqual(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: { op: "SEND", suffix: "", signal: 200, path: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 200);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model COPY into log:// destination rejected with 403", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Source first: model creates an entry in known://.
+        await engine.dispatch({
+            statement: editStmt({ path: urlPath("known", "/src"), body: "v" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        // Attempt copy known://src → log://dst — destination scheme rejects.
+        const result = await engine.dispatch({
+            statement: {
+                op: "COPY", suffix: "", signal: null,
+                path: urlPath("known", "/src"),
+                lineMarker: null,
+                body: urlPath("log", "/dst"),
+                position: { line: 1, column: 1 },
+            },
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 1, origin: "model",
+        });
+        assert.equal(result.status, 403);
     } finally { await db.close(); }
 });

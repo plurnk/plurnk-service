@@ -1,8 +1,13 @@
-import type { PlurnkStatement, ParsedPath, LineMarker } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp } from "@plurnk/plurnk-grammar";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import MimetypeRegistry from "./MimetypeRegistry.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
+import type { SchemeManifest, WriterTier } from "./scheme-types.ts";
+
+// SCHEMES.md §8: writer must be in target scheme's manifest.writableBy.
+// SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
 
 const DEFAULT_PREVIEW_BUDGET = 256;
 
@@ -238,7 +243,10 @@ export default class Engine {
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch } = context;
         let result: DispatchResult;
-        if (statement.op === "SEND" && statement.path === null) {
+        const denial = this.#checkWritable(statement, origin);
+        if (denial !== null) {
+            result = denial;
+        } else if (statement.op === "SEND" && statement.path === null) {
             result = await this.#handleSendBroadcast(statement, loopId);
         } else if (statement.op === "COPY") {
             result = await this.#handleCopy(statement, { sessionId, runId });
@@ -250,6 +258,45 @@ export default class Engine {
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
         onDispatch?.(logEntryId);
         return result;
+    }
+
+    // SCHEMES.md §8 {§8-writable-by-enforcement}: engine rejects writes whose
+    // origin is outside the target scheme's manifest.writableBy.
+    // - Read-side ops (READ, FIND, SHOW, HIDE) are not gated.
+    // - SEND broadcast (path=null) has no target scheme; not gated.
+    // - COPY: dst scheme writableBy applies.
+    // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
+    // - Schemes without a manifest are not gated (legacy / future allowance).
+    #checkWritable(statement: PlurnkStatement, origin: Origin): DispatchResult | null {
+        if (!MUTATING_OPS.has(statement.op)) return null;
+        if (statement.op === "SEND" && statement.path === null) return null;
+
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            const dstScheme = this.#schemeNameOf(statement.body);
+            const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
+            if (dstDenial !== null) return dstDenial;
+            if (statement.op === "MOVE") {
+                const srcScheme = this.#schemeNameOf(statement.path);
+                if (srcScheme !== dstScheme) {
+                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin);
+                    if (srcDenial !== null) return srcDenial;
+                }
+            }
+            return null;
+        }
+
+        const target = this.#schemeNameOf(statement.path);
+        return this.#denyIfDisallowed(target, origin);
+    }
+
+    #denyIfDisallowed(schemeName: string | null, origin: Origin): DispatchResult | null {
+        if (schemeName === null) return null;
+        const handler = this.#schemes.get(schemeName);
+        if (handler === undefined) return null;
+        const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
+        if (manifest === undefined) return null;
+        if (manifest.writableBy.includes(origin as WriterTier)) return null;
+        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` };
     }
 
     async #handleCopy(statement: PlurnkStatement, ctx: { sessionId: number; runId: number }): Promise<DispatchResult> {
