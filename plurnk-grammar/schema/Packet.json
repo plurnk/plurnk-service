@@ -32,12 +32,25 @@
         },
         "user": {
             "type": "object",
-            "required": ["tokens", "prompt", "turn", "system_requirements"],
+            "required": ["tokens", "prompt", "telemetry", "system_requirements"],
             "additionalProperties": false,
             "properties": {
                 "tokens": { "type": "integer", "minimum": 0 },
                 "prompt": { "type": "string", "description": "Copy of loop.prompt — never null on a continuation turn." },
-                "turn": { "type": "string", "description": "text/markdown — dynamically generated tables for budget/status/counts." },
+                "telemetry": {
+                    "type": "object",
+                    "description": "Per-turn instrumentation surfaced to the model. `budget` is renderer-provided markdown describing remaining context / cost / etc. `errors` carries actionless failures (parse errors and similar) that the model should confront on this turn. Inner shapes intentionally open at v0; consumers populate as needs solidify.",
+                    "required": ["budget", "errors"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "budget": { "type": "string", "description": "text/markdown — budget surface (token/cost/etc. left to spend). Empty string when nothing to surface." },
+                        "errors": {
+                            "type": "array",
+                            "items": { "type": "object" },
+                            "description": "TelemetryError[] — element shape TBD. Empty array when no errors to surface."
+                        }
+                    }
+                },
                 "system_requirements": { "type": "string", "description": "text/markdown — per-turn rules." }
             }
         },

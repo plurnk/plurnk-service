@@ -72,7 +72,10 @@ const packet = () => ({
     user: {
         tokens: 20,
         prompt: "What is the meaning of life?",
-        turn: "| budget | 200000 |\n",
+        telemetry: {
+            budget: "| tokens remaining | 198500 |\n",
+            errors: [],
+        },
         system_requirements: "* answer concisely",
     },
     assistant: {
