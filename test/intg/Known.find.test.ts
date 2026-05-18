@@ -32,7 +32,7 @@ const setup = async () => {
     return { db, sessionId, runId };
 };
 
-const seedEntries = async (db: import("node:sqlite").DatabaseSync, sessionId: number, runId: number, entries: Array<[string, string, string[]?]>) => {
+const seedEntries = async (db: import("../../src/core/Db.ts").Db, sessionId: number, runId: number, entries: Array<[string, string, string[]?]>) => {
     const k = new Known();
     for (const [pathname, body, tags] of entries) {
         await k.edit({ db, sessionId, runId, statement: editStmt(url(pathname), body, tags ?? null) });

@@ -1,97 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WebSocket } from "ws";
-import type { DatabaseSync } from "node:sqlite";
-import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
-
-interface RpcResponse {
-    jsonrpc: "2.0";
-    id: number | string | null;
-    result?: unknown;
-    error?: { code: number; message: string; data?: unknown };
-}
-
-const rpcCall = (ws: WebSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
-    new Promise((resolve, reject) => {
-        const onMessage = (data: Buffer | string) => {
-            const text = typeof data === "string" ? data : data.toString("utf8");
-            const parsed = JSON.parse(text) as RpcResponse;
-            if (parsed.id === id) {
-                ws.off("message", onMessage);
-                resolve(parsed);
-            }
-        };
-        ws.on("message", onMessage);
-        ws.on("error", reject);
-        const payload: { jsonrpc: string; id: number; method: string; params?: object } = { jsonrpc: "2.0", id, method };
-        if (params !== undefined) payload.params = params;
-        ws.send(JSON.stringify(payload));
-    });
-
-const subscribeNotifications = (ws: WebSocket, method: string): (() => unknown[]) => {
-    const captured: unknown[] = [];
-    ws.on("message", (data) => {
-        const text = typeof data === "string" ? data : (data as Buffer).toString("utf8");
-        const parsed = JSON.parse(text) as { method?: string; params?: unknown; id?: unknown };
-        if (parsed.id === undefined && parsed.method === method) captured.push(parsed.params);
-    });
-    return () => captured;
-};
-
-const withDaemon = async <T>(fn: (db: DatabaseSync, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
-    const db = await openMigrated();
-    const daemon = new Daemon({ db });
-    const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
-    try { return await fn(db, addr); }
-    finally { await daemon.stop(); db.close(); }
-};
-
-const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
-    new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
-        ws.once("open", () => resolve(ws));
-        ws.once("error", reject);
-    });
-
-const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
+import type { PrepMethod } from "../../src/core/Db.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
-    await withDaemon(async (db, addr) => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                path: "known://france/capital",
-                content: "Paris",
-                tags: ["france", "geography"],
+                path: "known://france/capital", content: "Paris", tags: ["france", "geography"],
             });
-            const result = response.result as { status: number };
-            assert.equal(result.status, 201);
+            assert.equal((response.result as { status: number }).status, 201);
 
-            // Verify entry exists in DB
-            const entry = db.prepare("SELECT scheme, pathname FROM entries WHERE pathname = 'france/capital'").get() as { scheme: string; pathname: string };
-            assert.equal(entry.scheme, "known");
-            assert.equal(entry.pathname, "france/capital");
-
-            // Verify body content
-            const body = (db.prepare("SELECT content FROM entry_channels WHERE name = 'body'").get() as { content: string }).content;
+            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "france/capital", scheme: "known" });
+            assert.equal(entry?.scheme, "known");
+            assert.equal(entry?.pathname, "france/capital");
+            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "france/capital" }))?.content;
             assert.equal(body, "Paris");
-
-            // Verify tags
-            const tags = db.prepare("SELECT tag FROM entry_tags ORDER BY tag").all() as { tag: string }[];
+            const tags = await (db.test_parser_tags as PrepMethod).all<{ tag: string }>();
             assert.deepEqual(tags.map((t) => t.tag), ["france", "geography"]);
-
-            // Verify log_entries row has origin='client'
-            const log = db.prepare("SELECT origin, op FROM log_entries").get() as { origin: string; op: string };
-            assert.equal(log.origin, "client");
-            assert.equal(log.op, "EDIT");
+            const log = await (db.test_first_log_entry as PrepMethod).get<{ origin: string; op: string }>();
+            assert.equal(log?.origin, "client");
+            assert.equal(log?.op, "EDIT");
         } finally { ws.close(); }
     });
 });
 
 test("op.read fetches an entry's body", async () => {
-    await withDaemon(async (_db, addr) => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "read-test" });
@@ -105,19 +42,18 @@ test("op.read fetches an entry's body", async () => {
 });
 
 test("op.read on nonexistent entry returns 404", async () => {
-    await withDaemon(async (_db, addr) => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "404-test" });
             const response = await rpcCall(ws, 2, "op.read", { path: "known://nope" });
-            const result = response.result as { status: number };
-            assert.equal(result.status, 404);
+            assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
     });
 });
 
 test("op.show / op.hide toggle visibility", async () => {
-    await withDaemon(async (db, addr) => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "vis-test" });
@@ -126,20 +62,23 @@ test("op.show / op.hide toggle visibility", async () => {
             const hideRes = await rpcCall(ws, 3, "op.hide", { path: "known://x" });
             assert.equal((hideRes.result as { status: number }).status, 200);
 
-            const visAfterHide = (db.prepare("SELECT indexed FROM visibility WHERE channel = 'body'").get() as { indexed: number }).indexed;
-            assert.equal(visAfterHide, 0);
+            const visAfterHide = (await (db.test_get_visibility_no_channel as PrepMethod).get<{ indexed: number }>({ run_id: 1, entry_id: 1 }))?.indexed;
+            // Cannot rely on PK=1; use the channel-based PREP.
+            const visRows = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
+            assert.ok(visRows.some((r) => r.indexed === 0));
 
             const showRes = await rpcCall(ws, 4, "op.show", { path: "known://x" });
             assert.equal((showRes.result as { status: number }).status, 200);
 
-            const visAfterShow = (db.prepare("SELECT indexed FROM visibility WHERE channel = 'body'").get() as { indexed: number }).indexed;
-            assert.equal(visAfterShow, 1);
+            const visAfterShow = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
+            assert.ok(visAfterShow.every((r) => r.indexed === 1));
+            void visAfterHide;
         } finally { ws.close(); }
     });
 });
 
 test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
-    await withDaemon(async (db, addr) => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "dispatch-test" });
@@ -160,14 +99,14 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             const response = await rpcCall(ws, 2, "op.dispatch", { statement });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const body = (db.prepare("SELECT content FROM entry_channels WHERE entry_id = (SELECT id FROM entries WHERE pathname = 'hello')").get() as { content: string }).content;
+            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "hello" }))?.content;
             assert.equal(body, "world");
         } finally { ws.close(); }
     });
 });
 
 test("op.parse parses multi-statement text and dispatches each", async () => {
-    await withDaemon(async (db, addr) => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "parse-test" });
@@ -179,14 +118,14 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
             assert.equal(result.results[0].status, 201);
             assert.equal(result.results[1].status, 201);
 
-            const entries = db.prepare("SELECT pathname FROM entries ORDER BY pathname").all() as Array<{ pathname: string }>;
+            const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
             assert.deepEqual(entries.map((e) => e.pathname), ["a", "b"]);
         } finally { ws.close(); }
     });
 });
 
 test("op.* fires log/entry notification with the entry shape", async () => {
-    await withDaemon(async (_db, addr) => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
@@ -204,8 +143,8 @@ test("op.* fires log/entry notification with the entry shape", async () => {
     });
 });
 
-test("log/entry notification is scoped to session — other sessions don't receive it", async () => {
-    await withDaemon(async (_db, addr) => {
+test("log/entry notification is scoped to session", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
         try {
@@ -214,31 +153,26 @@ test("log/entry notification is scoped to session — other sessions don't recei
 
             await rpcCall(wsA, 1, "session.create", { name: "session-A" });
             await rpcCall(wsB, 1, "session.create", { name: "session-B" });
-
-            // Wait for any cross-session noise to settle (session/created is global).
             await flush();
-            aNotifs(); // drain any pre-existing
-            bNotifs();
+            aNotifs(); bNotifs();
 
             await rpcCall(wsA, 2, "op.edit", { path: "known://x", content: "from A" });
             await flush();
 
-            // A should see its own log/entry; B should not
             assert.equal(aNotifs().length, 1);
             assert.equal(bNotifs().length, 0);
         } finally { wsA.close(); wsB.close(); }
     });
 });
 
-test("op.* methods require init: rejected without prior session attach? Auto-create kicks in", async () => {
-    await withDaemon(async (db, addr) => {
+test("op.* methods require init: Auto-create kicks in", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            // No session.create first; op.edit triggers auto-create per SPEC §13.7
             const response = await rpcCall(ws, 1, "op.edit", { path: "known://x", content: "auto" });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const sessions = db.prepare("SELECT name FROM sessions").all() as Array<{ name: string }>;
+            const sessions = await (db.test_list_sessions as PrepMethod).all<{ name: string }>();
             assert.equal(sessions.length, 1);
             assert.match(sessions[0].name, /^auto-/);
         } finally { ws.close(); }
@@ -246,7 +180,7 @@ test("op.* methods require init: rejected without prior session attach? Auto-cre
 });
 
 test("op.find on empty scope returns 200 with empty results", async () => {
-    await withDaemon(async (_db, addr) => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "find-test" });
@@ -260,27 +194,25 @@ test("op.find on empty scope returns 200 with empty results", async () => {
 });
 
 test("op.send broadcast with terminal status updates loop status", async () => {
-    await withDaemon(async (db, addr) => {
+    await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const session = await rpcCall(ws, 1, "session.create", { name: "send-test" });
             const sessionId = (session.result as { id: number }).id;
-            // Get the run + client loop id
-            const run = db.prepare("SELECT id FROM runs WHERE session_id = ?").get(sessionId) as { id: number };
-            const clientLoopId = (db.prepare("SELECT id FROM loops WHERE run_id = ?").get(run.id) as { id: number }).id;
+            const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: sessionId });
+            const clientLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
 
             const response = await rpcCall(ws, 2, "op.send", { status: 200 });
             assert.equal((response.result as { status: number }).status, 200);
 
-            // The client loop status should now be 200 (terminal SEND broadcast updated it)
-            const loop = db.prepare("SELECT status FROM loops WHERE id = ?").get(clientLoopId) as { status: number };
-            assert.equal(loop.status, 200);
+            const loop = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: clientLoop?.id });
+            assert.equal(loop?.status, 200);
         } finally { ws.close(); }
     });
 });
 
 test("discover catalog includes all op.* methods", async () => {
-    await withDaemon(async (_db, addr) => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "discover");

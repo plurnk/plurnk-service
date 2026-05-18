@@ -202,3 +202,36 @@ VALUES ($run_id, $entry_id, 'sse', 'h', '2026-01-01T00:00:00Z');
 -- PREP: test_invalid_subscription_only_close_status
 INSERT INTO subscriptions (run_id, entry_id, scheme, handle, close_status)
 VALUES ($run_id, $entry_id, 'sse', 'h', 200);
+
+-- PREP: test_first_log_entry
+SELECT origin, op, status_rx FROM log_entries LIMIT 1;
+
+-- PREP: test_get_body_by_pathname
+SELECT ec.content
+FROM entry_channels ec
+JOIN entries e ON e.id = ec.entry_id
+WHERE e.pathname = $pathname AND ec.name = 'body';
+
+-- PREP: test_list_sessions
+SELECT name FROM sessions;
+
+-- PREP: test_get_run_by_session
+SELECT id FROM runs WHERE session_id = $session_id LIMIT 1;
+
+-- PREP: test_get_loop_by_run
+SELECT id FROM loops WHERE run_id = $run_id LIMIT 1;
+
+-- PREP: test_list_channel_names
+SELECT name FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
+
+-- PREP: test_get_entry_id_by_scheme_pathname
+SELECT id FROM entries WHERE scheme = $scheme AND pathname = $pathname;
+
+-- PREP: test_list_entries_by_session_session_pathname
+SELECT scheme, pathname FROM entries WHERE session_id = $session_id ORDER BY scheme, pathname;
+
+-- PREP: test_count_log_entries_run_origin
+SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id AND origin = $origin;
+
+-- PREP: test_visibility_for_entry_indexed
+SELECT indexed FROM visibility WHERE entry_id = $entry_id;

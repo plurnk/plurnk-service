@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "../../src/core/Db.ts";
 import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
