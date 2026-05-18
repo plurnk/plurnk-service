@@ -9,7 +9,7 @@
     "properties": {
         "id": { "type": "integer", "minimum": 1 },
         "version": { "type": "integer", "minimum": 0 },
-        "name": { "type": "string", "minLength": 1, "description": "Unique within the agent. Default form: `{modelAlias}-{unixtime}` until renamed." },
+        "name": { "type": "string", "minLength": 1, "description": "Unique within the agent. Auto-populated default form `session-{unixtime}` until renamed. Clients display this; cross-table references use `id` so renames don't cascade-break." },
         "created_at": { "type": "string", "format": "date-time" },
         "cost_pico": { "type": "integer", "minimum": 0, "description": "Cumulative cost across this session's runs." },
         "scheme_registry_additions": {

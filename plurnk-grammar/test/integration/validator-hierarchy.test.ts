@@ -141,6 +141,7 @@ test("Validator: Loop rejects sequence 0 (must be 1-based)", () => {
 test("Validator: Run accepts trunk run (null parent_run_id)", () => {
     const { valid, errors } = Validator.validateRun({
         id: 1, version: 0, session_id: 1,
+        name: "run-1747800000",
         created_at: "2026-05-16T12:00:00Z",
         parent_run_id: null,
         cost_pico: 0,
@@ -151,6 +152,7 @@ test("Validator: Run accepts trunk run (null parent_run_id)", () => {
 test("Validator: Run accepts fork (numeric parent_run_id)", () => {
     const { valid } = Validator.validateRun({
         id: 2, version: 0, session_id: 1,
+        name: "run-1747803600",
         created_at: "2026-05-16T13:00:00Z",
         parent_run_id: 1,
         cost_pico: 1500000,
@@ -161,9 +163,31 @@ test("Validator: Run accepts fork (numeric parent_run_id)", () => {
 test("Validator: Run rejects negative cost_pico", () => {
     const { valid } = Validator.validateRun({
         id: 1, version: 0, session_id: 1,
+        name: "run-1747800000",
         created_at: "2026-05-16T12:00:00Z",
         parent_run_id: null,
         cost_pico: -1,
+    });
+    assert.equal(valid, false);
+});
+
+test("Validator: Run rejects missing name (dual-handle requirement)", () => {
+    const { valid } = Validator.validateRun({
+        id: 1, version: 0, session_id: 1,
+        created_at: "2026-05-16T12:00:00Z",
+        parent_run_id: null,
+        cost_pico: 0,
+    });
+    assert.equal(valid, false);
+});
+
+test("Validator: Run rejects empty name", () => {
+    const { valid } = Validator.validateRun({
+        id: 1, version: 0, session_id: 1,
+        name: "",
+        created_at: "2026-05-16T12:00:00Z",
+        parent_run_id: null,
+        cost_pico: 0,
     });
     assert.equal(valid, false);
 });
@@ -175,7 +199,7 @@ test("Validator: Run rejects negative cost_pico", () => {
 test("Validator: Session accepts minimal row", () => {
     const { valid, errors } = Validator.validateSession({
         id: 1, version: 0,
-        name: "claude-opus-4-7-1747800000",
+        name: "session-1747800000",
         created_at: "2026-05-16T12:00:00Z",
         cost_pico: 0,
         scheme_registry_additions: [],
