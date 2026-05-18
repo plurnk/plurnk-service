@@ -5,6 +5,7 @@ import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
+import type { LoopFlags, SchemeManifest } from "./scheme-types.ts";
 
 type SchemeHandler = object;
 
@@ -31,4 +32,23 @@ export default class SchemeRegistry {
     has(name: string): boolean { return this.#handlers.has(name); }
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
+
+    // Active set under the given loop flags. SCHEMES.md §16 / SPEC §0.5.
+    // Schemes opt into flag affinity via `manifest.flags`; absence = always active.
+    resolveForLoop(flags: LoopFlags): Set<string> {
+        const active = new Set<string>();
+        for (const [name, handler] of this.#handlers.entries()) {
+            const affinity = (handler.constructor as { manifest?: SchemeManifest }).manifest?.flags;
+            if (affinity === undefined) {
+                active.add(name);
+                continue;
+            }
+            if (flags.mode === "ask" && affinity.excludedInAsk) continue;
+            if (flags.noWeb && affinity.requiresWeb) continue;
+            if (flags.noInteraction && affinity.requiresInteraction) continue;
+            if (flags.noProposals && affinity.proposes) continue;
+            active.add(name);
+        }
+        return active;
+    }
 }
