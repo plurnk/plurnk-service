@@ -141,7 +141,7 @@ export default class Engine {
 
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
-        const packet = await this.#buildPacket(messages, response, runId);
+        const packet = await this.#buildPacket(messages, response, runId, loopId);
         const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId,
             sequence: seq,
@@ -163,7 +163,7 @@ export default class Engine {
         return { turnId, status: turnStatus, statuses };
     }
 
-    async #buildPacket(messages: ChatMessage[], response: ProviderResponse, runId: number): Promise<object> {
+    async #buildPacket(messages: ChatMessage[], response: ProviderResponse, runId: number, loopId: number): Promise<object> {
         const byRole = (role: ChatMessage["role"]): string =>
             messages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         return {
@@ -173,7 +173,7 @@ export default class Engine {
                 system_definition: byRole("system"),
                 persona: "",
                 index: await this.#buildIndex(runId),
-                log: [],
+                log: await this.#buildLog(loopId),
             },
             user: {
                 tokens: 0,
@@ -191,6 +191,39 @@ export default class Engine {
     // with indexed=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
     // does NOT branch on it (§5.6 {§5.6-engine-does-not-branch-on-state}).
+    // SPEC §15 packet.system.log — chronological action-entries for the loop.
+    // Snapshot is taken at packet build (pre-dispatch this turn), so it
+    // reflects "what has happened before this turn." Each row carries a
+    // log://<loop_seq>/<turn_seq>/<action_index> coordinate the model can READ.
+    async #buildLog(loopId: number): Promise<object[]> {
+        const rows = await (this.#db.engine_render_log as PrepMethod).all<{
+            loop_seq: number; turn_seq: number; action_index: number;
+            origin: string; op: string; suffix: string; signal: string | null;
+            target_scheme: string | null; target_username: string | null; target_password: string | null;
+            target_hostname: string | null; target_port: number | null; target_pathname: string | null;
+            target_params: string | null; target_fragment: string | null;
+            status_rx: number; rx: string; mimetype_rx: string;
+        }>({ loop_id: loopId });
+        return rows.map((r) => ({
+            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+            origin: r.origin,
+            op: r.op,
+            suffix: r.suffix,
+            signal: r.signal === null ? null : JSON.parse(r.signal),
+            target: {
+                scheme: r.target_scheme,
+                username: r.target_username, password: r.target_password,
+                hostname: r.target_hostname, port: r.target_port,
+                pathname: r.target_pathname,
+                params: r.target_params === null ? null : JSON.parse(r.target_params),
+                fragment: r.target_fragment,
+            },
+            status: r.status_rx,
+            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
+            mimetype_rx: r.mimetype_rx,
+        }));
+    }
+
     async #buildIndex(runId: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_index as PrepMethod).all<IndexedRow>({ run_id: runId });
         const tagsStmt = this.#db.engine_entry_tags as PrepMethod;

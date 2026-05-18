@@ -179,3 +179,67 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
         assert.equal(turnStatus, 200);
     } finally { await db.close(); }
 });
+
+// SPEC §15 packet.system.log — chronological action-entries for the loop.
+// Task #44.
+
+test("Engine.runTurn: packet.system.log is empty on the first turn (no prior actions)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
+        });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: object[] } };
+        assert.deepEqual(packet.system.log, [], "first turn: packet snapshot taken pre-dispatch, no prior log_entries");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: packet.system.log captures prior turn's actions on second turn", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([editStmt("/a", "1"), sendStmt(102, "keep going")]),
+                response([editStmt("/b", "2"), sendStmt(200, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as {
+            system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null } }> };
+        };
+        assert.equal(packet.system.log.length, 2, "turn 2 packet snapshots turn 1's 2 actions");
+        assert.equal(packet.system.log[0].coordinate, "1/1/0");
+        assert.equal(packet.system.log[0].op, "EDIT");
+        assert.equal(packet.system.log[0].status, 201);
+        assert.equal(packet.system.log[0].target.scheme, "known");
+        assert.equal(packet.system.log[0].target.pathname, "/a");
+        assert.equal(packet.system.log[1].coordinate, "1/1/1");
+        assert.equal(packet.system.log[1].op, "SEND");
+        assert.equal(packet.system.log[1].status, 102);
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=application/json)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([editStmt("/x", "v"), sendStmt(102, "more")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ rx: { status: number; entryId?: number } }> } };
+        assert.equal(packet.system.log[0].rx.status, 201);
+        assert.ok(typeof packet.system.log[0].rx.entryId === "number", "entryId hydrated from parsed JSON rx");
+    } finally { await db.close(); }
+});

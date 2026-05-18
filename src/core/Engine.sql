@@ -34,6 +34,26 @@ ORDER BY e.id, ec.name;
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
+-- PREP: engine_render_log
+-- Render-time log assembly (SPEC §15 packet.system.log, task #44).
+-- Yields log_entries for this loop, joined with the turn's sequence so the
+-- model gets a stable log://<loop_seq>/<turn_seq>/<action_index> coordinate.
+SELECT
+    l.sequence  AS loop_seq,
+    t.sequence  AS turn_seq,
+    le.action_index,
+    le.origin,
+    le.op, le.suffix, le.signal,
+    le.target_scheme, le.target_username, le.target_password,
+    le.target_hostname, le.target_port, le.target_pathname,
+    le.target_params, le.target_fragment,
+    le.status_rx, le.rx, le.mimetype_rx
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+WHERE le.loop_id = $loop_id
+ORDER BY t.sequence, le.action_index;
+
 -- PREP: engine_insert_log_entry
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, action_index, origin,
