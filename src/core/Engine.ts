@@ -246,14 +246,28 @@ export default class Engine {
         const denial = this.#checkWritable(statement, origin);
         if (denial !== null) {
             result = denial;
-        } else if (statement.op === "SEND" && statement.path === null) {
-            result = await this.#handleSendBroadcast(statement, loopId);
-        } else if (statement.op === "COPY") {
-            result = await this.#handleCopy(statement, { sessionId, runId });
-        } else if (statement.op === "MOVE") {
-            result = await this.#handleMove(statement, { sessionId, runId });
         } else {
-            result = await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
+            // SCHEMES.md §7.1 / §8: action-entry-as-outcome. Scheme-handler
+            // exceptions become the action-entry's outcome (status 500), not a
+            // thrown bubble. The log_entry is the durable record; engine never
+            // skips it. Logging failures (#writeLog throws) are NOT caught —
+            // those are system failures.
+            try {
+                if (statement.op === "SEND" && statement.path === null) {
+                    result = await this.#handleSendBroadcast(statement, loopId);
+                } else if (statement.op === "COPY") {
+                    result = await this.#handleCopy(statement, { sessionId, runId });
+                } else if (statement.op === "MOVE") {
+                    result = await this.#handleMove(statement, { sessionId, runId });
+                } else {
+                    result = await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
+                }
+            } catch (err) {
+                result = {
+                    status: 500,
+                    error: err instanceof Error ? err.message : String(err),
+                };
+            }
         }
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
         onDispatch?.(logEntryId);

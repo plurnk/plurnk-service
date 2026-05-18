@@ -275,6 +275,66 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     } finally { await db.close(); }
 });
 
+// SCHEMES.md §7.1 / §8: action-entry-as-outcome — scheme-handler exceptions
+// finalize the action-entry at 500, not bubble up.
+
+test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    class Boom {
+        static manifest = {
+            name: "boom", channels: {}, defaultChannel: "",
+            category: "data" as const, scope: "session" as const,
+            writableBy: ["model" as const], volatile: false, modelVisible: true,
+        };
+        async edit() { throw new Error("scheme handler deliberately threw"); }
+    }
+    schemes.register("boom", new Boom());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("boom", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 500);
+        assert.match((result as unknown as { error: string }).error, /scheme handler deliberately threw/);
+        // action-entry preserved at status 500 with error in rx
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; rx: string; target_scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 500);
+        assert.equal(log?.target_scheme, "boom");
+        const rx = JSON.parse(log?.rx ?? "{}");
+        assert.equal(rx.status, 500);
+        assert.match(rx.error, /scheme handler deliberately threw/);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with stringified message", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    class BoomString {
+        static manifest = {
+            name: "boomstr", channels: {}, defaultChannel: "",
+            category: "data" as const, scope: "session" as const,
+            writableBy: ["model" as const], volatile: false, modelVisible: true,
+        };
+        async edit(): Promise<never> { throw "raw string thrown"; }
+    }
+    schemes.register("boomstr", new BoomString());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("boomstr", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 500);
+        assert.equal((result as unknown as { error: string }).error, "raw string thrown");
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: model COPY into log:// destination rejected with 403", async () => {
     const { db, engine, env } = await setup();
     try {
