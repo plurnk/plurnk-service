@@ -927,3 +927,36 @@ Error responses MAY include `data: { ... }` with structured context (the path th
 `plurnk-service` exposes a `protocolVersion` field in `discover`'s response (semver). Major version mismatches are a contract break — clients SHOULD refuse to operate on a major mismatch. Minor/patch increments are backward-compatible.
 
 Current: `protocolVersion: "0.1.0"`. The floor is green and the daemon has been exercised end-to-end via the `plurnk` TUI client (which now graduates to its own agent). Promotes to `1.0.0` when an independent external client (neovim plugin or Telegram bot) lands AND the mimetype/channel/transaction work below has settled.
+
+---
+
+## §14 Architectural decisions
+
+Each entry: the question, the answer, the rationale, the migration path if revisited.
+
+### §14.1 Packet assembly: engine-direct, not filter-chain
+
+**Question.** Rummy assembles `<index>`, `<log>`, `<turn>`, `<system_commands>`, `<system_requirements>` via priority-ordered filter chains (`assembly.system` + `assembly.user`); plugins each filter for their data and append their section. Plurnk currently assembles `packet.system.index` directly in `Engine.#buildIndex` by querying visibility + entries + entry_channels and routing each channel's content through its mimetype handler. Same question for `packet.system.log` (pending — task #44).
+
+**Decision.** v0 stays engine-direct. The engine reads the DB and constructs the packet. Plugin-driven assembly is out of v0 scope. {§14.1-engine-direct-assembly}
+
+**Rationale.**
+- Plurnk's bundled extension set is small (3 entry-bearing schemes, 2 mimetypes, 1 provider). No current plugin wants to inject a packet section.
+- The channel + mimetype split already gives substantial extensibility: scheme registers channels, mimetype owns rendering. Visibility lattice owns *which* channels appear. A filter chain on top of that would be paying for indirection nothing currently exercises.
+- Rummy's pattern earns its keep through 25+ plugins each owning a tag. Plurnk's pattern earns its keep through schemes-as-URI-handlers + mimetypes-as-renderers. Different shapes; different consequences.
+- The engine-direct path is testable end-to-end against real visibility/render-time behavior. The filter-chain path requires testing the composition of plugins, which is a separate axis of complexity.
+
+**Migration path if revisited.** If a future plugin needs to inject a packet section (e.g., a `<turn>` metadata table per rummy SPEC §packet_structure), the engine grows a single `packet.augment` filter hook called after `#buildIndex` returns. Plugins subscribe with a priority; each returns a `system` and/or `user` augmentation object that gets merged into the packet shape. This is additive — the engine-direct base case stays; plugins augment.
+
+### §14.2 Budget unit: character count for v0
+
+**Question.** `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` is named for tokens; current implementation in `Engine.#previewBudget` treats it as a character-count cap passed to `MimetypeHandler.preview(content, budget)`. The MIMETYPES.md contract documents budget as a number, semantic-agnostic. The env var name and the implementation disagree.
+
+**Decision.** v0 treats budget as character count. The env var keeps its `_TOKENS` suffix as forward-naming for the eventual switch but currently means characters. {§14.2-budget-is-characters-v0}
+
+**Rationale.**
+- Token counts require a per-provider tokenizer. PROVIDERS.md §11 marks `countTokens` as out of v0 contract; no provider currently exposes it.
+- Character count is a tokenizer-independent first approximation. Wrong by a factor of ~3-4× for English (1 token ≈ 3-4 chars), but consistent and zero-config.
+- Switching the unit later requires: (a) `countTokens` lands on the provider contract, (b) engine caches token counts per `(provider_id, content_hash)`, (c) mimetype.preview gets a tokenizer reference or returns content for engine to tokenize-and-truncate. Out of v0 scope.
+
+**Migration path if revisited.** When provider `countTokens` lands and the engine has per-channel token accounting, `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` becomes literal tokens. Mimetype handlers either receive a tokenizer reference in `preview(content, budget, countTokens?)` or the engine post-processes character-bounded `preview` output through tokenizer + truncate. The MIMETYPES.md contract revision is non-breaking (signature stays `(content, budget) → string`); the semantic of `budget` changes from char-count to token-count.
