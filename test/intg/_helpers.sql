@@ -161,6 +161,30 @@ SELECT COUNT(*) AS n FROM entry_tags WHERE entry_id = $entry_id;
 -- PREP: test_count_visibility_for_entry
 SELECT COUNT(*) AS n FROM visibility WHERE entry_id = $entry_id;
 
+-- PREP: test_get_entry_by_pathname_scheme
+SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
+
+-- PREP: test_get_channel_by_pathname
+SELECT ec.content, ec.mimetype, ec.state
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.pathname = $pathname AND ec.name = $name
+LIMIT 1;
+
+-- PREP: test_get_channel_by_pathname_scheme
+SELECT ec.content, ec.mimetype, ec.state
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.pathname = $pathname AND e.scheme = $scheme AND ec.name = $name
+LIMIT 1;
+
+-- PREP: test_tags_by_pathname
+SELECT tag
+FROM entries e
+JOIN entry_tags t ON t.entry_id = e.id
+WHERE e.pathname = $pathname
+ORDER BY tag;
+
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
 INSERT INTO subscriptions (run_id, entry_id, scheme, handle, closed_at)
