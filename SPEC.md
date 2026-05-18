@@ -563,9 +563,13 @@ Per-channel previews use `SchemeRegistration.channel_orientations` (grammar 0.3.
 - **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme interprets 499 as "tear down." Subscription registry transitions to closed; the AbortController fires; channel stops accumulating.
 - **Write:** `<<SEND[200](wss://feed/x):message body:SEND` — pipes body into an active WS connection, exec stdin, etc.
 
-### §7.8 Backpressure
+### §7.8 Engine constraints
 
-`PLURNK_SUBSCRIPTION_BURST` (§12) caps per-turn chunk delivery into `packet.system.log[]`. When truncated, a synthesized log row carries `status_rx: 206 Partial Content` with a body describing what was dropped. All chunks remain in the channel; only the per-turn surface is bounded. Under context pressure the burst adapts down. Runtime backpressure; not in the contract.
+The engine imposes ONE constraint: **100 MiB char-length cap per channel content body.** Enforced at the storage layer via `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/005_entries.sql). Writes exceeding this fail at the SQL boundary with a SQLITE_CONSTRAINT; the action-entry captures the rejection at status 500.
+
+All other limits are **extrinsic** — owned by providers (request size, model context, fetch timeouts), schemes (per-call validation, scheme-specific size policies), and mimetypes (render budgets per `preview(content, budget)`). The engine does not throttle, batch, rate-limit, or cap anything else. {§7.8-engine-one-cap}
+
+This reflects an intentional v0 stance: pre-MVP, every operator-configurable cap is a barrier between the user and the system actually running. The user-facing CLI/TUI fiddles best when nothing fires unexpectedly. When real production pressure arrives, additional caps land as opt-in operator config — not as defaults.
 
 ### §7.9 Live updates for clients (between turns)
 
@@ -675,7 +679,7 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 
 - Channel lifecycle (`active` / `closed` / `errored`) — subscription registry, not on `ChannelContent`. Was rejected as a contract field with good reason: streams are not a distinct paradigm at the contract layer; they're a runtime relationship between an entry and an open connection.
 - Render budget per channel (token count) — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` operator config (§12).
-- Backpressure caps (`PLURNK_SUBSCRIPTION_BURST`) — operator config.
+- Backpressure caps — none in v0 (§7.8). Providers/schemes/mimetypes own their own throttling.
 - Stream cancel verb — no dedicated cancel op or signal in the grammar. SEND[499] to the URI is the pattern (§7.7).
 - Delete verb — no dedicated DELETE op. SEND[410] to the URI is the pattern (§3.5, §6.5).
 
@@ -700,8 +704,7 @@ Every plurnk-service deployment configures via env vars. Cascade: `.env.example`
 | `PLURNK_PORT`                        | `3044`             | TCP port for the daemon WebSocket.                                   |
 | `PLURNK_MAX_TURNS`                   | `50`               | Default safety cap on turns per `loop.run` (overridable per call).   |
 | `PLURNK_RPC_TIMEOUT`                 | `30000`            | Timeout in ms for non-`longRunning` RPC handlers.                    |
-| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel head/tail token budget for index preview tiles.          |
-| `PLURNK_SUBSCRIPTION_BURST`          | `64`               | Max chunks delivered into `packet.system.log[]` per turn per subscription. |
+| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel preview budget for index tiles (characters; §14.2).      |
 | `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop (vs. boundaries only). |
 | `PLURNK_LOG_LEVEL`                   | `info`             | Stdout boot/crash banners only — runtime logging is DB rows.         |
 

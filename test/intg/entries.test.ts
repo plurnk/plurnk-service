@@ -279,6 +279,26 @@ test("entry_channels: (entry_id, name) UNIQUE", async () => {
     } finally { await db.close(); }
 });
 
+test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §7.8)", async () => {
+    const db = await openMigrated();
+    try {
+        const entryId = await insertAgentEntry(db, "known", "big");
+        // Just-under the cap (100 MiB = 104857600 chars) succeeds.
+        const justUnder = "a".repeat(104857600);
+        await (db.test_entry_channels_insert_default as PrepMethod).run({
+            entry_id: entryId, name: "body", content: justUnder, mimetype: "text/plain",
+        });
+        // 1 char over the cap fails.
+        const justOver = "a".repeat(104857601);
+        await assert.rejects(
+            () => (db.test_entry_channels_insert_default as PrepMethod).run({
+                entry_id: entryId, name: "body2", content: justOver, mimetype: "text/plain",
+            }),
+            /CHECK constraint failed/,
+        );
+    } finally { await db.close(); }
+});
+
 test("entry_channels: state enum CHECK", async () => {
     const db = await openMigrated();
     try {

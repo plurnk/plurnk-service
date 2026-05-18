@@ -20,10 +20,13 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE UNIQUE INDEX IF NOT EXISTS entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
 CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
 
+-- SPEC §7.8: the ONE engine-imposed constraint — 100 MiB char-length cap per
+-- channel content body. All other limits (rate, burst, per-call budget, etc.)
+-- are extrinsic — providers, schemes, and mimetypes own their own constraints.
 CREATE TABLE IF NOT EXISTS entry_channels (
     entry_id INTEGER NOT NULL,
     name     TEXT    NOT NULL             CHECK (length(name) > 0),
-    content  TEXT    NOT NULL,
+    content  TEXT    NOT NULL             CHECK (length(content) <= 104857600),
     mimetype TEXT    NOT NULL             CHECK (length(mimetype) > 0),
     tokens   INTEGER NOT NULL DEFAULT 0   CHECK (tokens >= 0),
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
