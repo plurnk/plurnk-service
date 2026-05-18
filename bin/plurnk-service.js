@@ -1,18 +1,34 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Daemon from "../src/server/Daemon.ts";
 import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
 
-try { process.loadEnvFile(".env"); } catch { /* .env is optional */ }
-
 const die = (code, message) => {
     process.stderr.write(`${message}\n`);
     process.exit(code);
 };
+
+// --config=<path> wins over default .env. Pre-parse before parseArgs runs
+// so the loaded env informs the rest of bootstrap.
+const envFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
+const envFile = (() => {
+    if (envFlagIndex === -1) return ".env";
+    const arg = process.argv[envFlagIndex];
+    if (arg.includes("=")) return arg.slice(arg.indexOf("=") + 1);
+    return process.argv[envFlagIndex + 1] ?? ".env";
+})();
+if (existsSync(envFile)) {
+    try { process.loadEnvFile(envFile); }
+    catch (cause) { die(64, `--config: failed to load ${envFile}: ${cause instanceof Error ? cause.message : String(cause)}`); }
+} else if (envFlagIndex !== -1) {
+    die(64, `--config: ${envFile} does not exist`);
+}
+// default .env is optional
 
 const requireEnv = (name) => {
     const value = process.env[name];
@@ -30,18 +46,17 @@ for (const f of flagDescriptors) {
 
 const USAGE = `usage: plurnk-service <subcommand> [options]
 
-Admin CLI for the plurnk engine library. User-facing run behavior lives
-in @plurnk/plurnk (separate package).
+Admin CLI for the plurnk service. User-facing CLI/TUI lives in
+@plurnk/plurnk (separate package).
 
 subcommands:
   migrate    apply pending migrations against PLURNK_DB_PATH
   start      run the daemon (WebSocket RPC on PLURNK_HOST:PLURNK_PORT)
-  stop       signal a running engine to shut down (not yet implemented)
-  status     query the running engine's state (not yet implemented)
 
 ${formatFlagsHelp(flagDescriptors)}
 
-  -h, --help   print this message and exit
+  --config=<path>  load env from <path> instead of ./.env
+  -h, --help       print this message and exit
 `;
 
 const openDb = async (dbPath) => {
@@ -62,7 +77,6 @@ const migrate = async () => {
 
 const loadOpenAIProvider = async () => {
     if (process.env.OPENAI_BASE_URL === undefined || process.env.OPENAI_BASE_URL === "") {
-        process.stdout.write("plurnk-service: OPENAI_BASE_URL not set; loop.run will return 501\n");
         return null;
     }
     try {
@@ -106,11 +120,10 @@ const start = async () => {
     process.on("SIGTERM", () => shutdown("SIGTERM"));
 };
 
-const notYet = (subcommand) => () => die(64, `${subcommand}: not yet implemented`);
-
 const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { help: { type: "boolean", short: "h" }, ...flagOptions },
+    strict: false,
+    options: { help: { type: "boolean", short: "h" }, "env-file": { type: "string" }, ...flagOptions },
 });
 
 for (const f of flagDescriptors) {
@@ -126,12 +139,7 @@ if (positionals.length === 0) { process.stdout.write(USAGE); process.exit(64); }
 const [subcommand, ...rest] = positionals;
 if (rest.length > 0) die(64, `unexpected arguments: ${rest.join(" ")}\n\n${USAGE}`);
 
-const dispatch = {
-    migrate,
-    start,
-    stop: notYet("stop"),
-    status: notYet("status"),
-};
+const dispatch = { migrate, start };
 
 const handler = dispatch[subcommand];
 if (handler === undefined) die(64, `unknown subcommand: ${subcommand}\n\n${USAGE}`);
