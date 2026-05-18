@@ -109,19 +109,67 @@ test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: throws if assistant.ops has no SEND with numeric status", async () => {
+// Rail #41: no-SEND turn is not fatal. Turn completes at status 422,
+// ops still dispatch, telemetry buffer captures the failure for next
+// packet's user.telemetry.errors[]. SPEC §15.1.
+
+test("Engine.runTurn: no-SEND turn completes at status 422; ops still dispatch", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextSize: 100000,
             responses: [response([editStmt("/x", "y")])],
         });
-        await assert.rejects(
-            () => engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
-            /assistant ops contain no SEND/,
-        );
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        assert.equal(result.status, 422, "turn marked unprocessable (no terminal SEND)");
+        assert.deepEqual(result.statuses, [201], "EDIT still dispatched");
         const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
-        assert.equal(turnCount, 0, "no turn row should be inserted on malformed assistant");
+        assert.equal(turnCount, 1, "turn row is inserted at 422; the failure is logged, not hidden");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: no-SEND failure surfaces in NEXT packet's user.telemetry.errors[]", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([editStmt("/a", "1")]),                       // turn 1: no SEND
+                response([editStmt("/b", "2"), sendStmt(200, "ok")]),  // turn 2: clean
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string; message: string }> } };
+        };
+        const noSendErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_send");
+        assert.equal(noSendErrors.length, 1, "turn 1's no-SEND surfaces in turn 2's telemetry");
+        assert.match(noSendErrors[0].message, /terminal SEND/);
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: telemetry buffer drains — failure shows once, then clears", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([editStmt("/a", "1")]),                       // turn 1: no SEND
+                response([editStmt("/b", "2"), sendStmt(102, "go")]),  // turn 2: clean (drains buffer)
+                response([editStmt("/c", "3"), sendStmt(200, "ok")]),  // turn 3: clean
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string }> } };
+        };
+        const noSendErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_send");
+        assert.equal(noSendErrors.length, 0, "no_send drained at turn 2; turn 3 doesn't replay it");
     } finally { await db.close(); }
 });
 

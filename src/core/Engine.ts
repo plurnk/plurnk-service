@@ -77,17 +77,40 @@ const pathnameFromPath = (path: ParsedPath): string => {
     return path.raw;
 };
 
+// Status assigned to a turn that completed but lacked a terminal SEND op.
+// Loop status stays 102 (no SEND broadcast → no terminal advance), so the
+// model gets another turn with telemetry showing the failure. The action
+// itself routes through telemetry.errors[] (§15.1).
+const TURN_STATUS_NO_SEND = 422;
+
 export default class Engine {
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: MimetypeRegistry;
     #previewBudget: number;
+    // Per-loop transient buffer of actionless failures pending surface in the
+    // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
+    // Map<loopId, TelemetryError[]>. SPEC §15.1.
+    #telemetryBuffer = new Map<number, object[]>();
 
     constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: MimetypeRegistry }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#mimetypes = mimetypes ?? new MimetypeRegistry();
         this.#previewBudget = readBudget();
+    }
+
+    #pushTelemetry(loopId: number, error: object): void {
+        const existing = this.#telemetryBuffer.get(loopId);
+        if (existing === undefined) this.#telemetryBuffer.set(loopId, [error]);
+        else existing.push(error);
+    }
+
+    #drainTelemetry(loopId: number): object[] {
+        const buf = this.#telemetryBuffer.get(loopId);
+        if (buf === undefined) return [];
+        this.#telemetryBuffer.delete(loopId);
+        return buf;
     }
 
     async runLoop({
@@ -136,11 +159,13 @@ export default class Engine {
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number",
         );
-        if (sendOp === undefined) throw new Error("Engine.runTurn: assistant ops contain no SEND with a numeric status; cannot determine turn.status");
-        const turnStatus = sendOp.signal;
+        const turnStatus = sendOp?.signal ?? TURN_STATUS_NO_SEND;
 
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
+        // Build packet BEFORE pushing this turn's actionless failures so the
+        // drain at packet-build sees only PRIOR turns' failures. THIS turn's
+        // failures are buffered AFTER and surface in the next packet.
         const packet = await this.#buildPacket(messages, response, runId, loopId);
         const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId,
@@ -158,6 +183,16 @@ export default class Engine {
                 statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch,
             });
             statuses.push(result.status);
+        }
+
+        if (sendOp === undefined) {
+            // Rail #41: actionless failure surfaces in the NEXT packet's
+            // user.telemetry.errors[]. Pushed AFTER #buildPacket so the
+            // current turn's drain doesn't consume it.
+            this.#pushTelemetry(loopId, {
+                kind: "no_send",
+                message: "turn ended without a terminal SEND op; emit SEND[200] to complete or SEND[102] to continue",
+            });
         }
 
         return { turnId, status: turnStatus, statuses };
@@ -191,9 +226,11 @@ export default class Engine {
     // with indexed=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
     // does NOT branch on it (§5.6 {§5.6-engine-does-not-branch-on-state}).
-    // SPEC §15.1: mirror previous-turn action failures (status >= 400) as
-    // telemetry.errors[] on the next packet. The full detail stays in
-    // packet.system.log; this is the model-facing ALERT pattern.
+    // SPEC §15.1: model-facing alert surface.
+    // Two sources, merged on each packet build:
+    //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
+    //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
+    // Buffer drains on read — each error appears in exactly one packet.
     async #buildTelemetryErrors(loopId: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
             op: string; action_index: number; status_rx: number;
@@ -201,7 +238,7 @@ export default class Engine {
             target_scheme: string | null; target_pathname: string | null;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId });
-        return rows.map((r) => {
+        const actionFailures = rows.map((r) => {
             const target = r.target_scheme !== null
                 ? `${r.target_scheme}://${r.target_pathname ?? ""}`
                 : (r.target_pathname ?? null);
@@ -217,6 +254,7 @@ export default class Engine {
                     : typeof parsedRx === "string" ? parsedRx : "",
             };
         });
+        return [...this.#drainTelemetry(loopId), ...actionFailures];
     }
 
     // SPEC §15 packet.system.log — chronological action-entries for the loop.
