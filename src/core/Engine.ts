@@ -178,7 +178,7 @@ export default class Engine {
             user: {
                 tokens: 0,
                 prompt: byRole("user"),
-                telemetry: { budget: "", errors: [] },
+                telemetry: { budget: "", errors: await this.#buildTelemetryErrors(loopId) },
                 system_requirements: "",
             },
             assistant: response.assistant,
@@ -191,6 +191,34 @@ export default class Engine {
     // with indexed=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
     // does NOT branch on it (§5.6 {§5.6-engine-does-not-branch-on-state}).
+    // SPEC §15.1: mirror previous-turn action failures (status >= 400) as
+    // telemetry.errors[] on the next packet. The full detail stays in
+    // packet.system.log; this is the model-facing ALERT pattern.
+    async #buildTelemetryErrors(loopId: number): Promise<object[]> {
+        const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
+            op: string; action_index: number; status_rx: number;
+            rx: string; mimetype_rx: string;
+            target_scheme: string | null; target_pathname: string | null;
+            turn_seq: number; loop_seq: number;
+        }>({ loop_id: loopId });
+        return rows.map((r) => {
+            const target = r.target_scheme !== null
+                ? `${r.target_scheme}://${r.target_pathname ?? ""}`
+                : (r.target_pathname ?? null);
+            const parsedRx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
+            return {
+                kind: "action_failure",
+                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+                op: r.op,
+                target,
+                status: r.status_rx,
+                message: typeof parsedRx === "object" && parsedRx !== null && "error" in parsedRx
+                    ? (parsedRx as { error: string }).error
+                    : typeof parsedRx === "string" ? parsedRx : "",
+            };
+        });
+    }
+
     // SPEC §15 packet.system.log — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a

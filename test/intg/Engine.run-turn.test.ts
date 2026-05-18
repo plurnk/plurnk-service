@@ -243,3 +243,78 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         assert.ok(typeof packet.system.log[0].rx.entryId === "number", "entryId hydrated from parsed JSON rx");
     } finally { await db.close(); }
 });
+
+// SPEC §15.1 — action-bound failures mirror into next packet's telemetry.errors[].
+// Task #49.
+
+test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
+        });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
+        assert.deepEqual(packet.user.telemetry.errors, []);
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next packet's telemetry.errors[]", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Model attempts to EDIT log:// — denied 403 (Log.writableBy=['system']).
+        const denied: EditStatement = {
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("log", "/illegal"),
+            lineMarker: null, body: "x", position: { line: 1, column: 1 },
+        };
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([denied, sendStmt(102, "keep going")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as {
+            user: { telemetry: { errors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; message: string }> } };
+        };
+        assert.equal(packet.user.telemetry.errors.length, 1, "1 failure mirrored from turn 1");
+        const [err] = packet.user.telemetry.errors;
+        assert.equal(err.kind, "action_failure");
+        assert.equal(err.coordinate, "1/1/0");
+        assert.equal(err.op, "EDIT");
+        assert.equal(err.target, "log:///illegal");
+        assert.equal(err.status, 403);
+        assert.match(err.message, /writer 'model'.*'log'/);
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (not older)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const denied: EditStatement = {
+            op: "EDIT", suffix: "", signal: null,
+            path: urlPath("log", "/a"),
+            lineMarker: null, body: "x", position: { line: 1, column: 1 },
+        };
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([denied, sendStmt(102, "t1 had a failure")]),
+                response([editStmt("/ok", "v"), sendStmt(102, "t2 was clean")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });   // t1: 1 failure
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });   // t2: clean
+        const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
+        assert.deepEqual(packet.user.telemetry.errors, [], "t3 mirrors t2 only (clean); t1's failure stays in log://, off-screen");
+    } finally { await db.close(); }
+});

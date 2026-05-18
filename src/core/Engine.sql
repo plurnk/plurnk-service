@@ -34,6 +34,22 @@ ORDER BY e.id, ec.name;
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
+-- PREP: engine_render_telemetry_errors
+-- SPEC §15.1: action-bound failures from the immediately previous turn are
+-- mirrored into the next packet's telemetry.errors[]. Forces the model to
+-- confront 4xx/5xx outcomes instead of letting them rot in log://.
+SELECT
+    le.op, le.action_index, le.status_rx, le.rx, le.mimetype_rx,
+    le.target_scheme, le.target_pathname,
+    t.sequence AS turn_seq, l.sequence AS loop_seq
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+WHERE le.loop_id = $loop_id
+  AND le.status_rx >= 400
+  AND t.sequence = (SELECT MAX(sequence) FROM turns WHERE loop_id = $loop_id)
+ORDER BY le.action_index;
+
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §15 packet.system.log, task #44).
 -- Yields log_entries for this loop, joined with the turn's sequence so the
