@@ -158,6 +158,24 @@ export default class Daemon {
                 hitMaxTurns: "boolean",
             },
         });
+        this.#registry.registerNotification("stream/event", {
+            description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
+            params: {
+                entryId: "number — the entry whose channel changed",
+                channel: "string — the channel name",
+                state: "string — current state (static, active, closed, errored)",
+                contentLength: "number — current length of the channel's content",
+            },
+        });
+    }
+
+    /**
+     * Emit a stream/event notification scoped to the session containing the
+     * entry. ChannelWrite helpers (src/core/ChannelWrite.ts) invoke this when
+     * they update channel content or state. SPEC §13.6.
+     */
+    notifyStreamEvent(sessionId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
+        this.#broadcast({ sessionId }, null, "stream/event", event);
     }
 
     #onConnection(ws: WebSocket): void {
