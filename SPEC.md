@@ -205,6 +205,8 @@ For SEND[410], channel-level deletion via `#fragment` is deferred — schemes re
 
 A mimetype handler interprets channel content for validation, structural extraction, and preview rendering. Every `@plurnk/plurnk-mimetypes-*` package implements this contract.
 
+**Firing semantics.** Mimetype handlers are **render-time** consumers. The engine invokes them when assembling the turn packet at turn boundaries — they read the current channel content (whatever's there, possibly mid-stream), produce a structural view, and the result lands in the model's context. {§4-handlers-fire-render-time} Schemes do NOT call mimetype handlers at write time; schemes just append to channel content. Render is the only consumer of "interpreted" content. {§4-schemes-do-not-invoke-handlers} Memoization (handler result cached by content hash) is an implementation concern; the contract is render-time.
+
 ### §4.1 Manifest
 
 ```json
@@ -237,9 +239,10 @@ preview(content: string, budget: number): string;
 ```
 
 Promises:
-- `validate` throws on shape mismatch. For text/plain and text/markdown, every string validates (identity). For application/json, content must parse via `JSON.parse`. For text/vnd.plurnk, content must parse via the grammar.
-- `symbols` returns a structural index of the content — what goes in the preview channel (§5). For text/markdown, this is the heading outline. For application/json, the top-level key tree. For text/plain, an empty string (no structure).
+- `validate` is a render-time guard. If it throws, that's a handler bug — engine crashes loudly per fail-hard. Schemes that want write-time validation handle that themselves; it's not plurnk-service's contract.
+- `symbols` returns a structural index of the content. For text/markdown, this is the heading outline. For application/json, the top-level key tree. For text/plain, an empty string (no structure).
 - `preview` returns a budget-bounded structural summary. `budget` is a character-count hint (not strictly enforced; handler does its best). For text/plain, head-truncation. For text/markdown, heading outline. For application/json, depth-limited key tree.
+- All three methods MUST be deterministic for caching to work — same content in, same output out.
 
 ### §4.3 What mimetype handlers do NOT do
 
@@ -266,16 +269,18 @@ Deferred handlers reserve their glyphs now so external packages don't collide.
 
 ## §5 Channel Topology
 
-Every entry has named channels. Channels are the unit of stored content; mimetype handlers operate on channels; visibility is per-channel.
+Every entry has named channels. **Channels are append-only content stores** keyed by `(entry_id, name)`. Schemes write content; the engine reads at turn boundaries; mimetype handlers interpret. {§5-channels-append-only}
 
 ### §5.1 Per-entry channels
 
 EDIT writes a minimum of two channels per entry, in one transaction: {§5.1-edit-writes-body-plus-preview}
 
 - **`body`** — the raw content.
-- **`preview`** — the structural summary. For v0, populated as `preview = body` verbatim (placeholder); the mimetype handler's `symbols(content)` populates it once handlers land for the relevant mimetype.
+- **`preview`** — the render-time structural summary. The stored content here is the result of `mimetype.preview(body, budget)` for the body's mimetype. When the mimetype handler is unsophisticated (text/plain head-truncation), the preview is short. As handlers mature (markdown heading outline, JSON key tree, DSL op summary), the preview becomes structural. {§5.1-preview-is-handler-output}
 
-Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; file may declare an `outline` channel; etc.). Each additional channel goes in the scheme's `channels` manifest (§3.1) and has its mimetype pinned there.
+Whether preview is stored (write-time memoization) or computed fresh on each render is an implementation choice behind the contract — both behave the same to callers. v0 implementation stores it (avoids per-render compute); future implementation may switch to compute-on-render with content-hash cache.
+
+Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; file may declare an `outline` channel; SSE may declare per-event-type channels). Each additional channel goes in the scheme's `channels` manifest (§3.1) and has its mimetype pinned there.
 
 ### §5.2 Visibility lattice
 
@@ -324,6 +329,19 @@ Implications for operations:
 - **COPY / MOVE** with a fragment is a per-channel operation; deferred design pass needed before specifying (out of scope for v0).
 
 The clean-shape RPC params (§13.5) carry the fragment naturally inside the `path` string: `{ path: "known://x#preview" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+
+### §5.6 Channel state — metadata, not gating
+
+Per the grammar's `ChannelContent` schema, each channel has a `state ∈ {static, active, closed, errored}`. This is **information about the channel's current writing status**, not a gate on engine behavior. {§5.6-state-is-metadata}
+
+- `static` — content is final; not actively being written. Entry-bearing schemes (known/unknown/skill) stay here always after EDIT.
+- `active` — a scheme is currently writing to this channel (chunks arriving). Streaming schemes use this during their connection's accumulating phase.
+- `closed` — a scheme finished writing cleanly. The channel content is final but came from a stream that has now ended.
+- `errored` — a scheme was writing but ended in error. Content may be partial; subsequent reads still return what was accumulated.
+
+Schemes own state transitions. They UPDATE `entry_channels.state` as their connection lifecycle progresses. {§5.6-schemes-own-state-transitions} The engine does NOT branch on state during rendering — it reads `content` and `state`, includes both in the rendered tile, lets the model and clients see the truth. {§5.6-engine-does-not-branch-on-state}
+
+The model uses state for context: "this channel says `active` — content may grow before my next turn." Clients use state for UI: render an active channel with a spinner, errored with red, etc.
 
 ---
 
@@ -426,11 +444,13 @@ Deferred. The `exec` scheme is in §10's bundled set but lacks a working handler
 
 ## §7 Stream Model
 
-The model can't poll and can't wait for streams to complete. It must stay passively informed of ongoing streams between turns. Fully implementable against grammar 0.3.0 — no contract changes needed.
+The model can't poll and can't wait for streams to complete. It must stay passively informed of ongoing streams between turns. Plurnk-service treats streams as **the same as static content from the engine's perspective** — content arrives over time, channels grow, mimetype handlers render whatever's there at turn boundaries. There is no engine-level "transaction" abstraction; schemes own their connection lifecycle entirely. {§7-no-engine-transaction-abstraction}
 
 ### §7.1 Subscriptions
 
-READ on a streaming scheme is a subscription, not a one-shot. The scheme handler opens the connection (SSE, WS, exec subprocess, etc.), returns a `102 Processing` log row immediately, and stays alive. The engine wires the open connection into a **run-scoped subscription registry** — plurnk-service runtime state in its own SQLite table; NOT in the grammar's schema.
+READ on a streaming scheme is a subscription, not a one-shot. The scheme handler opens the connection (SSE, WS, exec subprocess, etc.), returns a `102 Processing` log row immediately, and stays alive. The engine records `(sessionId, entryId) → schemeName + scheme-handle` in a **subscription registry** so cancellation (SEND[499]) can be routed to the scheme owning the active connection. {§7.1-subscription-registry-routes-cancellation}
+
+The subscription registry is plurnk-service runtime state (its own SQLite table). Not in the grammar's schema. **It exists ONLY for cancellation routing** — not for lifecycle tracking, not for state coordination. Channel state (§5.6) and log entries (§7.3) carry the lifecycle information.
 
 ### §7.2 Chunk accumulation
 
@@ -438,7 +458,9 @@ SSE event types, WS message types, exec stdout/stderr — each maps to a named c
 
 ### §7.3 No per-chunk log rows
 
-Channels are the single source of truth for chunk content. Log captures **lifecycle events** only: open (`102`), graceful close (`200`), explicit cancel (`499`), errors (`5xx`), scheme-significant transitions.
+Channels are the single source of truth for chunk content. Log captures **lifecycle events** only: open (`102`), graceful close (`200`), explicit cancel (`499`), errors (`5xx`), scheme-significant transitions. {§7.3-log-captures-lifecycle-only}
+
+The model sees lifecycle events in `packet.system.log[]` per turn (§7.4 / §7.8). This is how the model learns "the stream opened" / "the stream closed cleanly" / "an error happened" — through log rows, not through engine-level state inspection.
 
 ### §7.4 Index tile rendering
 
@@ -460,6 +482,12 @@ Per-channel previews use `SchemeRegistration.channel_orientations` (grammar 0.3.
 ### §7.8 Backpressure
 
 `PLURNK_SUBSCRIPTION_BURST` (§12) caps per-turn chunk delivery into `packet.system.log[]`. When truncated, a synthesized log row carries `status_rx: 206 Partial Content` with a body describing what was dropped. All chunks remain in the channel; only the per-turn surface is bounded. Under context pressure the burst adapts down. Runtime backpressure; not in the contract.
+
+### §7.9 Live updates for clients (between turns)
+
+While the model only sees turn-boundary rendering (coherent context per turn), connected RPC clients (TUI, neovim, web) want to see channel content grow in real time. The daemon emits `stream/event` notifications (§13.6) when channel content changes. Clients use these to render live waterfalls and refresh entry views without polling. {§7.9-stream-event-fires-on-chunk}
+
+The model is NOT a stream/event consumer. The model is a turn-based consumer; whatever's in the channel at the next turn boundary is what gets rendered into its packet.
 
 ---
 
@@ -744,8 +772,9 @@ Server-initiated events streamed to the client over the same WebSocket. Critical
 | `log/entry`        | `{ entry: LogEntry }`               | Every time a `log_entries` row is written. |
 | `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | When a loop reaches a terminal status. |
 | `session/created`  | `{ session: Session }`              | When a session is created (any client's action; gives multi-client awareness). |
+| `stream/event`     | `{ entryId, channel, state, contentLength }` | When a channel's content grows or its state transitions. For clients rendering live; the model only sees state at turn boundaries. {§13.6-stream-event-on-channel-change} |
 
-Future-reserved: `stream/event` for the stream model (§7) — chunks accumulating, subscriptions opening/closing.
+The `stream/event` payload deliberately carries metadata, NOT content. Clients that want the new content call `entry.read({path})` to fetch — this avoids large notification payloads and gives the client agency over whether to refresh. Sample-driven (notifications include `contentLength` so clients can dedupe / batch).
 
 Notifications are scoped to the connection's attached session — a client attached to session A does NOT receive `log/entry` notifications for actions on session B. (Cross-session observation is a future feature; v0 keeps the scope tight.)
 
