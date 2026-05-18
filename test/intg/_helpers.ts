@@ -40,9 +40,10 @@ export const insertSession = async (db: Db, name: string): Promise<number> => {
     return row.id;
 };
 
-export const insertRun = async (db: Db, sessionId: number, parentRunId: number | null = null): Promise<number> => {
+let runCounter = 0;
+export const insertRun = async (db: Db, sessionId: number, parentRunId: number | null = null, name?: string): Promise<number> => {
     const row = await (db.test_insert_run as PrepMethod).get<{ id: number }>({
-        session_id: sessionId, parent_run_id: parentRunId,
+        session_id: sessionId, name: name ?? `run-test-${++runCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_run_id: parentRunId,
     });
     if (row === undefined) throw new Error("insertRun: insert returned no row");
     return row.id;

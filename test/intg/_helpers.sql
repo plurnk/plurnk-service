@@ -7,7 +7,7 @@
 INSERT INTO sessions (name) VALUES ($name) RETURNING id;
 
 -- PREP: test_insert_run
-INSERT INTO runs (session_id, parent_run_id) VALUES ($session_id, $parent_run_id) RETURNING id;
+INSERT INTO runs (session_id, name, parent_run_id) VALUES ($session_id, $name, $parent_run_id) RETURNING id;
 
 -- PREP: test_insert_loop
 INSERT INTO loops (run_id, sequence, prompt) VALUES ($run_id, $sequence, $prompt) RETURNING id;

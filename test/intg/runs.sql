@@ -2,25 +2,25 @@
 SELECT sql FROM sqlite_master WHERE name = 'runs';
 
 -- PREP: test_runs_insert
-INSERT INTO runs (session_id) VALUES ($session_id);
+INSERT INTO runs (session_id, name) VALUES ($session_id, $name);
 
 -- PREP: test_runs_insert_with_parent
-INSERT INTO runs (session_id, parent_run_id) VALUES ($session_id, $parent_run_id);
+INSERT INTO runs (session_id, name, parent_run_id) VALUES ($session_id, $name, $parent_run_id);
 
 -- PREP: test_runs_insert_with_parent_returning
-INSERT INTO runs (session_id, parent_run_id) VALUES ($session_id, $parent_run_id) RETURNING id;
+INSERT INTO runs (session_id, name, parent_run_id) VALUES ($session_id, $name, $parent_run_id) RETURNING id;
 
 -- PREP: test_runs_insert_returning
-INSERT INTO runs (session_id) VALUES ($session_id) RETURNING id;
+INSERT INTO runs (session_id, name) VALUES ($session_id, $name) RETURNING id;
 
 -- PREP: test_runs_insert_cost
-INSERT INTO runs (session_id, cost_pico) VALUES ($session_id, $cost_pico);
+INSERT INTO runs (session_id, name, cost_pico) VALUES ($session_id, $name, $cost_pico);
 
 -- PREP: test_runs_insert_version
-INSERT INTO runs (session_id, version) VALUES ($session_id, $version);
+INSERT INTO runs (session_id, name, version) VALUES ($session_id, $name, $version);
 
 -- PREP: test_runs_get_by_session
-SELECT id, version, session_id, created_at, parent_run_id, cost_pico
+SELECT id, version, session_id, name, created_at, parent_run_id, cost_pico
 FROM runs WHERE session_id = $session_id LIMIT 1;
 
 -- PREP: test_runs_get_parent

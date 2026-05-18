@@ -7,7 +7,7 @@ INSERT INTO sessions (name) VALUES ($name) RETURNING id, name;
 SELECT id, name FROM sessions WHERE id = $id;
 
 -- PREP: envelope_insert_run
-INSERT INTO runs (session_id) VALUES ($session_id) RETURNING id;
+INSERT INTO runs (session_id, name) VALUES ($session_id, $name) RETURNING id, name;
 
 -- PREP: envelope_insert_client_loop
 INSERT INTO loops (run_id, sequence, status, prompt)

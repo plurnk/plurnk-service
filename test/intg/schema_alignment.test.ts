@@ -35,6 +35,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     Run: {
         kind: "table", table: "runs", fields: {
             id: direct("id"), version: direct("version"), session_id: direct("session_id"),
+            name: direct("name"),
             created_at: direct("created_at"), parent_run_id: direct("parent_run_id"),
             cost_pico: direct("cost_pico"),
         },
