@@ -57,7 +57,7 @@ Three independent axes on entries and channels. Confusion across them is a recur
 |---|---|
 | **writer** | The identity authoring a write. One of `model \| client \| system \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
 | **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
-| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, system, plugin}`. Engine rejects writes outside the set with 403 + `error://` entry. |
+| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, system, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry (§7.1 action-entry-as-outcome). |
 
 ### §0.5 Engine rails
 
@@ -960,3 +960,56 @@ Each entry: the question, the answer, the rationale, the migration path if revis
 - Switching the unit later requires: (a) `countTokens` lands on the provider contract, (b) engine caches token counts per `(provider_id, content_hash)`, (c) mimetype.preview gets a tokenizer reference or returns content for engine to tokenize-and-truncate. Out of v0 scope.
 
 **Migration path if revisited.** When provider `countTokens` lands and the engine has per-channel token accounting, `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` becomes literal tokens. Mimetype handlers either receive a tokenizer reference in `preview(content, budget, countTokens?)` or the engine post-processes character-bounded `preview` output through tokenizer + truncate. The MIMETYPES.md contract revision is non-breaking (signature stays `(content, budget) → string`); the semantic of `budget` changes from char-count to token-count.
+
+---
+
+## §15 Packet shape
+
+The canonical packet shape persisted on `turns.packet` and supplied to the model each turn. Engine assembles in `Engine.#buildPacket`; plugins do not augment in v0 (§14.1).
+
+```ts
+type Packet = {
+    tokens: number;                          // total tokens for this turn (assistant completion)
+    system: {
+        tokens: number;
+        system_definition: string;           // operator-supplied prelude
+        persona: string;                     // session-scoped persona
+        index: PacketEntry[];                // visible entries (§4 / §5)
+        log: PacketLogRow[];                 // chronological action-entries this turn
+    };
+    user: {
+        tokens: number;
+        prompt: string;                      // the user prompt for the loop
+        telemetry: {                         // model-facing runtime telemetry (§15.1)
+            budget: { used: number; limit: number; unit: "characters" | "tokens" };
+            errors: TelemetryError[];        // actionless failures from the previous turn
+        };
+        system_requirements: string;         // hard constraints injected per turn
+    };
+    assistant: {                             // last completion (rolling)
+        tokens: number;
+        content: string;
+        ops: PlurnkStatement[];
+        reasoning: string | null;
+    };
+    assistantRaw: unknown;                   // provider-native raw response (audit only)
+};
+```
+
+### §15.1 user.telemetry — model-facing runtime telemetry
+
+The slot for telemetry the model MUST react to right now: budget pressure, last-turn errors that didn't produce an action-entry, and (future) strike counts / sudden-death armed signals / cycle warnings.
+
+Rendered prominently at the bottom of the user section so the model cannot ignore it. Errors here are transient: they appear on the turn AFTER the failure and clear once the model has seen them. The action-entries themselves (`packet.system.log[]`) are the durable audit; `telemetry.errors[]` is the **alert**.
+
+```ts
+type TelemetryError = {
+    kind: "parse" | "dispatch_crash" | "no_send" | "watchdog" | "budget_overflow" | "rail";
+    message: string;
+    detail?: unknown;            // kind-specific payload (line/col for parse, op for crash, etc.)
+};
+```
+
+`budget` reflects packet build state at this turn. `unit` is `"characters"` per §14.2 until `countTokens` lands.
+
+**No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace. The model reacts in-context; the audit lives in the action-entry log (when an action exists) or transient telemetry (when none does). Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as a one-line summary into `telemetry.errors[]` on the next packet — the same forced-confrontation pattern. The full detail stays queryable via `log://`. {§15.1-no-error-scheme}

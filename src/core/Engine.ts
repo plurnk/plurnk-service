@@ -178,7 +178,10 @@ export default class Engine {
             user: {
                 tokens: 0,
                 prompt: byRole("user"),
-                turn: "",
+                telemetry: {
+                    budget: { used: 0, limit: 0, unit: "characters" },
+                    errors: [],
+                },
                 system_requirements: "",
             },
             assistant: response.assistant,

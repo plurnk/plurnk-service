@@ -63,7 +63,7 @@ static manifest: SchemeManifest = {
 | `defaultChannel` | Channel name. Targeted when an op's path has no `#fragment`. MUST be a key in `channels` (or empty when channels are dynamic). |
 | `category` | `"data"` \| `"logging"`. Data entries render as `<index>` tiles; logging entries render as `<log>` rows. |
 | `scope` | `"agent"` \| `"session"`. Default scope for new entries written under this scheme. Per-call overrides require explicit context. |
-| `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Engine rejects writes from identities outside this set with 403 + `error://` entry. |
+| `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Engine rejects writes from identities outside this set with 403; the rejection is logged as the action-entry. |
 | `volatile` | Boolean. `true` for schemes whose content changes rapidly (`sh`, `env`, `sse`). Engine sorts volatile schemes to the bottom of `<index>` for cache stability. |
 | `modelVisible` | Boolean. `false` hides entries from the model's index/log rendering (audit schemes like `instructions://`, `system://`). Default `true`. |
 
@@ -410,7 +410,7 @@ Promises:
 - `writeEntry` accepts a full entry shape and persists. 201 = new, 200 = replaced, 409 = scheme policy forbids overwrites, 415 = mimetype mismatch against manifest.
 - `deleteEntry` removes the entry (and all related rows via CASCADE).
 
-Logging-only schemes (`log://`, `error://`) MAY omit CRUD primitives — they're not COPY/MOVE destinations. The engine returns 501 for cross-scheme ops against schemes without CRUD.
+Logging-only schemes (`log://`) MAY omit CRUD primitives — they're not COPY/MOVE destinations. The engine returns 501 for cross-scheme ops against schemes without CRUD.
 
 ---
 
@@ -428,13 +428,15 @@ EDIT(known://x):body:EDIT → log entry at log://<L>/<T>/<S>/EDIT
 
 The scheme handler does not call a separate `error.log.emit`. The handler returns its result; engine writes the log entry with that result.
 
-`error://` entries are written ONLY for actionless failures:
+**Actionless failures** — failures with no action context to bind to — are not stored as scheme entries. They surface as transient telemetry in the NEXT turn's `packet.user.telemetry.errors[]` (see SPEC §15 Packet shape). Sources:
 
-- Dispatch crashes (handler threw before producing a result).
+- Dispatch crashes (handler threw before producing a result; engine catches and surfaces).
 - Parser failures (no statement could be parsed; turn produced no actions).
 - Watchdog firings (abort timeout, stream timeout).
 - Budget overflow (pre-dispatch rejection).
 - Engine rail violations (cycle detected, strike threshold reached, missing terminal SEND).
+
+The model is forced to confront these — they sit in `user.telemetry`, prominently, at the bottom of the user-section of the next packet. No `error://` namespace exists.
 
 ### §7.2 Channel state machine
 
@@ -463,7 +465,7 @@ Entry state for proposal lifecycle:
 - `ctx.writer` reflects the actual writer at this dispatch (`"model"` when the model emitted the op, `"client"` for RPC origin, etc.).
 - `manifest.writableBy` is checked BEFORE the scheme is called. A scheme handler is never invoked for a writer outside the allowed set; the engine returns 403 directly.
 - `ctx.signal` is wired to the run's AbortController. Scheme honors it for any long-running work.
-- The engine catches exceptions from scheme handlers and routes them through `error://` at status 500. The scheme MAY rely on the engine's catch but SHOULD return result-shaped errors when possible.
+- The engine catches exceptions from scheme handlers and finalizes the action-entry with status 500 (action-entry-as-outcome §7.1). A summary line is also added to the next turn's `packet.user.telemetry.errors[]`. The scheme MAY rely on the engine's catch but SHOULD return result-shaped errors when possible.
 - Cross-scheme orchestration (COPY/MOVE) goes through `readEntry` + `writeEntry` + `deleteEntry`. The op-method `copy`/`move` does NOT exist on schemes; engine drives the primitives.
 
 ---
