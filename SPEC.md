@@ -6,6 +6,8 @@ Section numbers are stable. Future anchor-to-test wiring binds individual promis
 
 Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-end). This document evolves with each phase; the upcoming mimetype / channel-state / transaction-lifecycle work will surface refinements to §4 / §5 / §7.
 
+**Promise anchors.** Individual contract assertions in this document carry a trailing `{§<id>}` marker. Tests reference these anchors in their names (`test("[§<id>] description", ...)`). An alignment test (`test/intg/spec-anchors.test.ts`) fails if a test cites a nonexistent anchor (orphan — typo or stale reference) and surfaces gaps (anchored promises with no test) informationally. The anchors are **grounding against drift**, not a forcing function on development — write the spec, write the test, jot the link, move on. Coverage grows organically.
+
 ---
 
 ## §1 Architecture
@@ -188,10 +190,12 @@ For v0 (known/unknown/skill, all sharing the `entries` table), CRUD primitives a
 When the engine dispatches a `SEND` op with a non-null path (recipient-directed SEND), the target scheme's `send` method receives the statement. The scheme interprets the status code as an intent:
 
 - `SEND[200](path)` — write the body into the resource at `path` (e.g., WebSocket message, exec stdin).
-- `SEND[410](path)` — delete the resource at `path`. Scheme calls its own `delete` primitive.
+- `SEND[410](path)` — delete the resource at `path`. Scheme calls its own `delete` primitive. {§3.5-410-deletes-resource}
 - `SEND[499](path)` — cancel any active subscription bound to `path` (§7).
 
-Other status codes are scheme-specific. The engine does not interpret SEND status codes for directed (non-broadcast) sends.
+Other status codes are scheme-specific. The engine does not interpret SEND status codes for directed (non-broadcast) sends. Entry-bearing schemes return 501 for status codes they don't interpret. {§3.5-entry-schemes-501-on-non-410}
+
+For SEND[410], channel-level deletion via `#fragment` is deferred — schemes return 400 on fragment-targeted 410. {§3.5-410-fragment-400}
 
 `SEND` with null path is broadcast (§6.7) — engine-handled, not scheme-handled.
 
@@ -266,7 +270,7 @@ Every entry has named channels. Channels are the unit of stored content; mimetyp
 
 ### §5.1 Per-entry channels
 
-EDIT writes a minimum of two channels per entry, in one transaction:
+EDIT writes a minimum of two channels per entry, in one transaction: {§5.1-edit-writes-body-plus-preview}
 
 - **`body`** — the raw content.
 - **`preview`** — the structural summary. For v0, populated as `preview = body` verbatim (placeholder); the mimetype handler's `symbols(content)` populates it once handlers land for the relevant mimetype.
@@ -275,7 +279,7 @@ Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; fi
 
 ### §5.2 Visibility lattice
 
-Visibility is per-`(run, entry, channel)` — a bit per cell in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of the target entry to `indexed=1`; HIDE flips all to `indexed=0`. (Channel-specific SHOW/HIDE selectors are out of scope for v0 — the grammar lacks the surface.)
+Visibility is per-`(run, entry, channel)` — a bit per cell in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of the target entry to `indexed=1`; HIDE flips all to `indexed=0`. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment exists for the entry-bearing schemes; see §5.5.
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
@@ -294,10 +298,12 @@ The DSL targets a specific channel of an entry via the URL **fragment** — the 
 
 Rules:
 
-1. **Fragment-less paths target the scheme's `defaultChannel`.** For `known` / `unknown` / `skill` that's `body`. The path `known://philosophy/meaning` writes/reads the body channel of that entry; equivalent to `known://philosophy/meaning#body` made explicit.
-2. **Paths with a fragment target the named channel.** `known://philosophy/meaning#preview` targets the preview channel.
-3. **Unknown channel name → 404 (channel not found) or 400 (bad request) per the scheme's error policy.** The channel name must appear in the scheme's `channels` manifest (§3.1). Engine never writes to an undeclared channel.
+1. **Fragment-less paths target the scheme's `defaultChannel`.** For `known` / `unknown` / `skill` that's `body`. The path `known://philosophy/meaning` writes/reads the body channel of that entry; equivalent to `known://philosophy/meaning#body` made explicit. {§5.5-fragmentless-targets-default-channel}
+2. **Paths with a fragment target the named channel.** `known://philosophy/meaning#preview` targets the preview channel. {§5.5-fragment-selects-named-channel}
+3. **Unknown channel name → 400 (bad request).** The channel name must appear in the scheme's `channels` manifest (§3.1). Engine never writes to an undeclared channel. {§5.5-unknown-channel-400}
 4. **Schemes without `defaultChannel` reject fragment-less EDIT/READ.** Streaming schemes like `sse://feed/x` may require an explicit fragment (`#data`, `#error`, etc.) and have no default.
+5. **Non-default channel EDIT requires entry to exist.** Writing to a fragment-targeted channel of a nonexistent entry returns 404. Default-channel EDIT creates the entry if absent (existing semantics). {§5.5-fragment-on-nonexistent-404}
+6. **Fragment-targeted SHOW/HIDE flips only the named channel.** Fragment-less SHOW/HIDE flips all channels per §5.2. {§5.5-fragment-targeted-show-hide}
 
 Examples:
 
@@ -362,14 +368,16 @@ AST: `{ op: "COPY", path: ParsedPath (source), body: ParsedPath (destination), s
 
 Engine orchestrates over CRUD primitives (§3.2, §3.4):
 
-1. `src_scheme.read({ path: source })` → entry or 404.
-2. `dst_scheme.read({ path: dest })` to check conflict — if exists, return **409 Conflict** (no overwrite). Per fail-hard discipline.
+1. `src_scheme.read({ path: source })` → entry or 404. Missing source returns 404. {§6.4-missing-source-404}
+2. `dst_scheme.read({ path: dest })` to check conflict — if exists, return **409 Conflict** (no overwrite). Per fail-hard discipline. {§6.4-conflict-409}
 3. Mimetype compatibility check — channels of `entry` MUST have mimetypes accepted by `dst_scheme`'s manifest. Mismatch returns **415 Unsupported Media Type**.
-4. Tag resolution: if `signal` is non-null, dest tags = signal_tags (REPLACE). If signal is null/empty, dest tags = source tags (CARRY).
+4. Tag resolution: if `signal` is non-null, dest tags = signal_tags (REPLACE). {§6.4-signal-replaces-source-tags} If signal is null/empty, dest tags = source tags (CARRY). {§6.4-no-signal-carries-source-tags}
 5. `dst_scheme.write({ path: dest, entry: { ...entry, tags } })`.
 6. Dest visibility indexed=1 in current run (parity with EDIT-creating-new).
 
 Returns `{ status: 201 }` on success.
+
+Same- and cross-scheme COPY both go through this orchestrator. {§6.4-cross-scheme-copy}
 
 ### §6.5 MOVE (engine-orchestrated)
 
@@ -377,9 +385,9 @@ AST: `{ op: "MOVE", path: ParsedPath (source), body: ParsedPath | null (destinat
 
 Two modes:
 
-**Relocation** (`body` non-null): engine runs §6.4 COPY then `src_scheme.delete({ path: source })`. One transaction. Returns 201 on success.
+**Relocation** (`body` non-null): engine runs §6.4 COPY then `src_scheme.delete({ path: source })`. One transaction. Returns 201 on success. Source is removed. {§6.5-relocation-deletes-source} Cross-scheme relocation works the same as same-scheme. {§6.5-cross-scheme-move}
 
-**Deletion** (`body` is null): engine runs `src_scheme.delete({ path: source })` directly. The null-body MOVE expresses "relocate to nowhere" = delete. Returns 200 on success, 404 if source absent.
+**Deletion** (`body` is null): engine runs `src_scheme.delete({ path: source })` directly. The null-body MOVE expresses "relocate to nowhere" = delete. {§6.5-null-body-deletes} Returns 200 on success, 404 if source absent. {§6.5-missing-source-404}
 
 Log history is preserved through MOVE because `log_entries.target_*` columns store the path tuple as text, not FK to `entries.id`.
 
@@ -388,9 +396,10 @@ Log history is preserved through MOVE because `log_entries.target_*` columns sto
 AST: `{ op: "FIND", path: ParsedPath (scope), body: MatcherBody | null (predicate), signal: tags | null (tag filter), lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.find(ctx)`. Scheme:
-- Filters entries within the path's scope (scheme + pathname prefix).
-- Applies `body` matcher if present. v0 supports `glob` dialect over pathname. Other dialects (regex over content, xpath, jsonpath) return **501 Not Implemented** until the relevant infrastructure exists.
-- Applies `signal` as a tag filter: only entries with ALL listed tags pass.
+- Filters entries within the path's scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
+- Applies `body` matcher if present. v0 supports `glob` dialect over pathname. {§6.6-glob-filter-on-pathname} Other dialects (regex over content, xpath, jsonpath) return **501 Not Implemented** until the relevant infrastructure exists. {§6.6-non-glob-dialects-501}
+- Applies `signal` as a tag filter: only entries with ALL listed tags pass. {§6.6-tag-filter-and-semantics}
+- Results are session- and scheme-scoped — no cross-session or cross-scheme leakage. {§6.6-scoped-isolation}
 - Returns `{ status: 200, results: string }` where `results` is `text/plain` with newline-separated matching paths.
 
 ### §6.7 SEND
