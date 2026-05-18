@@ -53,7 +53,7 @@ test("Known.find returns all entries when scope is broad and no matcher", async 
     } finally { db.close(); }
 });
 
-test("Known.find with scope prefix filters to that subtree", async () => {
+test("[§6.6-scope-prefix-filter] Known.find with scope prefix filters to that subtree", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -65,7 +65,7 @@ test("Known.find with scope prefix filters to that subtree", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find with glob matcher filters by pattern", async () => {
+test("[§6.6-glob-filter-on-pathname] Known.find with glob matcher filters by pattern", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -77,7 +77,7 @@ test("Known.find with glob matcher filters by pattern", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find with tag filter — AND semantics", async () => {
+test("[§6.6-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -107,7 +107,7 @@ test("Known.find combining glob + tag filter", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find with regex matcher returns 501 (deferred)", async () => {
+test("[§6.6-non-glob-dialects-501] Known.find with regex matcher returns 501 (deferred)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [["a", "x"]]);
@@ -127,7 +127,7 @@ test("Known.find with no matches returns 200 with empty results", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find is scoped to the session (doesn't leak across sessions)", async () => {
+test("[§6.6-scoped-isolation] Known.find is scoped to the session (doesn't leak across sessions)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Seed in this session

@@ -58,7 +58,7 @@ test("Engine.copy same-scheme (known → known)", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.copy cross-scheme (unknown → known)", async () => {
+test("[§6.4-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new (await import("../../src/schemes/Unknown.ts")).default().edit({
@@ -76,7 +76,7 @@ test("Engine.copy cross-scheme (unknown → known)", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.copy missing source returns 404", async () => {
+test("[§6.4-missing-source-404] Engine.copy missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(url("known", "nope"), url("known", "elsewhere")));
@@ -84,7 +84,7 @@ test("Engine.copy missing source returns 404", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.copy conflicting destination returns 409", async () => {
+test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
@@ -99,7 +99,7 @@ test("Engine.copy conflicting destination returns 409", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
+test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({
@@ -115,7 +115,7 @@ test("Engine.copy tag policy — signal present REPLACES source tags on dest", a
     } finally { db.close(); }
 });
 
-test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
+test("[§6.4-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({
@@ -131,7 +131,7 @@ test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.move relocates: source deleted, dest created", async () => {
+test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({
@@ -150,7 +150,7 @@ test("Engine.move relocates: source deleted, dest created", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.move null body = delete source", async () => {
+test("[§6.5-null-body-deletes] Engine.move null body = delete source", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({
@@ -166,7 +166,7 @@ test("Engine.move null body = delete source", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.move missing source returns 404", async () => {
+test("[§6.5-missing-source-404] Engine.move missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(url("known", "nope"), url("known", "elsewhere")));
@@ -174,7 +174,7 @@ test("Engine.move missing source returns 404", async () => {
     } finally { db.close(); }
 });
 
-test("Engine.move cross-scheme (unknown → known) deletes source, creates dest", async () => {
+test("[§6.5-cross-scheme-move] Engine.move cross-scheme (unknown → known) deletes source, creates dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new (await import("../../src/schemes/Unknown.ts")).default().edit({

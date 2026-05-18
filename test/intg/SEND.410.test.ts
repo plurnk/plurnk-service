@@ -35,7 +35,7 @@ const setup = async () => {
 const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopId: number; turnId: number }, statement: SendStatement) =>
     engine.dispatch({ statement, ...env, actionIndex: 0, origin: "client" });
 
-test("SEND[410](known://x) deletes the entry", async () => {
+test("[§3.5-410-deletes-resource] SEND[410](known://x) deletes the entry", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "doomed"), "tomorrow") });
@@ -58,7 +58,7 @@ test("SEND[410] on missing entry returns 404", async () => {
     } finally { db.close(); }
 });
 
-test("SEND[410] with #fragment returns 400 (channel-level delete not supported)", async () => {
+test("[§3.5-410-fragment-400] SEND[410] with #fragment returns 400 (channel-level delete not supported)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });
@@ -71,7 +71,7 @@ test("SEND[410] with #fragment returns 400 (channel-level delete not supported)"
     } finally { db.close(); }
 });
 
-test("SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
+test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });

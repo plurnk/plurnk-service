@@ -44,7 +44,7 @@ test("Known declares static channels manifest + defaultChannel", () => {
     assert.equal(Known.defaultChannel, "body");
 });
 
-test("Known.edit default channel writes body AND preview channels", async () => {
+test("[§5.1-edit-writes-body-plus-preview] Known.edit default channel writes body AND preview channels", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const r = await new Known().edit({ db, statement: editStmt(url("x"), "hello"), sessionId, runId });
@@ -73,7 +73,7 @@ test("Known.edit default channel indexes BOTH body and preview in visibility", a
     } finally { db.close(); }
 });
 
-test("Known.edit with #preview fragment writes ONLY preview channel", async () => {
+test("[§5.5-fragment-selects-named-channel] Known.edit with #preview fragment writes ONLY preview channel", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();
@@ -92,7 +92,7 @@ test("Known.edit with #preview fragment writes ONLY preview channel", async () =
     } finally { db.close(); }
 });
 
-test("Known.edit with #preview on nonexistent entry returns 404", async () => {
+test("[§5.5-fragment-on-nonexistent-404] Known.edit with #preview on nonexistent entry returns 404", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const r = await new Known().edit({ db, statement: editStmt(url("nope", "preview"), "x"), sessionId, runId });
@@ -101,7 +101,7 @@ test("Known.edit with #preview on nonexistent entry returns 404", async () => {
     } finally { db.close(); }
 });
 
-test("Known.edit with unknown channel returns 400", async () => {
+test("[§5.5-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const r = await new Known().edit({ db, statement: editStmt(url("x", "not-a-channel"), "x"), sessionId, runId });
@@ -124,7 +124,7 @@ test("Known.read with #preview fragment returns preview channel content", async 
     } finally { db.close(); }
 });
 
-test("Known.read with no fragment returns body channel (default)", async () => {
+test("[§5.5-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();
@@ -146,7 +146,7 @@ test("Known.read with unknown channel returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.show/hide with no fragment flips ALL channels of the entry", async () => {
+test("[§5.2-fragmentless-show-hide-flips-all] Known.show/hide with no fragment flips ALL channels of the entry", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();
@@ -171,7 +171,7 @@ test("Known.show/hide with no fragment flips ALL channels of the entry", async (
     } finally { db.close(); }
 });
 
-test("Known.show/hide with #preview flips ONLY that channel", async () => {
+test("[§5.5-fragment-targeted-show-hide] Known.show/hide with #preview flips ONLY that channel", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();
