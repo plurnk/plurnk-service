@@ -7,8 +7,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import { openSubscription, setChannelState, findActiveSubscription, closeSubscription } from "../../src/core/ChannelWrite.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -40,7 +41,7 @@ const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopI
 test("SEND[499] on entry without subscription returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });
+        await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
@@ -57,7 +58,7 @@ test("SEND[499] on nonexistent entry returns 404", async () => {
 test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        const r = await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });
+        const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const entryId = r.entryId as number;
         await openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
@@ -86,11 +87,14 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const subId = await openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
 
         class FakeStream {
-            static channels = { data: "text/plain" };
-            static defaultChannel = "data";
-            async send(ctx: { db: Db; statement: SendStatement; sessionId: number; runId: number }): Promise<{ status: number }> {
-                if (ctx.statement.signal !== 499) return { status: 501 };
-                const path = ctx.statement.path;
+            static manifest = {
+                name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
+                category: "data" as const, scope: "session" as const,
+                writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
+            };
+            async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
+                if (statement.signal !== 499) return { status: 501 };
+                const path = statement.path;
                 if (path === null || path.kind !== "url") return { status: 400 };
                 const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
                     session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,

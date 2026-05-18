@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -23,7 +23,7 @@ const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopI
 test("[§3.5-410-deletes-resource] SEND[410](known://x) deletes the entry", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "doomed"), "tomorrow") });
+        await new Known().edit(editStmt(urlPath("known", "doomed"), "tomorrow"), makeSchemeCtx({ db, sessionId, runId }));
         const beforeDelete = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "doomed" });
         assert.ok(beforeDelete !== undefined);
 
@@ -46,7 +46,7 @@ test("SEND[410] on missing entry returns 404", async () => {
 test("[§3.5-410-fragment-400] SEND[410] with #fragment returns 400 (channel-level delete not supported)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "x"), "body") });
+        await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("known", "x", "preview")));
         assert.equal(r.status, 400);
 
@@ -58,7 +58,7 @@ test("[§3.5-410-fragment-400] SEND[410] with #fragment returns 400 (channel-lev
 test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "x"), "body") });
+        await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(200, urlPath("known", "x")));
         assert.equal(r.status, 501);
     } finally { await db.close(); }
@@ -68,7 +68,7 @@ test("SEND[410](unknown://x) deletes unknown entry", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ db, sessionId, runId, statement: editStmt(urlPath("unknown", "topic"), "open question") });
+        await new Unknown().edit(editStmt(urlPath("unknown", "topic"), "open question"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("unknown", "topic")));
         assert.equal(r.status, 200);
@@ -81,7 +81,7 @@ test("SEND[410](skill://x) deletes skill entry", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit({ db, sessionId, runId, statement: editStmt(urlPath("skill", "grep"), "search text") });
+        await new Skill().edit(editStmt(urlPath("skill", "grep"), "search text"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("skill", "grep")));
         assert.equal(r.status, 200);
@@ -94,7 +94,7 @@ test("SEND[410] cascades — channels, tags, visibility all removed", async () =
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
-        await k.edit({ db, sessionId, runId, statement: { ...editStmt(urlPath("known", "doomed"), "body"), signal: ["a", "b"] } });
+        await k.edit({ ...editStmt(urlPath("known", "doomed"), "body"), signal: ["a", "b"] }, makeSchemeCtx({ db, sessionId, runId }));
         const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "doomed" });
         const entryId = entryRow!.id;
         assert.ok(((await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);

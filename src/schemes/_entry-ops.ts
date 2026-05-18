@@ -1,23 +1,11 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
-// (Known, Unknown, Skill). Each scheme passes its `channels` manifest
-// and `defaultChannel` per SPEC §3.1. Channel routing follows §5.5:
-// path.fragment ?? scheme.defaultChannel.
-
-type ChannelManifest = Record<string, string>;
-
-type Common = {
-    db: Db;
-    sessionId: number;
-    scheme: string;
-    channels: ChannelManifest;
-    defaultChannel: string;
-};
-type EditCtx = Common & { statement: EditStatement; runId: number };
-type ReadCtx = Common & { statement: ReadStatement };
-type ShowHideCtx = Common & { statement: ShowStatement | HideStatement; runId: number };
+// (Known, Unknown, Skill). Each scheme passes its manifest; helpers
+// extract scheme name + channels + defaultChannel. Channel routing
+// follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
 export type EditResult = { status: number; entryId: number | null; channel: string | null };
 export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null };
@@ -36,15 +24,18 @@ const fragmentOf = (statement: { path: EditStatement["path"] }): string | null =
     return path.fragment;
 };
 
-const resolveChannel = (fragment: string | null, channels: ChannelManifest, defaultChannel: string): string | null => {
+const resolveChannel = (fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null => {
     const target = fragment ?? defaultChannel;
     if (!(target in channels)) return null;
     return target;
 };
 
-export const editSessionEntry = async ({ db, statement, sessionId, runId, scheme, channels, defaultChannel }: EditCtx): Promise<EditResult> => {
+export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> => {
     if (statement.path === null) return { status: 400, entryId: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, entryId: null, channel: null };
+
+    const { db, sessionId, runId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
     const targetChannel = resolveChannel(fragment, channels, defaultChannel);
@@ -99,11 +90,14 @@ export const editSessionEntry = async ({ db, statement, sessionId, runId, scheme
     return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
 };
 
-export const readSessionEntry = async ({ db, statement, sessionId, scheme, channels, defaultChannel }: ReadCtx): Promise<ReadResult> => {
+export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
     if (statement.path === null) return { status: 400, content: null, mimetype: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (statement.body !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null, channel: null };
+
+    const { db, sessionId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
     const targetChannel = resolveChannel(fragment, channels, defaultChannel);
@@ -119,13 +113,18 @@ export const readSessionEntry = async ({ db, statement, sessionId, scheme, chann
 };
 
 const setSessionEntryVisibility = async (
-    { db, statement, sessionId, runId, scheme, channels, defaultChannel }: ShowHideCtx,
+    statement: ShowStatement | HideStatement,
+    ctx: PlurnkSchemeContext,
+    manifest: SchemeManifest,
     target: 0 | 1,
 ): Promise<ShowHideResult> => {
     if (statement.path === null) return { status: 400 };
     if (statement.lineMarker !== null) return { status: 501 };
     if (statement.body !== null) return { status: 501 };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501 };
+
+    const { db, sessionId, runId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
     const pathname = pathnameOf(statement);
@@ -163,6 +162,8 @@ const setSessionEntryVisibility = async (
     return { status: 200 };
 };
 
-export const showSessionEntry = async (ctx: ShowHideCtx): Promise<ShowHideResult> => setSessionEntryVisibility(ctx, 1);
+export const showSessionEntry = async (statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> =>
+    setSessionEntryVisibility(statement, ctx, manifest, 1);
 
-export const hideSessionEntry = async (ctx: ShowHideCtx): Promise<ShowHideResult> => setSessionEntryVisibility(ctx, 0);
+export const hideSessionEntry = async (statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> =>
+    setSessionEntryVisibility(statement, ctx, manifest, 0);

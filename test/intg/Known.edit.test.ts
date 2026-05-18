@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, LocalPath, ParsedPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath } from "./_dsl.ts";
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
@@ -36,7 +36,7 @@ test("Known.edit: new entry — inserts entries row, body channel, tags, visibil
             tags: ["france", "europe"],
             body: "Paris",
         });
-        const result = await new Known().edit({ db, statement: stmt, sessionId, runId });
+        const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
         const entry = await (db.entry_read_lookup as PrepMethod).get<{ scope: string; session_id: number; scheme: string; pathname: string }>({
@@ -61,9 +61,9 @@ test("Known.edit: second EDIT against same path — same entry id, body replaced
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        const first = await k.edit({ db, statement: editStatement({ path: urlPath("known", "/x"), body: "initial" }), sessionId, runId });
+        const first = await k.edit(editStatement({ path: urlPath("known", "/x"), body: "initial" }), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(first.status, 201);
-        const second = await k.edit({ db, statement: editStatement({ path: urlPath("known", "/x"), body: "updated" }), sessionId, runId });
+        const second = await k.edit(editStatement({ path: urlPath("known", "/x"), body: "updated" }), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId, "entry id is stable across edits");
         const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: first.entryId, name: "body" });
@@ -75,8 +75,8 @@ test("Known.edit: empty body clears the channel content (does not delete the ent
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        const r1 = await k.edit({ db, statement: editStatement({ path: urlPath("known", "/y"), body: "initial body" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path: urlPath("known", "/y"), body: null }), sessionId, runId });
+        const r1 = await k.edit(editStatement({ path: urlPath("known", "/y"), body: "initial body" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path: urlPath("known", "/y"), body: null }), makeSchemeCtx({ db, sessionId, runId }));
         const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r1.entryId, name: "body" });
         assert.equal(channel?.content, "");
         const entryStillThere = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: r1.entryId });
@@ -89,9 +89,9 @@ test("Known.edit: tags merge additively across multiple EDITs", async () => {
     try {
         const k = new Known();
         const path = urlPath("known", "/z");
-        const r = await k.edit({ db, statement: editStatement({ path, tags: ["france"], body: "a" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path, tags: ["geography"], body: "b" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path, tags: ["europe", "geography"], body: "c" }), sessionId, runId });
+        const r = await k.edit(editStatement({ path, tags: ["france"], body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path, tags: ["geography"], body: "b" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path, tags: ["europe", "geography"], body: "c" }), makeSchemeCtx({ db, sessionId, runId }));
         const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: r.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france", "geography"]);
     } finally { await db.close(); }
@@ -101,8 +101,8 @@ test("Known.edit: null tags signal and empty tag array both produce no tag rows"
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        const r1 = await k.edit({ db, statement: editStatement({ path: urlPath("known", "/no-tags"), tags: null, body: "body" }), sessionId, runId });
-        const r2 = await k.edit({ db, statement: editStatement({ path: urlPath("known", "/empty-tags"), tags: [], body: "body" }), sessionId, runId });
+        const r1 = await k.edit(editStatement({ path: urlPath("known", "/no-tags"), tags: null, body: "body" }), makeSchemeCtx({ db, sessionId, runId }));
+        const r2 = await k.edit(editStatement({ path: urlPath("known", "/empty-tags"), tags: [], body: "body" }), makeSchemeCtx({ db, sessionId, runId }));
         const count1 = (await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: r1.entryId }))?.n;
         const count2 = (await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: r2.entryId }))?.n;
         assert.equal(count1, 0);
@@ -114,7 +114,7 @@ test("Known.edit: lineMarker present returns 501 without writing anything", asyn
     const { db, sessionId, runId } = await setupContext();
     try {
         const stmt = editStatement({ path: urlPath("known", "/lined"), body: "line 5 content", lineMarker: { first: 5, last: null } });
-        const result = await new Known().edit({ db, statement: stmt, sessionId, runId });
+        const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(result.status, 501);
         assert.equal(result.entryId, null);
         const count = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
@@ -126,7 +126,7 @@ test("Known.edit: null path returns 400", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const stmt = editStatement({ path: null, body: "x" });
-        const result = await new Known().edit({ db, statement: stmt, sessionId, runId });
+        const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(result.status, 400);
         assert.equal(result.entryId, null);
     } finally { await db.close(); }
@@ -137,9 +137,9 @@ test("Known.edit: visibility rows idempotent across multiple EDITs of same path"
     try {
         const k = new Known();
         const path = urlPath("known", "/vis");
-        const r = await k.edit({ db, statement: editStatement({ path, body: "a" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path, body: "b" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path, body: "c" }), sessionId, runId });
+        const r = await k.edit(editStatement({ path, body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path, body: "b" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path, body: "c" }), makeSchemeCtx({ db, sessionId, runId }));
         const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
         assert.equal(count, 2, "INSERT OR IGNORE produces exactly one visibility row per channel (body, preview)");
     } finally { await db.close(); }
@@ -151,8 +151,8 @@ test("Known.edit: visibility is per-run — same entry edited in different runs 
         const runB = await insertRun(db, sessionId);
         const k = new Known();
         const path = urlPath("known", "/multirun");
-        const r = await k.edit({ db, statement: editStatement({ path, body: "a" }), sessionId, runId });
-        await k.edit({ db, statement: editStatement({ path, body: "b" }), sessionId, runId: runB });
+        const r = await k.edit(editStatement({ path, body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ path, body: "b" }), makeSchemeCtx({ db, sessionId, runId: runB }));
         const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
         assert.equal(count, 4, "2 runs × 2 channels (body, preview) = 4 visibility rows");
     } finally { await db.close(); }
@@ -162,7 +162,7 @@ test("Known.edit: bare local path is treated as the raw pathname", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const stmt = editStatement({ path: localPath("config/foo.json"), body: "{}" });
-        const result = await new Known().edit({ db, statement: stmt, sessionId, runId });
+        const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(result.status, 201);
         const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: result.entryId });
         assert.equal(entry?.pathname, "config/foo.json");

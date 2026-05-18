@@ -1,9 +1,8 @@
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
-import type { SchemeManifest } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 
-type ReadContext = { statement: ReadStatement };
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 
 export default class File {
@@ -28,7 +27,7 @@ export default class File {
         return this.#workspaceRoot;
     }
 
-    async read({ statement }: ReadContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, _ctx: PlurnkSchemeContext): Promise<ReadResult> {
         if (statement.path === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };

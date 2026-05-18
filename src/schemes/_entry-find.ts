@@ -3,14 +3,8 @@
 // Other matcher dialects (regex, xpath, jsonpath) return 501.
 
 import type { FindStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
-
-interface FindCtx {
-    db: Db;
-    statement: FindStatement;
-    sessionId: number;
-    scheme: string;
-}
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 export interface FindResult {
     status: number;
@@ -26,7 +20,7 @@ const scopePathnameOf = (statement: FindStatement): string | null => {
     return path.raw;
 };
 
-export const findSessionEntries = async ({ db, statement, sessionId, scheme }: FindCtx): Promise<FindResult> => {
+export const findSessionEntries = async (statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> => {
     if (statement.path === null) return { status: 400, content: null, mimetype: null, results: [] };
     if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, results: [] };
 
@@ -44,6 +38,7 @@ export const findSessionEntries = async ({ db, statement, sessionId, scheme }: F
     // SqlRite auto-stringifies arrays passed as params; SQL side uses json_each.
     const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
+    const { db, sessionId } = ctx;
     const rows = await (db.find_session_entries as PrepMethod).all<{ pathname: string }>({
         session_id: sessionId,
         scheme,

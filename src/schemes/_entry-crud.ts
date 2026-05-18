@@ -2,7 +2,8 @@
 // Per SPEC §3.2 — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 export interface EntryData {
     channels: Record<string, { content: string; mimetype: string }>;
@@ -24,30 +25,8 @@ export interface DeleteEntryResult {
     status: number;
 }
 
-interface ReadCtx {
-    db: Db;
-    sessionId: number;
-    scheme: string;
-    pathname: string;
-}
-
-interface WriteCtx {
-    db: Db;
-    sessionId: number;
-    scheme: string;
-    pathname: string;
-    entry: EntryData;
-    runId: number;
-}
-
-interface DeleteCtx {
-    db: Db;
-    sessionId: number;
-    scheme: string;
-    pathname: string;
-}
-
-export const readEntry = async ({ db, sessionId, scheme, pathname }: ReadCtx): Promise<ReadEntryResult> => {
+export const readEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string): Promise<ReadEntryResult> => {
+    const { db, sessionId } = ctx;
     const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (entry === undefined) return { status: 404, entry: null };
 
@@ -63,7 +42,8 @@ export const readEntry = async ({ db, sessionId, scheme, pathname }: ReadCtx): P
     return { status: 200, entry: { channels, tags } };
 };
 
-export const writeEntry = async ({ db, sessionId, scheme, pathname, entry, runId }: WriteCtx): Promise<WriteEntryResult> => {
+export const writeEntry = async (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string): Promise<WriteEntryResult> => {
+    const { db, sessionId, runId } = ctx;
     const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
     let entryId: number;
@@ -93,7 +73,8 @@ export const writeEntry = async ({ db, sessionId, scheme, pathname, entry, runId
     return { status: created ? 201 : 200, created, entryId };
 };
 
-export const deleteEntry = async ({ db, sessionId, scheme, pathname }: DeleteCtx): Promise<DeleteEntryResult> => {
+export const deleteEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string): Promise<DeleteEntryResult> => {
+    const { db, sessionId } = ctx;
     const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (existing === undefined) return { status: 404 };
     await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });

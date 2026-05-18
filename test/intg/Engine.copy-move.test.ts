@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -26,7 +26,7 @@ const dispatch = async (engine: Engine, env: { sessionId: number; runId: number;
 test("Engine.copy same-scheme (known → known)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "france/capital"), "Paris", ["france"]) });
+        await new Known().edit(editStmt(urlPath("known", "france/capital"), "Paris", ["france"]), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "france/capital"), urlPath("known", "europe/france")));
         assert.equal(r.status, 201);
@@ -44,7 +44,7 @@ test("[§6.4-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", a
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ db, sessionId, runId, statement: editStmt(urlPath("unknown", "topic"), "open question") });
+        await new Unknown().edit(editStmt(urlPath("unknown", "topic"), "open question"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("unknown", "topic"), urlPath("known", "topic")));
         assert.equal(r.status, 201);
@@ -68,8 +68,8 @@ test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", asy
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
-        await k.edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "src"), "source body") });
-        await k.edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "dst"), "dest body") });
+        await k.edit(editStmt(urlPath("known", "src"), "source body"), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(urlPath("known", "dst"), "dest body"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst")));
         assert.equal(r.status, 409);
@@ -81,7 +81,7 @@ test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", asy
 test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "src"), "x", ["original", "tags"]) });
+        await new Known().edit(editStmt(urlPath("known", "src"), "x", ["original", "tags"]), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst"), ["new", "tags"]));
         assert.equal(r.status, 201);
@@ -94,7 +94,7 @@ test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal pres
 test("[§6.4-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "src"), "x", ["a", "b"]) });
+        await new Known().edit(editStmt(urlPath("known", "src"), "x", ["a", "b"]), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst"), null));
         assert.equal(r.status, 201);
@@ -107,7 +107,7 @@ test("[§6.4-no-signal-carries-source-tags] Engine.copy tag policy — no signal
 test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "src"), "movable") });
+        await new Known().edit(editStmt(urlPath("known", "src"), "movable"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "src"), urlPath("known", "dst")));
         assert.equal(r.status, 201);
@@ -123,7 +123,7 @@ test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, d
 test("[§6.5-null-body-deletes] Engine.move null body = delete source", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(urlPath("known", "trash-me"), "stale") });
+        await new Known().edit(editStmt(urlPath("known", "trash-me"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "trash-me"), null));
         assert.equal(r.status, 200);
@@ -145,7 +145,7 @@ test("[§6.5-cross-scheme-move] Engine.move cross-scheme (unknown → known) del
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ db, sessionId, runId, statement: editStmt(urlPath("unknown", "draft"), "answer") });
+        await new Unknown().edit(editStmt(urlPath("unknown", "draft"), "answer"), makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("unknown", "draft"), urlPath("known", "answer")));
         assert.equal(r.status, 201);

@@ -1,5 +1,4 @@
-import type { Db } from "../core/Db.ts";
-import type { SchemeManifest } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -9,8 +8,6 @@ import { sendToSessionEntry } from "./_entry-send.ts";
 import type { SendResult } from "./_entry-send.ts";
 import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
-
-const SCHEME = "known";
 
 export default class Known {
     static manifest: SchemeManifest = {
@@ -24,45 +21,39 @@ export default class Known {
         modelVisible: true,
     };
 
-    // Legacy access points — kept until the engine refactor (#33) reads
-    // these from manifest exclusively. Schemes that import these continue working.
-    static channels: Record<string, string> = Known.manifest.channels;
-    static defaultChannel = Known.manifest.defaultChannel;
-
-    async edit(ctx: { db: Db; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
-        return editSessionEntry({ ...ctx, scheme: SCHEME, channels: Known.channels, defaultChannel: Known.defaultChannel });
+    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
+        return editSessionEntry(statement, ctx, Known.manifest);
     }
 
-    async read(ctx: { db: Db; statement: ReadStatement; sessionId: number }): Promise<ReadResult> {
-        return readSessionEntry({ ...ctx, scheme: SCHEME, channels: Known.channels, defaultChannel: Known.defaultChannel });
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+        return readSessionEntry(statement, ctx, Known.manifest);
     }
 
-    async show(ctx: { db: Db; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
-        return showSessionEntry({ ...ctx, scheme: SCHEME, channels: Known.channels, defaultChannel: Known.defaultChannel });
+    async show(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+        return showSessionEntry(statement, ctx, Known.manifest);
     }
 
-    async hide(ctx: { db: Db; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
-        return hideSessionEntry({ ...ctx, scheme: SCHEME, channels: Known.channels, defaultChannel: Known.defaultChannel });
+    async hide(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+        return hideSessionEntry(statement, ctx, Known.manifest);
     }
 
-    // CRUD primitives (SPEC §3.2) — engine drives these for cross-scheme COPY/MOVE.
-    async readEntry(ctx: { db: Db; sessionId: number; pathname: string }): Promise<ReadEntryResult> {
-        return readEntry({ ...ctx, scheme: SCHEME });
+    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+        return readEntry(pathname, ctx, Known.manifest.name);
     }
 
-    async writeEntry(ctx: { db: Db; sessionId: number; pathname: string; entry: EntryData; runId: number }): Promise<WriteEntryResult> {
-        return writeEntry({ ...ctx, scheme: SCHEME });
+    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+        return writeEntry(pathname, entry, ctx, Known.manifest.name);
     }
 
-    async deleteEntry(ctx: { db: Db; sessionId: number; pathname: string }): Promise<DeleteEntryResult> {
-        return deleteEntry({ ...ctx, scheme: SCHEME });
+    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+        return deleteEntry(pathname, ctx, Known.manifest.name);
     }
 
-    async send(ctx: { db: Db; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
-        return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, runId: ctx.runId, scheme: SCHEME });
+    async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
+        return sendToSessionEntry(statement, ctx, Known.manifest.name);
     }
 
-    async find(ctx: { db: Db; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
-        return findSessionEntries({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
+    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+        return findSessionEntries(statement, ctx, Known.manifest.name);
     }
 }

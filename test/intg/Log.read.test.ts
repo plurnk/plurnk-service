@@ -5,7 +5,7 @@ import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -44,7 +44,7 @@ test("Log.read: coordinate lookup retrieves the right log entry", async () => {
             sessionId, runId, loopId, turnId,
             actionIndex: 0, origin: "model",
         });
-        const result = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/0")), runId });
+        const result = await new Log().read(readStmt(urlPath("log", "1/1/0")), makeSchemeCtx({ db, runId }));
         assert.equal(result.status, 200);
         assert.ok(result.content !== null);
         assert.match(result.content, /EDIT/);
@@ -62,9 +62,9 @@ test("Log.read: coordinates resolve through (loop_seq, turn_seq, action_index) w
         await engine.dispatch({ statement: editStmt("/b", "2"), sessionId, runId, loopId, turnId, actionIndex: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt("/c", "3"), sessionId, runId, loopId, turnId, actionIndex: 2, origin: "model" });
 
-        const r0 = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/0")), runId });
-        const r1 = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/1")), runId });
-        const r2 = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/2")), runId });
+        const r0 = await new Log().read(readStmt(urlPath("log", "1/1/0")), makeSchemeCtx({ db, runId }));
+        const r1 = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
+        const r2 = await new Log().read(readStmt(urlPath("log", "1/1/2")), makeSchemeCtx({ db, runId }));
         assert.match(r0.content ?? "", /known:\/\/\/a/);
         assert.match(r1.content ?? "", /known:\/\/\/b/);
         assert.match(r2.content ?? "", /known:\/\/\/c/);
@@ -82,8 +82,8 @@ test("Log.read: cross-loop coordinates within a run resolve correctly", async ()
         const turn2 = await insertTurn(db, loop2, 1, 200);
         await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, actionIndex: 0, origin: "model" });
 
-        const r1 = await new Log().read({ db, statement: readStmt(urlPath("log", "1/1/0")), runId });
-        const r2 = await new Log().read({ db, statement: readStmt(urlPath("log", "2/1/0")), runId });
+        const r1 = await new Log().read(readStmt(urlPath("log", "1/1/0")), makeSchemeCtx({ db, runId }));
+        const r2 = await new Log().read(readStmt(urlPath("log", "2/1/0")), makeSchemeCtx({ db, runId }));
         assert.match(r1.content ?? "", /from-loop-1/);
         assert.match(r2.content ?? "", /from-loop-2/);
     } finally { db.close(); }
@@ -92,7 +92,7 @@ test("Log.read: cross-loop coordinates within a run resolve correctly", async ()
 test("Log.read: 404 on missing coordinates", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read({ db, statement: readStmt(urlPath("log", "99/99/99")), runId: 1 });
+        const result = await new Log().read(readStmt(urlPath("log", "99/99/99")), makeSchemeCtx({ db, runId: 1 }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     } finally { db.close(); }
@@ -102,7 +102,7 @@ test("Log.read: 400 on malformed coordinates", async () => {
     const { db } = await setup();
     try {
         for (const bad of ["abc", "1/2", "1/2/3/4", "x/y/z"]) {
-            const result = await new Log().read({ db, statement: readStmt(urlPath("log", bad)), runId: 1 });
+            const result = await new Log().read(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, runId: 1 }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
     } finally { db.close(); }
@@ -111,7 +111,7 @@ test("Log.read: 400 on malformed coordinates", async () => {
 test("Log.read: 400 on null path", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read({ db, statement: readStmt(null), runId: 1 });
+        const result = await new Log().read(readStmt(null), makeSchemeCtx({ db, runId: 1 }));
         assert.equal(result.status, 400);
     } finally { db.close(); }
 });
@@ -123,9 +123,9 @@ test("Log.read: 501 on lineMarker / body matcher / non-empty tag filter", async 
         const body: ReadStatement = { ...readStmt(urlPath("log", "1/1/0")), body: { dialect: "glob", raw: "*" } };
         const tags: ReadStatement = { ...readStmt(urlPath("log", "1/1/0")), signal: ["france"] };
         const log = new Log();
-        assert.equal((await log.read({ db, statement: lineMarker, runId: 1 })).status, 501);
-        assert.equal((await log.read({ db, statement: body, runId: 1 })).status, 501);
-        assert.equal((await log.read({ db, statement: tags, runId: 1 })).status, 501);
+        assert.equal((await log.read(lineMarker, makeSchemeCtx({ db, runId: 1 }))).status, 501);
+        assert.equal((await log.read(body, makeSchemeCtx({ db, runId: 1 }))).status, 501);
+        assert.equal((await log.read(tags, makeSchemeCtx({ db, runId: 1 }))).status, 501);
     } finally { db.close(); }
 });
 

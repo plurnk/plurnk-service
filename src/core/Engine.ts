@@ -3,7 +3,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import MimetypeRegistry from "./MimetypeRegistry.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import type { SchemeManifest, WriterTier } from "./scheme-types.ts";
+import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 
 // SCHEMES.md §8: writer must be in target scheme's manifest.writableBy.
 // SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
@@ -73,12 +73,12 @@ type DispatchContext = {
 
 type DispatchResult = { status: number; [key: string]: unknown };
 
-type SchemeMethod = (ctx: { db: Db; statement: PlurnkStatement; sessionId: number; runId: number; loopId: number; turnId: number }) => Promise<DispatchResult>;
+type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
 
 interface SchemeWithCrud {
-    readEntry?: (ctx: { db: Db; sessionId: number; pathname: string }) => Promise<ReadEntryResult>;
-    writeEntry?: (ctx: { db: Db; sessionId: number; pathname: string; entry: EntryData; runId: number }) => Promise<WriteEntryResult>;
-    deleteEntry?: (ctx: { db: Db; sessionId: number; pathname: string }) => Promise<DeleteEntryResult>;
+    readEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+    writeEntry?: (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+    deleteEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
 }
 
 const pathnameFromPath = (path: ParsedPath): string => {
@@ -497,6 +497,12 @@ export default class Engine {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch } = context;
+        const schemeCtx: PlurnkSchemeContext = {
+            db: this.#db,
+            sessionId, runId, loopId, turnId,
+            writer: origin as WriterTier,
+            signal: undefined,
+        };
         let result: DispatchResult;
         const denial = this.#checkWritable(statement, origin);
         if (denial !== null) {
@@ -511,11 +517,11 @@ export default class Engine {
                 if (statement.op === "SEND" && statement.path === null) {
                     result = await this.#handleSendBroadcast(statement, loopId);
                 } else if (statement.op === "COPY") {
-                    result = await this.#handleCopy(statement, { sessionId, runId });
+                    result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
-                    result = await this.#handleMove(statement, { sessionId, runId });
+                    result = await this.#handleMove(statement, schemeCtx);
                 } else {
-                    result = await this.#run(this.#schemeNameOf(statement.path), statement, { sessionId, runId, loopId, turnId });
+                    result = await this.#run(this.#schemeNameOf(statement.path), statement, schemeCtx);
                 }
             } catch (err) {
                 result = {
@@ -568,7 +574,7 @@ export default class Engine {
         return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` };
     }
 
-    async #handleCopy(statement: PlurnkStatement, ctx: { sessionId: number; runId: number }): Promise<DispatchResult> {
+    async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "COPY") throw new Error("unreachable");
         const srcPath = statement.path;
         const dstPath = statement.body;
@@ -577,7 +583,7 @@ export default class Engine {
         return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
     }
 
-    async #handleMove(statement: PlurnkStatement, ctx: { sessionId: number; runId: number }): Promise<DispatchResult> {
+    async #handleMove(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "MOVE") throw new Error("unreachable");
         const srcPath = statement.path;
         const dstPath = statement.body;
@@ -591,7 +597,7 @@ export default class Engine {
         // Null-body MOVE = delete the source entry (per SPEC §6.5)
         if (dstPath === null) {
             const srcPathname = pathnameFromPath(srcPath);
-            const delResult = await srcHandler.deleteEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+            const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
             return { status: delResult.status };
         }
 
@@ -599,7 +605,7 @@ export default class Engine {
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
         const srcPathname = pathnameFromPath(srcPath);
-        const delResult = await srcHandler.deleteEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+        const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
         if (delResult.status >= 400) return { status: delResult.status };
         return copyResult;
     }
@@ -608,7 +614,7 @@ export default class Engine {
         statement: PlurnkStatement;
         srcPath: ParsedPath;
         dstPath: ParsedPath;
-        ctx: { sessionId: number; runId: number };
+        ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
         const srcSchemeName = this.#schemeNameOf(srcPath);
         const dstSchemeName = this.#schemeNameOf(dstPath);
@@ -622,18 +628,19 @@ export default class Engine {
         const srcPathname = pathnameFromPath(srcPath);
         const dstPathname = pathnameFromPath(dstPath);
 
-        const srcResult = await srcHandler.readEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: srcPathname });
+        const srcResult = await srcHandler.readEntry(srcPathname, ctx);
         if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };
         const entry = srcResult.entry;
 
         // Conflict check on destination
         if (typeof dstHandler.readEntry === "function") {
-            const dstExists = await dstHandler.readEntry({ db: this.#db, sessionId: ctx.sessionId, pathname: dstPathname });
+            const dstExists = await dstHandler.readEntry(dstPathname, ctx);
             if (dstExists.status === 200) return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
         }
 
         // Mimetype compatibility check against the destination scheme's manifest
-        const dstChannels = (dstHandler.constructor as { channels?: Record<string, string> }).channels ?? {};
+        const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
+        const dstChannels = dstManifest?.channels ?? {};
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             const expectedMimetype = dstChannels[channelName];
             if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
@@ -646,13 +653,7 @@ export default class Engine {
             ? statement.signal
             : entry.tags;
 
-        const writeResult = await dstHandler.writeEntry({
-            db: this.#db,
-            sessionId: ctx.sessionId,
-            pathname: dstPathname,
-            entry: { channels: entry.channels, tags },
-            runId: ctx.runId,
-        });
+        const writeResult = await dstHandler.writeEntry(dstPathname, { channels: entry.channels, tags }, ctx);
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
@@ -669,7 +670,7 @@ export default class Engine {
     async #run(
         schemeName: string | null,
         statement: PlurnkStatement,
-        ctx: { sessionId: number; runId: number; loopId: number; turnId: number },
+        ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (schemeName === null) return { status: 400 };
         const handler = this.#schemes.get(schemeName) as Record<string, SchemeMethod | undefined> | undefined;
@@ -677,7 +678,7 @@ export default class Engine {
         const methodName = statement.op.toLowerCase();
         const method = handler[methodName];
         if (typeof method !== "function") return { status: 501 };
-        return method.call(handler, { db: this.#db, statement, ...ctx });
+        return method.call(handler, statement, ctx);
     }
 
     #schemeNameOf(path: ParsedPath | null): string | null {

@@ -3,17 +3,10 @@
 // and 499 (Client Closed Request, cancel active subscription).
 
 import type { SendStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { deleteEntry } from "./_entry-crud.ts";
 import { findActiveSubscription } from "../core/ChannelWrite.ts";
-
-interface SendCtx {
-    db: Db;
-    statement: SendStatement;
-    sessionId: number;
-    runId: number;
-    scheme: string;
-}
 
 export interface SendResult {
     status: number;
@@ -33,7 +26,7 @@ const fragmentOf = (statement: SendStatement): string | null => {
     return path.fragment;
 };
 
-export const sendToSessionEntry = async ({ db, statement, sessionId, runId, scheme }: SendCtx): Promise<SendResult> => {
+export const sendToSessionEntry = async (statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> => {
     if (statement.path === null) return { status: 400, error: "directed SEND requires a path" };
 
     const status = statement.signal;
@@ -46,7 +39,7 @@ export const sendToSessionEntry = async ({ db, statement, sessionId, runId, sche
         }
         const pathname = pathnameOf(statement);
         if (pathname === null) return { status: 400 };
-        const result = await deleteEntry({ db, sessionId, scheme, pathname });
+        const result = await deleteEntry(pathname, ctx, scheme);
         return { status: result.status };
     }
 
@@ -57,6 +50,7 @@ export const sendToSessionEntry = async ({ db, statement, sessionId, runId, sche
     if (status === 499) {
         const pathname = pathnameOf(statement);
         if (pathname === null) return { status: 400 };
+        const { db, sessionId, runId } = ctx;
         const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
         if (entry === undefined) return { status: 404, error: "no entry at path" };
         const subscription = await findActiveSubscription(db, { runId, entryId: entry.id });

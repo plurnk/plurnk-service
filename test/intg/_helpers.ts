@@ -2,6 +2,22 @@ import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+
+// Test helper: build a PlurnkSchemeContext with sensible defaults. Override
+// any field via the argument. Tests that don't exercise db ops can omit it
+// (File.read, etc); the unset slot is a tripwire — any unexpected db access
+// crashes with a clear TypeError.
+export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): PlurnkSchemeContext => ({
+    db: undefined as unknown as Db,
+    sessionId: 0,
+    runId: 0,
+    loopId: 0,
+    turnId: 0,
+    writer: "model",
+    signal: undefined,
+    ...overrides,
+});
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");

@@ -1,8 +1,7 @@
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
-import type { SchemeManifest } from "../core/scheme-types.ts";
+import type { PrepMethod } from "../core/Db.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 
-type ReadContext = { db: Db; statement: ReadStatement; runId: number };
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)$/;
@@ -19,7 +18,8 @@ export default class Log {
         modelVisible: true,
     };
 
-    async read({ db, statement, runId }: ReadContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+        const { db, runId } = ctx;
         if (statement.path === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };

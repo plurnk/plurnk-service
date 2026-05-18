@@ -1,6 +1,23 @@
 // Shared types for the scheme extension surface. See SCHEMES.md.
 
+import type { Db } from "./Db.ts";
+
 export type WriterTier = "model" | "client" | "system" | "plugin";
+
+// Per-call helper. Engine constructs a fresh ctx for every op invocation.
+// SCHEMES.md §4 describes a richer namespaced surface (entries / channels /
+// visibility / tags / subscriptions / proposals / crossScheme / notify); v0
+// bundles the per-call params into a flat struct. The namespaced API lands
+// in v1 when third-party plugin schemes are an actual concern.
+export interface PlurnkSchemeContext {
+    readonly db: Db;
+    readonly sessionId: number;
+    readonly runId: number;
+    readonly loopId: number;
+    readonly turnId: number;
+    readonly writer: WriterTier;
+    readonly signal: AbortSignal | undefined;
+}
 
 export interface SchemeFlagAffinity {
     readonly excludedInAsk?: boolean;        // scheme excluded when mode === "ask"
