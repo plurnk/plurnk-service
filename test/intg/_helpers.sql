@@ -152,6 +152,15 @@ SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
 -- PREP: test_count_subscriptions_for_run
 SELECT COUNT(*) AS n FROM subscriptions WHERE run_id = $run_id;
 
+-- PREP: test_get_entry_id_by_pathname
+SELECT id FROM entries WHERE pathname = $pathname;
+
+-- PREP: test_count_entry_tags
+SELECT COUNT(*) AS n FROM entry_tags WHERE entry_id = $entry_id;
+
+-- PREP: test_count_visibility_for_entry
+SELECT COUNT(*) AS n FROM visibility WHERE entry_id = $entry_id;
+
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
 INSERT INTO subscriptions (run_id, entry_id, scheme, handle, closed_at)
