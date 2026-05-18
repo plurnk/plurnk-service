@@ -1,0 +1,40 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-text-markdown",
+    "version": "0.1.0",
+    "description": "text/markdown mimetype handler for plurnk-service.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "text/markdown"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
