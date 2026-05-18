@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "../../src/core/Db.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 
@@ -26,12 +26,12 @@ const rpcCall = (ws: WebSocket, id: number, method: string, params?: object): Pr
         ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
 
-const withDaemon = async <T>(fn: (db: DatabaseSync, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
+const withDaemon = async <T>(fn: (db: Db, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
     try { return await fn(db, addr); }
-    finally { await daemon.stop(); db.close(); }
+    finally { await daemon.stop(); await db.close(); }
 };
 
 const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>

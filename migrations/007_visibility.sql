@@ -1,4 +1,5 @@
-CREATE TABLE visibility (
+-- INIT: visibility
+CREATE TABLE IF NOT EXISTS visibility (
     run_id   INTEGER NOT NULL,
     entry_id INTEGER NOT NULL,
     channel  TEXT    NOT NULL           CHECK (length(channel) > 0),

@@ -1,4 +1,5 @@
-CREATE TABLE log_entries (
+-- INIT: log_entries
+CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
 
@@ -38,12 +39,12 @@ CREATE TABLE log_entries (
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX log_entries_turn_id_action_index ON log_entries (turn_id, action_index);
-CREATE INDEX        log_entries_run_id               ON log_entries (run_id);
-CREATE INDEX        log_entries_loop_id              ON log_entries (loop_id);
-CREATE INDEX        log_entries_at                   ON log_entries (at);
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_action_index ON log_entries (turn_id, action_index);
+CREATE INDEX        IF NOT EXISTS log_entries_run_id               ON log_entries (run_id);
+CREATE INDEX        IF NOT EXISTS log_entries_loop_id              ON log_entries (loop_id);
+CREATE INDEX        IF NOT EXISTS log_entries_at                   ON log_entries (at);
 
-CREATE TRIGGER log_entries_immutable
+CREATE TRIGGER IF NOT EXISTS log_entries_immutable
 BEFORE UPDATE ON log_entries
 BEGIN
     SELECT RAISE(ABORT, 'log_entries are append-only; INSERT new rows instead of UPDATE');

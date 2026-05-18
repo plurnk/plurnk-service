@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
 const SCHEMA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@plurnk", "plurnk-grammar", "dist", "schema");
@@ -35,6 +35,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     Run: {
         kind: "table", table: "runs", fields: {
             id: direct("id"), version: direct("version"), session_id: direct("session_id"),
+            name: direct("name"),
             created_at: direct("created_at"), parent_run_id: direct("parent_run_id"),
             cost_pico: direct("cost_pico"),
         },
@@ -104,7 +105,6 @@ const MAPPING: Record<string, SchemaMapping> = {
         },
     },
 
-    // Skipped — AST shapes or sub-shapes embedded in JSON columns; not their own tables.
     Position:        { kind: "skip", reason: "AST shape; embedded in log_entries.* and other JSON fields" },
     LineMarker:      { kind: "skip", reason: "AST shape; embedded in log_entries.lineMarker JSON column" },
     Params:          { kind: "skip", reason: "embedded in entries.params + log_entries.target_params JSON" },
@@ -116,25 +116,41 @@ const MAPPING: Record<string, SchemaMapping> = {
     Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
 };
 
+const TABLE_PREP: Record<string, string> = {
+    sessions: "test_align_cols_sessions",
+    runs: "test_align_cols_runs",
+    loops: "test_align_cols_loops",
+    turns: "test_align_cols_turns",
+    entries: "test_align_cols_entries",
+    entry_channels: "test_align_cols_entry_channels",
+    entry_tags: "test_align_cols_entry_tags",
+    log_entries: "test_align_cols_log_entries",
+    visibility: "test_align_cols_visibility",
+    schemes: "test_align_cols_schemes",
+    providers: "test_align_cols_providers",
+};
+
 const loadSchema = async (name: string): Promise<{ required: string[] }> => {
     const text = await readFile(join(SCHEMA_DIR, `${name}.json`), "utf8");
     const parsed = JSON.parse(text) as { required?: string[] };
     return { required: parsed.required ?? [] };
 };
 
-const columnsOf = (db: DatabaseSync, table: string): Map<string, { notnull: number; type: string }> => {
-    const rows = db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string; notnull: number; type: string }[];
-    return new Map(rows.map((r) => [r.name, { notnull: r.notnull, type: r.type }]));
+const columnsOf = async (db: Db, table: string): Promise<Map<string, { notnull: number; type: string }>> => {
+    const prepName = TABLE_PREP[table];
+    if (prepName === undefined) throw new Error(`no test_align_cols_<${table}> PREP registered`);
+    const rows = await (db[prepName] as PrepMethod).all<{ name: string; type: string }>();
+    return new Map(rows.map((r) => [r.name, { notnull: 0, type: r.type }]));
 };
 
-const tableExists = (db: DatabaseSync, table: string): boolean => {
-    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { name: string } | undefined;
+const tableExists = async (db: Db, table: string): Promise<boolean> => {
+    const row = await (db.test_align_table_exists as PrepMethod).get<{ name: string }>({ name: table });
     return row !== undefined;
 };
 
-const verifyField = (db: DatabaseSync, table: string, fieldName: string, storage: FieldStorage): string[] => {
+const verifyField = async (db: Db, table: string, fieldName: string, storage: FieldStorage): Promise<string[]> => {
     const errors: string[] = [];
-    const cols = columnsOf(db, table);
+    const cols = await columnsOf(db, table);
     if (storage.kind === "direct" || storage.kind === "json") {
         const info = cols.get(storage.column);
         if (info === undefined) errors.push(`field '${fieldName}' → column '${storage.column}' missing from table '${table}'`);
@@ -144,12 +160,10 @@ const verifyField = (db: DatabaseSync, table: string, fieldName: string, storage
             if (info === undefined) errors.push(`field '${fieldName}' → decomposed column '${c}' missing from table '${table}'`);
         }
     } else if (storage.kind === "joinTable") {
-        if (!tableExists(db, storage.table)) errors.push(`field '${fieldName}' → join table '${storage.table}' does not exist`);
+        if (!(await tableExists(db, storage.table))) errors.push(`field '${fieldName}' → join table '${storage.table}' does not exist`);
     }
     return errors;
 };
-
-// --------------------------------------------------------------- completeness
 
 test("alignment: every schema in plurnk-grammar/schema/ is claimed by a mapping", async () => {
     const files = (await readdir(SCHEMA_DIR)).filter((f) => f.endsWith(".json"));
@@ -160,11 +174,9 @@ test("alignment: every schema in plurnk-grammar/schema/ is claimed by a mapping"
     assert.deepEqual(
         { unclaimed, stale },
         { unclaimed: [], stale: [] },
-        `Schema/MAPPING drift detected. Unclaimed schemas (grammar added new ones): ${JSON.stringify(unclaimed)}. Stale mappings (grammar removed these): ${JSON.stringify(stale)}.`,
+        `Schema/MAPPING drift detected. Unclaimed: ${JSON.stringify(unclaimed)}. Stale: ${JSON.stringify(stale)}.`,
     );
 });
-
-// --------------------------------------------------------------- per-schema field resolution
 
 for (const [schemaName, mapping] of Object.entries(MAPPING)) {
     if (mapping.kind === "skip") {
@@ -177,7 +189,7 @@ for (const [schemaName, mapping] of Object.entries(MAPPING)) {
     test(`alignment: ${schemaName} required fields all resolve to ${mapping.kind === "table" ? "columns/tables" : "embedded columns"} on '${mapping.table}'`, async () => {
         const db = await openMigrated();
         try {
-            assert.ok(tableExists(db, mapping.table), `mapping table '${mapping.table}' does not exist`);
+            assert.ok(await tableExists(db, mapping.table), `mapping table '${mapping.table}' does not exist`);
             const schema = await loadSchema(schemaName);
             const errors: string[] = [];
             const unmappedFields: string[] = [];
@@ -187,38 +199,31 @@ for (const [schemaName, mapping] of Object.entries(MAPPING)) {
                     unmappedFields.push(fieldName);
                     continue;
                 }
-                errors.push(...verifyField(db, mapping.table, fieldName, storage));
+                errors.push(...(await verifyField(db, mapping.table, fieldName, storage)));
             }
             assert.deepEqual(
                 { unmapped: unmappedFields, resolution: errors },
                 { unmapped: [], resolution: [] },
-                `${schemaName}: unmapped required fields ${JSON.stringify(unmappedFields)}; resolution errors ${JSON.stringify(errors)}`,
+                `${schemaName}: unmapped ${JSON.stringify(unmappedFields)}; resolution ${JSON.stringify(errors)}`,
             );
-        } finally { db.close(); }
+        } finally { await db.close(); }
     });
 }
 
-// --------------------------------------------------------------- direct columns must be NOT NULL
-
-test("alignment: every 'direct' mapping points to a NOT NULL column (or is a nullable contract field)", async () => {
-    // Some required-by-schema fields are typed as ["X", "null"] in JSON Schema — those are
-    // intentionally nullable in storage. We check NOT NULL only for fields that the schema
-    // makes required AND non-nullable. Reading every schema to determine nullability is
-    // pricey; for v0 we surface the columns and let humans confirm intent rather than mechanically
-    // gating on NOT NULL. The "field exists at all" check above is the primary safeguard.
+test("alignment: every 'direct' mapping points to an existing column", async () => {
     const db = await openMigrated();
     try {
-        const noNotNullViolations: string[] = [];
+        const violations: string[] = [];
         for (const [, mapping] of Object.entries(MAPPING)) {
             if (mapping.kind === "skip") continue;
-            const cols = columnsOf(db, mapping.table);
+            const cols = await columnsOf(db, mapping.table);
             for (const [, storage] of Object.entries(mapping.fields)) {
                 if (storage.kind === "direct" || storage.kind === "json") {
                     const info = cols.get(storage.column);
-                    if (info === undefined) noNotNullViolations.push(`${mapping.table}.${storage.column} missing entirely`);
+                    if (info === undefined) violations.push(`${mapping.table}.${storage.column} missing entirely`);
                 }
             }
         }
-        assert.deepEqual(noNotNullViolations, [], JSON.stringify(noNotNullViolations));
-    } finally { db.close(); }
+        assert.deepEqual(violations, [], JSON.stringify(violations));
+    } finally { await db.close(); }
 });

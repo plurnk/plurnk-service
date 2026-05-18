@@ -2,9 +2,9 @@
 // the daemon exposes; notifications are server-initiated events the daemon
 // may emit. Both have metadata that surfaces via `discover` (SPEC §13.4).
 
-import type { DatabaseSync } from "node:sqlite";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type Engine from "../core/Engine.ts";
+import type { Db } from "../core/Db.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
 export type NotifyTarget = "this" | "all" | { sessionId: number };
@@ -25,7 +25,7 @@ export interface Provider {
 
 export interface HandlerContext {
     registry: MethodRegistry;
-    db: DatabaseSync;
+    db: Db;
     engine: Engine;
     provider: Provider | null;
     session: ClientEnvelope | null;

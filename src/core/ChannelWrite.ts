@@ -6,7 +6,7 @@
 // stream/event notifications scoped to the entry's session via an optional
 // callback the daemon wires in.
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "./Db.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
@@ -17,101 +17,65 @@ export interface StreamEventPayload {
     contentLength: number;
 }
 
-// Daemon provides this callback so helpers can broadcast stream/event without
-// knowing about WebSocket plumbing. Signature: notify the session containing
-// the entry.
 export type StreamEventNotify = (sessionId: number, event: StreamEventPayload) => void;
 
-interface ChannelLookupRow {
+interface ChannelMetaRow {
     session_id: number;
     state: ChannelState;
     contentLength: number;
 }
 
-const lookupChannelMeta = (db: DatabaseSync, entryId: number, channel: string): ChannelLookupRow | null => {
-    const row = db
-        .prepare("SELECT e.session_id, ec.state, length(ec.content) AS contentLength FROM entry_channels ec JOIN entries e ON e.id = ec.entry_id WHERE ec.entry_id = ? AND ec.name = ?")
-        .get(entryId, channel) as { session_id: number; state: ChannelState; contentLength: number } | undefined;
-    return row ?? null;
-};
+const channelMeta = (db: Db) => db.channel_meta as PrepMethod;
+const appendStmt = (db: Db) => db.append_to_channel as PrepMethod;
+const stateStmt = (db: Db) => db.set_channel_state as PrepMethod;
+const openSubStmt = (db: Db) => db.open_subscription as PrepMethod;
+const closeSubStmt = (db: Db) => db.close_subscription as PrepMethod;
+const findActiveStmt = (db: Db) => db.find_active_subscription as PrepMethod;
 
-/**
- * Append content to a channel. Emits stream/event if notify is provided.
- * Channel must exist (no-op + return if not). Caller is responsible for
- * having created the channel via the scheme's write path.
- */
-export const appendToChannel = (
-    db: DatabaseSync,
+export const appendToChannel = async (
+    db: Db,
     { entryId, channel, chunk, notify }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify },
-): void => {
-    const result = db
-        .prepare("UPDATE entry_channels SET content = content || ? WHERE entry_id = ? AND name = ?")
-        .run(chunk, entryId, channel);
+): Promise<void> => {
+    const result = await appendStmt(db).run({ chunk, entry_id: entryId, channel });
     if (result.changes === 0) return;
     if (notify === undefined) return;
-    const meta = lookupChannelMeta(db, entryId, channel);
-    if (meta === null) return;
+    const meta = await channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
+    if (meta === undefined) return;
     notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
 };
 
-/**
- * Transition a channel's state. SPEC §5.6 — state is metadata, schemes own
- * transitions, engine doesn't gate on state.
- */
-export const setChannelState = (
-    db: DatabaseSync,
+export const setChannelState = async (
+    db: Db,
     { entryId, channel, state, notify }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify },
-): void => {
-    const result = db
-        .prepare("UPDATE entry_channels SET state = ? WHERE entry_id = ? AND name = ?")
-        .run(state, entryId, channel);
+): Promise<void> => {
+    const result = await stateStmt(db).run({ state, entry_id: entryId, channel });
     if (result.changes === 0) return;
     if (notify === undefined) return;
-    const meta = lookupChannelMeta(db, entryId, channel);
-    if (meta === null) return;
+    const meta = await channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
+    if (meta === undefined) return;
     notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
 };
 
-/**
- * Register an active subscription. Returns the subscription id. Caller stores
- * the id for the eventual closeSubscription call. Throws on duplicate active
- * subscription per (run, entry) — partial unique index enforces SPEC §7.1.
- */
-export const openSubscription = (
-    db: DatabaseSync,
+export const openSubscription = async (
+    db: Db,
     { runId, entryId, scheme, handle }: { runId: number; entryId: number; scheme: string; handle: string },
-): number => {
-    const row = db
-        .prepare("INSERT INTO subscriptions (run_id, entry_id, scheme, handle) VALUES (?, ?, ?, ?) RETURNING id")
-        .get(runId, entryId, scheme, handle) as { id: number };
+): Promise<number> => {
+    const row = await openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle });
+    if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
     return row.id;
 };
 
-/**
- * Close an active subscription. Status is the final HTTP-style code (200
- * clean, 499 cancel, 5xx error). Idempotent: closing an already-closed
- * subscription is a no-op.
- */
-export const closeSubscription = (
-    db: DatabaseSync,
+export const closeSubscription = async (
+    db: Db,
     { subscriptionId, status }: { subscriptionId: number; status: number },
-): void => {
-    db.prepare(
-        "UPDATE subscriptions SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), close_status = ? WHERE id = ? AND closed_at IS NULL",
-    ).run(status, subscriptionId);
+): Promise<void> => {
+    await closeSubStmt(db).run({ status, subscription_id: subscriptionId });
 };
 
-/**
- * Look up the active subscription for a (run, entry). Used by cancellation
- * routing when SEND[499](path) arrives: the engine finds the active sub,
- * tells the scheme to tear down via the handle.
- */
-export const findActiveSubscription = (
-    db: DatabaseSync,
+export const findActiveSubscription = async (
+    db: Db,
     { runId, entryId }: { runId: number; entryId: number },
-): { id: number; scheme: string; handle: string } | null => {
-    const row = db
-        .prepare("SELECT id, scheme, handle FROM subscriptions WHERE run_id = ? AND entry_id = ? AND closed_at IS NULL")
-        .get(runId, entryId) as { id: number; scheme: string; handle: string } | undefined;
+): Promise<{ id: number; scheme: string; handle: string } | null> => {
+    const row = await findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ run_id: runId, entry_id: entryId });
     return row ?? null;
 };

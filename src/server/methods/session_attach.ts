@@ -11,7 +11,7 @@ export const register = (registry: MethodRegistry): void => {
             if (typeof p.id !== "number") {
                 throw new Error("session.attach requires params.id: number");
             }
-            const envelope = attachToSession(ctx.db, p.id);
+            const envelope = await attachToSession(ctx.db, p.id);
             ctx.attachSession(envelope);
             return { id: envelope.sessionId, name: envelope.sessionName };
         },

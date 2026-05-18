@@ -1,218 +1,221 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
-const registerKnown = (db: DatabaseSync, name: string = "known"): void => {
-    db.prepare(
-        "INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, handler) VALUES (?, 1, 'knowledge', 'session', 'body', ?, 0, NULL)"
-    ).run(name, JSON.stringify(["model"]));
+const registerKnown = async (db: Db, name: string = "known"): Promise<void> => {
+    await (db.test_schemes_register as PrepMethod).run({ name, writable_by: JSON.stringify(["model"]) });
 };
-
-// ---------------------------------------------------------------- schemes
 
 test("schemes: table is STRICT and WITHOUT ROWID", async () => {
     const db = await openMigrated();
     try {
-        const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'schemes'").get() as { sql: string }).sql;
-        assert.match(sql, /STRICT/);
-        assert.match(sql, /WITHOUT ROWID/);
-    } finally { db.close(); }
+        const row = await (db.test_sp_table_sql as PrepMethod).get<{ sql: string }>({ name: "schemes" });
+        assert.match(row?.sql ?? "", /STRICT/);
+        assert.match(row?.sql ?? "", /WITHOUT ROWID/);
+    } finally { await db.close(); }
 });
 
 test("schemes: insert minimal known scheme", async () => {
     const db = await openMigrated();
     try {
-        registerKnown(db);
-        const row = db.prepare("SELECT * FROM schemes WHERE name = 'known'").get() as {
+        await registerKnown(db);
+        const row = await (db.test_schemes_get as PrepMethod).get<{
             name: string; model_visible: number; category: string; default_scope: string; default_channel: string;
             channel_orientations: string | null; writable_by: string; volatile: number; handler: string | null;
-        };
-        assert.equal(row.name, "known");
-        assert.equal(row.model_visible, 1);
-        assert.equal(row.category, "knowledge");
-        assert.equal(row.default_scope, "session");
-        assert.equal(row.default_channel, "body");
-        assert.equal(row.channel_orientations, null);
-        assert.equal(row.writable_by, '["model"]');
-        assert.equal(row.volatile, 0);
-        assert.equal(row.handler, null);
-    } finally { db.close(); }
+        }>({ name: "known" });
+        assert.equal(row?.name, "known");
+        assert.equal(row?.model_visible, 1);
+        assert.equal(row?.category, "knowledge");
+        assert.equal(row?.default_scope, "session");
+        assert.equal(row?.default_channel, "body");
+        assert.equal(row?.channel_orientations, null);
+        assert.equal(row?.writable_by, '["model"]');
+        assert.equal(row?.volatile, 0);
+        assert.equal(row?.handler, null);
+    } finally { await db.close(); }
 });
 
 test("schemes: PK on name — duplicate registration rejected", async () => {
     const db = await openMigrated();
     try {
-        registerKnown(db);
-        assert.throws(
+        await registerKnown(db);
+        await assert.rejects(
             () => registerKnown(db),
             /UNIQUE constraint failed|PRIMARY KEY/,
         );
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("schemes: model_visible + volatile CHECK 0/1 — other values rejected", async () => {
+test("schemes: model_visible + volatile CHECK 0/1", async () => {
     const db = await openMigrated();
     try {
-        for (const field of ["model_visible", "volatile"]) {
-            assert.throws(
-                () => db.prepare(`INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('s_${field}', ?, 'c', 'session', 'body', '[]', ?)`).run(field === "model_visible" ? 2 : 0, field === "volatile" ? 2 : 0),
+        await assert.rejects(
+            () => (db.test_schemes_insert_full as PrepMethod).run({
+                name: "s_model_visible", model_visible: 2, category: "c", default_scope: "session",
+                default_channel: "body", writable_by: "[]", volatile: 0,
+            }),
+            /CHECK constraint failed/,
+        );
+        await assert.rejects(
+            () => (db.test_schemes_insert_full as PrepMethod).run({
+                name: "s_volatile", model_visible: 0, category: "c", default_scope: "session",
+                default_channel: "body", writable_by: "[]", volatile: 2,
+            }),
+            /CHECK constraint failed/,
+        );
+    } finally { await db.close(); }
+});
+
+test("schemes: default_scope enum", async () => {
+    const db = await openMigrated();
+    try {
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "a", model_visible: 1, category: "c", default_scope: "agent", default_channel: "body", writable_by: "[]", volatile: 0 });
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "b", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0 });
+        await assert.rejects(
+            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "c", model_visible: 1, category: "c", default_scope: "run", default_channel: "body", writable_by: "[]", volatile: 0 }),
+            /CHECK constraint failed/,
+        );
+    } finally { await db.close(); }
+});
+
+test("schemes: length CHECK on name, category, default_channel", async () => {
+    const db = await openMigrated();
+    try {
+        for (const empty of ["name", "category", "default_channel"] as const) {
+            const params = { name: "s", category: "c", default_channel: "body" };
+            params[empty] = "";
+            await assert.rejects(
+                () => (db.test_schemes_insert_full as PrepMethod).run({
+                    name: params.name, model_visible: 1, category: params.category, default_scope: "session",
+                    default_channel: params.default_channel, writable_by: "[]", volatile: 0,
+                }),
                 /CHECK constraint failed/,
             );
         }
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("schemes: default_scope enum — agent + session accepted, others rejected", async () => {
+test("schemes: writable_by JSON validity", async () => {
     const db = await openMigrated();
     try {
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('a', 1, 'c', 'agent', 'body', '[]', 0)").run();
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('b', 1, 'c', 'session', 'body', '[]', 0)").run();
-        assert.throws(
-            () => db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('c', 1, 'c', 'run', 'body', '[]', 0)").run(),
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s1", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: JSON.stringify(["model", "client", "plugin"]), volatile: 0 });
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s2", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0 });
+        await assert.rejects(
+            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "s3", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "{broken", volatile: 0 }),
             /CHECK constraint failed/,
         );
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("schemes: length CHECK on name, category, default_channel — empty rejected", async () => {
+test("schemes: channel_orientations nullable", async () => {
     const db = await openMigrated();
     try {
-        for (const empty of ["name", "category", "default_channel"]) {
-            const values = ["s", "c", "body"].map((v, i) => (["name", "category", "default_channel"][i] === empty ? "" : v));
-            assert.throws(
-                () => db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES (?, 1, ?, 'session', ?, '[]', 0)").run(...values),
-                /CHECK constraint failed/,
-            );
-        }
-    } finally { db.close(); }
-});
-
-test("schemes: writable_by JSON validity — invalid JSON rejected; valid JSON arrays accepted", async () => {
-    const db = await openMigrated();
-    try {
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('s1', 1, 'c', 'session', 'body', ?, 0)").run(JSON.stringify(["model", "client", "plugin"]));
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('s2', 1, 'c', 'session', 'body', ?, 0)").run("[]");
-        assert.throws(
-            () => db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile) VALUES ('s3', 1, 'c', 'session', 'body', ?, 0)").run("{broken"),
+        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_null", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, orient: null });
+        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "sse", model_visible: 1, category: "streaming", default_scope: "session", default_channel: "event", writable_by: "[]", volatile: 1, orient: JSON.stringify({ event: "tail", data: "tail" }) });
+        await assert.rejects(
+            () => (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_bad", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, orient: "{broken" }),
             /CHECK constraint failed/,
         );
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("schemes: channel_orientations nullable — null + valid JSON accepted; invalid JSON rejected", async () => {
+test("schemes: handler nullable", async () => {
     const db = await openMigrated();
     try {
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, channel_orientations) VALUES ('s_null', 1, 'c', 'session', 'body', '[]', 0, NULL)").run();
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, channel_orientations) VALUES ('sse', 1, 'streaming', 'session', 'event', '[]', 1, ?)").run(JSON.stringify({ event: "tail", data: "tail" }));
-        assert.throws(
-            () => db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, channel_orientations) VALUES ('s_bad', 1, 'c', 'session', 'body', '[]', 0, ?)").run("{broken"),
-            /CHECK constraint failed/,
-        );
-    } finally { db.close(); }
-});
-
-test("schemes: handler nullable — null + non-null both accepted", async () => {
-    const db = await openMigrated();
-    try {
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, handler) VALUES ('core', 1, 'c', 'session', 'body', '[]', 0, NULL)").run();
-        db.prepare("INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, handler) VALUES ('plug', 1, 'c', 'session', 'body', '[]', 0, ?)").run("plurnk://handlers/plug");
-        const handlers = db.prepare("SELECT name, handler FROM schemes ORDER BY name").all() as { name: string; handler: string | null }[];
+        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "core", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: null });
+        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "plug", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk://handlers/plug" });
+        const handlers = await (db.test_schemes_list_handlers as PrepMethod).all<{ name: string; handler: string | null }>();
         assert.equal(handlers.find((s) => s.name === "core")?.handler, null);
         assert.equal(handlers.find((s) => s.name === "plug")?.handler, "plurnk://handlers/plug");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
-
-// ---------------------------------------------------------------- providers
 
 test("providers: table is STRICT", async () => {
     const db = await openMigrated();
     try {
-        const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'providers'").get() as { sql: string }).sql;
-        assert.match(sql, /STRICT/);
-    } finally { db.close(); }
+        const row = await (db.test_sp_table_sql as PrepMethod).get<{ sql: string }>({ name: "providers" });
+        assert.match(row?.sql ?? "", /STRICT/);
+    } finally { await db.close(); }
 });
 
-test("providers: insert minimal — defaults populate version=0, created_at", async () => {
+test("providers: insert minimal — defaults populate", async () => {
     const db = await openMigrated();
     try {
-        db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES (?, ?, ?, ?, ?)")
-            .run("anthropic", "claude", "claude-opus-4-7", 200000, "USD");
-        const row = db.prepare("SELECT * FROM providers WHERE model = ?").get("claude-opus-4-7") as {
-            id: number; version: number; provider: string; family: string; model: string; contextSize: number; currency: string; created_at: string;
-        };
-        assert.equal(row.version, 0);
-        assert.equal(row.provider, "anthropic");
-        assert.equal(row.family, "claude");
-        assert.equal(row.model, "claude-opus-4-7");
-        assert.equal(row.contextSize, 200000);
-        assert.equal(row.currency, "USD");
-        assert.match(row.created_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    } finally { db.close(); }
+        await (db.test_providers_insert as PrepMethod).run({ provider: "anthropic", family: "claude", model: "claude-opus-4-7", contextSize: 200000, currency: "USD" });
+        const row = await (db.test_providers_get as PrepMethod).get<{ version: number; provider: string; family: string; model: string; contextSize: number; currency: string; created_at: string }>({ model: "claude-opus-4-7" });
+        assert.equal(row?.version, 0);
+        assert.equal(row?.provider, "anthropic");
+        assert.equal(row?.family, "claude");
+        assert.equal(row?.model, "claude-opus-4-7");
+        assert.equal(row?.contextSize, 200000);
+        assert.equal(row?.currency, "USD");
+        assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    } finally { await db.close(); }
 });
 
-test("providers: length CHECK on provider, family, model — empty rejected", async () => {
+test("providers: length CHECK on provider, family, model", async () => {
     const db = await openMigrated();
     try {
         for (const empty of ["provider", "family", "model"] as const) {
             const cols = { provider: "anthropic", family: "claude", model: "claude-opus-4-7" };
             cols[empty] = "";
-            assert.throws(
-                () => db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES (?, ?, ?, ?, ?)").run(cols.provider, cols.family, cols.model, 200000, "USD"),
+            await assert.rejects(
+                () => (db.test_providers_insert as PrepMethod).run({ ...cols, contextSize: 200000, currency: "USD" }),
                 /CHECK constraint failed/,
             );
         }
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("providers: contextSize CHECK >= 1 — 0 and negative rejected", async () => {
+test("providers: contextSize CHECK >= 1", async () => {
     const db = await openMigrated();
     try {
         for (const bad of [0, -1, -100]) {
-            assert.throws(
-                () => db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES (?, ?, ?, ?, ?)").run("anthropic", "claude", "claude-opus-4-7", bad, "USD"),
+            await assert.rejects(
+                () => (db.test_providers_insert as PrepMethod).run({ provider: "anthropic", family: "claude", model: "claude-opus-4-7", contextSize: bad, currency: "USD" }),
                 /CHECK constraint failed/,
             );
         }
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("providers: currency CHECK length = 3 — other lengths rejected", async () => {
+test("providers: currency CHECK length = 3", async () => {
     const db = await openMigrated();
     try {
         for (const bad of ["US", "USDX", "", "AB", "ABCD"]) {
-            assert.throws(
-                () => db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES (?, ?, ?, ?, ?)").run("anthropic", "claude", "claude-opus-4-7", 200000, bad),
+            await assert.rejects(
+                () => (db.test_providers_insert as PrepMethod).run({ provider: "anthropic", family: "claude", model: "claude-opus-4-7", contextSize: 200000, currency: bad }),
                 /CHECK constraint failed/,
             );
         }
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("providers: multiple rows for the same (provider, family, model) are allowed — represents hot-swap history", async () => {
+test("providers: multiple rows for the same (provider, family, model) allowed", async () => {
     const db = await openMigrated();
     try {
-        db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES ('anthropic', 'claude', 'claude-opus-4-7', 200000, 'USD')").run();
-        db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES ('anthropic', 'claude', 'claude-opus-4-7', 200000, 'USD')").run();
-        const count = (db.prepare("SELECT COUNT(*) AS n FROM providers WHERE model = ?").get("claude-opus-4-7") as { n: number }).n;
+        await (db.test_providers_insert as PrepMethod).run({ provider: "anthropic", family: "claude", model: "claude-opus-4-7", contextSize: 200000, currency: "USD" });
+        await (db.test_providers_insert as PrepMethod).run({ provider: "anthropic", family: "claude", model: "claude-opus-4-7", contextSize: 200000, currency: "USD" });
+        const count = (await (db.test_providers_count as PrepMethod).get<{ n: number }>({ model: "claude-opus-4-7" }))?.n;
         assert.equal(count, 2);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
-test("providers: id auto-assigns (INTEGER PRIMARY KEY rowid alias)", async () => {
+test("providers: id auto-assigns", async () => {
     const db = await openMigrated();
     try {
-        db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES ('a', 'b', 'c', 100, 'USD')").run();
-        db.prepare("INSERT INTO providers (provider, family, model, contextSize, currency) VALUES ('a', 'b', 'd', 100, 'USD')").run();
-        const rows = db.prepare("SELECT id FROM providers ORDER BY id").all() as { id: number }[];
+        await (db.test_providers_insert as PrepMethod).run({ provider: "a", family: "b", model: "c", contextSize: 100, currency: "USD" });
+        await (db.test_providers_insert as PrepMethod).run({ provider: "a", family: "b", model: "d", contextSize: 100, currency: "USD" });
+        const rows = await (db.test_providers_list_ids as PrepMethod).all<{ id: number }>();
         assert.equal(rows[1]!.id, rows[0]!.id + 1);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("providers: index providers_created_at exists", async () => {
     const db = await openMigrated();
     try {
-        const row = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='providers_created_at'").get() as { name: string } | undefined;
+        const row = await (db.test_providers_index as PrepMethod).get<{ name: string }>();
         assert.equal(row?.name, "providers_created_at");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });

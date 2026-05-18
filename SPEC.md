@@ -10,6 +10,88 @@ Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-
 
 ---
 
+## §0 Glossary
+
+Canonical meanings. When a doc, comment, test name, or commit message uses one of these words, it means exactly what's written here. Drift is a bug.
+
+### §0.1 Lifecycle terms
+
+| Term | Meaning |
+|---|---|
+| **agent** | The plurnk runtime singleton. Owns agent-scoped state (default scheme registry, agent-wide entries). One per process. |
+| **session** | Durable user-named workspace. Persists across runs and process restarts. Identity: `sessions.id` + unique `sessions.name`. |
+| **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns visibility state and log entries. |
+| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {102, 200, 499}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
+| **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
+| **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `SHOW`, `HIDE`, `EXEC`. One turn produces zero or more ops. |
+| **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
+| **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log://<L>/<T>/<S>/<op>`. |
+| **dispatch** | The engine routing a statement to its scheme's op handler. |
+
+### §0.2 Storage terms
+
+| Term | Meaning |
+|---|---|
+| **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
+| **channel** | A named content buffer on an entry. Examples: `body`, `preview`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
+| **scope** | `"agent"` or `"session"`. Determines who reads. Agent-scope entries visible to every run; session-scope entries to that session's runs. |
+| **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. See SCHEMES.md. |
+| **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. See MIMETYPES.md. |
+| **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. See PROVIDERS.md. |
+
+### §0.3 State / visibility / status
+
+Three independent axes on entries and channels. Confusion across them is a recurring source of bugs.
+
+| Term | Type | Meaning |
+|---|---|---|
+| **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue (§3.5). |
+| **visibility** | `0 \| 1` | Per-`(run, entry, channel)` bit. `1 = indexed` (appears in `packet.system.index`), `0 = hidden` (not rendered, recallable via explicit READ). |
+| **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
+| **entry state** | `proposed \| resolved \| cancelled` | Proposal lifecycle. `proposed` = pending client accept; `resolved` = side effect happened; `cancelled` = client rejected. Distinct from channel state. |
+| **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
+
+### §0.4 Writer / authority
+
+| Term | Meaning |
+|---|---|
+| **writer** | The identity authoring a write. One of `model \| client \| system \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
+| **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
+| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, system, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry (§7.1 action-entry-as-outcome). |
+
+### §0.5 Engine rails
+
+| Term | Meaning |
+|---|---|
+| **verdict** | End-of-turn ruling from the verdict filter chain. Returns `{continue: boolean, status: number, reason: string}`. Decides whether the loop terminates or another turn fires. |
+| **strike** | A turn whose verdict counts toward `MAX_STRIKES`. Fires when `turnErrors > 0` or cycle detection trips. The streak counter resets on clean turn; reaches `MAX_STRIKES` → loop abandons at 499. |
+| **cycle** | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
+| **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
+| **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only (no side-effecting ops); act = full surface. |
+| **flag** | Per-loop boolean shaping the active toolset: `yolo` (auto-accept proposals), `noWeb`, `noInteraction`, `noProposals`. |
+| **proposal** | A deferred side-effecting action awaiting client accept/reject. State machine: `proposed → resolved` or `proposed → cancelled`. `yolo` short-circuits to immediate. |
+| **resolution** | Client's accept/reject of a proposal via `op.resolve` RPC. |
+
+### §0.6 Packet terms
+
+| Term | Meaning |
+|---|---|
+| **packet** | The turn's full exchange shape: `{system, user, assistant, assistantRaw}`. Persisted on `turns.packet`. |
+| **index** | `packet.system.index`. Entry list visible to the model this turn. Built from `visibility` lattice + mimetype.preview. |
+| **log** | `packet.system.log`. Chronological list of `log_entries` in scope this turn. |
+| **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
+
+### §0.7 Test taxonomy
+
+| Tier | Location | LLM | Substrate |
+|---|---|---|---|
+| **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
+| **intg** | `test/intg/` | No (mock provider) | Real in-memory SqlRite, real engine |
+| **live** | `test/live/` | Real | Wire-level assertions |
+| **demo** | `test/demo/` | Real | Holistic outcome assertions |
+
+---
+
 ## §1 Architecture
 
 `plurnk-service` is an engine library plus an admin CLI. The engine orchestrates a model's interaction with a workspace through three plug points:
@@ -286,6 +368,8 @@ Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; fi
 
 Visibility is per-`(run, entry, channel)` — a bit per cell in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of the target entry to `indexed=1`; HIDE flips all to `indexed=0`. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment exists for the entry-bearing schemes; see §5.5.
 
+The engine's render-time index (`packet.system.index`) includes only `indexed=1` channels for the current run. {§5.2-render-filters-by-indexed} Each included channel is passed through its mimetype handler's `preview(content, budget)` per §4 / §5.1, with the result landing in the entry's `channels[name].content` field in the packet.
+
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
 The mimetype of a channel is declared by the scheme's manifest (§3.1) or — for dynamic schemes — supplied per-call. If the engine attempts to write a channel without a declared mimetype, it throws. There is no default mimetype anywhere in the system. This is a reinforcement of the no-fallbacks rule at the channel layer.
@@ -479,9 +563,13 @@ Per-channel previews use `SchemeRegistration.channel_orientations` (grammar 0.3.
 - **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme interprets 499 as "tear down." Subscription registry transitions to closed; the AbortController fires; channel stops accumulating.
 - **Write:** `<<SEND[200](wss://feed/x):message body:SEND` — pipes body into an active WS connection, exec stdin, etc.
 
-### §7.8 Backpressure
+### §7.8 Engine constraints
 
-`PLURNK_SUBSCRIPTION_BURST` (§12) caps per-turn chunk delivery into `packet.system.log[]`. When truncated, a synthesized log row carries `status_rx: 206 Partial Content` with a body describing what was dropped. All chunks remain in the channel; only the per-turn surface is bounded. Under context pressure the burst adapts down. Runtime backpressure; not in the contract.
+The engine imposes ONE constraint: **100 MiB char-length cap per channel content body.** Enforced at the storage layer via `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/005_entries.sql). Writes exceeding this fail at the SQL boundary with a SQLITE_CONSTRAINT; the action-entry captures the rejection at status 500.
+
+All other limits are **extrinsic** — owned by providers (request size, model context, fetch timeouts), schemes (per-call validation, scheme-specific size policies), and mimetypes (render budgets per `preview(content, budget)`). The engine does not throttle, batch, rate-limit, or cap anything else. {§7.8-engine-one-cap}
+
+This reflects an intentional v0 stance: pre-MVP, every operator-configurable cap is a barrier between the user and the system actually running. The user-facing CLI/TUI fiddles best when nothing fires unexpectedly. When real production pressure arrives, additional caps land as opt-in operator config — not as defaults.
 
 ### §7.9 Live updates for clients (between turns)
 
@@ -591,7 +679,7 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 
 - Channel lifecycle (`active` / `closed` / `errored`) — subscription registry, not on `ChannelContent`. Was rejected as a contract field with good reason: streams are not a distinct paradigm at the contract layer; they're a runtime relationship between an entry and an open connection.
 - Render budget per channel (token count) — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` operator config (§12).
-- Backpressure caps (`PLURNK_SUBSCRIPTION_BURST`) — operator config.
+- Backpressure caps — none in v0 (§7.8). Providers/schemes/mimetypes own their own throttling.
 - Stream cancel verb — no dedicated cancel op or signal in the grammar. SEND[499] to the URI is the pattern (§7.7).
 - Delete verb — no dedicated DELETE op. SEND[410] to the URI is the pattern (§3.5, §6.5).
 
@@ -607,18 +695,22 @@ When future gaps surface, they get filed as grammar issues (not redesigned in pl
 
 ## §12 Operator Configuration
 
-Every plurnk-service deployment configures via env vars. Cascade: `.env.example` < `.env` < `.env.<profile>` < shell. `.env.example` declares every var with a sane default inline; no boot-time validators; read fails crash with the env-var path included.
+Every plurnk-service deployment configures via env vars. Cascade: `.env.example` (shipped defaults) < `.env` (project) < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example` so the daemon starts on `./bin/plurnk-service.js` with no setup required.
 
 | Var                                  | Default            | Purpose                                                              |
 |--------------------------------------|--------------------|----------------------------------------------------------------------|
-| `PLURNK_DB_PATH`                     | `./plurnk_dev.db`  | SQLite file path. Dev uses `plurnk_dev.db`; prod uses `plurnk.db`.   |
+| `PLURNK_DB_PATH`                     | `./plurnk.db`      | SQLite file path.                                                    |
 | `PLURNK_HOST`                        | `127.0.0.1`        | Bind address for the daemon WebSocket. Local-only by default.        |
 | `PLURNK_PORT`                        | `3044`             | TCP port for the daemon WebSocket.                                   |
-| `PLURNK_MAX_TURNS`                   | `50`               | Default safety cap on turns per `loop.run` (overridable per call).   |
-| `PLURNK_RPC_TIMEOUT`                 | `30000`            | Timeout in ms for non-`longRunning` RPC handlers.                    |
-| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel head/tail token budget for index preview tiles.          |
-| `PLURNK_SUBSCRIPTION_BURST`          | `64`               | Max chunks delivered into `packet.system.log[]` per turn per subscription. |
-| `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop (vs. boundaries only). |
+| `PLURNK_MAX_TURNS`                   | `999`              | Per-loop turn cap (overridable per `loop.run` call).                 |
+| `PLURNK_MAX_COMMANDS`                | `99`               | Per-turn op cap.                                                     |
+| `PLURNK_RPC_TIMEOUT`                 | `30000`            | ms timeout for non-`longRunning` RPC handlers.                       |
+| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | ms wall-clock budget for a single `loop.run`.                        |
+| `PLURNK_MAX_STRIKES`                 | `3`                | Strike threshold + sudden-death lead time (§38–§40 rails).           |
+| `PLURNK_MIN_CYCLES`                  | `3`                | Min repetitions before cycle detection fires (§39).                  |
+| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | Max period length cycle detection examines (§39).                    |
+| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel preview budget for index tiles (characters; §14.2).      |
+| `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop.              |
 | `PLURNK_LOG_LEVEL`                   | `info`             | Stdout boot/crash banners only — runtime logging is DB rows.         |
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
@@ -843,3 +935,85 @@ Error responses MAY include `data: { ... }` with structured context (the path th
 `plurnk-service` exposes a `protocolVersion` field in `discover`'s response (semver). Major version mismatches are a contract break — clients SHOULD refuse to operate on a major mismatch. Minor/patch increments are backward-compatible.
 
 Current: `protocolVersion: "0.1.0"`. The floor is green and the daemon has been exercised end-to-end via the `plurnk` TUI client (which now graduates to its own agent). Promotes to `1.0.0` when an independent external client (neovim plugin or Telegram bot) lands AND the mimetype/channel/transaction work below has settled.
+
+---
+
+## §14 Architectural decisions
+
+Each entry: the question, the answer, the rationale, the migration path if revisited.
+
+### §14.1 Packet assembly: engine-direct, not filter-chain
+
+**Question.** Rummy assembles `<index>`, `<log>`, `<turn>`, `<system_commands>`, `<system_requirements>` via priority-ordered filter chains (`assembly.system` + `assembly.user`); plugins each filter for their data and append their section. Plurnk currently assembles `packet.system.index` directly in `Engine.#buildIndex` by querying visibility + entries + entry_channels and routing each channel's content through its mimetype handler. Same question for `packet.system.log` (pending — task #44).
+
+**Decision.** v0 stays engine-direct. The engine reads the DB and constructs the packet. Plugin-driven assembly is out of v0 scope. {§14.1-engine-direct-assembly}
+
+**Rationale.**
+- Plurnk's bundled extension set is small (3 entry-bearing schemes, 2 mimetypes, 1 provider). No current plugin wants to inject a packet section.
+- The channel + mimetype split already gives substantial extensibility: scheme registers channels, mimetype owns rendering. Visibility lattice owns *which* channels appear. A filter chain on top of that would be paying for indirection nothing currently exercises.
+- Rummy's pattern earns its keep through 25+ plugins each owning a tag. Plurnk's pattern earns its keep through schemes-as-URI-handlers + mimetypes-as-renderers. Different shapes; different consequences.
+- The engine-direct path is testable end-to-end against real visibility/render-time behavior. The filter-chain path requires testing the composition of plugins, which is a separate axis of complexity.
+
+**Migration path if revisited.** If a future plugin needs to inject a packet section (e.g., a `<turn>` metadata table per rummy SPEC §packet_structure), the engine grows a single `packet.augment` filter hook called after `#buildIndex` returns. Plugins subscribe with a priority; each returns a `system` and/or `user` augmentation object that gets merged into the packet shape. This is additive — the engine-direct base case stays; plugins augment.
+
+### §14.2 Budget unit: character count for v0
+
+**Question.** `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` is named for tokens; current implementation in `Engine.#previewBudget` treats it as a character-count cap passed to `MimetypeHandler.preview(content, budget)`. The MIMETYPES.md contract documents budget as a number, semantic-agnostic. The env var name and the implementation disagree.
+
+**Decision.** v0 treats budget as character count. The env var keeps its `_TOKENS` suffix as forward-naming for the eventual switch but currently means characters. {§14.2-budget-is-characters-v0}
+
+**Rationale.**
+- Token counts require a per-provider tokenizer. PROVIDERS.md §11 marks `countTokens` as out of v0 contract; no provider currently exposes it.
+- Character count is a tokenizer-independent first approximation. Wrong by a factor of ~3-4× for English (1 token ≈ 3-4 chars), but consistent and zero-config.
+- Switching the unit later requires: (a) `countTokens` lands on the provider contract, (b) engine caches token counts per `(provider_id, content_hash)`, (c) mimetype.preview gets a tokenizer reference or returns content for engine to tokenize-and-truncate. Out of v0 scope.
+
+**Migration path if revisited.** When provider `countTokens` lands and the engine has per-channel token accounting, `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` becomes literal tokens. Mimetype handlers either receive a tokenizer reference in `preview(content, budget, countTokens?)` or the engine post-processes character-bounded `preview` output through tokenizer + truncate. The MIMETYPES.md contract revision is non-breaking (signature stays `(content, budget) → string`); the semantic of `budget` changes from char-count to token-count.
+
+---
+
+## §15 Packet shape
+
+The canonical packet shape is defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`, ≥0.4.0). Engine assembles in `Engine.#buildPacket`; plugins do not augment in v0 (§14.1). This section describes plurnk-service's responsibilities under that contract — see grammar for the authoritative schema.
+
+```ts
+type Packet = {
+    tokens: number;
+    system: {
+        tokens: number;
+        system_definition: string;
+        persona: string;
+        index: PacketEntry[];               // visible entries (§4 / §5)
+        log: PacketLogRow[];                // chronological action-entries (§7 / pending task #44)
+    };
+    user: {
+        tokens: number;
+        prompt: string;
+        telemetry: { budget: string; errors: object[] };   // §15.1
+        system_requirements: string;
+    };
+    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
+    assistantRaw: unknown;
+};
+```
+
+### §15.1 user.telemetry — model-facing runtime telemetry
+
+The slot for telemetry the model MUST react to right now: budget pressure and last-turn failures that didn't produce an action-entry. Rendered prominently at the bottom of the user section so the model cannot ignore it. Errors here are transient — they appear on the turn AFTER the failure and clear once the model has seen them. The action-entries (`packet.system.log[]`) are the durable audit; `telemetry.errors[]` is the **alert**.
+
+**Grammar contract (authoritative, plurnk-grammar 0.4.0):**
+
+- `budget: string` — text/markdown. Renderer-provided summary of remaining context / cost / etc. Empty string when nothing to surface.
+- `errors: object[]` — element shape intentionally open at v0. Consumers populate as actionless-failure rendering needs solidify. Empty array when no errors to surface.
+
+**Plurnk-service rendering (v0):**
+
+- `budget` is rendered as a short markdown line. Unit follows §14.2 (character count); the exact rendering is engine-internal and may evolve without a schema change.
+- `errors[]` carries one object per actionless failure from the previous turn. Service's working element shape (subject to tightening as needs solidify):
+    ```
+    { kind: "parse" | "dispatch_crash" | "no_send" | "watchdog" | "budget_overflow" | "rail",
+      message: string,
+      detail?: unknown }
+    ```
+- Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as a one-line summary object into `telemetry.errors[]` on the next packet — same forced-confrontation pattern. Full detail stays queryable via `log://`. {§15.1-no-error-scheme}
+
+**No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace.

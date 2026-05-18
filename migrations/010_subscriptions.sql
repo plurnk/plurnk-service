@@ -5,7 +5,8 @@
 -- Closed rows persist for forensics. Partial unique index enforces one active
 -- subscription per (run, entry).
 
-CREATE TABLE subscriptions (
+-- INIT: subscriptions
+CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     run_id       INTEGER NOT NULL,
@@ -22,14 +23,14 @@ CREATE TABLE subscriptions (
 ) STRICT;
 
 -- One active subscription per (run_id, entry_id) — closed records don't block re-subscription.
-CREATE UNIQUE INDEX subscriptions_active_one_per_entry
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
     ON subscriptions (run_id, entry_id)
     WHERE closed_at IS NULL;
 
 -- Scheme-keyed lookup for "which scheme owns active subscriptions?" queries.
-CREATE INDEX subscriptions_scheme_active
+CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
     ON subscriptions (scheme)
     WHERE closed_at IS NULL;
 
 -- Forensic / time-window queries on opened_at.
-CREATE INDEX subscriptions_opened_at ON subscriptions (opened_at);
+CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);

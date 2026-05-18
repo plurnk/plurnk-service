@@ -1,13 +1,17 @@
 import TextPlain from "../mimetypes/TextPlain.ts";
-import TextMarkdown from "../mimetypes/TextMarkdown.ts";
 import type { MimetypeHandler } from "../mimetypes/_types.ts";
 
+// text/plain is the bundled fallback — no external dep, every deployment
+// needs it as the universal text mimetype. All other mimetype handlers ship
+// as @plurnk/plurnk-mimetypes-* packages and are registered by Daemon's
+// plugin discovery scan (see Daemon.#discoverAndLoadPlugins). The "bundle
+// minimally" principle: plurnk-service ships enough to run standalone, not
+// every plausible handler.
 export default class MimetypeRegistry {
     #handlers = new Map<string, MimetypeHandler>();
 
     constructor() {
         this.register(new TextPlain());
-        this.register(new TextMarkdown());
     }
 
     register(handler: MimetypeHandler): void {

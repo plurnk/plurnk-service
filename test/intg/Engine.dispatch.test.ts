@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, ReadStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -31,7 +32,7 @@ const readStmt = (opts: { path: ParsedPath }): ReadStatement => ({
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, engine, env };
 };
@@ -45,10 +46,11 @@ test("Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, 
             actionIndex: 0, origin: "model",
         });
         assert.equal(result.status, 201);
-        assert.ok((result as unknown as { entryId: number }).entryId >= 1);
-        const entry = db.prepare("SELECT pathname FROM entries WHERE id = ?").get((result as unknown as { entryId: number }).entryId) as { pathname: string };
-        assert.equal(entry.pathname, "/france/capital");
-    } finally { db.close(); }
+        const entryId = (result as unknown as { entryId: number }).entryId;
+        assert.ok(entryId >= 1);
+        const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: entryId });
+        assert.equal(entry?.pathname, "/france/capital");
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: writes log_entry with statement + result fields", async () => {
@@ -59,12 +61,13 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        const log = db.prepare("SELECT * FROM log_entries WHERE turn_id = ?").get(env.turnId) as {
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{
             run_id: number; loop_id: number; turn_id: number; action_index: number;
             origin: string; op: string; suffix: string; signal: string | null;
             target_scheme: string | null; target_pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
-        };
+        }>({ turn_id: env.turnId });
+        if (log === undefined) throw new Error("log_entry not found");
         assert.equal(log.run_id, env.runId);
         assert.equal(log.loop_id, env.loopId);
         assert.equal(log.turn_id, env.turnId);
@@ -82,7 +85,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(tx.op, "EDIT");
         const rx = JSON.parse(log.rx) as { status: number };
         assert.equal(rx.status, 201);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: READ against known:// routes to Known.read", async () => {
@@ -100,7 +103,7 @@ test("Engine.dispatch: READ against known:// routes to Known.read", async () => 
         });
         assert.equal(result.status, 200);
         assert.equal((result as unknown as { content: string }).content, "value");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: unknown scheme returns 501 and still writes log row", async () => {
@@ -112,22 +115,23 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
             actionIndex: 0, origin: "model",
         });
         assert.equal(result.status, 501);
-        const log = db.prepare("SELECT status_rx, target_scheme FROM log_entries WHERE turn_id = ?").get(env.turnId) as { status_rx: number; target_scheme: string };
-        assert.equal(log.status_rx, 501);
-        assert.equal(log.target_scheme, "wiki");
-    } finally { db.close(); }
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; target_scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 501);
+        assert.equal(log?.target_scheme, "wiki");
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: scheme without matching op method returns 501", async () => {
     const { db, engine, env } = await setup();
     try {
+        // exec:// has manifest (model is in writableBy) but no edit() handler yet.
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("plurnk", "/x"), body: "y" }),
+            statement: editStmt({ path: urlPath("exec", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        assert.equal(result.status, 501, "plurnk scheme exists but has no edit() method yet");
-    } finally { db.close(); }
+        assert.equal(result.status, 501, "exec scheme exists but has no edit() method yet");
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
@@ -143,11 +147,11 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
             actionIndex: 0, origin: "model",
         });
         assert.equal(result.status, 400);
-        const log = db.prepare("SELECT status_rx, target_scheme, target_pathname FROM log_entries WHERE turn_id = ?").get(env.turnId) as { status_rx: number; target_scheme: string | null; target_pathname: string | null };
-        assert.equal(log.status_rx, 400);
-        assert.equal(log.target_scheme, null);
-        assert.equal(log.target_pathname, null);
-    } finally { db.close(); }
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; target_scheme: string | null; target_pathname: string | null }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 400);
+        assert.equal(log?.target_scheme, null);
+        assert.equal(log?.target_pathname, null);
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: multiple actions in one turn — log_entries action_index UNIQUE enforced", async () => {
@@ -163,13 +167,13 @@ test("Engine.dispatch: multiple actions in one turn — log_entries action_index
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 1, origin: "model",
         });
-        const rows = db.prepare("SELECT action_index, target_pathname FROM log_entries WHERE turn_id = ? ORDER BY action_index").all(env.turnId) as { action_index: number; target_pathname: string }[];
+        const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; target_pathname: string }>({ turn_id: env.turnId });
         assert.equal(rows.length, 2);
         assert.equal(rows[0]?.action_index, 0);
         assert.equal(rows[0]?.target_pathname, "/a");
         assert.equal(rows[1]?.action_index, 1);
         assert.equal(rows[1]?.target_pathname, "/b");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: signal serialized to JSON in log", async () => {
@@ -180,9 +184,9 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        const log = db.prepare("SELECT signal FROM log_entries WHERE turn_id = ?").get(env.turnId) as { signal: string };
-        assert.deepEqual(JSON.parse(log.signal), ["france", "europe"]);
-    } finally { db.close(); }
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ signal: string }>({ turn_id: env.turnId });
+        assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["france", "europe"]);
+    } finally { await db.close(); }
 });
 
 test("Engine.dispatch: origin field captured in log", async () => {
@@ -195,7 +199,163 @@ test("Engine.dispatch: origin field captured in log", async () => {
                 actionIndex: i, origin,
             });
         }
-        const origins = db.prepare("SELECT origin FROM log_entries WHERE turn_id = ? ORDER BY action_index").all(env.turnId) as { origin: string }[];
-        assert.deepEqual(origins.map((r) => r.origin), ["model", "client", "system", "plugin"]);
-    } finally { db.close(); }
+        const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ origin: string; action_index: number }>({ turn_id: env.turnId });
+        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "system", "plugin"]);
+    } finally { await db.close(); }
+});
+
+// SCHEMES.md §8 {§8-writable-by-enforcement}: writer must be in target scheme's
+// manifest.writableBy or dispatch returns 403 without invoking the handler.
+
+test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['system'])", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 403);
+        assert.match((result as unknown as { error: string }).error, /writer 'model'.*'log'/);
+        // 403 still writes a log row
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; target_scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 403);
+        assert.equal(log?.target_scheme, "log");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: client EDIT plurnk:// rejected with 403 (Plurnk.writableBy=['system','plugin'])", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("plurnk", "/cfg"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "client",
+        });
+        assert.equal(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side op)", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Log scheme has no read() handler yet, so this returns 501 — proves
+        // the writableBy gate did NOT intercept (would have returned 403).
+        const result = await engine.dispatch({
+            statement: readStmt({ path: urlPath("log", "/x") }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.notEqual(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Log has no edit() handler — so this returns 501 (not 403) when allowed.
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "system",
+        });
+        assert.notEqual(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: { op: "SEND", suffix: "", signal: 200, path: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 200);
+    } finally { await db.close(); }
+});
+
+// SCHEMES.md §7.1 / §8: action-entry-as-outcome — scheme-handler exceptions
+// finalize the action-entry at 500, not bubble up.
+
+test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    class Boom {
+        static manifest = {
+            name: "boom", channels: {}, defaultChannel: "",
+            category: "data" as const, scope: "session" as const,
+            writableBy: ["model" as const], volatile: false, modelVisible: true,
+        };
+        async edit() { throw new Error("scheme handler deliberately threw"); }
+    }
+    schemes.register("boom", new Boom());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("boom", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 500);
+        assert.match((result as unknown as { error: string }).error, /scheme handler deliberately threw/);
+        // action-entry preserved at status 500 with error in rx
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; rx: string; target_scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 500);
+        assert.equal(log?.target_scheme, "boom");
+        const rx = JSON.parse(log?.rx ?? "{}");
+        assert.equal(rx.status, 500);
+        assert.match(rx.error, /scheme handler deliberately threw/);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with stringified message", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    class BoomString {
+        static manifest = {
+            name: "boomstr", channels: {}, defaultChannel: "",
+            category: "data" as const, scope: "session" as const,
+            writableBy: ["model" as const], volatile: false, modelVisible: true,
+        };
+        async edit(): Promise<never> { throw "raw string thrown"; }
+    }
+    schemes.register("boomstr", new BoomString());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("boomstr", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 500);
+        assert.equal((result as unknown as { error: string }).error, "raw string thrown");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model COPY into log:// destination rejected with 403", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // Source first: model creates an entry in known://.
+        await engine.dispatch({
+            statement: editStmt({ path: urlPath("known", "/src"), body: "v" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 0, origin: "model",
+        });
+        // Attempt copy known://src → log://dst — destination scheme rejects.
+        const result = await engine.dispatch({
+            statement: {
+                op: "COPY", suffix: "", signal: null,
+                path: urlPath("known", "/src"),
+                lineMarker: null,
+                body: urlPath("log", "/dst"),
+                position: { line: 1, column: 1 },
+            },
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 1, origin: "model",
+        });
+        assert.equal(result.status, 403);
+    } finally { await db.close(); }
 });

@@ -5,7 +5,6 @@
 // is the contract for external use.
 
 export { default as Engine } from "./core/Engine.ts";
-export { default as Migrator } from "./core/Migrator.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
 export { default as MimetypeRegistry } from "./core/MimetypeRegistry.ts";
 
@@ -27,7 +26,7 @@ export { default as Exec } from "./schemes/Exec.ts";
 export { default as File } from "./schemes/File.ts";
 
 export { default as TextPlain } from "./mimetypes/TextPlain.ts";
-export { default as TextMarkdown } from "./mimetypes/TextMarkdown.ts";
+export { default as TextMarkdown } from "@plurnk/plurnk-mimetypes-text-markdown";
 export type { MimetypeHandler } from "./mimetypes/_types.ts";
 
 export { default as Mock } from "./providers/Mock.ts";

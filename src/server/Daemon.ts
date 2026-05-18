@@ -4,7 +4,7 @@
 
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import type { DatabaseSync } from "node:sqlite";
+import type { Db } from "../core/Db.ts";
 import { resolve } from "node:path";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
@@ -46,7 +46,7 @@ export interface DaemonAddress {
 }
 
 export default class Daemon {
-    #db: DatabaseSync;
+    #db: Db;
     #engine: Engine;
     #schemes: SchemeRegistry;
     #mimetypes: MimetypeRegistry;
@@ -59,7 +59,7 @@ export default class Daemon {
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
     }: {
-        db: DatabaseSync;
+        db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: MimetypeRegistry;
         provider?: Provider | null;
@@ -68,7 +68,7 @@ export default class Daemon {
         this.#db = db;
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#mimetypes = mimetypes ?? new MimetypeRegistry();
-        this.#engine = new Engine({ db, schemes: this.#schemes });
+        this.#engine = new Engine({ db, schemes: this.#schemes, mimetypes: this.#mimetypes });
         this.#provider = provider ?? null;
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();

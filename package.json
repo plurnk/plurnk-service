@@ -36,7 +36,9 @@
     },
     "dependencies": {
         "@plurnk/plurnk-grammar": "github:plurnk/plurnk-grammar",
+        "@plurnk/plurnk-mimetypes-text-markdown": "github:plurnk/plurnk-mimetypes-text-markdown",
         "@plurnk/plurnk-providers-openai": "github:plurnk/plurnk-providers-openai",
+        "@possumtech/sqlrite": "^3.1.0",
         "ws": "^8.20.1"
     },
     "devDependencies": {

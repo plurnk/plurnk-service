@@ -6,8 +6,10 @@ import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-gramm
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
-import { openSubscription, setChannelState, findActiveSubscription } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openSubscription, setChannelState, findActiveSubscription, closeSubscription } from "../../src/core/ChannelWrite.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -28,7 +30,7 @@ const editStmt = (path: UrlPath, body: string | null = null): EditStatement => (
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, ...env, engine };
 };
@@ -39,10 +41,10 @@ const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopI
 test("SEND[499] on entry without subscription returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });
+        await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(r.status, 404);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("SEND[499] on nonexistent entry returns 404", async () => {
@@ -50,64 +52,60 @@ test("SEND[499] on nonexistent entry returns 404", async () => {
     try {
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "nope")));
         assert.equal(r.status, 404);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
-    // Edge case: if some other scheme opens a subscription against an
-    // entry-bearing path, entry-bearing scheme.send refuses to handle it
-    // (subscription is owned by another scheme).
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        const r = await new Known().edit({ db, sessionId, runId, statement: editStmt(url("known", "x"), "body") });
+        const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const entryId = r.entryId as number;
-        // Simulate foreign-scheme subscription
-        openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
+        await openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
         const cancelResult = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(cancelResult.status, 501);
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscription, transitions state, closes record", async () => {
-    // Validates the full cancellation contract using an in-test scheme that
-    // implements the streaming pattern. Mirrors what sse:// / exec:// will do.
-
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
-        // Set up state for the synthetic scheme
         const teardownCalls: string[] = [];
         const handles = new Map<string, () => void>();
 
-        // Create entry with a streaming channel (active state)
-        const entry = db.prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, 'fakestream', 'feed/x') RETURNING id").get(sessionId) as { id: number };
+        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+            session_id: sessionId, scheme: "fakestream", pathname: "feed/x",
+        });
+        if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
-        db.prepare("INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state) VALUES (?, 'data', '', 'text/plain', 0, 'active')").run(entryId);
+        await (db.test_seed_channel as PrepMethod).run({
+            entry_id: entryId, name: "data", content: "", mimetype: "text/plain", state: "active",
+        });
 
-        // Open subscription with a handle that maps to a teardown callback
         const handle = "fake-stream-1";
         handles.set(handle, () => teardownCalls.push(handle));
-        const subId = openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
+        const subId = await openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
 
-        // Synthetic scheme handler
         class FakeStream {
-            static channels = { data: "text/plain" };
-            static defaultChannel = "data";
-            async send(ctx: { db: typeof db; statement: SendStatement; sessionId: number; runId: number }): Promise<{ status: number }> {
-                if (ctx.statement.signal !== 499) return { status: 501 };
-                const path = ctx.statement.path;
+            static manifest = {
+                name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
+                category: "data" as const, scope: "session" as const,
+                writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
+            };
+            async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
+                if (statement.signal !== 499) return { status: 501 };
+                const path = statement.path;
                 if (path === null || path.kind !== "url") return { status: 400 };
-                const e = db.prepare("SELECT id FROM entries WHERE scheme = ? AND pathname = ? AND session_id = ?").get(path.scheme, path.pathname, ctx.sessionId) as { id: number } | undefined;
+                const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+                    session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,
+                });
                 if (e === undefined) return { status: 404 };
-                const sub = findActiveSubscription(db, { runId: ctx.runId, entryId: e.id });
+                const sub = await findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
                 if (sub === null) return { status: 404 };
-                // Teardown via the stored handle
                 const cb = handles.get(sub.handle);
                 if (cb !== undefined) cb();
-                // Close subscription record + transition channel state
-                const { closeSubscription } = await import("../../src/core/ChannelWrite.ts");
-                closeSubscription(db, { subscriptionId: sub.id, status: 499 });
-                setChannelState(db, { entryId: e.id, channel: "data", state: "closed" });
+                await closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
+                await setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
                 return { status: 200 };
             }
         }
@@ -116,7 +114,6 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         schemes.register("fakestream", new FakeStream());
         const engine = new Engine({ db, schemes });
 
-        // Fire SEND[499]
         const result = await engine.dispatch({
             statement: sendStmt(499, url("fakestream", "feed/x")),
             sessionId, runId, loopId, turnId,
@@ -126,24 +123,19 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         assert.equal(result.status, 200, "scheme accepts cancel");
         assert.deepEqual(teardownCalls, [handle], "teardown callback fired with subscription handle");
 
-        // Subscription record closed
-        const sub = db.prepare("SELECT closed_at, close_status FROM subscriptions WHERE id = ?").get(subId) as { closed_at: string | null; close_status: number | null };
-        assert.ok(sub.closed_at !== null, "subscription marked closed");
-        assert.equal(sub.close_status, 499, "close_status = 499");
+        const sub = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
+        assert.ok(sub?.closed_at !== null, "subscription marked closed");
+        assert.equal(sub?.close_status, 499, "close_status = 499");
 
-        // Channel state transitioned
-        const channelState = (db.prepare("SELECT state FROM entry_channels WHERE entry_id = ? AND name = 'data'").get(entryId) as { state: string }).state;
+        const channelState = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "closed", "channel state transitioned to closed");
 
-        // findActiveSubscription now returns null
-        const active = findActiveSubscription(db, { runId, entryId });
+        const active = await findActiveSubscription(db, { runId, entryId });
         assert.equal(active, null, "no active subscription remaining");
-    } finally { db.close(); }
+    } finally { await db.close(); }
 });
 
 test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscription returns 404", async () => {
-    // Higher-level test via op.send RPC; confirms the cancellation flow works
-    // through the full wire stack.
     const { WebSocket } = await import("ws");
     const { default: Daemon } = await import("../../src/server/Daemon.ts");
 
@@ -171,6 +163,6 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
     } finally {
         ws.close();
         await daemon.stop();
-        db.close();
+        await db.close();
     }
 });

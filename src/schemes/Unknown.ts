@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import { editSessionEntry, readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -9,48 +9,51 @@ import type { SendResult } from "./_entry-send.ts";
 import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 
-const SCHEME = "unknown";
-
 export default class Unknown {
-    static channels: Record<string, string> = {
-        body: "text/markdown",
-        preview: "text/markdown",
+    static manifest: SchemeManifest = {
+        name: "unknown",
+        channels: { body: "text/markdown", preview: "text/markdown" },
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client"],
+        volatile: false,
+        modelVisible: true,
     };
-    static defaultChannel = "body";
 
-    async edit(ctx: { db: DatabaseSync; statement: EditStatement; sessionId: number; runId: number }): Promise<EditResult> {
-        return editSessionEntry({ ...ctx, scheme: SCHEME, channels: Unknown.channels, defaultChannel: Unknown.defaultChannel });
+    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
+        return editSessionEntry(statement, ctx, Unknown.manifest);
     }
 
-    async read(ctx: { db: DatabaseSync; statement: ReadStatement; sessionId: number }): Promise<ReadResult> {
-        return readSessionEntry({ ...ctx, scheme: SCHEME, channels: Unknown.channels, defaultChannel: Unknown.defaultChannel });
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+        return readSessionEntry(statement, ctx, Unknown.manifest);
     }
 
-    async show(ctx: { db: DatabaseSync; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
-        return showSessionEntry({ ...ctx, scheme: SCHEME, channels: Unknown.channels, defaultChannel: Unknown.defaultChannel });
+    async show(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+        return showSessionEntry(statement, ctx, Unknown.manifest);
     }
 
-    async hide(ctx: { db: DatabaseSync; statement: ShowStatement | HideStatement; sessionId: number; runId: number }): Promise<ShowHideResult> {
-        return hideSessionEntry({ ...ctx, scheme: SCHEME, channels: Unknown.channels, defaultChannel: Unknown.defaultChannel });
+    async hide(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+        return hideSessionEntry(statement, ctx, Unknown.manifest);
     }
 
-    async readEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string }): Promise<ReadEntryResult> {
-        return readEntry({ ...ctx, scheme: SCHEME });
+    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+        return readEntry(pathname, ctx, Unknown.manifest.name);
     }
 
-    async writeEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string; entry: EntryData; runId: number }): Promise<WriteEntryResult> {
-        return writeEntry({ ...ctx, scheme: SCHEME });
+    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+        return writeEntry(pathname, entry, ctx, Unknown.manifest.name);
     }
 
-    async deleteEntry(ctx: { db: DatabaseSync; sessionId: number; pathname: string }): Promise<DeleteEntryResult> {
-        return deleteEntry({ ...ctx, scheme: SCHEME });
+    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+        return deleteEntry(pathname, ctx, Unknown.manifest.name);
     }
 
-    async send(ctx: { db: DatabaseSync; statement: SendStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<SendResult> {
-        return sendToSessionEntry({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, runId: ctx.runId, scheme: SCHEME });
+    async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
+        return sendToSessionEntry(statement, ctx, Unknown.manifest.name);
     }
 
-    async find(ctx: { db: DatabaseSync; statement: FindStatement; sessionId: number; runId: number; loopId: number; turnId: number }): Promise<FindResult> {
-        return findSessionEntries({ db: ctx.db, statement: ctx.statement, sessionId: ctx.sessionId, scheme: SCHEME });
+    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+        return findSessionEntries(statement, ctx, Unknown.manifest.name);
     }
 }

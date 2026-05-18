@@ -1,0 +1,237 @@
+-- Test-fixture PREP blocks. These are loaded only when tests open the DB
+-- via openMigrated() (which scans test/intg/ in addition to migrations + src).
+-- Production boot (bin/plurnk-service.js) does NOT include this directory,
+-- so test fixtures stay out of production.
+
+-- PREP: test_insert_session
+INSERT INTO sessions (name) VALUES ($name) RETURNING id;
+
+-- PREP: test_insert_run
+INSERT INTO runs (session_id, name, parent_run_id) VALUES ($session_id, $name, $parent_run_id) RETURNING id;
+
+-- PREP: test_insert_loop
+INSERT INTO loops (run_id, sequence, prompt) VALUES ($run_id, $sequence, $prompt) RETURNING id;
+
+-- PREP: test_insert_turn
+-- Minimal turn with empty packet shape.
+INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequence, $status, $packet) RETURNING id;
+
+-- Generic data-access PREPs for test setup/assertion. Avoid one-off SQL in
+-- test bodies — add a PREP here, name it test_*, and call it.
+
+-- PREP: test_count_log_entries_by_turn
+SELECT COUNT(*) AS n FROM log_entries WHERE turn_id = $turn_id;
+
+-- PREP: test_log_action_indexes_by_turn
+SELECT action_index, status_rx, target_pathname, op FROM log_entries
+WHERE turn_id = $turn_id
+ORDER BY action_index;
+
+-- PREP: test_get_loop_status
+SELECT status FROM loops WHERE id = $id;
+
+-- PREP: test_get_turn
+SELECT id, loop_id, sequence, status, usage_completion, packet
+FROM turns WHERE id = $id;
+
+-- PREP: test_get_session_cost
+SELECT cost_pico FROM sessions WHERE id = $id;
+
+-- PREP: test_get_run_cost
+SELECT cost_pico FROM runs WHERE id = $id;
+
+-- PREP: test_count_turns
+SELECT COUNT(*) AS n FROM turns;
+
+-- PREP: test_count_entries_by_session
+SELECT COUNT(*) AS n FROM entries WHERE session_id = $session_id;
+
+-- PREP: test_get_entry_by_path
+SELECT id FROM entries
+WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
+
+-- PREP: test_get_channel
+SELECT content, mimetype, state FROM entry_channels
+WHERE entry_id = $entry_id AND name = $name;
+
+-- PREP: test_get_visibility
+SELECT indexed FROM visibility
+WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
+
+-- PREP: test_get_visibility_by_channel
+-- Across all entries in a run for a single channel name.
+SELECT indexed FROM visibility WHERE run_id = $run_id AND channel = $channel;
+
+-- PREP: test_count_visibility_indexed
+SELECT COUNT(*) AS n FROM visibility
+WHERE run_id = $run_id AND entry_id = $entry_id AND indexed = 1;
+
+-- PREP: test_list_entry_tags
+SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
+
+-- PREP: test_get_subscription
+SELECT id, run_id, entry_id, scheme, handle, closed_at, close_status
+FROM subscriptions WHERE id = $id;
+
+-- PREP: test_count_active_subscriptions
+SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
+
+-- PREP: test_seed_entry_session
+-- Tests bypass scheme handlers when seeding state for visibility / render tests.
+INSERT INTO entries (scope, session_id, scheme, pathname)
+VALUES ('session', $session_id, $scheme, $pathname)
+RETURNING id;
+
+-- PREP: test_seed_channel
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
+VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
+
+-- PREP: test_seed_visibility
+INSERT INTO visibility (run_id, entry_id, channel, indexed)
+VALUES ($run_id, $entry_id, $channel, $indexed);
+
+-- PREP: test_seed_entry_tag
+INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
+
+-- PREP: test_get_packet
+SELECT packet FROM turns WHERE id = $id;
+
+-- PREP: test_get_turn_status
+SELECT status FROM turns WHERE id = $id;
+
+-- PREP: test_list_turns_in_loop
+SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
+
+-- PREP: test_log_entries_by_turn
+SELECT action_index, status_rx, target_pathname, target_scheme, target_fragment, op, origin, signal, status_rx
+FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index;
+
+-- PREP: test_log_entries_by_run
+SELECT id, op, target_pathname, target_scheme, action_index, turn_id, loop_id, status_rx
+FROM log_entries WHERE run_id = $run_id ORDER BY id;
+
+-- PREP: test_count_log_entries
+SELECT COUNT(*) AS n FROM log_entries;
+
+-- PREP: test_count_entries
+SELECT COUNT(*) AS n FROM entries;
+
+-- PREP: test_count_channels_for_entry
+SELECT COUNT(*) AS n FROM entry_channels WHERE entry_id = $entry_id;
+
+-- PREP: test_list_channels_for_entry
+SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
+
+-- PREP: test_list_visibility_for_run
+SELECT entry_id, channel, indexed FROM visibility WHERE run_id = $run_id ORDER BY entry_id, channel;
+
+-- PREP: test_count_log_entries_by_run
+SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id;
+
+-- PREP: test_get_entry_by_id
+SELECT pathname FROM entries WHERE id = $id;
+
+-- PREP: test_first_log_entry_for_turn
+SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index LIMIT 1;
+
+-- PREP: test_set_loop_status
+UPDATE loops SET status = $status WHERE id = $id;
+
+-- PREP: test_read_log_entries_for_turn_by_op
+SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
+
+-- PREP: test_delete_entry
+DELETE FROM entries WHERE id = $id;
+
+-- PREP: test_delete_run
+DELETE FROM runs WHERE id = $id;
+
+-- PREP: test_count_subscriptions_for_entry
+SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
+
+-- PREP: test_count_subscriptions_for_run
+SELECT COUNT(*) AS n FROM subscriptions WHERE run_id = $run_id;
+
+-- PREP: test_get_entry_id_by_pathname
+SELECT id FROM entries WHERE pathname = $pathname;
+
+-- PREP: test_count_entry_tags
+SELECT COUNT(*) AS n FROM entry_tags WHERE entry_id = $entry_id;
+
+-- PREP: test_count_visibility_for_entry
+SELECT COUNT(*) AS n FROM visibility WHERE entry_id = $entry_id;
+
+-- PREP: test_get_entry_by_pathname_scheme
+SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
+
+-- PREP: test_get_channel_by_pathname
+SELECT ec.content, ec.mimetype, ec.state
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.pathname = $pathname AND ec.name = $name
+LIMIT 1;
+
+-- PREP: test_get_channel_by_pathname_scheme
+SELECT ec.content, ec.mimetype, ec.state
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.pathname = $pathname AND e.scheme = $scheme AND ec.name = $name
+LIMIT 1;
+
+-- PREP: test_tags_by_pathname
+SELECT tag
+FROM entries e
+JOIN entry_tags t ON t.entry_id = e.id
+WHERE e.pathname = $pathname
+ORDER BY tag;
+
+-- PREP: test_set_visibility_indexed
+UPDATE visibility SET indexed = $indexed WHERE run_id = $run_id AND entry_id = $entry_id;
+
+-- PREP: test_list_entry_schemes
+SELECT scheme FROM entries ORDER BY scheme;
+
+-- PREP: test_get_visibility_no_channel
+SELECT indexed FROM visibility WHERE run_id = $run_id AND entry_id = $entry_id LIMIT 1;
+
+-- PREP: test_invalid_subscription_only_closed_at
+-- Used to verify the closed_at + close_status pairing CHECK constraint.
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, closed_at)
+VALUES ($run_id, $entry_id, 'sse', 'h', '2026-01-01T00:00:00Z');
+
+-- PREP: test_invalid_subscription_only_close_status
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, close_status)
+VALUES ($run_id, $entry_id, 'sse', 'h', 200);
+
+-- PREP: test_first_log_entry
+SELECT origin, op, status_rx FROM log_entries LIMIT 1;
+
+-- PREP: test_get_body_by_pathname
+SELECT ec.content
+FROM entry_channels ec
+JOIN entries e ON e.id = ec.entry_id
+WHERE e.pathname = $pathname AND ec.name = 'body';
+
+-- PREP: test_list_sessions
+SELECT name FROM sessions;
+
+-- PREP: test_get_run_by_session
+SELECT id FROM runs WHERE session_id = $session_id LIMIT 1;
+
+-- PREP: test_get_loop_by_run
+SELECT id FROM loops WHERE run_id = $run_id LIMIT 1;
+
+-- PREP: test_list_channel_names
+SELECT name FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
+
+-- PREP: test_get_entry_id_by_scheme_pathname
+SELECT id FROM entries WHERE scheme = $scheme AND pathname = $pathname;
+
+-- PREP: test_list_entries_by_session_session_pathname
+SELECT scheme, pathname FROM entries WHERE session_id = $session_id ORDER BY scheme, pathname;
+
+-- PREP: test_count_log_entries_run_origin
+SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id AND origin = $origin;
+
+-- PREP: test_visibility_for_entry_indexed
+SELECT indexed FROM visibility WHERE entry_id = $entry_id;

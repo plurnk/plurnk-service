@@ -1,13 +1,25 @@
-import type { DatabaseSync } from "node:sqlite";
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
+import type { PrepMethod } from "../core/Db.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 
-type ReadContext = { db: DatabaseSync; statement: ReadStatement; runId: number };
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)$/;
 
 export default class Log {
-    async read({ db, statement, runId }: ReadContext): Promise<ReadResult> {
+    static manifest: SchemeManifest = {
+        name: "log",
+        channels: {},  // logs render through read(), not channel storage
+        defaultChannel: "",
+        category: "logging",
+        scope: "session",
+        writableBy: ["system"],  // engine-only writes; model & client read
+        volatile: false,
+        modelVisible: true,
+    };
+
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+        const { db, runId } = ctx;
         if (statement.path === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };
@@ -20,20 +32,14 @@ export default class Log {
         const turnSeq = Number(match[2]);
         const actionIndex = Number(match[3]);
 
-        const row = db.prepare(`
-            SELECT le.op, le.target_scheme, le.target_pathname, le.status_rx, le.rx, le.mimetype_rx
-            FROM log_entries le
-            JOIN turns t ON t.id = le.turn_id
-            JOIN loops l ON l.id = t.loop_id
-            WHERE l.run_id = ? AND l.sequence = ? AND t.sequence = ? AND le.action_index = ?
-        `).get(runId, loopSeq, turnSeq, actionIndex) as {
+        const row = await (db.log_read_by_coordinate as PrepMethod).get<{
             op: string;
             target_scheme: string | null;
             target_pathname: string | null;
             status_rx: number;
             rx: string;
             mimetype_rx: string;
-        } | undefined;
+        }>({ run_id: runId, loop_seq: loopSeq, turn_seq: turnSeq, action_index: actionIndex });
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 

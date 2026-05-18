@@ -2,18 +2,11 @@
 // status codes per SPEC §3.5. v0 handles 410 (Gone, delete the resource)
 // and 499 (Client Closed Request, cancel active subscription).
 
-import type { DatabaseSync } from "node:sqlite";
 import type { SendStatement } from "@plurnk/plurnk-grammar";
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { deleteEntry } from "./_entry-crud.ts";
 import { findActiveSubscription } from "../core/ChannelWrite.ts";
-
-interface SendCtx {
-    db: DatabaseSync;
-    statement: SendStatement;
-    sessionId: number;
-    runId: number;
-    scheme: string;
-}
 
 export interface SendResult {
     status: number;
@@ -33,7 +26,7 @@ const fragmentOf = (statement: SendStatement): string | null => {
     return path.fragment;
 };
 
-export const sendToSessionEntry = async ({ db, statement, sessionId, runId, scheme }: SendCtx): Promise<SendResult> => {
+export const sendToSessionEntry = async (statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> => {
     if (statement.path === null) return { status: 400, error: "directed SEND requires a path" };
 
     const status = statement.signal;
@@ -41,13 +34,12 @@ export const sendToSessionEntry = async ({ db, statement, sessionId, runId, sche
 
     // SEND[410] Gone — delete the targeted resource (SPEC §3.5).
     if (status === 410) {
-        // Fragment-aware channel-level deletion is future work; reject for v0.
         if (fragmentOf(statement) !== null) {
             return { status: 400, error: "channel-level deletion (SEND[410] with #fragment) not yet supported" };
         }
         const pathname = pathnameOf(statement);
         if (pathname === null) return { status: 400 };
-        const result = deleteEntry({ db, sessionId, scheme, pathname });
+        const result = await deleteEntry(pathname, ctx, scheme);
         return { status: result.status };
     }
 
@@ -58,19 +50,13 @@ export const sendToSessionEntry = async ({ db, statement, sessionId, runId, sche
     if (status === 499) {
         const pathname = pathnameOf(statement);
         if (pathname === null) return { status: 400 };
-        const entry = db
-            .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-            .get(sessionId, scheme, pathname) as { id: number } | undefined;
+        const { db, sessionId, runId } = ctx;
+        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
         if (entry === undefined) return { status: 404, error: "no entry at path" };
-        const subscription = findActiveSubscription(db, { runId, entryId: entry.id });
+        const subscription = await findActiveSubscription(db, { runId, entryId: entry.id });
         if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
-        // Entry-bearing schemes shouldn't have subscriptions in v0; this is reached only
-        // if some other scheme opened a subscription against an entry-bearing path.
         return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
     }
 
-    // Other status codes — entry-bearing schemes don't interpret 200 / etc.
-    // Future: SEND[200] could be EDIT-via-SEND (the model says "set X to value Y" via SEND
-    // instead of EDIT). Deferred.
     return { status: 501, error: `entry scheme does not interpret SEND status ${status}` };
 };

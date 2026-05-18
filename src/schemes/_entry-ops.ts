@@ -1,23 +1,11 @@
-import type { DatabaseSync } from "node:sqlite";
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { PrepMethod } from "../core/Db.ts";
+import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
-// (Known, Unknown, Skill). Each scheme passes its `channels` manifest
-// and `defaultChannel` per SPEC §3.1. Channel routing follows §5.5:
-// path.fragment ?? scheme.defaultChannel.
-
-type ChannelManifest = Record<string, string>;
-
-type Common = {
-    db: DatabaseSync;
-    sessionId: number;
-    scheme: string;
-    channels: ChannelManifest;
-    defaultChannel: string;
-};
-type EditCtx = Common & { statement: EditStatement; runId: number };
-type ReadCtx = Common & { statement: ReadStatement };
-type ShowHideCtx = Common & { statement: ShowStatement | HideStatement; runId: number };
+// (Known, Unknown, Skill). Each scheme passes its manifest; helpers
+// extract scheme name + channels + defaultChannel. Channel routing
+// follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
 export type EditResult = { status: number; entryId: number | null; channel: string | null };
 export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null };
@@ -36,26 +24,25 @@ const fragmentOf = (statement: { path: EditStatement["path"] }): string | null =
     return path.fragment;
 };
 
-// Resolve target channel from fragment, validate against manifest.
-// Returns null if validation fails (caller should return 400).
-const resolveChannel = (fragment: string | null, channels: ChannelManifest, defaultChannel: string): string | null => {
+const resolveChannel = (fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null => {
     const target = fragment ?? defaultChannel;
     if (!(target in channels)) return null;
     return target;
 };
 
-export const editSessionEntry = async ({ db, statement, sessionId, runId, scheme, channels, defaultChannel }: EditCtx): Promise<EditResult> => {
+export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> => {
     if (statement.path === null) return { status: 400, entryId: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, entryId: null, channel: null };
+
+    const { db, sessionId, runId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
     const targetChannel = resolveChannel(fragment, channels, defaultChannel);
     if (targetChannel === null) return { status: 400, entryId: null, channel: null };
 
     const pathname = pathnameOf(statement);
-    const existing = db
-        .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number } | undefined;
+    const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
     // Non-default channel write requires entry to exist.
     if (existing === undefined && fragment !== null) {
@@ -65,9 +52,8 @@ export const editSessionEntry = async ({ db, statement, sessionId, runId, scheme
     let entryId: number;
     let createdNow: boolean;
     if (existing === undefined) {
-        const row = db
-            .prepare("INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', ?, ?, ?) RETURNING id")
-            .get(sessionId, scheme, pathname) as { id: number };
+        const row = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        if (row === undefined) throw new Error("editSessionEntry: insert returned no row");
         entryId = row.id;
         createdNow = true;
     } else {
@@ -76,60 +62,60 @@ export const editSessionEntry = async ({ db, statement, sessionId, runId, scheme
     }
 
     const body = statement.body ?? "";
-    const writeChannel = db.prepare(
-        "INSERT OR REPLACE INTO entry_channels (entry_id, name, content, mimetype, tokens, state) VALUES (?, ?, ?, ?, 0, 'static')",
-    );
-    const writeVisibility = db.prepare(
-        "INSERT OR IGNORE INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, ?, 1)",
-    );
+    const upsertChannel = db.ops_upsert_channel as PrepMethod;
+    const writeVisibility = db.crud_write_visibility as PrepMethod;
 
     if (fragment === null) {
         // Default-channel EDIT — write target channel + preview companion.
-        writeChannel.run(entryId, targetChannel, body, channels[targetChannel]);
-        writeVisibility.run(runId, entryId, targetChannel);
+        await upsertChannel.run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
+        await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: targetChannel });
         if ("preview" in channels && targetChannel !== "preview") {
             // v0: preview is a verbatim copy of body. MimetypeHandler.preview()
             // will refine this in a later PR (per SPEC §5.1).
-            writeChannel.run(entryId, "preview", body, channels.preview);
-            writeVisibility.run(runId, entryId, "preview");
+            await upsertChannel.run({ entry_id: entryId, name: "preview", content: body, mimetype: channels.preview });
+            await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: "preview" });
         }
     } else {
         // Fragment-targeted EDIT — write only that channel.
-        writeChannel.run(entryId, targetChannel, body, channels[targetChannel]);
-        writeVisibility.run(runId, entryId, targetChannel);
+        await upsertChannel.run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
+        await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: targetChannel });
     }
 
     if (Array.isArray(statement.signal)) {
-        const insertTag = db.prepare("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, ?)");
-        for (const tag of statement.signal) insertTag.run(entryId, tag);
+        for (const tag of statement.signal) {
+            await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
+        }
     }
 
     return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
 };
 
-export const readSessionEntry = async ({ db, statement, sessionId, scheme, channels, defaultChannel }: ReadCtx): Promise<ReadResult> => {
+export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
     if (statement.path === null) return { status: 400, content: null, mimetype: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (statement.body !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null, channel: null };
+
+    const { db, sessionId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
     const targetChannel = resolveChannel(fragment, channels, defaultChannel);
     if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null };
 
     const pathname = pathnameOf(statement);
-    const row = db
-        .prepare(
-            "SELECT ec.content, ec.mimetype FROM entries e JOIN entry_channels ec ON ec.entry_id = e.id WHERE e.scope = 'session' AND e.session_id = ? AND e.scheme = ? AND e.pathname = ? AND ec.name = ?",
-        )
-        .get(sessionId, scheme, pathname, targetChannel) as { content: string; mimetype: string } | undefined;
+    const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+        session_id: sessionId, scheme, pathname, channel: targetChannel,
+    });
 
     if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
     return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel };
 };
 
 const setSessionEntryVisibility = async (
-    { db, statement, sessionId, runId, scheme, channels, defaultChannel }: ShowHideCtx,
+    statement: ShowStatement | HideStatement,
+    ctx: PlurnkSchemeContext,
+    manifest: SchemeManifest,
     target: 0 | 1,
 ): Promise<ShowHideResult> => {
     if (statement.path === null) return { status: 400 };
@@ -137,26 +123,27 @@ const setSessionEntryVisibility = async (
     if (statement.body !== null) return { status: 501 };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501 };
 
+    const { db, sessionId, runId } = ctx;
+    const { name: scheme, channels, defaultChannel } = manifest;
+
     const fragment = fragmentOf(statement);
     const pathname = pathnameOf(statement);
-    const entry = db
-        .prepare("SELECT id FROM entries WHERE scope = 'session' AND session_id = ? AND scheme = ? AND pathname = ?")
-        .get(sessionId, scheme, pathname) as { id: number } | undefined;
+    const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (entry === undefined) return { status: 404 };
+
+    const upsertVis = db.ops_upsert_visibility as PrepMethod;
 
     if (fragment === null) {
         // Fragment-less SHOW/HIDE — flip every channel of the entry.
-        const existing = db
-            .prepare("SELECT channel, indexed FROM visibility WHERE run_id = ? AND entry_id = ?")
-            .all(runId, entry.id) as Array<{ channel: string; indexed: number }>;
+        const existing = await (db.ops_list_visibility_for_entry as PrepMethod).all<{ channel: string; indexed: number }>({
+            run_id: runId, entry_id: entry.id,
+        });
         const existingByName = new Map(existing.map((r) => [r.channel, r.indexed]));
 
         let changed = 0;
         for (const channelName of Object.keys(channels)) {
             if (existingByName.get(channelName) === target) continue;
-            db.prepare(
-                "INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, ?, ?) ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET indexed = excluded.indexed",
-            ).run(runId, entry.id, channelName, target);
+            await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: channelName, indexed: target });
             changed += 1;
         }
         return { status: changed === 0 ? 304 : 200 };
@@ -166,17 +153,17 @@ const setSessionEntryVisibility = async (
     const targetChannel = resolveChannel(fragment, channels, defaultChannel);
     if (targetChannel === null) return { status: 400 };
 
-    const current = db
-        .prepare("SELECT indexed FROM visibility WHERE run_id = ? AND entry_id = ? AND channel = ?")
-        .get(runId, entry.id, targetChannel) as { indexed: number } | undefined;
+    const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
+        run_id: runId, entry_id: entry.id, channel: targetChannel,
+    });
     if (current?.indexed === target) return { status: 304 };
 
-    db.prepare(
-        "INSERT INTO visibility (run_id, entry_id, channel, indexed) VALUES (?, ?, ?, ?) ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET indexed = excluded.indexed",
-    ).run(runId, entry.id, targetChannel, target);
+    await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: targetChannel, indexed: target });
     return { status: 200 };
 };
 
-export const showSessionEntry = async (ctx: ShowHideCtx): Promise<ShowHideResult> => setSessionEntryVisibility(ctx, 1);
+export const showSessionEntry = async (statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> =>
+    setSessionEntryVisibility(statement, ctx, manifest, 1);
 
-export const hideSessionEntry = async (ctx: ShowHideCtx): Promise<ShowHideResult> => setSessionEntryVisibility(ctx, 0);
+export const hideSessionEntry = async (statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> =>
+    setSessionEntryVisibility(statement, ctx, manifest, 0);

@@ -1,4 +1,5 @@
-CREATE TABLE turns (
+-- INIT: turns
+CREATE TABLE IF NOT EXISTS turns (
     id               INTEGER NOT NULL PRIMARY KEY,
     version          INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     loop_id          INTEGER NOT NULL,
@@ -13,5 +14,5 @@ CREATE TABLE turns (
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX turns_loop_id_sequence ON turns (loop_id, sequence);
-CREATE INDEX        turns_timestamp        ON turns (timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
+CREATE INDEX        IF NOT EXISTS turns_timestamp        ON turns (timestamp);

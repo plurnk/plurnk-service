@@ -117,22 +117,20 @@ PLURNK_DEBUG=0`;
     assert.equal(byEnv.PLURNK_DEBUG.flagName, "--debug");
 });
 
-test("formatFlagsHelp: hidden (no description) flags are omitted from help", () => {
+test("formatFlagsHelp: undescribed flags still appear (terse fallback to env=default)", () => {
     const flags = [
         { flagName: "--db-path", envName: "PLURNK_DB_PATH", defaultValue: "./db", description: "SQLite path" },
         { flagName: "--magic", envName: "PLURNK_MAGIC", defaultValue: "42", description: null },
     ];
     const help = formatFlagsHelp(flags);
-    assert.match(help, /--db-path/);
-    assert.match(help, /SQLite path/);
-    assert.doesNotMatch(help, /--magic/);
+    assert.match(help, /--db-path.*SQLite path/);
+    assert.match(help, /--magic.*PLURNK_MAGIC=42/);
 });
 
-test("formatFlagsHelp: includes default value and env var name", () => {
+test("formatFlagsHelp: described flag shows description + env=default on one line", () => {
     const flags = [
         { flagName: "--db-path", envName: "PLURNK_DB_PATH", defaultValue: "./db", description: "SQLite path" },
     ];
     const help = formatFlagsHelp(flags);
-    assert.match(help, /default: "\.\/db"/);
-    assert.match(help, /env: PLURNK_DB_PATH/);
+    assert.match(help, /SQLite path\s+\(PLURNK_DB_PATH=\.\/db\)/);
 });

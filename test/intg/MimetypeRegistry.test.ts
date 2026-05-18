@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import MimetypeRegistry from "../../src/core/MimetypeRegistry.ts";
 import TextPlain from "../../src/mimetypes/TextPlain.ts";
-import TextMarkdown from "../../src/mimetypes/TextMarkdown.ts";
+import TextMarkdown from "@plurnk/plurnk-mimetypes-text-markdown";
 import type { MimetypeHandler } from "../../src/mimetypes/_types.ts";
 
 class FakeXml implements MimetypeHandler {
@@ -13,13 +13,22 @@ class FakeXml implements MimetypeHandler {
     preview(content: string, budget: number): string { return content.slice(0, budget); }
 }
 
-test("MimetypeRegistry: constructor registers bundled handlers", () => {
+// Builds a registry pre-populated with the standard bundled+discovered set
+// used by most tests: text/plain (bundled) + text/markdown (via the npm
+// package, which the daemon's plugin scan registers in production).
+const standardRegistry = (): MimetypeRegistry => {
     const r = new MimetypeRegistry();
-    assert.deepEqual(r.list(), ["text/markdown", "text/plain"]);
+    r.register(new TextMarkdown());
+    return r;
+};
+
+test("MimetypeRegistry: constructor registers ONLY text/plain (universal fallback)", () => {
+    const r = new MimetypeRegistry();
+    assert.deepEqual(r.list(), ["text/plain"]);
 });
 
 test("MimetypeRegistry: get returns the registered handler instance", () => {
-    const r = new MimetypeRegistry();
+    const r = standardRegistry();
     assert.ok(r.get("text/plain") instanceof TextPlain);
     assert.ok(r.get("text/markdown") instanceof TextMarkdown);
 });
@@ -33,7 +42,7 @@ test("MimetypeRegistry: get throws on unregistered mimetype (no defaults)", () =
 });
 
 test("MimetypeRegistry: has reflects registration state without throwing", () => {
-    const r = new MimetypeRegistry();
+    const r = standardRegistry();
     assert.equal(r.has("text/plain"), true);
     assert.equal(r.has("text/markdown"), true);
     assert.equal(r.has("application/xml"), false);
@@ -55,13 +64,13 @@ test("MimetypeRegistry: register accepts new handlers", () => {
 });
 
 test("MimetypeRegistry: list is sorted lexicographically", () => {
-    const r = new MimetypeRegistry();
+    const r = standardRegistry();
     r.register(new FakeXml());
     assert.deepEqual(r.list(), ["application/xml", "text/markdown", "text/plain"]);
 });
 
-test("MimetypeRegistry: bundled handlers expose required glyphs", () => {
-    const r = new MimetypeRegistry();
+test("MimetypeRegistry: bundled+discovered handlers expose required glyphs", () => {
+    const r = standardRegistry();
     assert.equal(r.get("text/plain").glyph, "📄");
     assert.equal(r.get("text/markdown").glyph, "📝");
 });

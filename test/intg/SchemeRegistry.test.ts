@@ -60,3 +60,74 @@ test("SchemeRegistry: two independent registries don't share state", () => {
     assert.equal(r1.has("local"), true);
     assert.equal(r2.has("local"), false);
 });
+
+import { DEFAULT_LOOP_FLAGS } from "../../src/core/scheme-types.ts";
+import type { SchemeManifest } from "../../src/core/scheme-types.ts";
+
+test("SchemeRegistry.resolveForLoop: default flags include all bundled schemes", () => {
+    const r = new SchemeRegistry();
+    const active = r.resolveForLoop(DEFAULT_LOOP_FLAGS);
+    assert.deepEqual([...active].toSorted(), ["exec", "file", "known", "log", "plurnk", "skill", "unknown"]);
+});
+
+test("SchemeRegistry.resolveForLoop: mode=ask excludes exec (excludedInAsk)", () => {
+    const r = new SchemeRegistry();
+    const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, mode: "ask" });
+    assert.equal(active.has("exec"), false);
+    assert.equal(active.has("known"), true);
+});
+
+test("SchemeRegistry.resolveForLoop: noProposals excludes exec (proposes)", () => {
+    const r = new SchemeRegistry();
+    const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noProposals: true });
+    assert.equal(active.has("exec"), false);
+    assert.equal(active.has("known"), true);
+});
+
+test("SchemeRegistry.resolveForLoop: handler without manifest is always active", () => {
+    const r = new SchemeRegistry();
+    class Bare {}
+    r.register("bare", new Bare());
+    const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, mode: "ask", noWeb: true, noInteraction: true, noProposals: true });
+    assert.equal(active.has("bare"), true);
+});
+
+test("SchemeRegistry.resolveForLoop: noWeb gates requiresWeb affinity", () => {
+    const r = new SchemeRegistry();
+    class Http {
+        static manifest: SchemeManifest = {
+            name: "http",
+            channels: {},
+            defaultChannel: "body",
+            category: "data",
+            scope: "session",
+            writableBy: ["model"],
+            volatile: true,
+            modelVisible: true,
+            flags: { requiresWeb: true },
+        };
+    }
+    r.register("http", new Http());
+    assert.equal(r.resolveForLoop(DEFAULT_LOOP_FLAGS).has("http"), true);
+    assert.equal(r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noWeb: true }).has("http"), false);
+});
+
+test("SchemeRegistry.resolveForLoop: noInteraction gates requiresInteraction affinity", () => {
+    const r = new SchemeRegistry();
+    class Ask {
+        static manifest: SchemeManifest = {
+            name: "ask",
+            channels: {},
+            defaultChannel: "body",
+            category: "data",
+            scope: "session",
+            writableBy: ["model"],
+            volatile: true,
+            modelVisible: true,
+            flags: { requiresInteraction: true },
+        };
+    }
+    r.register("ask", new Ask());
+    assert.equal(r.resolveForLoop(DEFAULT_LOOP_FLAGS).has("ask"), true);
+    assert.equal(r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noInteraction: true }).has("ask"), false);
+});
