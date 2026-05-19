@@ -4,7 +4,7 @@ Single source of truth for what plurnk-service IS — the contracts it exposes, 
 
 Section numbers are stable. Future anchor-to-test wiring binds individual promises here to integration / live / demo tests, giving semi-deterministic specification-testing alignment.
 
-Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-end). This document evolves with each phase; the upcoming mimetype / channel-state / transaction-lifecycle work will surface refinements to §4 / §5 / §7.
+Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-end). Post-floor work landed in #123: PlurnkSchemeContext (#33), the engine rails (#38–#41), packet shape (§15), single-cap constraint (§7.8), ProviderRegistry (#58), and first sibling-package extraction (#47). This document evolves with each phase; the next refinements will come from Phase C (mimetype integration story) and Phase F (exec + streams).
 
 **Promise anchors.** Individual contract assertions in this document carry a trailing `{§<id>}` marker. Tests reference these anchors in their names (`test("[§<id>] description", ...)`). An alignment test (`test/intg/spec-anchors.test.ts`) fails if a test cites a nonexistent anchor (orphan — typo or stale reference) and surfaces gaps (anchored promises with no test) informationally. The anchors are **grounding against drift**, not a forcing function on development — write the spec, write the test, jot the link, move on. Coverage grows organically.
 
@@ -187,59 +187,67 @@ Each scheme package declares itself in its `package.json`:
 }
 ```
 
-The class additionally declares its channel topology statically:
+The class declares its full manifest as a static field (per `SchemeManifest` in `src/core/scheme-types.ts`):
 
 ```ts
 class Known {
-    static channels: Record<string, string> = {
-        body: "text/markdown",
-        preview: "text/markdown",
+    static manifest: SchemeManifest = {
+        name: "known",
+        channels: { body: "text/markdown", preview: "text/markdown" },
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client"],
+        volatile: false,
+        modelVisible: true,
+        flags: { /* optional flag affinity per LoopFlags */ },
     };
-    static defaultChannel = "body";
     // ...
 }
 ```
 
-Each entry in `channels` names a channel and pins its mimetype. The engine consults this manifest before writing channels. Schemes whose mimetypes are content-dynamic (file, eventually exec) supply mimetype per-call instead; the engine accepts either path but never accepts an unset mimetype (see §5).
+Each entry in `manifest.channels` names a channel and pins its mimetype. The engine consults this manifest before writing channels. Schemes whose mimetypes are content-dynamic (file, eventually exec) declare an empty `channels: {}` and supply mimetype per-call instead; the engine accepts either path but never accepts an unset mimetype (see §5).
 
-`defaultChannel` is REQUIRED for any scheme that accepts EDIT or READ on fragment-less paths. It names which channel of the entry is targeted when the path has no `#fragment`. See §5.5 for the channel-selection semantic.
+`manifest.defaultChannel` is REQUIRED for any scheme that accepts EDIT or READ on fragment-less paths. It names which channel of the entry is targeted when the path has no `#fragment`. See §5.5 for the channel-selection semantic.
+
+Identity-match is enforced at plugin load: `manifest.name` must equal the `plurnk.name` in `package.json` (PluginLoader.assertIdentityMatch).
 
 ### §3.2 CRUD Primitives (uniform across schemes)
 
 The canonical surface a scheme exposes for engine orchestration. Every entry-bearing scheme MUST implement these three methods. The engine uses them to drive cross-scheme operations (§6.4 COPY, §6.5 MOVE) and the SEND[410] delete pattern (§6.8).
 
 ```ts
-type EntryShape = {
+type EntryData = {
     channels: Record<string, { content: string; mimetype: string }>;
     tags: string[];
 };
 
-read({ db, path, ctx }): Promise<{ status: number; entry: EntryShape | null }>;
-write({ db, path, entry, ctx }): Promise<{ status: number; created: boolean }>;
-delete({ db, path, ctx }): Promise<{ status: number }>;
+readEntry(pathname: string, ctx: PlurnkSchemeContext):  Promise<ReadEntryResult>;
+writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext):  Promise<WriteEntryResult>;
+deleteEntry(pathname: string, ctx: PlurnkSchemeContext):  Promise<DeleteEntryResult>;
 ```
 
+Where `PlurnkSchemeContext` is the per-call helper bundling `{ db, sessionId, runId, loopId, turnId, writer, signal }` (per `scheme-types.ts`). v0 ctx exposes `db` directly; the namespaced surface described in SCHEMES.md §4 (entries / channels / visibility / tags / subscriptions / proposals / crossScheme / notify) lands in v1 when third-party plugin schemes are an actual concern.
+
 Promises:
-- `read` returns the full entry shape at `path` or `{ status: 404, entry: null }`.
-- `write` accepts a full entry shape and persists it under `path`. Returns `{ status: 201, created: true }` for new entries; `{ status: 200, created: false }` for replaces — UNLESS the scheme's policy forbids overwrites, in which case it returns `{ status: 409, created: false }`. See §6.4 for the COPY/MOVE conflict policy.
-- `delete` removes the entry at `path`. Returns 200 on success, 404 if absent.
-- Validation: `write` MUST verify channel mimetypes against the scheme's manifest (§3.1) and crash on mismatch. No defaults, no coercion (see §5 Channel Topology).
+- `readEntry` returns the full entry shape at `pathname` or `{ status: 404, entry: null }`.
+- `writeEntry` accepts a full entry shape and persists it. Returns `{ status: 201, created: true }` for new entries; `{ status: 200, created: false }` for replaces — UNLESS the scheme's policy forbids overwrites, in which case it returns `{ status: 409, created: false }`. See §6.4 for the COPY/MOVE conflict policy.
+- `deleteEntry` removes the entry. Returns 200 on success, 404 if absent.
+- Validation: `writeEntry` MUST verify channel mimetypes against the scheme's manifest (§3.1) and crash on mismatch. No defaults, no coercion (see §5 Channel Topology).
 - Atomicity: each method is a single SQL transaction. Engine orchestration (COPY = read + write) is responsible for its own outer transaction.
 
 ### §3.3 Op Methods (layered over CRUD)
 
-The DSL-facing methods the engine dispatches based on parsed `PlurnkStatement.op`. Each method receives a context object including the parsed statement, the DB handle, and run/session IDs.
+The DSL-facing methods the engine dispatches based on parsed `PlurnkStatement.op`. Signature: `op(statement, ctx)` where `statement` is the parsed AST node and `ctx` is the per-call `PlurnkSchemeContext`.
 
 ```ts
-edit(ctx):   Promise<{ status: number; entryId: number | null }>;
-read_op(ctx): Promise<{ status: number; channels: ...; mimetype: string | null }>;
-show(ctx):   Promise<{ status: number }>;
-hide(ctx):   Promise<{ status: number }>;
-find(ctx):   Promise<{ status: number; results: string }>;
-send(ctx):   Promise<{ status: number }>;
+edit(statement: EditStatement, ctx: PlurnkSchemeContext):   Promise<EditResult>;
+read(statement: ReadStatement, ctx: PlurnkSchemeContext):   Promise<ReadResult>;
+show(statement: ShowStatement | HideStatement, ctx): Promise<ShowHideResult>;
+hide(statement: ShowStatement | HideStatement, ctx): Promise<ShowHideResult>;
+find(statement: FindStatement, ctx: PlurnkSchemeContext):   Promise<FindResult>;
+send(statement: SendStatement, ctx: PlurnkSchemeContext):   Promise<SendResult>;
 ```
-
-Note: `read_op` is the op-level method; the CRUD primitive is also named `read`. In practice the engine routes `op === "READ"` to the op method; cross-scheme orchestration uses the CRUD primitive. Implementations MAY share code between them.
 
 COPY and MOVE are NOT scheme methods. They are engine orchestrations over CRUD primitives (§6.4, §6.5).
 
@@ -248,19 +256,19 @@ COPY and MOVE are NOT scheme methods. They are engine orchestrations over CRUD p
 The engine — not any individual scheme — handles cross-scheme COPY and MOVE:
 
 ```
-copy(source_path, dest_path, signal_tags):
+copy(source_path, dest_path, signal_tags, ctx):
     src_scheme = scheme_for(source_path)
     dst_scheme = scheme_for(dest_path)
-    entry = src_scheme.read({ path: source_path })
+    entry = src_scheme.readEntry(source_pathname, ctx)
     if entry == null: return 404
-    if dst_scheme already has dest_path: return 409
+    if dst_scheme.readEntry(dest_pathname, ctx) succeeds: return 409
     if not mimetype_compatible(entry, dst_scheme): return 415
-    new_entry = { ...entry, tags: signal_tags ?? entry.tags }
-    dst_scheme.write({ path: dest_path, entry: new_entry })
+    tags = signal_tags ?? entry.tags
+    dst_scheme.writeEntry(dest_pathname, { channels: entry.channels, tags }, ctx)
 
-move(source_path, dest_path, signal_tags):
-    copy(source_path, dest_path, signal_tags)
-    src_scheme.delete({ path: source_path })
+move(source_path, dest_path, signal_tags, ctx):
+    copy(source_path, dest_path, signal_tags, ctx)
+    src_scheme.deleteEntry(source_pathname, ctx)
 ```
 
 Same- and cross-scheme operations follow the identical orchestration. Same-scheme COPY (e.g., `known://a` → `known://b`) is NOT a special case — it is COPY where src_scheme and dst_scheme happen to be the same handler. The engine does not optimize this case; uniformity beats local efficiency at this layer.
@@ -332,18 +340,20 @@ Promises:
 - **Storage.** Mimetype handlers are pure functions over content strings. They neither read nor write the DB.
 - **Streaming.** Mimetype handlers operate on whatever content is current when invoked. The streaming relationship (§7) is between schemes and the subscription registry; mimetype handlers don't see it.
 
-### §4.4 Bundled handlers
+### §4.4 Bundled vs sibling handlers
 
-`text/plain` and `text/markdown` ship in `plurnk-service`'s `src/mimetypes/`. `application/json` and the DSL mimetype (`text/vnd.plurnk` pending grammar issue #6; currently `text/x-plurnk`) land when they have consumers — not before. See §10.
+Only `text/plain` ships in `plurnk-service`'s `src/mimetypes/` — the universal fallback that every deployment needs and that has no external dependency. Every other mimetype handler ships as a sibling `@plurnk/plurnk-mimetypes-*` package and registers via Daemon's plugin discovery scan (§9).
 
-Locked glyph assignments for the bundled set:
+The first such extraction is `@plurnk/plurnk-mimetypes-text-markdown`, separate repo since #47. Validates the "bundle minimally" pattern. `application/json` and the DSL mimetype (`text/vnd.plurnk` — grammar #6 closed in favor of this id) follow the same pattern when they have consumers.
 
-| Mimetype                          | Glyph | Rationale                                                       |
-|-----------------------------------|-------|-----------------------------------------------------------------|
-| `text/plain`                      | 📄    | Page-facing-up — generic content, no structure                  |
-| `text/markdown`                   | 📝    | Memo with pencil — narrative writing                            |
-| `application/json` *(deferred)*   | 🗂    | Card index dividers — structured data                           |
-| `text/vnd.plurnk` *(deferred)*    | 📜    | Scroll — a scripted instruction set, HEREDOC-shaped             |
+Locked glyph assignments for the standard set:
+
+| Mimetype                          | Glyph | Where                              |
+|-----------------------------------|-------|------------------------------------|
+| `text/plain`                      | 📄    | bundled (`src/mimetypes/`)         |
+| `text/markdown`                   | 📝    | sibling (`@plurnk/plurnk-mimetypes-text-markdown`) |
+| `application/json` *(deferred)*   | 🗂    | future sibling                     |
+| `text/vnd.plurnk` *(deferred)*    | 📜    | future sibling                     |
 
 Deferred handlers reserve their glyphs now so external packages don't collide.
 
@@ -379,7 +389,7 @@ Implications:
 
 ### §5.4 Orientation hint
 
-The grammar's `SchemeRegistration.channel_orientations` declares each scheme's channels as `head` or `tail` — "which end of the content matters for preview." Mimetype handlers consult this hint when truncating. Channels not listed default to `head`. Per grammar 0.3.0.
+The grammar's `SchemeRegistration.channel_orientations` declares each scheme's channels as `head` or `tail` — "which end of the content matters for preview." Mimetype handlers consult this hint when truncating. Channels not listed default to `head`.
 
 ### §5.5 Channel selection in the DSL
 
@@ -437,10 +447,10 @@ Per-op semantics for `FIND | READ | EDIT | COPY | MOVE | SHOW | HIDE | SEND | EX
 
 AST: `{ op: "EDIT", path: ParsedPath, body: string | null, signal: tags | null, lineMarker?: LineMarker }`.
 
-Engine dispatches to `scheme.edit(ctx)`. Scheme:
-- Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
+Engine dispatches to `scheme.edit(statement, ctx)`. Scheme:
+- Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `manifest.defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
 - Writes the body to the resolved channel.
-- For entry-bearing schemes (known/unknown/skill), also writes the `preview` channel in the same transaction when writing `body` (engine-managed companion; v0 is `preview = body` verbatim per §5.1).
+- For entry-bearing schemes (known/unknown/skill), also writes the `preview` channel in the same transaction when writing `body`. Storage is verbatim body at write time; structural rendering happens at packet build time via `mimetype.preview(content, budget)` (§5.1).
 - Indexes the written channels in the current run (visibility = 1).
 - Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates.
 - `body: null` clears the content (writes empty string).
@@ -450,7 +460,7 @@ Engine dispatches to `scheme.edit(ctx)`. Scheme:
 
 AST: `{ op: "READ", path: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
 
-Engine dispatches to `scheme.read_op(ctx)`. Scheme:
+Engine dispatches to `scheme.read(statement, ctx)`. Scheme:
 - Returns the body channel content + mimetype for `path`, or `{ status: 404 }`.
 - `lineMarker` selects a line range (e.g., `<10-20>` for lines 10-20).
 - `body` (matcher) is for streaming-scheme deep reads (§7) — not v0 surface for entry schemes.
@@ -459,7 +469,7 @@ Engine dispatches to `scheme.read_op(ctx)`. Scheme:
 
 AST: `{ op: "SHOW"|"HIDE", path: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
 
-Engine dispatches to `scheme.show(ctx)` / `scheme.hide(ctx)`. Scheme:
+Engine dispatches to `scheme.show(statement, ctx)` / `scheme.hide(statement, ctx)`. Scheme:
 - Flips `visibility.indexed` for every channel of the targeted entry to 1 (SHOW) or 0 (HIDE).
 - Returns 200 on transition, 304 on no-op, 404 if entry not found.
 - No channel-specific selectors in v0; SHOW/HIDE always affects all channels of the entry.
@@ -470,11 +480,11 @@ AST: `{ op: "COPY", path: ParsedPath (source), body: ParsedPath (destination), s
 
 Engine orchestrates over CRUD primitives (§3.2, §3.4):
 
-1. `src_scheme.read({ path: source })` → entry or 404. Missing source returns 404. {§6.4-missing-source-404}
-2. `dst_scheme.read({ path: dest })` to check conflict — if exists, return **409 Conflict** (no overwrite). Per fail-hard discipline. {§6.4-conflict-409}
-3. Mimetype compatibility check — channels of `entry` MUST have mimetypes accepted by `dst_scheme`'s manifest. Mismatch returns **415 Unsupported Media Type**.
+1. `src_scheme.readEntry(source_pathname, ctx)` → entry or 404. Missing source returns 404. {§6.4-missing-source-404}
+2. `dst_scheme.readEntry(dest_pathname, ctx)` to check conflict — if exists, return **409 Conflict** (no overwrite). Per fail-hard discipline. {§6.4-conflict-409}
+3. Mimetype compatibility check — channels of `entry` MUST have mimetypes accepted by `dst_scheme`'s `manifest.channels`. Mismatch returns **415 Unsupported Media Type**.
 4. Tag resolution: if `signal` is non-null, dest tags = signal_tags (REPLACE). {§6.4-signal-replaces-source-tags} If signal is null/empty, dest tags = source tags (CARRY). {§6.4-no-signal-carries-source-tags}
-5. `dst_scheme.write({ path: dest, entry: { ...entry, tags } })`.
+5. `dst_scheme.writeEntry(dest_pathname, { channels: entry.channels, tags }, ctx)`.
 6. Dest visibility indexed=1 in current run (parity with EDIT-creating-new).
 
 Returns `{ status: 201 }` on success.
@@ -487,9 +497,9 @@ AST: `{ op: "MOVE", path: ParsedPath (source), body: ParsedPath | null (destinat
 
 Two modes:
 
-**Relocation** (`body` non-null): engine runs §6.4 COPY then `src_scheme.delete({ path: source })`. One transaction. Returns 201 on success. Source is removed. {§6.5-relocation-deletes-source} Cross-scheme relocation works the same as same-scheme. {§6.5-cross-scheme-move}
+**Relocation** (`body` non-null): engine runs §6.4 COPY then `src_scheme.deleteEntry(source_pathname, ctx)`. One transaction. Returns 201 on success. Source is removed. {§6.5-relocation-deletes-source} Cross-scheme relocation works the same as same-scheme. {§6.5-cross-scheme-move}
 
-**Deletion** (`body` is null): engine runs `src_scheme.delete({ path: source })` directly. The null-body MOVE expresses "relocate to nowhere" = delete. {§6.5-null-body-deletes} Returns 200 on success, 404 if source absent. {§6.5-missing-source-404}
+**Deletion** (`body` is null): engine runs `src_scheme.deleteEntry(source_pathname, ctx)` directly. The null-body MOVE expresses "relocate to nowhere" = delete. {§6.5-null-body-deletes} Returns 200 on success, 404 if source absent. {§6.5-missing-source-404}
 
 Log history is preserved through MOVE because `log_entries.target_*` columns store the path tuple as text, not FK to `entries.id`.
 
@@ -497,7 +507,7 @@ Log history is preserved through MOVE because `log_entries.target_*` columns sto
 
 AST: `{ op: "FIND", path: ParsedPath (scope), body: MatcherBody | null (predicate), signal: tags | null (tag filter), lineMarker?: LineMarker }`.
 
-Engine dispatches to `scheme.find(ctx)`. Scheme:
+Engine dispatches to `scheme.find(statement, ctx)`. Scheme:
 - Filters entries within the path's scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
 - Applies `body` matcher if present. v0 supports `glob` dialect over pathname. {§6.6-glob-filter-on-pathname} Other dialects (regex over content, xpath, jsonpath) return **501 Not Implemented** until the relevant infrastructure exists. {§6.6-non-glob-dialects-501}
 - Applies `signal` as a tag filter: only entries with ALL listed tags pass. {§6.6-tag-filter-and-semantics}
@@ -512,7 +522,7 @@ Two modes:
 
 **Broadcast** (`path` is null): terminal status (200/499) updates `loop.status` and ends the loop. Other status codes return `{ status }` without state change. The model's universal "talk to the orchestrator" surface.
 
-**Directed** (`path` is non-null): engine dispatches `scheme.send(ctx)`. Scheme interprets `signal` as an intent per §3.5:
+**Directed** (`path` is non-null): engine dispatches `scheme.send(statement, ctx)`. Scheme interprets `signal` as an intent per §3.5:
 - 200 → write `body` into the resource (stream-write, exec stdin, etc.)
 - 410 → delete the resource at `path` (scheme calls its own `delete` primitive)
 - 499 → cancel active subscription (§7)
@@ -643,30 +653,34 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 - `mock` — fake provider used exclusively in `intg` for deterministic engine tests. Also serves as a minimal worked example for authors of external `@plurnk/plurnk-providers-*` packages.
 
 **Mimetypes** (in `src/mimetypes/`):
-- `text/plain` — landed (#80). Identity validate; head-truncated preview.
-- `text/markdown` — landed (#80). Identity validate; heading-outline `symbols()` extractor; preview falls back to heading outline or head-truncated content.
-- `application/json` — deferred; lands when first consumer arrives.
-- DSL mimetype (`text/vnd.plurnk` pending grammar #6; currently `text/x-plurnk`) — deferred; lands when log-rendering structural summaries become necessary.
+- `text/plain` — universal fallback. Identity validate; head-truncated preview. Stays bundled because every deployment needs it and it has no external dependency.
 
 **Schemes** (in `src/schemes/`):
-- `plurnk` — meta-scheme for scheme registration ops.
+- `plurnk` — meta-scheme for scheme registration ops (manifest only; ops not implemented yet).
 - `log` — coordinate-addressed run/turn/action log reads.
 - `known` — primary narrative entries.
 - `unknown` — decomposition / open questions.
 - `skill` — sibling of known/unknown; semantics provisional.
-- `exec` — deferred; subprocess invocation.
-- `file` — currently in-tree but flagged for extraction to `@plurnk/plurnk-schemes-file`; rebuild deferred until floor scope is green.
+- `exec` — manifest only; subprocess invocation deferred to Phase F.
+- `file` — currently in-tree but flagged for extraction to `@plurnk/plurnk-schemes-file` once exec/streams phase shapes the file scheme's full surface.
 
-**External** (separate repos, separate npm packages, optional install):
-- **Providers:** `openai`, `openrouter`, `xai`, `google`, `ollama`, `cf` (Cloudflare).
-- **Schemes:** `http(s)`, `ws(s)`, `sse`, `graphql`, `openapi`, `grpc`, `mailto`, `mcp`, `sftp`, `rest`, `search`, `file`.
-- **Mimetypes:** anything beyond the bundled set.
+**Sibling repos** (live `@plurnk/*` packages we own):
+- **Mimetypes:** `@plurnk/plurnk-mimetypes-text-markdown` — first extraction (#47). Validates the "bundle minimally" pattern.
+- **Providers:** `@plurnk/plurnk-providers-openai` — talks to any OpenAI-compatible endpoint (OpenAI proper, llama-server, Ollama OpenAI-compat, etc.).
+- **Client:** `@plurnk/plurnk` — user-facing CLI/TUI (independent agent ownership since #57).
+
+**Future external** (separate repos, separate npm packages, optional install when written):
+- **Providers:** `openrouter`, `xai`, `google`, `ollama` (native API), `anthropic`, `cf` (Cloudflare). Phase D.
+- **Schemes:** `http(s)`, `ws(s)`, `sse`, `graphql`, `openapi`, `grpc`, `mailto`, `mcp`, `sftp`, `rest`, `search`. Streaming schemes land in Phase F.
+- **Mimetypes:** `application/json`, `text/vnd.plurnk`, anything beyond. Phase C.
+
+Plugin discovery (§9) finds every installed `@plurnk/*` package at boot and registers what they declare. The bundled set is the floor; siblings are what's installed; the system runs against whatever is present in `node_modules`.
 
 ---
 
 ## §11 Grammar Dependency
 
-`@plurnk/plurnk-grammar@0.3.0` is the contract. Consumed via `github:plurnk/plurnk-grammar` HEAD during pre-1.0 iteration. Treat the grammar as authoritative; surface gaps to the user, don't redesign from this side.
+`@plurnk/plurnk-grammar@0.5.0` is the contract. Consumed via `github:plurnk/plurnk-grammar` HEAD during pre-1.0 iteration. Treat the grammar as authoritative; surface gaps to the user, don't redesign from this side.
 
 ### §11.1 What grammar provides
 
@@ -683,11 +697,15 @@ These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
 - Stream cancel verb — no dedicated cancel op or signal in the grammar. SEND[499] to the URI is the pattern (§7.7).
 - Delete verb — no dedicated DELETE op. SEND[410] to the URI is the pattern (§3.5, §6.5).
 
-### §11.3 Open contract gaps surfaced to grammar
+### §11.3 Grammar contract changes (resolved)
 
-- **#6** — request to consider `text/vnd.plurnk` as the DSL mimetype (currently `text/x-plurnk`; RFC 6648 deprecates `x-*`; `vnd.*` is the modern equivalent). Filed; awaiting grammar agent decision.
-- **#7** — request to expose a public `parsePath` helper. Currently the grammar's path parser is private (`AstBuilder.#parsePath`); plurnk-service's RPC layer works around it via build-heredoc-and-parse round-trip in `src/server/dsl.ts`. A public helper would let consumers honor grammar's per-scheme path semantics directly.
-- **#8** — observation that `plurnk.md`'s SEND examples only show the broadcast form (no path); a model with weak DSL grasp can put body content in the path slot, getting 400s. Suggested clarification: tighten examples and/or table cell wording, or close as a model-training concern. Plurnk-service adopts whatever grammar lands on.
+All grammar issues filed against the upstream contract have closed and shipped. Service tracks the resolution:
+
+- **#6 `text/vnd.plurnk`** — closed; DSL mimetype identifier confirmed.
+- **#7 public `parsePath` helper** — closed; landed in grammar 0.3.2.
+- **#8 SEND broadcast vs directed clarification** — closed; grammar plurnk.md docs tightened.
+- **#9 packet contract + parse-error surface** — closed; grammar 0.4.0 renamed `packet.user.turn` → `packet.user.telemetry` and shipped the `{budget, errors}` shape. Service aligned in #123.
+- **#10 Run.name + dual-handle** — closed; grammar 0.5.0 added required `Run.name`. Service aligned in #123.
 
 When future gaps surface, they get filed as grammar issues (not redesigned in plurnk-service), and the relevant SPEC.md section notes the pending request.
 
@@ -696,6 +714,8 @@ When future gaps surface, they get filed as grammar issues (not redesigned in pl
 ## §12 Operator Configuration
 
 Every plurnk-service deployment configures via env vars. Cascade: `.env.example` (shipped defaults) < `.env` (project) < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example` so the daemon starts on `./bin/plurnk-service.js` with no setup required.
+
+Model selection uses a separate alias cascade managed by `ProviderRegistry` (`src/core/ProviderRegistry.ts`): `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias; `PLURNK_MODEL=<alias>` selects which is active. The first path segment of the value names the provider plugin (`@plurnk/plurnk-providers-<provider>`); the rest is the provider's own model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`). Aliases live in `.env`, not `.env.example`, since they're operator-specific. Rummy parallel: `RUMMY_MODEL_<alias>` cascade.
 
 | Var                                  | Default            | Purpose                                                              |
 |--------------------------------------|--------------------|----------------------------------------------------------------------|
@@ -706,9 +726,9 @@ Every plurnk-service deployment configures via env vars. Cascade: `.env.example`
 | `PLURNK_MAX_COMMANDS`                | `99`               | Per-turn op cap.                                                     |
 | `PLURNK_RPC_TIMEOUT`                 | `30000`            | ms timeout for non-`longRunning` RPC handlers.                       |
 | `PLURNK_LOOP_TIMEOUT`                | `86400000`         | ms wall-clock budget for a single `loop.run`.                        |
-| `PLURNK_MAX_STRIKES`                 | `3`                | Strike threshold + sudden-death lead time (§38–§40 rails).           |
-| `PLURNK_MIN_CYCLES`                  | `3`                | Min repetitions before cycle detection fires (§39).                  |
-| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | Max period length cycle detection examines (§39).                    |
+| `PLURNK_MAX_STRIKES`                 | `3`                | Strike threshold + sudden-death lead time (§0.5).                    |
+| `PLURNK_MIN_CYCLES`                  | `3`                | Min repetitions before cycle detection fires (§0.5).                 |
+| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | Max period length cycle detection examines (§0.5).                   |
 | `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel preview budget for index tiles (characters; §14.2).      |
 | `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop.              |
 | `PLURNK_LOG_LEVEL`                   | `info`             | Stdout boot/crash banners only — runtime logging is DB rows.         |
@@ -944,7 +964,7 @@ Each entry: the question, the answer, the rationale, the migration path if revis
 
 ### §14.1 Packet assembly: engine-direct, not filter-chain
 
-**Question.** Rummy assembles `<index>`, `<log>`, `<turn>`, `<system_commands>`, `<system_requirements>` via priority-ordered filter chains (`assembly.system` + `assembly.user`); plugins each filter for their data and append their section. Plurnk currently assembles `packet.system.index` directly in `Engine.#buildIndex` by querying visibility + entries + entry_channels and routing each channel's content through its mimetype handler. Same question for `packet.system.log` (pending — task #44).
+**Question.** Rummy assembles `<index>`, `<log>`, `<turn>`, `<system_commands>`, `<system_requirements>` via priority-ordered filter chains (`assembly.system` + `assembly.user`); plugins each filter for their data and append their section. Plurnk assembles `packet.system.index` directly in `Engine.#buildIndex` by querying visibility + entries + entry_channels and routing each channel's content through its mimetype handler; `packet.system.log` similarly via `Engine.#buildLog`. Both queries are engine-direct.
 
 **Decision.** v0 stays engine-direct. The engine reads the DB and constructs the packet. Plugin-driven assembly is out of v0 scope. {§14.1-engine-direct-assembly}
 
@@ -983,7 +1003,7 @@ type Packet = {
         system_definition: string;
         persona: string;
         index: PacketEntry[];               // visible entries (§4 / §5)
-        log: PacketLogRow[];                // chronological action-entries (§7 / pending task #44)
+        log: PacketLogRow[];                // chronological action-entries (§7)
     };
     user: {
         tokens: number;
