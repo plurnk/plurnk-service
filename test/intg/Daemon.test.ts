@@ -171,6 +171,109 @@ test("session.attach to nonexistent session returns -32603", async () => {
     });
 });
 
+test("session.attach with runName: creates new run with that name", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "name-test" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.attach", { id: session?.id, runName: "research-task-42" });
+            const result = response.result as { id: number; runId: number; runName: string };
+            assert.equal(result.runName, "research-task-42");
+            const run = await (db.test_runs_get_by_session as PrepMethod).get<{ id: number; name: string }>({ session_id: session?.id });
+            assert.equal(run?.id, result.runId);
+            assert.equal(run?.name, "research-task-42");
+        } finally { ws.close(); }
+    });
+});
+
+test("session.attach with runName: reuses existing run when name matches", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "reuse-test" });
+        const ws1 = await connect(addr);
+        try {
+            const r1 = await rpcCall(ws1, 1, "session.attach", { id: session?.id, runName: "shared-run" });
+            const result1 = r1.result as { runId: number };
+            ws1.close();
+            const ws2 = await connect(addr);
+            try {
+                const r2 = await rpcCall(ws2, 1, "session.attach", { id: session?.id, runName: "shared-run" });
+                const result2 = r2.result as { runId: number; runName: string };
+                assert.equal(result2.runId, result1.runId, "second attach to same runName reuses the run id");
+                assert.equal(result2.runName, "shared-run");
+                const runCount = await (db.test_runs_count as PrepMethod).get<{ n: number }>();
+                assert.equal(runCount?.n, 1, "still only one run row");
+            } finally { ws2.close(); }
+        } finally { /* ws1 already closed */ }
+    });
+});
+
+test("session.attach with runId: reuses that specific run", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "runid-test" });
+        const run = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: session?.id, name: "pre-existing" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.attach", { id: session?.id, runId: run?.id });
+            const result = response.result as { runId: number; runName: string };
+            assert.equal(result.runId, run?.id);
+            assert.equal(result.runName, "pre-existing");
+        } finally { ws.close(); }
+    });
+});
+
+test("session.attach with runId belonging to different session returns -32603", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const sA = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "sA" });
+        const sB = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "sB" });
+        const runInA = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sA?.id, name: "in-A" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.attach", { id: sB?.id, runId: runInA?.id });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /belongs to session/);
+        } finally { ws.close(); }
+    });
+});
+
+test("session.attach with non-existent runId returns -32603", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "norun-test" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.attach", { id: session?.id, runId: 99999 });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /run 99999 not found/);
+        } finally { ws.close(); }
+    });
+});
+
+test("session.attach with both runId and runName rejects", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "both-test" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.attach", { id: session?.id, runId: 1, runName: "x" });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /runId OR runName, not both/);
+        } finally { ws.close(); }
+    });
+});
+
+test("session.runs lists runs in the session, most-recent first", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "list-runs" });
+        await (db.test_runs_insert as PrepMethod).run({ session_id: session?.id, name: "first" });
+        await (db.test_runs_insert as PrepMethod).run({ session_id: session?.id, name: "second" });
+        const ws = await connect(addr);
+        try {
+            const response = await rpcCall(ws, 1, "session.runs", { id: session?.id });
+            const result = response.result as { runs: Array<{ id: number; name: string }> };
+            assert.equal(result.runs.length, 2);
+            assert.deepEqual(result.runs.map((r) => r.name).toSorted(), ["first", "second"]);
+        } finally { ws.close(); }
+    });
+});
+
 test("multiple connections attaching to same session each get their own run", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "shared" });

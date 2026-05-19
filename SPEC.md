@@ -841,7 +841,8 @@ The minimum v0 surface. Methods are grouped by concern.
 |-------------------|---------------------|-------------------|-------|
 | `session.create`  | `name?: string`     | `{ id, name }`    | Creates new session; auto-name from timestamp if unprovided. |
 | `session.list`    | none                | `{ sessions: Session[] }` | Lists all sessions. |
-| `session.attach`  | `id: number`        | `{ id, name }`    | Binds this connection to an existing session; subsequent ops use it. |
+| `session.attach`  | `id: number`, `runId?: number`, `runName?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. |
+| `session.runs`    | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
 
 If a client issues a method requiring init (`requiresInit: true`) without first calling `session.attach` or `session.create`, the daemon auto-creates the envelope on demand: session → run → client loop, all persisted normally. Auto-creation is a convenience for one-off invocations (Telegram quick-queries, neovim ad-hoc dispatches, `plurnk "prompt"` CLI shots); the records carry through the same way explicitly-created ones do. **Auto-created ≠ auto-deleted.** Records persist for the log's forensic value. If a client wants active cleanup, that's a future `session.delete` / `session.archive` endpoint, opt-in.
 
