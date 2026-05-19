@@ -717,21 +717,24 @@ Every plurnk-service deployment configures via env vars. Cascade: `.env.example`
 
 Model selection uses a separate alias cascade managed by `ProviderRegistry` (`src/core/ProviderRegistry.ts`): `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias; `PLURNK_MODEL=<alias>` selects which is active. The first path segment of the value names the provider plugin (`@plurnk/plurnk-providers-<provider>`); the rest is the provider's own model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`). Aliases live in `.env`, not `.env.example`, since they're operator-specific. Rummy parallel: `RUMMY_MODEL_<alias>` cascade.
 
-| Var                                  | Default            | Purpose                                                              |
-|--------------------------------------|--------------------|----------------------------------------------------------------------|
-| `PLURNK_DB_PATH`                     | `./plurnk.db`      | SQLite file path.                                                    |
-| `PLURNK_HOST`                        | `127.0.0.1`        | Bind address for the daemon WebSocket. Local-only by default.        |
-| `PLURNK_PORT`                        | `3044`             | TCP port for the daemon WebSocket.                                   |
-| `PLURNK_MAX_TURNS`                   | `999`              | Per-loop turn cap (overridable per `loop.run` call).                 |
-| `PLURNK_MAX_COMMANDS`                | `99`               | Per-turn op cap.                                                     |
-| `PLURNK_RPC_TIMEOUT`                 | `30000`            | ms timeout for non-`longRunning` RPC handlers.                       |
-| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | ms wall-clock budget for a single `loop.run`.                        |
-| `PLURNK_MAX_STRIKES`                 | `3`                | Strike threshold + sudden-death lead time (§0.5).                    |
-| `PLURNK_MIN_CYCLES`                  | `3`                | Min repetitions before cycle detection fires (§0.5).                 |
-| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | Max period length cycle detection examines (§0.5).                   |
-| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | Per-channel preview budget for index tiles (characters; §14.2).      |
-| `PLURNK_DEBUG`                       | `0`                | When `1`, runs schema validation on every internal hop.              |
-| `PLURNK_LOG_LEVEL`                   | `info`             | Stdout boot/crash banners only — runtime logging is DB rows.         |
+| Var                                  | Default            | Status     | Purpose                                                       |
+|--------------------------------------|--------------------|------------|---------------------------------------------------------------|
+| `PLURNK_DB_PATH`                     | `./plurnk.db`      | enforced   | SQLite file path.                                             |
+| `PLURNK_HOST`                        | `127.0.0.1`        | enforced   | Bind address for the daemon WebSocket. Local-only by default. |
+| `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the daemon WebSocket.                            |
+| `PLURNK_MAX_TURNS`                   | `999`              | enforced   | Per-loop turn cap (overridable per `loop.run` call).          |
+| `PLURNK_MAX_COMMANDS`                | `99`               | reserved   | Per-turn op cap. Not yet enforced; Phase B scope.             |
+| `PLURNK_RPC_TIMEOUT`                 | `30000`            | reserved   | ms timeout for non-`longRunning` RPC handlers. Not yet enforced. |
+| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | reserved   | ms wall-clock budget for a single `loop.run`. Not yet enforced. |
+| `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§0.5).             |
+| `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§0.5).          |
+| `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§0.5).            |
+| `PLURNK_WORKSPACE_ROOT`              | `""`               | enforced   | Filesystem root for `file://` scheme reads. Empty = `file://` returns 400. |
+| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (characters; §14.2). |
+| `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
+| `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
+
+**enforced** = the engine actually reads and acts on this value. **reserved** = shipped in `.env.example` (rummy parity, forward-spec) but not yet read anywhere in code. Reserved vars are still parsed as CLI flags by `bin/plurnk-service.js` (auto-derived from `.env.example`); their values currently no-op.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
