@@ -37,7 +37,17 @@ Then `npm run test:live` for the end-to-end smoke against your configured model.
 npm run test:lint        # tsc --noEmit
 npm run test:intg        # integration tests (mock provider, real SQLite)
 npm run test:live        # live tests (real provider; requires PLURNK_MODEL)
+npm run test:demo        # demo tests (natural prompts; outcome assertions)
 ```
+
+Four tiers per SPEC §0.7. Cadence:
+
+- **lint** — every commit (CI enforces).
+- **intg** — every commit (CI enforces). Mock provider, real in-memory SQLite. Fast (~2s).
+- **live** — before merging significant engine changes. Real provider, structural prompts, wire-level assertions. Catches protocol drift and validates rail behavior against actual model failure modes. ~30–80s per test against gemma.
+- **demo** — periodic. Real provider, natural human-style prompts, outcome assertions. Validates the model + sysprompt + grammar trio. Failures indict the trio, not the engine. ~25s per test.
+
+CI runs lint + intg. live + demo are run locally with real provider config.
 
 ## License
 
