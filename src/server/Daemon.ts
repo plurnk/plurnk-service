@@ -35,6 +35,7 @@ import { register as registerOpParse } from "./methods/op_parse.ts";
 import { register as registerLoopRun } from "./methods/loop_run.ts";
 import { register as registerEntryRead } from "./methods/entry_read.ts";
 import { register as registerLogRead } from "./methods/log_read.ts";
+import { register as registerProvidersList } from "./methods/providers_list.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -145,6 +146,7 @@ export default class Daemon {
         registerLoopRun(this.#registry);
         registerEntryRead(this.#registry);
         registerLogRead(this.#registry);
+        registerProvidersList(this.#registry);
     }
 
     #registerNotifications(): void {
