@@ -115,6 +115,8 @@ Parse failure handling:
 - Malformed `content` that produces zero `ops` is NOT a provider error. Resolve with `ops: []` and let the engine's verdict chain handle the no-actionable-tags case.
 - Parse exceptions from the grammar are provider errors. Reject the promise with the parse error as cause.
 
+**Free-form text → reasoning.** The grammar's `ParseResult.items` array contains three kinds: `statement`, `error`, and `text`. The `text` items are free-form prose the model emitted between ops (or before the first op, or after the last). Providers MUST scrape these `text` items, join them with newlines, and append to whatever explicit `reasoning` the wire protocol already surfaces (`<think>...</think>` blocks, OpenAI o-series reasoning_content, etc.). The model's casual narration around its actions IS its reasoning; treating it as such is engine-side policy that providers enforce at the parser boundary.
+
 ### §3.4 AbortSignal lifecycle
 
 When `signal.aborted` is `true` or `signal` fires `abort`:
@@ -140,6 +142,43 @@ Where `ProviderConfig` is the provider's own type — `baseUrl`, `apiKey`, `mode
 
 The engine instantiates the provider once per session (or once per process for the bundled boot path) and reuses the instance across `generate` calls.
 
+### §3.7 `fromEnv(env, model)` factory — required static method
+
+Each provider package's default export MUST have a static `fromEnv(env, model)` factory that knows its own env-config conventions and returns a configured instance:
+
+```ts
+class OpenAI {
+    static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI {
+        // Read OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_CONTEXT_SIZE,
+        // OPENAI_FETCH_TIMEOUT_MS, PLURNK_REASON. Translate
+        // PLURNK_REASON to provider-native reasoning config.
+        return new OpenAI({ /* ... */ });
+    }
+    constructor(config: OpenAIConfig) { /* ... */ }
+}
+```
+
+`plurnk-service`'s `ProviderRegistry.instantiateProvider` calls `mod.default.fromEnv(process.env, alias.model)` generically — no per-provider config branches in the registry. This isolates per-provider env conventions inside the provider's package.
+
+Promises:
+- `fromEnv` MAY be sync or async; return type is `Provider | Promise<Provider>`.
+- `fromEnv` reads provider-specific env vars (`OPENAI_*` / `ANTHROPIC_*` / etc.) and the universal `PLURNK_REASON` (§3.8).
+- `fromEnv` MUST fail fast with a clear error if required env is missing — name the env var the operator needs to set.
+- `model` is the second positional arg because `PLURNK_MODEL_<alias>=<provider>/<model>` is parsed by service; service passes the resolved model id through.
+
+### §3.8 `PLURNK_REASON` — universal reasoning-token budget
+
+`PLURNK_REASON` is the engine-level reasoning-token budget. Numeric:
+
+| Value | Meaning |
+|---|---|
+| `0` | Reasoning disabled. Default. |
+| `n > 0` | Request approximately `n` reasoning tokens. |
+
+The integer is the budget in tokens. Provider modules own translating to their wire format — OpenAI o-series picks a tier from `reasoning_effort: low|medium|high|disabled` based on the value; llama-server / Ollama with OpenAI-compat translate to their `think: true|false` field at any nonzero value; Anthropic uses `thinking: { type: "enabled", budget_tokens: n }` passing through near-verbatim. Service stays out of the per-model-family complexity.
+
+Providers MAY publish documentation about how they translate `PLURNK_REASON` budgets to their model family's tier breakpoints. Service does not validate the value beyond "non-negative integer."
+
 ### §3.6 Model alias system
 
 Operator-facing model selection uses an env-driven alias cascade implemented in `src/core/ProviderRegistry.ts`:
@@ -161,10 +200,10 @@ PLURNK_MODEL=gemma
 The registry exposes:
 - `parseAliasesFromEnv(env)` — extract alias entries from env vars.
 - `resolveActiveAlias(env)` — `{ alias, provider, model } | null`.
-- `instantiateProvider(alias, env)` — dynamic-imports `@plurnk/plurnk-providers-<provider>` and constructs it with provider-specific env conventions.
+- `instantiateProvider(alias, env)` — dynamic-imports `@plurnk/plurnk-providers-<provider>` and calls its `fromEnv(env, model)` factory (§3.7).
 - `loadActiveProvider(env)` — resolve + instantiate in one call.
 
-Provider-specific env conventions live in `instantiateProvider`'s per-provider branches (currently only `openai`, which reads `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_CONTEXT_SIZE` / `OPENAI_FETCH_TIMEOUT_MS` / `OPENAI_THINK`). When more providers land, each adds a branch until the per-provider `Provider.fromEnv()` factory pattern (open in §11) standardizes.
+Provider-specific env conventions live inside each provider package's `fromEnv` factory (§3.7). plurnk-service is agnostic to provider config; the registry just dispatches.
 
 Rummy parallel: `RUMMY_MODEL_<alias>` cascade.
 
@@ -335,7 +374,6 @@ The bundled Mock provider stays in-tree as a test fixture. Production deployment
 ## §11 Open
 
 - **`countTokens` method.** SPEC §2.3 lists `countTokens(text): Promise<number>` as required, with engine-side caching keyed by `(provider_id, content_hash)`. Neither the bundled Mock nor the published OpenAI provider implements it; the engine does not call it (per §14.2 budget unit decision, v0 is character-count). Lands with the Phase C / Phase D token-accounting work.
-- **`Provider.fromEnv()` factory pattern.** Currently `ProviderRegistry.instantiateProvider` has provider-specific `if` branches for env-config conventions. When the second provider lands (Phase D), standardize on a `static fromEnv(env)` factory exported from each provider package; the registry calls it generically. This is the cleanest extension point for plugin ecosystem growth.
 - **Streaming.** Atomic for v0. Streaming providers would require an extension to `ProviderResponse` (async iterator? promise of stream + final?) and corresponding engine changes (incremental dispatch? show-stream-to-model before completion?). Out of scope until needed.
 - **Cost / usage metadata.** Token counts (`prompt_tokens`, `completion_tokens`, `cached_tokens`) and computed cost can ride in `assistantRaw` today; consumers parse opportunistically. A future `assistant.usage` first-class field would standardize this.
 - **Multi-model providers.** Each provider instance is single-model. A package wrapping multiple models from one vendor instantiates multiple providers; the engine's provider registry holds one per `name`. Whether a single provider should multiplex models is open.
