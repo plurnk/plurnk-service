@@ -53,12 +53,21 @@ export const resolveActiveAlias = (env: NodeJS.ProcessEnv = process.env): Provid
     return aliases.find((a) => a.alias === selected.toLowerCase()) ?? null;
 };
 
-// Provider-specific env conventions. New providers add a case here until
-// the per-provider factory pattern (provider package exposes `fromEnv`)
-// is standardized in the PROVIDERS.md contract.
+// Generic per-provider instantiation. Each provider package exports a
+// `static fromEnv(env, model)` factory that knows its own env-config
+// conventions (OPENAI_BASE_URL, ANTHROPIC_API_KEY, etc.). plurnk-service
+// stays out of per-provider config knowledge.
+//
+// PROVIDERS.md §3.7 documents the factory contract. PLURNK_REASON
+// (numeric reasoning-token budget) is universal — each provider's
+// fromEnv reads it and translates to its own wire format.
+interface ProviderFactory {
+    fromEnv(env: NodeJS.ProcessEnv, model: string): Provider | Promise<Provider>;
+}
+
 export const instantiateProvider = async (alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> => {
     const packageName = `@plurnk/plurnk-providers-${alias.provider}`;
-    let mod: { default: new (config: object) => Provider };
+    let mod: { default: ProviderFactory };
     try {
         mod = await import(packageName);
     } catch (cause) {
@@ -67,24 +76,14 @@ export const instantiateProvider = async (alias: ProviderAlias, env: NodeJS.Proc
             (cause instanceof Error ? cause.message : String(cause)),
         );
     }
-    const ProviderClass = mod.default;
-
-    if (alias.provider === "openai") {
-        const baseUrl = env.OPENAI_BASE_URL;
-        if (baseUrl === undefined || baseUrl.length === 0) {
-            throw new Error(`alias '${alias.alias}' uses openai provider; OPENAI_BASE_URL must be set`);
-        }
-        return new ProviderClass({
-            baseUrl,
-            apiKey: env.OPENAI_API_KEY ?? "",
-            model: alias.model,
-            contextSize: Number(env.OPENAI_CONTEXT_SIZE ?? "8192"),
-            fetchTimeoutMs: Number(env.OPENAI_FETCH_TIMEOUT_MS ?? "60000"),
-            think: env.OPENAI_THINK === "1",
-        });
+    const factory = mod.default;
+    if (typeof factory?.fromEnv !== "function") {
+        throw new Error(
+            `${packageName}: default export must have a static \`fromEnv(env, model)\` factory ` +
+            `(PROVIDERS.md §3.7)`,
+        );
     }
-
-    throw new Error(`unknown provider type '${alias.provider}'; provider-config conventions not yet defined in ProviderRegistry`);
+    return await factory.fromEnv(env, alias.model);
 };
 
 // Convenience: resolve + instantiate in one call. Returns null when no
