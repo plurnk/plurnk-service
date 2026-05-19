@@ -24,6 +24,7 @@ export default class Mock {
     }
 
     get contextSize(): number { return this.#contextSize; }
+    get model(): string { return "mock"; }
 
     async generate(_: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockAssistant; assistantRaw: unknown }> {
         const next = this.#queue.shift();

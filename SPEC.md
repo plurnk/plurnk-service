@@ -850,7 +850,8 @@ If a client issues a method requiring init (`requiresInit: true`) without first 
 
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
-| `loop.run`    | `prompt`, `maxTurns?`               | `{ loopId, turnIds, finalStatus, hitMaxTurns }` | Model-driven loop. Streams `log/entry` notifications during. `longRunning: true`. |
+| `loop.run`    | `prompt`, `maxTurns?`, `alias?`     | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the daemon's boot-time `PLURNK_MODEL` for this call (resolves via `ProviderRegistry`); unknown alias → error. Streams `log/entry` notifications during. `longRunning: true`. |
+| `providers.list` | none                             | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
 
 **DSL operations (client-driven, mirror the grammar)**
 

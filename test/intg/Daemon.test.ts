@@ -259,6 +259,50 @@ test("session.attach with both runId and runName rejects", async () => {
     });
 });
 
+test("providers.list returns parsed aliases with active marker", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const original = { ...process.env };
+            try {
+                process.env.PLURNK_MODEL_gemma = "openai/macher.gguf";
+                process.env.PLURNK_MODEL_opus = "openrouter/anthropic/claude-opus";
+                process.env.PLURNK_MODEL = "gemma";
+                const response = await rpcCall(ws, 1, "providers.list");
+                const result = response.result as {
+                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean }>;
+                };
+                const gemma = result.aliases.find((a) => a.alias === "gemma");
+                const opus = result.aliases.find((a) => a.alias === "opus");
+                assert.ok(gemma !== undefined && opus !== undefined);
+                assert.equal(gemma?.provider, "openai");
+                assert.equal(gemma?.model, "macher.gguf");
+                assert.equal(gemma?.active, true);
+                assert.equal(opus?.active, false);
+            } finally {
+                // Restore env so other tests aren't polluted.
+                for (const k of Object.keys(process.env)) {
+                    if (!(k in original)) delete process.env[k];
+                }
+                Object.assign(process.env, original);
+            }
+        } finally { ws.close(); }
+    });
+});
+
+test("loop.run with unknown alias returns clear error", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "alias-test" });
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.attach", { id: session?.id });
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "hi", alias: "nonexistent-alias-xyz" });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /unknown alias 'nonexistent-alias-xyz'/);
+        } finally { ws.close(); }
+    });
+});
+
 test("session.runs lists runs in the session, most-recent first", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "list-runs" });

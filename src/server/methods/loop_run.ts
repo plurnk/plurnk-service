@@ -7,24 +7,43 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import type { PrepMethod } from "../../core/Db.ts";
 import { fetchLogEntry } from "../logEntry.ts";
 import { PATHS } from "../../index.ts";
+import { parseAliasesFromEnv, instantiateProvider } from "../../core/ProviderRegistry.ts";
+import type { Provider } from "../../core/ProviderRegistry.ts";
 
 interface Params {
     prompt: string;
     maxTurns?: number;
+    alias?: string;
 }
 
 export const register = (registry: MethodRegistry): void => {
     registry.registerMethod("loop.run", {
         handler: async (params, ctx) => {
             if (ctx.session === null) throw new Error("loop.run requires an attached session");
-            if (ctx.provider === null) {
-                return { status: 501, error: "no provider configured at the daemon" };
-            }
             const p = (params ?? {}) as Params;
             if (typeof p.prompt !== "string" || p.prompt.length === 0) {
                 throw new Error("loop.run requires non-empty params.prompt");
             }
             const maxTurns = p.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50");
+
+            // Resolve provider for this call. Per-call alias override (issue
+            // #128) takes precedence over ctx.provider; absence falls back to
+            // the daemon's boot-time provider.
+            let provider: Provider | null = ctx.provider;
+            if (p.alias !== undefined) {
+                if (typeof p.alias !== "string" || p.alias.length === 0) {
+                    throw new Error("loop.run: alias must be a non-empty string");
+                }
+                const aliases = parseAliasesFromEnv();
+                const target = aliases.find((a) => a.alias === p.alias!.toLowerCase());
+                if (target === undefined) {
+                    throw new Error(`loop.run: unknown alias '${p.alias}'; configure PLURNK_MODEL_${p.alias.toUpperCase()}=<provider>/<model>`);
+                }
+                provider = await instantiateProvider(target);
+            }
+            if (provider === null) {
+                return { status: 501, error: "no provider configured at the daemon and no alias override supplied" };
+            }
 
             const { sessionId, runId } = ctx.session;
             const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
@@ -45,7 +64,7 @@ export const register = (registry: MethodRegistry): void => {
             };
 
             const result = await ctx.engine.runLoop({
-                provider: ctx.provider,
+                provider,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: p.prompt },
@@ -63,10 +82,11 @@ export const register = (registry: MethodRegistry): void => {
 
             return { loopId, ...result };
         },
-        description: "Run a model-driven loop with a prompt. Streams log/entry notifications during; fires loop/terminated on completion.",
+        description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Streams log/entry notifications; fires loop/terminated on completion.",
         params: {
             prompt: "string — user prompt for the loop",
             maxTurns: "number? — safety cap on turns (default PLURNK_MAX_TURNS or 50)",
+            alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
         },
         requiresInit: true,
         longRunning: true,
