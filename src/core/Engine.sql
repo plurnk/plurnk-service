@@ -13,8 +13,8 @@ UPDATE loops SET status = $status WHERE id = $loop_id;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_insert_turn
-INSERT INTO turns (loop_id, sequence, status, packet, usage_completion)
-VALUES ($loop_id, $sequence, $status, $packet, $usage_completion)
+INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt, usage_completion, usage_cached)
+VALUES ($loop_id, $sequence, $status, $packet, $usage_prompt, $usage_completion, $usage_cached)
 RETURNING id;
 
 -- PREP: engine_render_index

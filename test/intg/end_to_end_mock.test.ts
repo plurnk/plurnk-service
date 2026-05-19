@@ -27,7 +27,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 });
 
 const response = (ops: PlurnkStatement[], content: string = ""): MockResponse => ({
-    assistant: { tokens: 0, content, ops, reasoning: null },
+    assistant: { content, ops, reasoning: null },
 });
 
 const seedEnvelopeNoTurn = async (db: Db, label: string): Promise<{ sessionId: number; runId: number; loopId: number }> => {
@@ -44,11 +44,12 @@ const dispatchTurn = async (
     const { assistant } = await provider.generate({ messages: [] });
     const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: ctx.loopId });
     if (seqRow === undefined) throw new Error("seq query returned no row");
-    const sendOp = assistant.ops.find((o): o is SendStatement => o.op === "SEND");
+    const ops = assistant.ops ?? [];
+    const sendOp = ops.find((o): o is SendStatement => o.op === "SEND");
     const turnStatus = sendOp?.signal ?? 200;
     const turnId = await insertTurn(db, ctx.loopId, seqRow.next, turnStatus);
     const statuses: number[] = [];
-    for (const [actionIndex, statement] of assistant.ops.entries()) {
+    for (const [actionIndex, statement] of ops.entries()) {
         const result = await engine.dispatch({
             statement, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
             turnId, actionIndex, origin: "model",

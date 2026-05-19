@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp } from "@plurnk/plurnk-grammar";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import MimetypeRegistry from "./MimetypeRegistry.ts";
@@ -51,13 +52,20 @@ type Origin = "model" | "client" | "system" | "plugin";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-type ProviderResponse = {
-    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
-    assistantRaw: unknown;
-};
+// Re-export the canonical Provider contract from ProviderRegistry. Engine is
+// the consumer; ProviderRegistry owns the type.
+import type { Provider, ProviderResponse, ProviderAssistant, ProviderUsage } from "./ProviderRegistry.ts";
 
-type Provider = {
-    generate: (args: { messages: ChatMessage[]; signal?: AbortSignal }) => Promise<ProviderResponse>;
+// Engine-side parsed view of the assistant payload. Includes the wire-level
+// fields from the provider plus the engine-applied parse (ops) and
+// reasoning-policy merge (wire reasoning + scraped free-form text).
+type PacketAssistant = {
+    content: string;
+    ops: PlurnkStatement[];
+    reasoning: string | null;
+    usage: ProviderUsage;
+    finishReason: string | null;
+    model: string;
 };
 
 type DispatchContext = {
@@ -304,8 +312,12 @@ export default class Engine {
     }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
         const response = await provider.generate({ messages, signal });
 
-        const opsCount = response.assistant.ops.length;
-        const sendOp = response.assistant.ops.findLast(
+        // Provider returns raw wire-level output. Engine applies the parse
+        // and the free-form-text-to-reasoning scraping policy (PROVIDERS.md
+        // §3.3). Providers stay thin; grammar version lives in one place.
+        const packetAssistant = this.#assembleAssistant(response);
+        const opsCount = packetAssistant.ops.length;
+        const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number",
         );
@@ -321,19 +333,22 @@ export default class Engine {
         // Build packet BEFORE pushing this turn's actionless failures so the
         // drain at packet-build sees only PRIOR turns' failures. THIS turn's
         // failures are buffered AFTER and surface in the next packet.
-        const packet = await this.#buildPacket(messages, response, runId, loopId);
+        const packet = await this.#buildPacket(messages, packetAssistant, response.assistantRaw, runId, loopId);
+        const { usage } = packetAssistant;
         const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId,
             sequence: seq,
             status: turnStatus,
             packet: JSON.stringify(packet),
-            usage_completion: response.assistant.tokens,
+            usage_prompt: usage.prompt,
+            usage_completion: usage.completion,
+            usage_cached: usage.cached,
         });
         if (turnRow === undefined) throw new Error("Engine.runTurn: turn insert returned no row");
         const turnId = turnRow.id;
 
         const statuses: number[] = [];
-        for (const [actionIndex, statement] of response.assistant.ops.entries()) {
+        for (const [actionIndex, statement] of packetAssistant.ops.entries()) {
             const result = await this.dispatch({
                 statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch,
             });
@@ -351,14 +366,55 @@ export default class Engine {
             });
         }
 
-        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(response.assistant.ops) };
+        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops) };
     }
 
-    async #buildPacket(messages: ChatMessage[], response: ProviderResponse, runId: number, loopId: number): Promise<object> {
+    // PROVIDERS.md §3.3 text-fragment scraping policy. Parses content into
+    // PlurnkStatement[] and merges wire-reported reasoning with any free-form
+    // prose the model emitted between ops. The provider stays unaware of the
+    // grammar; engine owns the parse and the scraping rule.
+    //
+    // Test-fixture escape hatch: the Mock provider may pre-supply `ops` on
+    // its assistant payload to skip the parse roundtrip (DSL-serializing
+    // every constructed PlurnkStatement in tests would be lots of churn
+    // for zero coverage value). The wire Provider contract has no `ops`
+    // field; only Mock exposes one. Real providers always take the parse
+    // path because their `assistant.ops` is undefined.
+    #assembleAssistant(response: ProviderResponse): PacketAssistant {
+        const { assistant } = response;
+        const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
+        const ops: PlurnkStatement[] = [];
+        const textFragments: string[] = [];
+        if (preParsedOps !== undefined) {
+            ops.push(...preParsedOps);
+        } else {
+            const parsed = PlurnkParser.parse(assistant.content);
+            for (const item of parsed.items) {
+                if (item.kind === "statement") ops.push(item.statement);
+                else if (item.kind === "text") {
+                    const trimmed = item.text.trim();
+                    if (trimmed.length > 0) textFragments.push(trimmed);
+                }
+            }
+        }
+        const wireReasoning = assistant.reasoning ?? "";
+        const scrapedReasoning = textFragments.join("\n");
+        const reasoningParts = [wireReasoning, scrapedReasoning].filter((s) => s.length > 0);
+        const reasoning = reasoningParts.length > 0 ? reasoningParts.join("\n\n") : null;
+        return {
+            content: assistant.content,
+            ops,
+            reasoning,
+            usage: assistant.usage,
+            finishReason: assistant.finishReason,
+            model: assistant.model,
+        };
+    }
+
+    async #buildPacket(messages: ChatMessage[], assistant: PacketAssistant, assistantRaw: unknown, runId: number, loopId: number): Promise<object> {
         const byRole = (role: ChatMessage["role"]): string =>
             messages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         return {
-            tokens: response.assistant.tokens,
             system: {
                 tokens: 0,
                 system_definition: byRole("system"),
@@ -372,8 +428,8 @@ export default class Engine {
                 telemetry: { budget: "", errors: await this.#buildTelemetryErrors(loopId) },
                 system_requirements: "",
             },
-            assistant: response.assistant,
-            assistantRaw: response.assistantRaw,
+            assistant,
+            assistantRaw,
         };
     }
 

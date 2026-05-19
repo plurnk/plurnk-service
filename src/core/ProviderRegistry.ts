@@ -9,12 +9,29 @@
 // provider's own identifier (may contain "/" for tri-level providers like
 // openrouter's publisher/model).
 
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-
 interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
-interface ProviderResponse {
-    assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
-    assistantRaw: unknown;
+
+// Provider contract v1 (PROVIDERS.md §3; tracked by plurnk-grammar #11).
+// Providers return raw wire-level output — content unparsed, reasoning is the
+// wire-reported CoT only. The engine parses content into PlurnkStatement[]
+// and applies the free-form-text-to-reasoning scraping policy (§3.3).
+// Providers do not depend on @plurnk/plurnk-grammar at runtime.
+export interface ProviderUsage {
+    readonly prompt: number;
+    readonly completion: number;
+    readonly cached: number;
+    readonly total: number;
+}
+export interface ProviderAssistant {
+    readonly content: string;          // raw DSL emitted by the model
+    readonly reasoning: string | null; // wire-reported CoT only; null if absent
+    readonly usage: ProviderUsage;
+    readonly finishReason: string | null;  // stop | length | tool_calls | content_filter | null
+    readonly model: string;                 // wire-reported (may differ from requested for relay providers)
+}
+export interface ProviderResponse {
+    readonly assistant: ProviderAssistant;
+    readonly assistantRaw: unknown;
 }
 export interface Provider {
     generate(args: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;

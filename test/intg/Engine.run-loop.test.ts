@@ -27,7 +27,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 });
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: { tokens: 0, content: "", ops, reasoning: null },
+    assistant: { content: "", ops, reasoning: null },
 });
 
 const setup = async () => {

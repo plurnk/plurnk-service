@@ -16,7 +16,7 @@ const editStmt = (path: string, body: string): EditStatement => ({
 });
 
 const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockResponse => ({
-    assistant: { tokens: 0, content, ops, reasoning: null },
+    assistant: { content, ops, reasoning: null },
 });
 
 test("Mock.provider: contextSize exposed", () => {
@@ -40,22 +40,37 @@ test("Mock.provider: exhausted queue throws", async () => {
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
-test("Mock.provider: assistant shape carries content + ops + reasoning + tokens", async () => {
+test("Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
     const r: MockResponse = {
         assistant: {
-            tokens: 42,
             content: "<<SEND[200]:done:SEND",
             ops: [sendStmt(200, "done")],
             reasoning: "thought about it",
+            usage: { prompt: 100, completion: 42, cached: 0, total: 142 },
+            finishReason: "stop",
+            model: "mock-bench-v1",
         },
     };
     const mock = new Mock({ contextSize: 100, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.tokens, 42);
     assert.equal(result.assistant.content, "<<SEND[200]:done:SEND");
-    assert.equal(result.assistant.ops.length, 1);
-    assert.equal(result.assistant.ops[0]?.op, "SEND");
+    assert.equal(result.assistant.usage.completion, 42);
+    assert.equal(result.assistant.usage.prompt, 100);
+    assert.equal(result.assistant.usage.total, 142);
+    assert.equal(result.assistant.finishReason, "stop");
+    assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
+    assert.equal(result.assistant.ops?.length, 1);
+    assert.equal(result.assistant.ops?.[0]?.op, "SEND");
+});
+
+test("Mock.provider: defaults fill when test omits usage/finishReason/model", async () => {
+    const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
+    const mock = new Mock({ contextSize: 100, responses: [r] });
+    const result = await mock.generate({ messages: [] });
+    assert.deepEqual(result.assistant.usage, { prompt: 0, completion: 0, cached: 0, total: 0 });
+    assert.equal(result.assistant.finishReason, "stop");
+    assert.equal(result.assistant.model, "mock");
 });
 
 test("Mock.provider: prompt is ignored — same input doesn't influence output", async () => {
@@ -70,8 +85,8 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
 });
 
 test("Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
-    const r1: MockResponse = { assistant: { tokens: 0, content: "x", ops: [], reasoning: null } };
-    const r2: MockResponse = { assistant: { tokens: 0, content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
+    const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
+    const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
     const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
     const a = await mock.generate({ messages: [] });
     const b = await mock.generate({ messages: [] });
@@ -107,6 +122,6 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
     const content = "<<EDIT(known://a):1:EDIT\n<<EDIT(known://b):2:EDIT\n<<SEND[102]:continuing:SEND";
     const mock = new Mock({ contextSize: 100, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
-    assert.equal(result.assistant.ops.length, 3);
-    assert.deepEqual(result.assistant.ops.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
+    assert.equal(result.assistant.ops?.length, 3);
+    assert.deepEqual(result.assistant.ops?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
 });
