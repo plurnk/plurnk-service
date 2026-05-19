@@ -42,7 +42,7 @@ Collision on `(kind: "mimetype", name)` at discovery: fail-hard. SPEC §9.
 ## §3 Interface
 
 ```ts
-export interface PlurnkMimetype {
+interface MimetypeHandler {
     readonly mimetype: string;
     readonly glyph: string;
     validate(content: string): void;
@@ -50,6 +50,8 @@ export interface PlurnkMimetype {
     preview(content: string, budget: number): string;
 }
 ```
+
+Duck-typed contract. The interface lives in `src/mimetypes/_types.ts` for in-tree handlers; external packages implement the shape without importing the type (avoids the circular `@plurnk/plurnk-service` → external → service dependency). Identity is enforced at registration via `package.json#plurnk.name` matching `instance.mimetype`.
 
 ### §3.1 Identity fields
 
@@ -130,7 +132,7 @@ Currently character count. Env var: `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (named fo
 - **Purity.** `symbols(x)` and `preview(x, b)` return identical output across invocations. `validate(x)` returns identical outcome.
 - **No state.** No instance fields beyond `readonly mimetype` and `readonly glyph`. No module-level mutable state. No internal cache.
 - **No IO.** No filesystem, network, database, subprocess, console, env.
-- **No reaching.** No imports from `@plurnk/plurnk-service`. Sanctioned imports: `node:` built-ins, pure-function NPM dependencies, types from `@plurnk/plurnk-grammar`.
+- **No reaching.** No imports from `@plurnk/plurnk-service`. Sanctioned imports: `node:` built-ins, pure-function NPM dependencies. The `MimetypeHandler` interface is duck-typed (don't import it — implement the shape; identity-match at boot verifies).
 - **Synchronous.** No `Promise`, no `async`, no timers.
 - **No throwing from `symbols`/`preview`.** Use stub strings for refusal cases.
 
@@ -155,12 +157,14 @@ Currently character count. Env var: `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (named fo
 
 ---
 
-## §7 Reference — `@plurnk/plurnk-mimetypes-text-plain`
+## §7 Reference — `text/plain` (bundled in plurnk-service)
+
+`src/mimetypes/TextPlain.ts` — the universal fallback. Bundled rather than extracted because every deployment needs it and it has no external dependency.
 
 ```ts
-import type { PlurnkMimetype } from "@plurnk/plurnk-grammar";
+import type { MimetypeHandler } from "./_types.ts";
 
-export default class TextPlain implements PlurnkMimetype {
+export default class TextPlain implements MimetypeHandler {
     readonly mimetype = "text/plain";
     readonly glyph = "📄";
 
@@ -178,12 +182,14 @@ export default class TextPlain implements PlurnkMimetype {
 
 ---
 
-## §8 Reference — `@plurnk/plurnk-mimetypes-text-markdown`
+## §8 Reference — `@plurnk/plurnk-mimetypes-text-markdown` (sibling repo)
+
+Lives at [github.com/plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Validates the "bundle minimally" pattern: first real plugin extraction (#47). plurnk-service depends on it via npm; Daemon's plugin discovery scan registers it at boot.
+
+External package, so no interface import — duck-typed against the contract:
 
 ```ts
-import type { PlurnkMimetype } from "@plurnk/plurnk-grammar";
-
-export default class TextMarkdown implements PlurnkMimetype {
+export default class TextMarkdown {
     readonly mimetype = "text/markdown";
     readonly glyph = "📝";
 
@@ -229,21 +235,26 @@ Mimetype-specific behavioral tests (heading extraction correctness, JSON tree de
 
 ---
 
-## §10 Bundled
+## §10 Bundled vs sibling
 
-Plurnk-service bundles two reference handlers:
+Plurnk-service bundles only the universal fallback:
 
 | Path | Mimetype |
 |---|---|
 | `src/mimetypes/TextPlain.ts` | `text/plain` |
-| `src/mimetypes/TextMarkdown.ts` | `text/markdown` |
+
+Sibling repos we own:
+
+| Package | Mimetype |
+|---|---|
+| `@plurnk/plurnk-mimetypes-text-markdown` | `text/markdown` |
 
 Future packages, expected:
 
 | Package | Mimetype |
 |---|---|
 | `@plurnk/plurnk-mimetypes-application-json` | `application/json` |
-| `@plurnk/plurnk-mimetypes-text-vnd-plurnk` | `text/vnd.plurnk` (pending grammar #6) |
+| `@plurnk/plurnk-mimetypes-text-vnd-plurnk` | `text/vnd.plurnk` |
 | `@plurnk/plurnk-mimetypes-text-typescript` | `text/typescript` |
 
 ---

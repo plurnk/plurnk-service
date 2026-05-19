@@ -79,62 +79,83 @@ import type {
     FindStatement, SendStatement, ExecStatement,
 } from "@plurnk/plurnk-grammar";
 
-export interface SchemeManifest {
+interface SchemeFlagAffinity {
+    readonly excludedInAsk?: boolean;        // scheme excluded when mode === "ask"
+    readonly requiresWeb?: boolean;           // scheme excluded when noWeb
+    readonly requiresInteraction?: boolean;   // scheme excluded when noInteraction
+    readonly proposes?: boolean;              // scheme excluded when noProposals
+}
+
+interface SchemeManifest {
     name: string;
     channels: Record<string, string>;
     defaultChannel: string;
     category: "data" | "logging";
     scope: "agent" | "session";
-    writableBy: Array<"model" | "client" | "system" | "plugin">;
+    writableBy: ReadonlyArray<"model" | "client" | "system" | "plugin">;
     volatile: boolean;
     modelVisible: boolean;
+    flags?: SchemeFlagAffinity;
 }
 
-export interface EntryData {
+interface EntryData {
     channels: Record<string, { content: string; mimetype: string }>;
     tags: string[];
-    attributes?: Record<string, unknown>;
 }
 
-export interface PlurnkScheme {
+interface PlurnkScheme {
     // CRUD primitives — REQUIRED for any scheme that holds entries.
     // Engine drives these for cross-scheme COPY/MOVE/SEND[410].
-    readEntry(ctx: PlurnkSchemeContext, pathname: string): Promise<ReadEntryResult>;
-    writeEntry(ctx: PlurnkSchemeContext, pathname: string, entry: EntryData): Promise<WriteEntryResult>;
-    deleteEntry(ctx: PlurnkSchemeContext, pathname: string): Promise<DeleteEntryResult>;
+    readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult>;
+    writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult>;
+    deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult>;
 
     // Op handlers — OPTIONAL. Absent op = 501.
-    edit?(ctx: PlurnkSchemeContext, statement: EditStatement): Promise<EditResult>;
-    read?(ctx: PlurnkSchemeContext, statement: ReadStatement): Promise<ReadResult>;
-    show?(ctx: PlurnkSchemeContext, statement: ShowStatement): Promise<ShowHideResult>;
-    hide?(ctx: PlurnkSchemeContext, statement: HideStatement): Promise<ShowHideResult>;
-    find?(ctx: PlurnkSchemeContext, statement: FindStatement): Promise<FindResult>;
-    send?(ctx: PlurnkSchemeContext, statement: SendStatement): Promise<SendResult>;
-    exec?(ctx: PlurnkSchemeContext, statement: ExecStatement): Promise<ExecResult>;
+    edit?(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult>;
+    read?(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult>;
+    show?(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult>;
+    hide?(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult>;
+    find?(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult>;
+    send?(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult>;
+    exec?(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult>;
 
     // Proposal lifecycle — OPTIONAL. Implement when the scheme defers side
-    // effects to client resolution.
-    onProposalAccepted?(ctx: PlurnkSchemeContext, pathname: string, proposal: ProposalRecord): Promise<OpResult>;
-    onProposalRejected?(ctx: PlurnkSchemeContext, pathname: string, proposal: ProposalRecord): Promise<void>;
-}
-
-export interface PlurnkSchemeClass {
-    new (): PlurnkScheme;
-    readonly manifest: SchemeManifest;
+    // effects to client resolution. (Phase E.)
+    onProposalAccepted?(pathname: string, proposal: ProposalRecord, ctx: PlurnkSchemeContext): Promise<OpResult>;
+    onProposalRejected?(pathname: string, proposal: ProposalRecord, ctx: PlurnkSchemeContext): Promise<void>;
 }
 ```
 
-Default export: a class implementing `PlurnkScheme` with `static manifest`. Engine instantiates once at boot, reuses across calls.
+Default export: a class implementing the scheme shape with `static manifest: SchemeManifest`. Engine instantiates once at boot, reuses across calls.
+
+Convention: `(input, ctx)` arg order across all methods. The op-specific input (statement / pathname / entry) is first; `ctx` is the per-call helper bundling everything else.
 
 ---
 
 ## §4 PlurnkSchemeContext
 
-The per-call helper. The entire surface a scheme sees. Engine constructs a fresh context for every op invocation.
+The per-call helper. Engine constructs a fresh context for every op invocation.
+
+**v0 shape (current, `src/core/scheme-types.ts`):**
 
 ```ts
-export interface PlurnkSchemeContext {
-    // Identity carried through dispatch
+interface PlurnkSchemeContext {
+    readonly db: Db;
+    readonly sessionId: number;
+    readonly runId: number;
+    readonly loopId: number;
+    readonly turnId: number;
+    readonly writer: "model" | "client" | "system" | "plugin";
+    readonly signal: AbortSignal | undefined;
+}
+```
+
+Flat struct bundling the per-call params. Scheme handlers receive this directly; bundled in-tree schemes (Known/Unknown/Skill/File/Log) use `ctx.db` to call shared helpers in `src/schemes/_entry-*.ts`. The contract pragma is that third-party schemes do NOT touch `ctx.db`, but the interface doesn't enforce it yet — convention only.
+
+**v1 shape (aspirational, lands when third-party plugin schemes are an actual concern):**
+
+```ts
+interface PlurnkSchemeContext {
     readonly sessionId: number;
     readonly runId: number;
     readonly loopId: number;
@@ -142,21 +163,19 @@ export interface PlurnkSchemeContext {
     readonly writer: "model" | "client" | "system" | "plugin";
     readonly signal: AbortSignal;
 
-    // Namespaced operations
+    // Namespaced operations (§4.1–§4.8)
     readonly entries: EntriesApi;
     readonly channels: ChannelsApi;
     readonly visibility: VisibilityApi;
     readonly tags: TagsApi;
     readonly subscriptions: SubscriptionsApi;
     readonly proposals: ProposalsApi;
-
-    // Cross-scheme primitive
     readonly crossScheme: CrossSchemeApi;
-
-    // Stream notification (for active channels)
     readonly notify: NotifyApi;
 }
 ```
+
+The v1 surface seals out direct DB access by exposing namespaced primitives that wrap the same underlying SQL. The sub-sections below (§4.1–§4.8) document the v1 APIs as designed; treat them as forward-spec until the migration lands.
 
 ### §4.1 `entries`
 
@@ -260,8 +279,8 @@ Lifecycle:
 1. Scheme's op handler calls `ctx.proposals.create(pathname, {body, attributes})` and returns `{status: 202, ...}`.
 2. Engine writes a state=proposed entry at `pathname`, emits `proposal/pending` notification.
 3. Client receives, calls `op.resolve(pathname, accept: boolean)` via RPC.
-4. On accept: engine invokes `scheme.onProposalAccepted(ctx, pathname, proposalRecord)`. The scheme executes the side effect and returns an `OpResult`. Engine transitions entry to `state=resolved` with the returned status.
-5. On reject: engine invokes `scheme.onProposalRejected(ctx, pathname, proposalRecord)` (cleanup hook; usually empty). Engine transitions entry to `state=cancelled`. No re-invocation of the op handler.
+4. On accept: engine invokes `scheme.onProposalAccepted(pathname, proposalRecord, ctx)`. The scheme executes the side effect and returns an `OpResult`. Engine transitions entry to `state=resolved` with the returned status.
+5. On reject: engine invokes `scheme.onProposalRejected(pathname, proposalRecord, ctx)` (cleanup hook; usually empty). Engine transitions entry to `state=cancelled`. No re-invocation of the op handler.
 
 `yolo` flag short-circuits proposals: when set, engine treats every `{status: 202}` return as immediate execution by calling `onProposalAccepted` inline.
 
@@ -291,9 +310,9 @@ interface NotifyApi {
 
 ## §5 Op handler contracts
 
-Each op method receives `(ctx, statement)` and returns `Promise<OpResult>`. Op-specific result shapes:
+Each op method receives `(statement, ctx)` and returns `Promise<OpResult>`. Op-specific result shapes:
 
-### §5.1 `edit(ctx, statement: EditStatement): Promise<EditResult>`
+### §5.1 `edit(statement: EditStatement, ctx): Promise<EditResult>`
 
 Create or update an entry's body channel (or fragment-targeted channel).
 
@@ -314,7 +333,7 @@ interface EditResult {
 
 Default-channel EDIT writes the scheme's `defaultChannel` plus a `preview` companion (when the scheme manifest declares one). Fragment-targeted EDIT writes only the named channel.
 
-### §5.2 `read(ctx, statement: ReadStatement): Promise<ReadResult>`
+### §5.2 `read(statement: ReadStatement, ctx): Promise<ReadResult>`
 
 Return a channel's content.
 
@@ -332,7 +351,7 @@ interface ReadResult {
 - 404: no entry or no channel at path.
 - 501: `lineMarker`, body matcher, or non-empty tag filter on READ.
 
-### §5.3 `show(ctx, statement): Promise<ShowHideResult>` / `hide(ctx, statement)`
+### §5.3 `show(statement, ctx): Promise<ShowHideResult>` / `hide(statement, ctx)`
 
 Flip visibility. Fragment-less = all channels of the entry; fragment-targeted = named channel only.
 
@@ -346,7 +365,7 @@ interface ShowHideResult { status: 200 | 304 | 400 | 404 | 501; }
 - 404: entry doesn't exist.
 - 501: lineMarker / body / non-empty tag signal on SHOW/HIDE.
 
-### §5.4 `find(ctx, statement): Promise<FindResult>`
+### §5.4 `find(statement: FindStatement, ctx): Promise<FindResult>`
 
 Search the scheme's namespace by glob + tag filter.
 
@@ -363,7 +382,7 @@ interface FindResult {
 - 400: null path.
 - 501: matcher dialect other than `glob` (regex/xpath/jsonpath are reserved for v1).
 
-### §5.5 `send(ctx, statement): Promise<SendResult>`
+### §5.5 `send(statement: SendStatement, ctx): Promise<SendResult>`
 
 Status-coded interaction. Semantics per SPEC §3.5 catalogue:
 
@@ -380,7 +399,7 @@ interface SendResult {
 }
 ```
 
-### §5.6 `exec(ctx, statement): Promise<ExecResult>`
+### §5.6 `exec(statement: ExecStatement, ctx): Promise<ExecResult>`
 
 Execute (subprocess, remote call, etc.). Specific to `exec://`-style schemes. Returns status + reference to output channels.
 
@@ -473,8 +492,8 @@ Entry state for proposal lifecycle:
 ## §9 Scheme → engine guarantees
 
 - **Manifest is truthful.** `name`, `channels`, `defaultChannel`, `writableBy` reflect actual behavior.
-- **No direct DB.** Schemes touch `ctx.entries`/`ctx.channels`/etc., not raw SQL. No imports of `Db`, `@possumtech/sqlrite`, or `node:sqlite`.
-- **No engine access.** No imports from `@plurnk/plurnk-service`. Sanctioned imports: `@plurnk/plurnk-grammar`, `node:` built-ins, pure-function NPM dependencies.
+- **No engine access (in third-party packages).** No imports from `@plurnk/plurnk-service`. Sanctioned imports: `@plurnk/plurnk-grammar`, `node:` built-ins, pure-function NPM dependencies. (In-tree bundled schemes import from sibling scheme helpers — `_entry-*.ts` — which is a v0 convention; v1 ctx absorbs these via the namespaced API.)
+- **No direct DB (v1).** In v1, schemes touch `ctx.entries`/`ctx.channels`/etc., not raw SQL. In v0, in-tree schemes use `ctx.db` via the shared `_entry-*.ts` helpers; third-party schemes should still avoid raw `Db` even now (the toolkit functions are the supported surface).
 - **No cross-scheme writes.** Schemes can `crossScheme.readEntry` but cannot write or delete in another scheme's namespace. Cross-scheme COPY/MOVE goes through engine orchestration via this scheme's `readEntry` and the destination scheme's `writeEntry`.
 - **CRUD primitives are mandatory** for entry-bearing schemes. `readEntry`/`writeEntry`/`deleteEntry` MUST be implemented; logging-only schemes MAY omit them.
 - **Op handlers honor `ctx.signal`.** Long-running work checks `signal.throwIfAborted()` periodically; aborted ops reject (or return an aborted-status result).
@@ -487,8 +506,8 @@ Entry state for proposal lifecycle:
 
 | ❌ |
 |---|
-| Direct database access (`node:sqlite`, `@possumtech/sqlrite`, `Db` type imports) |
-| Imports from `@plurnk/plurnk-service/*` |
+| Direct database access (`node:sqlite`, `@possumtech/sqlrite`) — in-tree schemes use `ctx.db` via the `_entry-*.ts` toolkit; third-party schemes await the v1 namespaced API |
+| Imports from `@plurnk/plurnk-service/*` (third-party schemes) |
 | Writes outside the scheme's own namespace (`ctx.crossScheme.readEntry` is read-only) |
 | Direct invocation of peer schemes |
 | Direct mutation of `ctx` |
@@ -507,9 +526,9 @@ Entry state for proposal lifecycle:
 Bundled at `src/schemes/Known.ts` plus shared toolkit in `src/schemes/_entry-*.ts`. Pattern:
 
 ```ts
-import type { PlurnkScheme, PlurnkSchemeContext, SchemeManifest } from "@plurnk/plurnk-grammar";
+import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 
-export default class Known implements PlurnkScheme {
+export default class Known {
     static manifest: SchemeManifest = {
         name: "known",
         channels: { body: "text/markdown", preview: "text/markdown" },
@@ -521,32 +540,40 @@ export default class Known implements PlurnkScheme {
         modelVisible: true,
     };
 
-    async readEntry(ctx: PlurnkSchemeContext, pathname: string) {
-        const entry = await ctx.entries.read(pathname);
-        if (entry === null) return { status: 404, entry: null };
-        return { status: 200, entry };
+    async readEntry(pathname: string, ctx: PlurnkSchemeContext) {
+        return readEntry(pathname, ctx, MyScheme.manifest.name);
     }
 
-    async writeEntry(ctx: PlurnkSchemeContext, pathname: string, entry: EntryData) {
-        const result = await ctx.entries.write(pathname, entry);
-        return { status: result.status, entryId: result.entryId, created: result.created };
+    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) {
+        return writeEntry(pathname, entry, ctx, MyScheme.manifest.name);
     }
 
-    async deleteEntry(ctx: PlurnkSchemeContext, pathname: string) {
-        const result = await ctx.entries.delete(pathname);
-        return { status: result.status };
+    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext) {
+        return deleteEntry(pathname, ctx, MyScheme.manifest.name);
     }
 
-    async edit(ctx: PlurnkSchemeContext, statement: EditStatement) { /* ... */ }
-    async read(ctx: PlurnkSchemeContext, statement: ReadStatement) { /* ... */ }
-    async show(ctx: PlurnkSchemeContext, statement: ShowStatement) { /* ... */ }
-    async hide(ctx: PlurnkSchemeContext, statement: HideStatement) { /* ... */ }
-    async find(ctx: PlurnkSchemeContext, statement: FindStatement) { /* ... */ }
-    async send(ctx: PlurnkSchemeContext, statement: SendStatement) { /* ... */ }
+    async edit(statement: EditStatement, ctx: PlurnkSchemeContext) {
+        return editSessionEntry(statement, ctx, MyScheme.manifest);
+    }
+    async read(statement: ReadStatement, ctx) {
+        return readSessionEntry(statement, ctx, MyScheme.manifest);
+    }
+    async show(statement: ShowStatement | HideStatement, ctx) {
+        return showSessionEntry(statement, ctx, MyScheme.manifest);
+    }
+    async hide(statement: ShowStatement | HideStatement, ctx) {
+        return hideSessionEntry(statement, ctx, MyScheme.manifest);
+    }
+    async find(statement: FindStatement, ctx) {
+        return findSessionEntries(statement, ctx, MyScheme.manifest.name);
+    }
+    async send(statement: SendStatement, ctx) {
+        return sendToSessionEntry(statement, ctx, MyScheme.manifest.name);
+    }
 }
 ```
 
-The shared `_entry-crud.ts` / `_entry-ops.ts` / `_entry-send.ts` / `_entry-find.ts` helpers in plurnk-service today are the *toolkit* a session-entry scheme uses. When schemes are extracted to separate packages, these become `@plurnk/plurnk-schemes-toolkit` (or fold into `ctx.entries` if the engine absorbs them).
+The shared `_entry-crud.ts` / `_entry-ops.ts` / `_entry-send.ts` / `_entry-find.ts` helpers in plurnk-service are the toolkit a session-entry scheme uses (look at `Known.ts` / `Unknown.ts` / `Skill.ts` for the actual pattern). When schemes are extracted to separate packages, these helpers either ship as `@plurnk/plurnk-schemes-toolkit` or get folded into v1's `ctx.entries` namespace.
 
 ---
 
@@ -566,7 +593,7 @@ static manifest: SchemeManifest = {
     modelVisible: true,
 };
 
-async read(ctx: PlurnkSchemeContext, statement: ReadStatement) {
+async read(statement: ReadStatement, ctx: PlurnkSchemeContext) {
     // Parse log://<L>/<T>/<S> coordinate, return the log entry's contents.
 }
 ```
@@ -578,7 +605,7 @@ async read(ctx: PlurnkSchemeContext, statement: ReadStatement) {
 Pattern for streaming schemes — append content to an active channel, register a subscription handle, transition state on close:
 
 ```ts
-async send(ctx, statement) {
+async send(statement, ctx) {
     // SEND[499] = cancel
     if (statement.signal === 499) {
         const entry = await ctx.entries.read(pathnameOf(statement));
@@ -642,6 +669,8 @@ Scheme-specific behavioral tests live in the scheme package's own test surface.
 | `src/schemes/Exec.ts` | `exec` | data (volatile) | Subprocess execution; streaming stdout/stderr channels |
 | `src/schemes/Plurnk.ts` | `plurnk` | logging | Meta-scheme; protocol management, scheme registration |
 
+Note: actionless-failure routing does NOT use a scheme. Failures with no action context surface in `packet.user.telemetry.errors[]` (SPEC §15.1) — presentation concern, not storage namespace.
+
 Future schemes expected (separate packages):
 
 | Package | Scheme | Notes |
@@ -649,17 +678,14 @@ Future schemes expected (separate packages):
 | `@plurnk/plurnk-schemes-https` | `https` | Web fetch; body + headers channels |
 | `@plurnk/plurnk-schemes-sse` | `sse` | Server-Sent Events streams; volatile |
 | `@plurnk/plurnk-schemes-wiki` | `wiki` | Wikipedia / external knowledge; agent-scoped |
-| `@plurnk/plurnk-schemes-error` | `error` | Actionless failure routing (engine-internal scheme, exposed as a writable target for telemetry) |
+| `@plurnk/plurnk-schemes-search` | `search` | Web search — fills the RAG-style retrieval gap |
 
 ---
 
 ## §16 Open
 
-- **PlurnkSchemeContext implementation.** The ctx shape described here is the contract surface. Engine implementation lives in plurnk-service `src/core/`; current scheme code uses direct `db: Db` injection (transitional). Task #33 wires the ctx through; bundled schemes refactored to match.
-- **Scheme manifest registration.** Manifest persistence into the `schemes` SQL table at boot. Task #32.
-- **`writableBy` enforcement.** Engine-side check before scheme invocation. Task #34.
-- **Proposal lifecycle wiring.** RPC `op.resolve(pathname, accept)`, `proposal/pending` notification, engine routing. Task #42.
-- **Scheme-toolkit boundary.** When schemes extract to separate packages, the question is whether `_entry-crud.ts` etc. become `@plurnk/plurnk-schemes-toolkit` or get absorbed entirely into `ctx.entries`/`ctx.channels`. Probably the latter — the toolkit's surface IS the context's surface; the helpers' implementations belong in plurnk-service as the context backend.
+- **v1 PlurnkSchemeContext (namespaced).** v0 ctx is the flat struct (§4). The v1 namespaced surface (`ctx.entries`, `ctx.channels`, `ctx.visibility`, `ctx.tags`, `ctx.subscriptions`, `ctx.proposals`, `ctx.crossScheme`, `ctx.notify`) is forward-spec until third-party plugin schemes are an actual concern. Migration: wrap the existing toolkit functions in namespaced methods; seal `db` out of the public ctx surface.
+- **Proposal lifecycle wiring.** RPC `op.resolve(pathname, accept)`, `proposal/pending` notification, engine routing. Phase E.
+- **Scheme-toolkit boundary at extraction time.** When schemes extract to separate packages, the question is whether `_entry-crud.ts` etc. ship as `@plurnk/plurnk-schemes-toolkit` or get absorbed entirely into `ctx.entries`/`ctx.channels`. Probably the latter — the toolkit's surface IS the context's surface; the helpers' implementations belong in plurnk-service as the context backend.
 - **Dynamic mimetype schemes.** File and exec carry per-call mimetypes. Manifest `channels: {}` is one signal; per-call mimetype in `entry.channels[name].mimetype` is another. The shape needs a clean expression — possibly `channels: { body: null }` to mean "this channel exists, mimetype is dynamic per-call."
-- **Channel-level visibility nuance.** Per-(run, entry, channel) visibility is implemented. SPEC §5.5 covers fragment-targeted SHOW/HIDE. The `visibility.show(entryId, channel?)` signature in §4.3 reflects this — omitting `channel` flips all channels of the entry, supplying one flips only that channel.
 - **`onProposalAccepted` return shape.** Currently typed as `OpResult` (status + arbitrary fields). The exact shape depends on the original op being proposed — a `set` proposal accept returns `{status: 200, entryId}`; an `sh` proposal accept returns subprocess result. May need to be op-specific or remain loose.

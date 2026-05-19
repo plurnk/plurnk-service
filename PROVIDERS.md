@@ -42,24 +42,22 @@ Collision on `(kind: "provider", name)` at discovery: fail-hard. SPEC §9.
 ```ts
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 
-export type ChatMessage = {
+type ChatMessage = {
     role: "system" | "user" | "assistant";
     content: string;
 };
 
-export type ProviderAssistant = {
-    tokens: number;
-    content: string;
-    ops: PlurnkStatement[];
-    reasoning: string | null;
-};
-
-export type ProviderResponse = {
-    assistant: ProviderAssistant;
+type ProviderResponse = {
+    assistant: {
+        tokens: number;
+        content: string;
+        ops: PlurnkStatement[];
+        reasoning: string | null;
+    };
     assistantRaw: unknown;
 };
 
-export interface PlurnkProvider {
+interface Provider {
     readonly contextSize: number;
     readonly model: string;
     generate(args: {
@@ -68,6 +66,8 @@ export interface PlurnkProvider {
     }): Promise<ProviderResponse>;
 }
 ```
+
+Duck-typed contract. The interface declaration is in `src/core/ProviderRegistry.ts` for internal reference; external packages implement the shape without importing the type. Identity is enforced at boot via `package.json#plurnk.name` matching the alias the registry resolved.
 
 ### §3.1 Identity getters
 
@@ -140,11 +140,39 @@ Where `ProviderConfig` is the provider's own type — `baseUrl`, `apiKey`, `mode
 
 The engine instantiates the provider once per session (or once per process for the bundled boot path) and reuses the instance across `generate` calls.
 
+### §3.6 Model alias system
+
+Operator-facing model selection uses an env-driven alias cascade implemented in `src/core/ProviderRegistry.ts`:
+
+```
+PLURNK_MODEL_<alias>=<provider>/<model-id>
+PLURNK_MODEL=<alias>
+```
+
+The first path segment of the value names the provider plugin (`@plurnk/plurnk-providers-<provider>`); the rest is the provider's own model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`). `PLURNK_MODEL` selects which alias is active for the deployment.
+
+Example `.env`:
+```
+PLURNK_MODEL_gemma=openai/macher.gguf
+PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
+PLURNK_MODEL=gemma
+```
+
+The registry exposes:
+- `parseAliasesFromEnv(env)` — extract alias entries from env vars.
+- `resolveActiveAlias(env)` — `{ alias, provider, model } | null`.
+- `instantiateProvider(alias, env)` — dynamic-imports `@plurnk/plurnk-providers-<provider>` and constructs it with provider-specific env conventions.
+- `loadActiveProvider(env)` — resolve + instantiate in one call.
+
+Provider-specific env conventions live in `instantiateProvider`'s per-provider branches (currently only `openai`, which reads `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_CONTEXT_SIZE` / `OPENAI_FETCH_TIMEOUT_MS` / `OPENAI_THINK`). When more providers land, each adds a branch until the per-provider `Provider.fromEnv()` factory pattern (open in §11) standardizes.
+
+Rummy parallel: `RUMMY_MODEL_<alias>` cascade.
+
 ---
 
 ## §4 Engine → provider guarantees
 
-- `messages` is a complete prompt. Engine has already assembled `system_definition`, `persona`, `index`, `log`, `prompt`, `turn`, `system_requirements` into the ordered array. Provider does not add or reorder.
+- `messages` is a complete prompt. Engine has already assembled `system_definition`, `persona`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` into the ordered array (per `packet` shape, SPEC §15). Provider does not add or reorder.
 - `signal` (when present) is wired to the run's AbortController. The engine guarantees `signal.aborted` becomes `true` exactly once and stays true.
 - Engine calls `generate` once per turn. No parallel calls against the same provider instance for the same session.
 - Engine never inspects `assistantRaw`. Tools (telemetry, digest, forensics) may. Provider is the sole author.
@@ -227,9 +255,9 @@ Test-fixture provider. Queue of pre-built responses; `generate` shifts one off. 
 
 ---
 
-## §8 Reference — `@plurnk/plurnk-providers-openai` (external)
+## §8 Reference — `@plurnk/plurnk-providers-openai` (sibling repo)
 
-External package: `github:plurnk/plurnk-providers-openai`. Speaks the OpenAI chat-completions wire format. Adapts to llama-server, Ollama (OpenAI-compat mode), and any other endpoint speaking the same API.
+Lives at [github.com/plurnk/plurnk-providers-openai](https://github.com/plurnk/plurnk-providers-openai). Speaks the OpenAI chat-completions wire format. Adapts to llama-server, Ollama (OpenAI-compat mode), and any other endpoint speaking the same API.
 
 Config:
 
@@ -247,7 +275,7 @@ type OpenAIConfig = {
 Surface (from its published `.d.ts`):
 
 ```ts
-export default class OpenAI implements PlurnkProvider {
+export default class OpenAI {
     constructor(config: OpenAIConfig);
     get contextSize(): number;
     get model(): string;
@@ -306,7 +334,8 @@ The bundled Mock provider stays in-tree as a test fixture. Production deployment
 
 ## §11 Open
 
-- **`countTokens` method.** SPEC §2.3 currently lists `countTokens(text): Promise<number>` as required, with engine-side caching keyed by `(provider_id, content_hash)`. Neither the bundled Mock nor the published OpenAI provider implements it; the engine does not call it. Out of v0 contract. Future revision will land it with the budget-grinder work (related: task #46, budget unit decision).
+- **`countTokens` method.** SPEC §2.3 lists `countTokens(text): Promise<number>` as required, with engine-side caching keyed by `(provider_id, content_hash)`. Neither the bundled Mock nor the published OpenAI provider implements it; the engine does not call it (per §14.2 budget unit decision, v0 is character-count). Lands with the Phase C / Phase D token-accounting work.
+- **`Provider.fromEnv()` factory pattern.** Currently `ProviderRegistry.instantiateProvider` has provider-specific `if` branches for env-config conventions. When the second provider lands (Phase D), standardize on a `static fromEnv(env)` factory exported from each provider package; the registry calls it generically. This is the cleanest extension point for plugin ecosystem growth.
 - **Streaming.** Atomic for v0. Streaming providers would require an extension to `ProviderResponse` (async iterator? promise of stream + final?) and corresponding engine changes (incremental dispatch? show-stream-to-model before completion?). Out of scope until needed.
 - **Cost / usage metadata.** Token counts (`prompt_tokens`, `completion_tokens`, `cached_tokens`) and computed cost can ride in `assistantRaw` today; consumers parse opportunistically. A future `assistant.usage` first-class field would standardize this.
 - **Multi-model providers.** Each provider instance is single-model. A package wrapping multiple models from one vendor instantiates multiple providers; the engine's provider registry holds one per `name`. Whether a single provider should multiplex models is open.
