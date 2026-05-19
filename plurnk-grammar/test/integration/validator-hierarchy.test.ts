@@ -7,10 +7,10 @@ import Validator from "../../src/Validator.ts";
 // -------------------------------------------------------------------------
 
 const provider = () => ({
-    provider: "anthropic",
-    family: "claude",
-    model: "claude-opus-4-7",
-    contextSize: 200000,
+    provider: "local",
+    family: "gemma",
+    model: "gemma3-12b",
+    contextSize: 8192,
     currency: "USD",
 });
 
@@ -79,7 +79,6 @@ const packet = () => ({
         system_requirements: "* answer concisely",
     },
     assistant: {
-        tokens: 20,
         content: "<<SEND[200]:42:SEND",
         ops: [{
             op: "SEND",
@@ -337,6 +336,8 @@ test("Validator: Turn accepts end-to-end turn", () => {
         timestamp: "2026-05-16T12:00:00Z",
         status: 200,
         usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+        finish_reason: "stop",
+        model: "gemma3-12b",
         packet: packet(),
     });
     assert.equal(valid, true, JSON.stringify(errors));
@@ -349,6 +350,8 @@ test("Validator: Turn rejects invalid usage shape", () => {
         timestamp: "2026-05-16T12:00:00Z",
         status: 200,
         usage: { prompt: -5, completion: 30, cached: 0, cost_pico: 1500000 },
+        finish_reason: "stop",
+        model: "gemma3-12b",
         packet: packet(),
     });
     assert.equal(valid, false);
@@ -361,7 +364,66 @@ test("Validator: Turn rejects status outside HTTP range", () => {
         timestamp: "2026-05-16T12:00:00Z",
         status: 1000,
         usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+        finish_reason: "stop",
+        model: "gemma3-12b",
         packet: packet(),
     });
     assert.equal(valid, false);
+});
+
+test("Validator: Turn accepts null finish_reason", () => {
+    const { valid, errors } = Validator.validateTurn({
+        id: 1, version: 0,
+        loop_id: 1, sequence: 1,
+        timestamp: "2026-05-16T12:00:00Z",
+        status: 200,
+        usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+        finish_reason: null,
+        model: "gemma3-12b",
+        packet: packet(),
+    });
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: Turn rejects missing finish_reason field", () => {
+    const { valid } = Validator.validateTurn({
+        id: 1, version: 0,
+        loop_id: 1, sequence: 1,
+        timestamp: "2026-05-16T12:00:00Z",
+        status: 200,
+        usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+        model: "gemma3-12b",
+        packet: packet(),
+    });
+    assert.equal(valid, false);
+});
+
+test("Validator: Turn rejects empty model string", () => {
+    const { valid } = Validator.validateTurn({
+        id: 1, version: 0,
+        loop_id: 1, sequence: 1,
+        timestamp: "2026-05-16T12:00:00Z",
+        status: 200,
+        usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+        finish_reason: "stop",
+        model: "",
+        packet: packet(),
+    });
+    assert.equal(valid, false);
+});
+
+test("Validator: Turn accepts various finish_reason values", () => {
+    for (const reason of ["stop", "length", "tool_calls", "content_filter", "provider_specific_thing"]) {
+        const { valid, errors } = Validator.validateTurn({
+            id: 1, version: 0,
+            loop_id: 1, sequence: 1,
+            timestamp: "2026-05-16T12:00:00Z",
+            status: 200,
+            usage: { prompt: 1500, completion: 30, cached: 0, cost_pico: 1500000 },
+            finish_reason: reason,
+            model: "gemma3-12b",
+            packet: packet(),
+        });
+        assert.equal(valid, true, `${reason}: ${JSON.stringify(errors)}`);
+    }
 });

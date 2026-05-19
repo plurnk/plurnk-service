@@ -227,10 +227,10 @@ test("Validator: SchemeRegistration rejects nested object for channel_orientatio
 
 test("Validator: ProviderDeclaration accepts well-formed", () => {
     const { valid, errors } = Validator.validateProviderDeclaration({
-        provider: "anthropic",
-        family: "claude",
-        model: "claude-opus-4-7",
-        contextSize: 200000,
+        provider: "local",
+        family: "gemma",
+        model: "gemma3-12b",
+        contextSize: 8192,
         currency: "USD",
     });
     assert.equal(valid, true, JSON.stringify(errors));
@@ -238,10 +238,10 @@ test("Validator: ProviderDeclaration accepts well-formed", () => {
 
 test("Validator: ProviderDeclaration accepts EUR currency", () => {
     const { valid } = Validator.validateProviderDeclaration({
-        provider: "anthropic",
-        family: "claude",
-        model: "claude-opus-4-7",
-        contextSize: 200000,
+        provider: "local",
+        family: "gemma",
+        model: "gemma3-12b",
+        contextSize: 8192,
         currency: "EUR",
     });
     assert.equal(valid, true);
@@ -249,10 +249,10 @@ test("Validator: ProviderDeclaration accepts EUR currency", () => {
 
 test("Validator: ProviderDeclaration rejects lowercase currency", () => {
     const { valid } = Validator.validateProviderDeclaration({
-        provider: "anthropic",
-        family: "claude",
-        model: "claude-opus-4-7",
-        contextSize: 200000,
+        provider: "local",
+        family: "gemma",
+        model: "gemma3-12b",
+        contextSize: 8192,
         currency: "usd",
     });
     assert.equal(valid, false);
@@ -260,9 +260,9 @@ test("Validator: ProviderDeclaration rejects lowercase currency", () => {
 
 test("Validator: ProviderDeclaration rejects zero contextSize", () => {
     const { valid } = Validator.validateProviderDeclaration({
-        provider: "anthropic",
-        family: "claude",
-        model: "claude-opus-4-7",
+        provider: "local",
+        family: "gemma",
+        model: "gemma3-12b",
         contextSize: 0,
         currency: "USD",
     });

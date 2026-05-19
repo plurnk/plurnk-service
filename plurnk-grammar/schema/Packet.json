@@ -56,10 +56,9 @@
         },
         "assistant": {
             "type": "object",
-            "required": ["tokens", "content", "ops", "reasoning"],
+            "required": ["content", "ops", "reasoning"],
             "additionalProperties": true,
             "properties": {
-                "tokens": { "type": "integer", "minimum": 0 },
                 "content": { "type": "string", "description": "Raw DSL string emitted by the model." },
                 "ops": {
                     "type": "array",

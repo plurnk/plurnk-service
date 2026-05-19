@@ -7,9 +7,9 @@
     "required": ["provider", "family", "model", "contextSize", "currency"],
     "additionalProperties": false,
     "properties": {
-        "provider": { "type": "string", "minLength": 1, "description": "API vendor identifier (e.g. \"anthropic\", \"openai\", \"google\", \"local\")." },
-        "family": { "type": "string", "minLength": 1, "description": "Model family (e.g. \"claude\", \"gpt\", \"gemini\", \"llama\")." },
-        "model": { "type": "string", "minLength": 1, "description": "Specific model id (e.g. \"claude-opus-4-7\")." },
+        "provider": { "type": "string", "minLength": 1, "description": "API vendor identifier (e.g. \"local\", \"openrouter\", \"anthropic\", \"openai\")." },
+        "family": { "type": "string", "minLength": 1, "description": "Model family (e.g. \"gemma\", \"llama\", \"qwen\", \"claude\", \"gpt\", \"gemini\")." },
+        "model": { "type": "string", "minLength": 1, "description": "Specific model id (e.g. \"gemma3-12b\")." },
         "contextSize": { "type": "integer", "minimum": 1, "description": "Total context window in tokens." },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 code; the unit `cost_pico` is denominated in." }
     }
