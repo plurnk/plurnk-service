@@ -3,21 +3,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import MimetypeRegistry from "../../src/core/MimetypeRegistry.ts";
-import TextMarkdown from "@plurnk/plurnk-mimetypes-text-markdown";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { loadActiveProvider, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
 import type { Provider } from "../../src/core/ProviderRegistry.ts";
 import { PATHS } from "../../src/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
-// Tests that bypass Daemon (constructing Engine directly) miss the plugin
-// discovery scan; register text/markdown explicitly here so the index
-// renderer uses TextMarkdown.preview instead of falling back to verbatim.
-const makeMimetypes = (): MimetypeRegistry => {
-    const r = new MimetypeRegistry();
-    r.register(new TextMarkdown());
-    return r;
+// Tests that bypass Daemon construct Mimetypes directly. Discovery scans
+// installed @plurnk/plurnk-mimetypes-* packages — none installed in this
+// repo today, so content flows through the framework's fitContent raw-
+// content fallback (still budget-bounded).
+const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
+    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    await m.ready();
+    return m;
 };
 
 const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
@@ -44,7 +44,7 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
         const sessionId = await insertSession(db, `live-loop-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "Build up knowledge across turns then compare");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
 
         const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known://city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known://city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
 
@@ -82,7 +82,7 @@ test("live OpenAI: runTurn single-shot smoke", async () => {
         const sessionId = await insertSession(db, `live-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "What is the capital of France?");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
 
         const result = await engine.runTurn({
             provider,

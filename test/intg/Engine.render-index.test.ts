@@ -1,27 +1,28 @@
 // Render-time mimetype invocation in packet assembly. SPEC §4 + §5.1 + §5.6.
 // Engine.#buildIndex pulls (run, entry, channel) tuples with indexed=1 and
-// passes each channel's stored content through mimetype.preview().
+// passes each channel's stored content through Mimetypes.process(). With an
+// empty discovery (no handlers installed), the framework falls back to
+// fitContent — content under budget returns verbatim, which is what these
+// tests assert against.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import MimetypeRegistry from "../../src/core/MimetypeRegistry.ts";
-import TextMarkdown from "@plurnk/plurnk-mimetypes-text-markdown";
-import TextPlain from "../../src/mimetypes/TextPlain.ts";
 import Mock from "../../src/providers/Mock.ts";
-import type { MimetypeHandler } from "../../src/mimetypes/_types.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
-// Bundle text/markdown explicitly; the bundled MimetypeRegistry only ships
-// text/plain. In production Daemon's plugin discovery registers markdown.
-const makeMimetypes = (): MimetypeRegistry => {
-    const r = new MimetypeRegistry();
-    r.register(new TextMarkdown());
-    return r;
-};
+// Empty-discovery Mimetypes: no handlers registered, all preview rendering
+// flows through fitContent (raw-content fallback). Content under budget
+// returns verbatim. Tests installing a real handler (via dep + npm install)
+// would exercise the full extract → symbols → preview pipeline.
+const makeMimetypes = (): Mimetypes => new Mimetypes({
+    discovery: { registry: emptyRegistry(), handlers: new Map() },
+    tokenize: async (text) => Math.ceil(text.length / 4),
+});
 
 const sendStmt = (status: number): SendStatement => ({
     op: "SEND", suffix: "", signal: status, path: null,
@@ -89,8 +90,9 @@ test("[§4-handlers-fire-render-time] Engine invokes mimetype.preview when assem
         assert.equal(packet.system.index.length, 1);
         const entry = packet.system.index[0];
         assert.equal(entry.pathname, "x");
-        const expected = new TextMarkdown().preview(body, 256);
-        assert.equal(entry.channels.body.content, expected);
+        // Empty-discovery Mimetypes routes through fitContent; small body
+        // returns verbatim under the 256-token budget.
+        assert.equal(entry.channels.body.content, body);
         assert.equal(entry.channels.body.mimetype, "text/markdown");
     } finally { await db.close(); }
 });
@@ -115,8 +117,10 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
         const packet = await readPacket(db, result.turnId);
         const entry = packet.system.index[0];
 
-        assert.equal(entry.channels.body.content, new TextMarkdown().preview(md, 256));
-        assert.equal(entry.channels.preview.content, new TextPlain().preview(plain, 256));
+        // Both channels route through fitContent (empty discovery); each
+        // returns its raw content under the 256-token budget.
+        assert.equal(entry.channels.body.content, md);
+        assert.equal(entry.channels.preview.content, plain);
     } finally { await db.close(); }
 });
 
@@ -182,19 +186,30 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const mimetypes = new MimetypeRegistry();
+
+        // Inject a stub BaseHandler subclass via Mimetypes' loader + discovery
+        // options. Engine routes content through Mimetypes.process; framework
+        // resolves the handler via the injected loader; our stub returns an
+        // identifiable preview the assertion can check.
         const calls: string[] = [];
-        const handler: MimetypeHandler = {
-            mimetype: "application/x-test",
-            glyph: "🧪",
-            validate: () => {},
-            symbols: () => "",
-            preview: (content: string, budget: number) => {
+        const StubHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
+        class TestHandler extends StubHandler {
+            override async preview(content: string, _budget: number): Promise<string> {
                 calls.push(content);
-                return `[budget=${budget}] ${content.slice(0, 10)}`;
+                return `[stub] ${content.slice(0, 10)}`;
+            }
+        }
+        const mimetypes = new Mimetypes({
+            discovery: {
+                registry: { byExtension: new Map(), byFilename: new Map() },
+                handlers: new Map([["application/x-test", {
+                    mimetype: "application/x-test", glyph: "🧪", extensions: [],
+                    packageName: "stub://test",
+                }]]),
             },
-        };
-        mimetypes.register(handler);
+            loader: async (_pkgName) => ({ default: TestHandler }),
+            tokenize: async (text) => Math.ceil(text.length / 4),
+        });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
         await seedEntry(db, {
@@ -205,9 +220,9 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
         const result = await runTurnOnce(db, env, engine);
         const packet = await readPacket(db, result.turnId);
 
-        assert.equal(calls.length, 1, "handler invoked exactly once at render");
+        assert.equal(calls.length, 1, "handler preview invoked exactly once at render");
         assert.equal(calls[0], "hello-world-and-beyond");
-        assert.equal(packet.system.index[0].channels.body.content, "[budget=256] hello-worl");
+        assert.equal(packet.system.index[0].channels.body.content, "[stub] hello-worl");
     } finally { await db.close(); }
 });
 
