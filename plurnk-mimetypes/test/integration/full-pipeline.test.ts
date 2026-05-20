@@ -1,0 +1,117 @@
+import { after, before, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import Mimetypes from "../../src/Mimetypes.ts";
+
+const fixtureDir = path.join(import.meta.dirname, "fixtures", "text-plain");
+const handlerPath = path.join(fixtureDir, "src", "index.ts");
+
+describe("full pipeline — text/plain fixture", () => {
+    let tmp: string;
+
+    before(async () => {
+        tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-intg-"));
+    });
+
+    after(async () => {
+        await fs.rm(tmp, { recursive: true, force: true });
+    });
+
+    function buildMimetypes(): Mimetypes {
+        return new Mimetypes({
+            discoverOptions: { packageDirs: [fixtureDir] },
+            // Real handler import, but routed to the local fixture path because
+            // we're testing in-tree (no npm resolution available).
+            loader: async (_packageName) => import(handlerPath),
+            tokenize: async (text) => text.length,
+        });
+    }
+
+    it("discovers the fixture's plurnk metadata", async () => {
+        const m = buildMimetypes();
+        await m.ready();
+        const mimetype = await m.detect({ path: "anything.txt" });
+        assert.equal(mimetype, "text/plain");
+    });
+
+    it("instantiates the handler with discovered metadata", async () => {
+        const m = buildMimetypes();
+        const handler = await m.getHandler("text/plain");
+        assert.ok(handler !== null, "handler should be returned");
+        assert.equal(handler.mimetype, "text/plain");
+        assert.equal(handler.glyph, "📄");
+        assert.deepEqual([...handler.extensions], [".txt"]);
+    });
+
+    it("processes inline content end-to-end", async () => {
+        const m = buildMimetypes();
+        const result = await m.process({
+            path: "greeting.txt",
+            content: "hello world\nsecond line",
+        });
+        assert.equal(result.ok, true);
+        assert.equal(result.mimetype, "text/plain");
+        // BaseHandler's default extract returns [], so symbols are empty —
+        // and the orchestrator falls back to a raw-content preview.
+        assert.equal(result.symbols, "");
+        assert.equal(result.preview, "hello world\nsecond line");
+    });
+
+    it("processes content read from disk", async () => {
+        const filePath = path.join(tmp, "from-disk.txt");
+        await fs.writeFile(filePath, "disk content");
+
+        const m = buildMimetypes();
+        const result = await m.process({ path: filePath });
+        assert.equal(result.ok, true);
+        assert.equal(result.mimetype, "text/plain");
+        assert.equal(result.preview, "disk content");
+    });
+
+    it("honors budget — preview gets shrunk to fit", async () => {
+        const m = buildMimetypes();
+        // 1 char = 1 token (test tokenize). Budget 5 → preview truncated to 5 chars.
+        const result = await m.process(
+            { path: "long.txt", content: "this is much longer content" },
+            { budget: 5 },
+        );
+        assert.equal(result.ok, true);
+        assert.ok(result.preview.length <= 5);
+    });
+
+    it("returns ok:false when the file doesn't exist", async () => {
+        const m = buildMimetypes();
+        const result = await m.process({ path: "/nonexistent/path/foo.txt" });
+        assert.equal(result.mimetype, "text/plain");
+        assert.equal(result.ok, false);
+        assert.equal(result.preview, "");
+    });
+
+    it("returns ok:false with null mimetype for unknown extension", async () => {
+        const m = buildMimetypes();
+        const result = await m.process({
+            path: "foo.unknown-extension",
+            content: "x",
+        });
+        assert.equal(result.mimetype, null);
+        assert.equal(result.ok, false);
+    });
+
+    it("caches the handler across multiple process() calls", async () => {
+        let loadCount = 0;
+        const m = new Mimetypes({
+            discoverOptions: { packageDirs: [fixtureDir] },
+            loader: async (_pkg) => {
+                loadCount += 1;
+                return import(handlerPath);
+            },
+            tokenize: async (text) => text.length,
+        });
+        await m.process({ path: "a.txt", content: "a" });
+        await m.process({ path: "b.txt", content: "b" });
+        await m.process({ path: "c.txt", content: "c" });
+        assert.equal(loadCount, 1, "loader should be called exactly once");
+    });
+});

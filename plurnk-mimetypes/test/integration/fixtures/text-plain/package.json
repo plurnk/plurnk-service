@@ -1,0 +1,14 @@
+{
+    "name": "@plurnk-test/text-plain-fixture",
+    "version": "0.0.0",
+    "description": "In-tree fixture for the @plurnk/plurnk-mimetypes smoke test — NOT a publishable package.",
+    "type": "module",
+    "license": "MIT",
+    "private": true,
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "text/plain",
+        "glyph": "📄",
+        "extensions": [".txt"]
+    }
+}

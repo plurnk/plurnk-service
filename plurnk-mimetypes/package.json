@@ -41,18 +41,33 @@
   "scripts": {
     "scaffold": "node scripts/scaffold.js",
     "init-language": "node scripts/init-language.js",
-    "build": "node scripts/compile.js",
-    "lint": "npx @biomejs/biome check .",
-    "test": "node --test test/**/*.test.js",
+    "build:legacy": "node scripts/compile.js",
+    "build:dist": "tsc -p tsconfig.build.json",
+    "build": "npm run build:dist",
+    "test:lint": "tsc --noEmit",
+    "test:unit": "node --test src/**/*.test.ts",
+    "test:intg": "node --test test/integration/**/*.test.ts",
+    "test:legacy": "node --test test/e2e/**/*.test.js",
     "test:languages": "node --test languages/*/map.test.js",
-    "test:all": "node --test test/**/*.test.js languages/*/map.test.js",
+    "test:all": "node --test test/e2e/**/*.test.js languages/*/map.test.js",
+    "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:legacy",
     "release": "npm version patch && git push --follow-tags"
   },
   "dependencies": {
     "antlr4": "^4.13.2"
   },
+  "peerDependencies": {
+    "antlr4ng": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "antlr4ng": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9",
-    "antlr-ng": "^1.0.10"
+    "@types/node": "^25.8.0",
+    "antlr-ng": "^1.0.10",
+    "antlr4ng": "^3.0.0",
+    "typescript": "^6.0.3"
   }
 }

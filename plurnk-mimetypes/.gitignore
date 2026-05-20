@@ -2,8 +2,15 @@ node_modules/
 *.tgz
 *.log
 
+# Local working memory — family-wide convention is to keep this out of git.
+AGENTS.md
+
 # antlrmap — precompiled ANTLR4 output (build artifact, not source)
 languages/*/generated/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
 
 # antlr-ng build artifacts
 stdin.c
