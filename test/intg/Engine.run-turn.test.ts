@@ -26,8 +26,11 @@ const sendStmt = (status: number, body: string): SendStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const response = (ops: PlurnkStatement[], content: string = "", tokens: number = 0): MockResponse => ({
-    assistant: { tokens, content, ops, reasoning: null },
+const response = (ops: PlurnkStatement[], content: string = "", completion: number = 0): MockResponse => ({
+    assistant: {
+        content, ops, reasoning: null,
+        usage: { prompt: 0, completion, cached: 0, total: completion },
+    },
 });
 
 const setup = async () => {
@@ -502,7 +505,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
         const provider = new Mock({
             contextSize: 100000,
             responses: [{
-                assistant: { tokens: 0, content: "", ops: [sendStmt(200, "")], reasoning: null },
+                assistant: { content: "", ops: [sendStmt(200, "")], reasoning: null },
                 assistantRaw: raw,
             }],
         });

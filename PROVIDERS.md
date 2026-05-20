@@ -149,9 +149,10 @@ Each provider package's default export MUST have a static `fromEnv(env, model)` 
 ```ts
 class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI {
-        // Read OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_CONTEXT_SIZE,
-        // OPENAI_FETCH_TIMEOUT_MS, PLURNK_REASON. Translate
-        // PLURNK_REASON to provider-native reasoning config.
+        // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY,
+        // OPENAI_CONTEXT_SIZE, ...) plus the universal operator knobs
+        // PLURNK_REASON (§3.8) and PLURNK_PROVIDER_FETCH_TIMEOUT (§3.9).
+        // Translate PLURNK_REASON to the provider-native reasoning config.
         return new OpenAI({ /* ... */ });
     }
     constructor(config: OpenAIConfig) { /* ... */ }
@@ -162,7 +163,7 @@ class OpenAI {
 
 Promises:
 - `fromEnv` MAY be sync or async; return type is `Provider | Promise<Provider>`.
-- `fromEnv` reads provider-specific env vars (`OPENAI_*` / `ANTHROPIC_*` / etc.) and the universal `PLURNK_REASON` (§3.8).
+- `fromEnv` reads provider-specific env vars (`OPENAI_*` / `ANTHROPIC_*` / etc.) and the universal operator knobs `PLURNK_REASON` (§3.8) and `PLURNK_PROVIDER_FETCH_TIMEOUT` (§3.9).
 - `fromEnv` MUST fail fast with a clear error if required env is missing — name the env var the operator needs to set.
 - `model` is the second positional arg because `PLURNK_MODEL_<alias>=<provider>/<model>` is parsed by service; service passes the resolved model id through.
 
@@ -178,6 +179,14 @@ Promises:
 The integer is the budget in tokens. Provider modules own translating to their wire format — OpenAI o-series picks a tier from `reasoning_effort: low|medium|high|disabled` based on the value; llama-server / Ollama with OpenAI-compat translate to their `think: true|false` field at any nonzero value; Anthropic uses `thinking: { type: "enabled", budget_tokens: n }` passing through near-verbatim. Service stays out of the per-model-family complexity.
 
 Providers MAY publish documentation about how they translate `PLURNK_REASON` budgets to their model family's tier breakpoints. Service does not validate the value beyond "non-negative integer."
+
+### §3.9 `PLURNK_PROVIDER_FETCH_TIMEOUT` — universal fetch timeout
+
+`PLURNK_PROVIDER_FETCH_TIMEOUT` is the engine-level fetch timeout, in milliseconds, applied to any single provider request. Default `600000` (10 minutes) when unset. Each provider's `fromEnv` reads it and passes it through as the `AbortSignal.timeout` bound on `fetch`. A streaming completion that emits no bytes for longer than this window is aborted.
+
+Rationale: every provider in the registry is a streaming HTTP client, so they all share the same hang-tolerance question. Operators get one knob; per-provider override env (`OPENAI_FETCH_TIMEOUT_MS`, `OPENROUTER_FETCH_TIMEOUT_MS`, etc.) is not part of the contract — if a single provider's endpoint genuinely needs different timing, that is a code-default decision inside the provider, not an operator concern.
+
+Providers MAY apply a lower in-code default than `600000` when their endpoint is known-fast (e.g. a local Ollama box would reasonably default to 30s), but they MUST honor `PLURNK_PROVIDER_FETCH_TIMEOUT` as the operator-set upper bound.
 
 ### §3.6 Model alias system
 

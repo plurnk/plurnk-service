@@ -35,9 +35,14 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-grammar": "github:plurnk/plurnk-grammar",
+        "@plurnk/plurnk-grammar": "^0.6.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "github:plurnk/plurnk-mimetypes-text-markdown",
+        "@plurnk/plurnk-providers-cloudflare": "github:plurnk/plurnk-providers-cloudflare",
+        "@plurnk/plurnk-providers-google": "github:plurnk/plurnk-providers-google",
+        "@plurnk/plurnk-providers-ollama": "github:plurnk/plurnk-providers-ollama",
         "@plurnk/plurnk-providers-openai": "github:plurnk/plurnk-providers-openai",
+        "@plurnk/plurnk-providers-openrouter": "github:plurnk/plurnk-providers-openrouter",
+        "@plurnk/plurnk-providers-xai": "github:plurnk/plurnk-providers-xai",
         "@possumtech/sqlrite": "^3.1.0",
         "ws": "^8.20.1"
     },

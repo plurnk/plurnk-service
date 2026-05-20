@@ -58,10 +58,13 @@ export const insertLoop = async (db: Db, runId: number, sequence: number, prompt
 };
 
 const MIN_PACKET = JSON.stringify({
-    tokens: 0,
     system: { tokens: 0, system_definition: "", persona: "", index: [], log: [] },
     user: { tokens: 0, prompt: "", telemetry: { budget: "", errors: [] }, system_requirements: "" },
-    assistant: { tokens: 0, content: "", ops: [], reasoning: null },
+    assistant: {
+        content: "", ops: [], reasoning: null,
+        usage: { prompt: 0, completion: 0, cached: 0, total: 0 },
+        finishReason: null, model: "mock",
+    },
     assistantRaw: null,
 });
 

@@ -30,7 +30,7 @@ const sendStmt = (status: number): SendStatement => ({
 });
 
 const response = (ops: PlurnkStatement[]) => ({
-    assistant: { tokens: 0, content: "", ops, reasoning: null },
+    assistant: { content: "", ops, reasoning: null },
 });
 
 const seedEntry = async (

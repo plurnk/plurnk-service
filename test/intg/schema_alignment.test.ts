@@ -51,6 +51,8 @@ const MAPPING: Record<string, SchemaMapping> = {
             id: direct("id"), version: direct("version"), loop_id: direct("loop_id"),
             sequence: direct("sequence"), timestamp: direct("timestamp"), status: direct("status"),
             usage: decomposed("usage_prompt", "usage_completion", "usage_cached", "usage_cost_pico"),
+            finish_reason: direct("finish_reason"),
+            model: direct("model"),
             packet: json("packet"),
         },
     },

@@ -77,7 +77,10 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
 };
 
-export const makeMockResponse = (dsl: string, tokens: number = 0): MockResponse => ({
-    assistant: { tokens, content: dsl, ops: parseDsl(dsl), reasoning: null },
+export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => ({
+    assistant: {
+        content: dsl, ops: parseDsl(dsl), reasoning: null,
+        usage: { prompt: 0, completion, cached: 0, total: completion },
+    },
     assistantRaw: null,
 });
