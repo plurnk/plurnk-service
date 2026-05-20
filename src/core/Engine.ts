@@ -56,13 +56,18 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 // the consumer; ProviderRegistry owns the type.
 import type { Provider, ProviderResponse, ProviderAssistant, ProviderUsage } from "./ProviderRegistry.ts";
 
-// Engine-side parsed view of the assistant payload. Includes the wire-level
-// fields from the provider plus the engine-applied parse (ops) and
-// reasoning-policy merge (wire reasoning + scraped free-form text).
+// packet.assistant shape per plurnk-grammar 0.6.0 Packet.json. Wire-level
+// call-metadata (usage, finishReason, model) is NOT here — those are
+// properties of the call and live on the Turn row, alongside Turn.usage.
 type PacketAssistant = {
     content: string;
     ops: PlurnkStatement[];
     reasoning: string | null;
+};
+
+// Split-out call-metadata that travels with the parsed packet but lands in
+// Turn columns instead of packet.assistant.
+type TurnCallMetadata = {
     usage: ProviderUsage;
     finishReason: string | null;
     model: string;
@@ -312,10 +317,11 @@ export default class Engine {
     }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
         const response = await provider.generate({ messages, signal });
 
-        // Provider returns raw wire-level output. Engine applies the parse
-        // and the free-form-text-to-reasoning scraping policy (PROVIDERS.md
-        // §3.3). Providers stay thin; grammar version lives in one place.
-        const packetAssistant = this.#assembleAssistant(response);
+        // Engine splits wire-level response: emission (content, reasoning,
+        // parsed ops) → packet.assistant per Packet.json §assistant;
+        // call-metadata (usage, finishReason, model) → Turn columns per
+        // Turn.json. Mixing the two on packet.assistant was the wrong layer.
+        const { packetAssistant, callMetadata } = this.#splitResponse(response);
         const opsCount = packetAssistant.ops.length;
         const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
@@ -333,8 +339,8 @@ export default class Engine {
         // Build packet BEFORE pushing this turn's actionless failures so the
         // drain at packet-build sees only PRIOR turns' failures. THIS turn's
         // failures are buffered AFTER and surface in the next packet.
-        const packet = await this.#buildPacket(messages, packetAssistant, response.assistantRaw, runId, loopId);
-        const { usage } = packetAssistant;
+        const packet = await this.#buildPacket(messages, packetAssistant, response.assistantRaw, runId, loopId, provider);
+        const { usage, finishReason, model } = callMetadata;
         const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId,
             sequence: seq,
@@ -343,6 +349,9 @@ export default class Engine {
             usage_prompt: usage.prompt,
             usage_completion: usage.completion,
             usage_cached: usage.cached,
+            usage_cost_pico: provider.costFor(usage),
+            finish_reason: finishReason,
+            model,
         });
         if (turnRow === undefined) throw new Error("Engine.runTurn: turn insert returned no row");
         const turnId = turnRow.id;
@@ -369,18 +378,17 @@ export default class Engine {
         return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops) };
     }
 
-    // PROVIDERS.md §3.3 text-fragment scraping policy. Parses content into
-    // PlurnkStatement[] and merges wire-reported reasoning with any free-form
-    // prose the model emitted between ops. The provider stays unaware of the
-    // grammar; engine owns the parse and the scraping rule.
+    // Split the wire-level ProviderResponse into the two destinations:
+    // packet.assistant gets the model's emission (content, ops, reasoning);
+    // Turn columns get the call-metadata (usage, finishReason, model).
+    // PROVIDERS.md §3.3 text-fragment scraping policy lives here — engine
+    // owns the parse and the scraping rule, providers stay grammar-unaware.
     //
     // Test-fixture escape hatch: the Mock provider may pre-supply `ops` on
-    // its assistant payload to skip the parse roundtrip (DSL-serializing
-    // every constructed PlurnkStatement in tests would be lots of churn
-    // for zero coverage value). The wire Provider contract has no `ops`
-    // field; only Mock exposes one. Real providers always take the parse
-    // path because their `assistant.ops` is undefined.
-    #assembleAssistant(response: ProviderResponse): PacketAssistant {
+    // its assistant payload to skip the parse roundtrip. The wire Provider
+    // contract has no `ops` field; only Mock exposes one. Real providers
+    // always take the parse path because their `assistant.ops` is undefined.
+    #splitResponse(response: ProviderResponse): { packetAssistant: PacketAssistant; callMetadata: TurnCallMetadata } {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -402,30 +410,44 @@ export default class Engine {
         const reasoningParts = [wireReasoning, scrapedReasoning].filter((s) => s.length > 0);
         const reasoning = reasoningParts.length > 0 ? reasoningParts.join("\n\n") : null;
         return {
-            content: assistant.content,
-            ops,
-            reasoning,
-            usage: assistant.usage,
-            finishReason: assistant.finishReason,
-            model: assistant.model,
+            packetAssistant: { content: assistant.content, ops, reasoning },
+            callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
         };
     }
 
-    async #buildPacket(messages: ChatMessage[], assistant: PacketAssistant, assistantRaw: unknown, runId: number, loopId: number): Promise<object> {
+    async #buildPacket(
+        messages: ChatMessage[], assistant: PacketAssistant, assistantRaw: unknown,
+        runId: number, loopId: number, provider: Provider,
+    ): Promise<object> {
         const byRole = (role: ChatMessage["role"]): string =>
             messages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
+        const systemDef = byRole("system");
+        const userPrompt = byRole("user");
+        const index = await this.#buildIndex(runId);
+        const log = await this.#buildLog(loopId);
+        const telemetryErrors = await this.#buildTelemetryErrors(loopId);
+        // Per-section render-cost subtotals via provider's tokenizer. Engine
+        // approximates each section by tokenizing its serialized form — exact
+        // wire-payload tokens may differ slightly because OpenAI-compat
+        // serialization adds chat-template scaffolding, but the subtotal
+        // tracks "what the model has to process" closely enough to drive
+        // context-bloat diagnostics + packet.user.telemetry.budget.
+        const systemTokens = provider.countTokens(systemDef) + provider.countTokens(JSON.stringify(index)) + provider.countTokens(JSON.stringify(log));
+        const userTokens = provider.countTokens(userPrompt) + provider.countTokens(JSON.stringify(telemetryErrors));
+        const assistantTokens = provider.countTokens(assistant.content);
         return {
+            tokens: systemTokens + userTokens + assistantTokens,
             system: {
-                tokens: 0,
-                system_definition: byRole("system"),
+                tokens: systemTokens,
+                system_definition: systemDef,
                 persona: "",
-                index: await this.#buildIndex(runId),
-                log: await this.#buildLog(loopId),
+                index,
+                log,
             },
             user: {
-                tokens: 0,
-                prompt: byRole("user"),
-                telemetry: { budget: "", errors: await this.#buildTelemetryErrors(loopId) },
+                tokens: userTokens,
+                prompt: userPrompt,
+                telemetry: { budget: "", errors: telemetryErrors },
                 system_requirements: "",
             },
             assistant,

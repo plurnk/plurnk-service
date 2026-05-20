@@ -35,7 +35,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-grammar": "github:plurnk/plurnk-grammar",
+        "@plurnk/plurnk-grammar": "^0.6.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "github:plurnk/plurnk-mimetypes-text-markdown",
         "@plurnk/plurnk-providers-openai": "github:plurnk/plurnk-providers-openai",
         "@plurnk/plurnk-providers-openrouter": "github:plurnk/plurnk-providers-openrouter",

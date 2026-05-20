@@ -38,6 +38,15 @@ export default class Mock implements Provider {
     get contextSize(): number { return this.#contextSize; }
     get model(): string { return "mock"; }
 
+    // Heuristic tokenizer. Mock is test-only; real provider siblings ship
+    // family-specific tokenizers.
+    countTokens(text: string): number {
+        return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+    }
+
+    // Mock is free.
+    costFor(_usage: ProviderUsage): number { return 0; }
+
     async generate(_: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
         const next = this.#queue.shift();
         if (next === undefined) throw new Error("Mock provider exhausted: no more queued responses");

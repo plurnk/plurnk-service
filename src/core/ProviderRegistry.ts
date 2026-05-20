@@ -11,10 +11,14 @@
 
 interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
-// Provider contract v1 (PROVIDERS.md §3; tracked by plurnk-grammar #11).
-// Providers return raw wire-level output — content unparsed, reasoning is the
-// wire-reported CoT only. The engine parses content into PlurnkStatement[]
-// and applies the free-form-text-to-reasoning scraping policy (§3.3).
+// Provider contract v1 (PROVIDERS.md §3; aligned with plurnk-grammar 0.6.0
+// Turn.json + Packet.json). Providers return raw wire-level output — content
+// unparsed, reasoning is the wire-reported CoT only. Engine parses content
+// into PlurnkStatement[] and applies the free-form-text-to-reasoning scraping
+// policy (§3.3). Engine also splits the wire response: emission fields
+// (content, reasoning) flow into packet.assistant; call-metadata fields
+// (usage, finishReason, model) flow into Turn columns.
+//
 // Providers do not depend on @plurnk/plurnk-grammar at runtime.
 export interface ProviderUsage {
     readonly prompt: number;
@@ -37,6 +41,17 @@ export interface Provider {
     generate(args: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;
     readonly contextSize: number;
     readonly model: string;
+    // Provider-owned tokenizer. Engine calls this during packet assembly to
+    // populate per-section subtotals (packet.system.tokens, packet.user.tokens,
+    // packet.tokens) and to drive packet.user.telemetry.budget. Each sibling
+    // uses its model family's actual tokenizer where available, falls back to
+    // a per-family heuristic otherwise.
+    countTokens(text: string): number;
+    // Provider-owned cost calculation. Engine calls this once per turn after
+    // generate() to populate turns.usage_cost_pico (rollup triggers cascade
+    // to runs.cost_pico and sessions.cost_pico). Returns 0 for siblings/models
+    // with no known rates (local Ollama, generic OpenAI-compat shim, etc.).
+    costFor(usage: ProviderUsage): number;
 }
 
 export interface ProviderAlias {
