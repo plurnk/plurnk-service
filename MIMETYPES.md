@@ -1,268 +1,140 @@
 # MIMETYPES.md
 
-Contract for `@plurnk/plurnk-mimetypes-*` packages. Audience: implementer of a mimetype handler. Companion contracts: SCHEMES.md (URI handlers), PROVIDERS.md (LLM transports). Engine surface: SPEC.md.
+How plurnk-service consumes the `@plurnk/plurnk-mimetypes-*` family. The duck contract, handler implementation surface, and detection priority are owned by [@plurnk/plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) — see its [SPEC.md](https://github.com/plurnk/plurnk-mimetypes/blob/main/SPEC.md). This document covers only the service-side integration: which handlers are required deps, the package.json discovery extensions service needs, and the render-time pipeline.
+
+Companion contracts: SCHEMES.md (URI handlers), PROVIDERS.md (LLM transports). Engine surface: SPEC.md.
 
 ---
 
-## §1 Role
+## §1 Role at the service layer
 
-A mimetype handler interprets channel content for render-time packet assembly. Three methods:
+plurnk-service is mimetype-illiterate. The engine knows it has channel content with a mimetype label and a per-call token budget; it hands both to `Mimetypes.process({content, hint}, {budget})` and uses `result.preview` as the rendered output in `packet.system.index[].channels[name].content`. SPEC §4 {§4-handlers-fire-render-time}.
 
-- `validate(content)` — assert well-formed; throw on violation.
-- `symbols(content)` — extract structural summary.
-- `preview(content, budget)` — render budget-bounded interpretation.
+The framework owns: detection, discovery (`node_modules/@plurnk/` scan), handler instantiation, outline formatting, budget-truncated preview rendering, the duck contract.
 
-Pure. Stateless. No IO. No access to engine, database, filesystem, network, subprocess, or peer handlers. Invoked at render time; the `preview` result lands in `packet.system.index[].channels[name].content`. SPEC §4 {§4-handlers-fire-render-time}.
+The service owns: which handlers are hard deps (§2), tokenize injection from the active provider's `countTokens` (§3), and the per-call budget sourced from `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (SPEC §12).
 
 ---
 
-## §2 Manifest
+## §2 Required dependencies
 
-`package.json`:
+Three handler packages are hard deps in plurnk-service's `package.json`. Each handles content the engine itself emits or consumes — service can't operate meaningfully without these.
+
+| Package | Mimetype | Why required |
+|---|---|---|
+| `@plurnk/plurnk-mimetypes-text-markdown` | `text/markdown` | LLM emission default. Configured as `defaultMimetype` on the `Mimetypes` orchestrator — when detection finds no match, the framework returns `"text/markdown"` instead of `null`. The handler must be discoverable at runtime for that default to actually resolve. |
+| `@plurnk/plurnk-mimetypes-text-plain` | `text/plain` | Universal text fallback. An explicit "no-structure text" identity beats relying on the framework's no-handler `fitContent` raw-content path. |
+| `@plurnk/plurnk-mimetypes-application-json` | `application/json`, `application/jsonc` | Service emits json for `log_entries` rx/tx, telemetry payloads, and packet serialization. Not just user content — load-bearing for the platform's own internal data. |
+
+Everything else is **opt-in**: operators `npm install @plurnk/plurnk-mimetypes-<name>` for whatever content types they care about. The framework's `discover()` picks them up automatically at `Mimetypes.ready()`. No service-side declaration needed.
+
+---
+
+## §3 Tokenize injection
+
+`Mimetypes` is constructed at Daemon boot with a `tokenize` lambda capturing the active provider's `countTokens`:
+
+```ts
+new Mimetypes({
+    tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
+    defaultMimetype: "text/markdown",
+});
+```
+
+The fallback heuristic only fires when no provider is configured (rare path; standalone or boot-before-provider-resolved). In production every preview is sized against the active model family's real tokenizer.
+
+The framework's `TokenizeFn` is async-shaped (`(text) => Promise<number>`); the lambda wraps the synchronous `provider.countTokens` cleanly. See [plurnk-mimetypes#1](https://github.com/plurnk/plurnk-mimetypes/issues/1) for the eventual relaxation to `number | Promise<number>`.
+
+---
+
+## §4 Discovery manifest — package.json `plurnk` block
+
+The framework's [SPEC §2](https://github.com/plurnk/plurnk-mimetypes/blob/main/SPEC.md#2-packagejson-plurnk-discovery-block) owns the canonical shape. Plurnk-service consumes the framework's `discover()` and asks for this one extension to the manifest: an `also` block for packages that serve more than one closely-related mimetype.
+
+### §4.1 Single-handler form (unchanged)
 
 ```json
 {
-    "name": "@plurnk/plurnk-mimetypes-<name>",
     "plurnk": {
         "kind": "mimetype",
-        "name": "<canonical mimetype>"
+        "name": "text/markdown",
+        "glyph": "📝",
+        "extensions": [".md", ".markdown"]
     }
 }
 ```
 
-- `kind` MUST be `"mimetype"`.
-- `name` is the canonical mimetype. Use IANA where registered (`text/markdown`, `application/json`). Domain types use `application/vnd.<vendor>.<subtype>` per RFC 6838.
+### §4.2 Multi-handler form (shape A — primary + `also`)
 
-Default export: a class implementing `PlurnkMimetype` (§3). Singleton — engine constructs once at boot, reuses for every call.
+For packages that ship a single implementation under multiple closely-related names (jsonc as a json superset; x-yaml as the legacy alias of yaml; text/xml aliasing application/xml; etc.). The primary stays at the top level; additional names go in an `also` array.
 
-Collision on `(kind: "mimetype", name)` at discovery: fail-hard. SPEC §9.
+```json
+{
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "application/json",
+        "glyph": "📋",
+        "extensions": [".json"],
+        "also": [
+            { "name": "application/jsonc", "extensions": [".jsonc"] }
+        ]
+    }
+}
+```
+
+`also` element shape: `{ name: string, extensions?: string[], glyph?: string }`. `glyph` defaults to the primary's glyph if omitted.
+
+The asymmetry is intentional — every motivating case has a real primary plus variants. Flat `handlers: [...]` would discard "which name is canonical."
+
+### §4.3 Detection resolution semantics
+
+`detect()` matches against the primary and every `also[]` entry at the same tier (extension, filename, hint). The first match wins per the framework's priority (hint > filename > extension > content).
+
+**`ProcessResult.mimetype` returns the matched name, not the canonical primary.** A `.jsonc` file detects as `"application/jsonc"`; service's `entry_channels.mimetype` column reflects what the operator actually stored. The handler instance is shared between primary and `also` entries — both flow through the same package's exported class. Only the metadata passed to the handler at construction time differs.
+
+```
+package: { name: "application/json", also: [{ name: "application/jsonc", extensions: [".jsonc"] }] }
+
+.jsonc file  → mimetype: "application/jsonc"   (matched, not canonical)
+.json file   → mimetype: "application/json"    (matched, equals canonical here)
+hint: "application/jsonc" → mimetype: "application/jsonc"
+```
+
+The variant identity matters for handler logic that flips behavior on which name is being served (jsonc allows comments; json does not).
+
+### §4.4 Collision policy
+
+Collision on `(name)` or any `also[].name` across two installed packages: framework's discovery is last-loaded-wins. Service does not intervene.
 
 ---
 
-## §3 Interface
+## §5 Render pipeline
+
+Engine's index render (`#buildIndex`, SPEC §5.2 {§5.2-render-filters-by-indexed}):
 
 ```ts
-interface MimetypeHandler {
-    readonly mimetype: string;
-    readonly glyph: string;
-    validate(content: string): void;
-    symbols(content: string): string;
-    preview(content: string, budget: number): string;
-}
+const result = await this.#mimetypes.process(
+    { content: row.content, hint: row.mimetype },
+    { budget: this.#previewBudget },
+);
+entry.channels[row.channel] = {
+    content: result.preview,
+    mimetype: row.mimetype,
+    tokens: row.tokens,
+};
 ```
 
-Duck-typed contract. The interface lives in `src/mimetypes/_types.ts` for in-tree handlers; external packages implement the shape without importing the type (avoids the circular `@plurnk/plurnk-service` → external → service dependency). Identity is enforced at registration via `package.json#plurnk.name` matching `instance.mimetype`.
-
-### §3.1 Identity fields
-
-| Field | Constraint |
-|---|---|
-| `mimetype` | MUST equal `package.json#plurnk.name`. Engine throws on mismatch at registration. |
-| `glyph` | Single grapheme cluster. Used in model-facing tile labels. |
-
-### §3.2 `validate(content): void`
-
-Render-time well-formedness check.
-
-- Returns `void` on valid content.
-- Throws on invalid content. Error message identifies the violation (line/column where applicable).
-- Pure. Deterministic. Synchronous.
-
-Engine catches thrown errors and routes through the fail-hard path (SPEC §4.2). Schemes do NOT pre-validate at write time.
-
-Trivially-valid types: `validate(_) {}`. Do not omit the method.
-
-### §3.3 `symbols(content): string`
-
-Structural extraction.
-
-- Returns a string. Empty when no structural view applies.
-- Pure. Deterministic. Synchronous. Not budget-bounded.
-
-Engine invokes `symbols` directly when it wants the structural view alone (e.g., a `symbols` channel of a code file). `preview` MAY use `symbols` internally as a render strategy.
-
-Typical content:
-
-| Mimetype | symbols output |
-|---|---|
-| `text/markdown` | Indented heading list. |
-| `application/json` | Key tree, depth-bounded. |
-| `text/typescript` | Exported symbol list. |
-| `text/vnd.plurnk` | Op summary. |
-| `text/plain` | `""`. |
-
-### §3.4 `preview(content, budget): string`
-
-Budget-bounded interpretation.
-
-- Returns a string, length ≤ `budget` (soft hint, not enforced).
-- Pure. Deterministic. Synchronous.
-- Empty input → empty output. Non-empty input → non-empty output (at minimum a head truncation).
-
-The load-bearing render-time method. Invoked for every visible channel on every turn. SPEC §4 / §5.1.
-
-Common implementation pattern:
-
-```
-result = symbols(content)
-if result.length == 0: result = content
-if result.length > budget: result = result.slice(0, budget)
-return result
-```
-
-Handler MUST NOT memoize. Engine owns the cache.
-
-### §3.5 Budget unit
-
-Currently character count. Env var: `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (named for the future direction; current semantics are character-count). Handlers MUST treat budget as `number`, smaller = shorter output. Do not bake unit assumptions deeper.
+`hint: row.mimetype` short-circuits detection — service already knows what each channel is. `result.preview` is whatever the framework decides (handler-extracted symbols, or `fitContent` raw-content fallback). The engine doesn't branch on `result.ok` or `result.symbols` — the preview is opaque budgeted text.
 
 ---
 
-## §4 Engine → handler guarantees
+## §6 Conformance and testing
 
-- Content reaches the handler already at rest in the database. Whatever the scheme validated at write time has happened; handler's `validate` is the render-time check.
-- Calls per handler are sequential per channel. No concurrent invocation against shared state — there is no shared state.
-- Exceptions from `validate` are caught and route through fail-hard. Exceptions from `symbols` or `preview` are NOT caught — they crash the turn loudly. Implementations MUST NOT throw from `symbols` or `preview` for any input the contract permits.
-- Constructor receives no arguments. Engine instantiates once at boot.
+The framework's conformance surface ([plurnk-mimetypes SPEC §6, §7](https://github.com/plurnk/plurnk-mimetypes/blob/main/SPEC.md)) covers the duck contract. plurnk-service's intg suite covers the integration:
 
----
+- Engine routes content through `Mimetypes.process` with the right hint and budget.
+- `result.preview` lands in the right slot of `packet.system.index`.
+- Empty-discovery construction (test default) flows through `fitContent` raw-content fallback.
+- Custom-handler test injects a stub `BaseHandler` subclass via `Mimetypes`' `loader + discovery` options.
 
-## §5 Handler → engine guarantees
-
-- **Purity.** `symbols(x)` and `preview(x, b)` return identical output across invocations. `validate(x)` returns identical outcome.
-- **No state.** No instance fields beyond `readonly mimetype` and `readonly glyph`. No module-level mutable state. No internal cache.
-- **No IO.** No filesystem, network, database, subprocess, console, env.
-- **No reaching.** No imports from `@plurnk/plurnk-service`. Sanctioned imports: `node:` built-ins, pure-function NPM dependencies. The `MimetypeHandler` interface is duck-typed (don't import it — implement the shape; identity-match at boot verifies).
-- **Synchronous.** No `Promise`, no `async`, no timers.
-- **No throwing from `symbols`/`preview`.** Use stub strings for refusal cases.
-
----
-
-## §6 Forbidden
-
-| ❌ |
-|---|
-| Filesystem access |
-| Network access |
-| Database access (`node:sqlite`, `@possumtech/sqlrite`, raw connections) |
-| Subprocess spawning |
-| Environment variable reads |
-| `setTimeout` / `setInterval` / `setImmediate` |
-| `Promise` chains, `async` keywords |
-| Imports from `@plurnk/plurnk-service/*` |
-| Internal memoization or caching |
-| Mutation of input strings |
-| `console.log` / `console.error` / any stdout/stderr write |
-| Inter-handler state |
-
----
-
-## §7 Reference — `text/plain` (bundled in plurnk-service)
-
-`src/mimetypes/TextPlain.ts` — the universal fallback. Bundled rather than extracted because every deployment needs it and it has no external dependency.
-
-```ts
-import type { MimetypeHandler } from "./_types.ts";
-
-export default class TextPlain implements MimetypeHandler {
-    readonly mimetype = "text/plain";
-    readonly glyph = "📄";
-
-    validate(_content: string): void {}
-
-    symbols(_content: string): string {
-        return "";
-    }
-
-    preview(content: string, budget: number): string {
-        return content.length <= budget ? content : content.slice(0, budget);
-    }
-}
-```
-
----
-
-## §8 Reference — `@plurnk/plurnk-mimetypes-text-markdown` (sibling repo)
-
-Lives at [github.com/plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Validates the "bundle minimally" pattern: first real plugin extraction (#47). plurnk-service depends on it via npm; Daemon's plugin discovery scan registers it at boot.
-
-External package, so no interface import — duck-typed against the contract:
-
-```ts
-export default class TextMarkdown {
-    readonly mimetype = "text/markdown";
-    readonly glyph = "📝";
-
-    validate(_content: string): void {}
-
-    symbols(content: string): string {
-        const headings: string[] = [];
-        for (const line of content.split("\n")) {
-            const match = line.match(/^(#{1,6})\s+(.+?)\s*$/);
-            if (match === null) continue;
-            const indent = "  ".repeat(match[1].length - 1);
-            headings.push(`${indent}${match[2]}`);
-        }
-        return headings.join("\n");
-    }
-
-    preview(content: string, budget: number): string {
-        const outline = this.symbols(content);
-        const result = outline.length > 0 ? outline : content;
-        return result.length <= budget ? result : result.slice(0, budget);
-    }
-}
-```
-
----
-
-## §9 Conformance
-
-`@plurnk/plurnk-mimetype-conformance` (TBD) verifies:
-
-1. `instance.mimetype === packageJson.plurnk.name`.
-2. `instance.glyph` is a non-empty string ≤ 4 chars (one grapheme cluster).
-3. `validate("")` returns void without throwing.
-4. `validate` is deterministic across 100 invocations.
-5. `symbols(x)` returns a string for arbitrary `x`. Non-throwing.
-6. `preview(content, 0)` returns a string ≤ ~4 chars.
-7. `preview(content, ∞)` returns a string ≤ `content.length`.
-8. `preview(c, b)` is deterministic across 100 invocations.
-9. No filesystem, network, env, or subprocess access during the pack.
-10. All methods return synchronously. No unresolved Promises after pack completion.
-
-Mimetype-specific behavioral tests (heading extraction correctness, JSON tree depth, etc.) live in the package's own test surface.
-
----
-
-## §10 Bundled vs sibling
-
-Plurnk-service bundles only the universal fallback:
-
-| Path | Mimetype |
-|---|---|
-| `src/mimetypes/TextPlain.ts` | `text/plain` |
-
-Sibling repos we own:
-
-| Package | Mimetype |
-|---|---|
-| `@plurnk/plurnk-mimetypes-text-markdown` | `text/markdown` |
-
-Future packages, expected:
-
-| Package | Mimetype |
-|---|---|
-| `@plurnk/plurnk-mimetypes-application-json` | `application/json` |
-| `@plurnk/plurnk-mimetypes-text-vnd-plurnk` | `text/vnd.plurnk` |
-| `@plurnk/plurnk-mimetypes-text-typescript` | `text/typescript` |
-
----
-
-## §11 Open
-
-- **Budget unit.** Character count today. May switch to tokens. Interface signature is `budget: number` — no unit assumption in handler math beyond ordering.
-- **Structured returns.** All methods return `string`. Structured returns (e.g., JSON tree as object) would land as additive method `tree(content): unknown`, not by changing existing signatures.
-- **Wildcards.** Not supported. One handler per concrete mimetype. Family fallback (e.g., unknown `text/*` → `text/plain`) is engine-side dispatch logic, not handler responsibility.
-- **Write-time validation.** Scheme concern, not mimetype handler concern.
-- **Memoization.** Engine-side. Keyed by `(mimetype, content_hash, budget)`. Handler MUST NOT memoize.
+Mimetype-specific behavioral tests (markdown heading extraction correctness, JSON tree depth, etc.) live in each handler's own test surface, not here.
