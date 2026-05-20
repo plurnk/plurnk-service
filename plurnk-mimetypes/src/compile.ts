@@ -54,7 +54,11 @@ async function runChild(cmd: string, args: string[], cwd: string): Promise<void>
     });
 }
 
-async function rewriteImports(dir: string): Promise<void> {
+// Rewrite .js import extensions to .ts in every .ts file under `dir`. Exposed
+// as an importable utility for handler repos that want to integrate the
+// import-fixup step into their own build pipeline rather than calling the
+// compile bin (e.g., a custom scriptify/fix-imports.ts script).
+export async function rewriteImports(dir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);

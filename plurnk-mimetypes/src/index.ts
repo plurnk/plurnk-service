@@ -13,6 +13,8 @@ export type {
 } from "./Mimetypes.ts";
 export { detect, emptyRegistry } from "./detect.ts";
 export { discover } from "./discover.ts";
+export { runCompile, rewriteImports } from "./compile.ts";
+export type { CompileOptions } from "./compile.ts";
 export type {
     DetectInput,
     Discovery,
