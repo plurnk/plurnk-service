@@ -12,18 +12,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import MimetypeRegistry from "../../src/core/MimetypeRegistry.ts";
-import TextMarkdown from "@plurnk/plurnk-mimetypes-text-markdown";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { loadActiveProvider, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
 import type { Provider } from "../../src/core/ProviderRegistry.ts";
 import { PATHS } from "../../src/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
-const makeMimetypes = (): MimetypeRegistry => {
-    const r = new MimetypeRegistry();
-    r.register(new TextMarkdown());
-    return r;
+const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
+    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    await m.ready();
+    return m;
 };
 
 const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
@@ -45,7 +44,7 @@ test("demo: 'What is the capital of France?' — model produces a useful outcome
         const sessionId = await insertSession(db, `demo-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "What is the capital of France?");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, maxTurns: 5,

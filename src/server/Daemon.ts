@@ -8,8 +8,7 @@ import type { Db } from "../core/Db.ts";
 import { resolve } from "node:path";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
-import MimetypeRegistry from "../core/MimetypeRegistry.ts";
-import type { MimetypeHandler } from "../mimetypes/_types.ts";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { discoverPlugins, loadPlugin } from "../core/PluginLoader.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { NotifyTarget, Provider } from "./MethodRegistry.ts";
@@ -51,7 +50,7 @@ export default class Daemon {
     #db: Db;
     #engine: Engine;
     #schemes: SchemeRegistry;
-    #mimetypes: MimetypeRegistry;
+    #mimetypes: Mimetypes;
     #provider: Provider | null;
     #registry: MethodRegistry;
     #nodeModulesPath: string;
@@ -63,15 +62,21 @@ export default class Daemon {
     }: {
         db: Db;
         schemes?: SchemeRegistry;
-        mimetypes?: MimetypeRegistry;
+        mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
     }) {
         this.#db = db;
         this.#schemes = schemes ?? new SchemeRegistry();
-        this.#mimetypes = mimetypes ?? new MimetypeRegistry();
-        this.#engine = new Engine({ db, schemes: this.#schemes, mimetypes: this.#mimetypes });
         this.#provider = provider ?? null;
+        // Mimetypes owns discovery, detection, handler instantiation, and
+        // budget-truncated preview rendering. plurnk-service stays mimetype-
+        // illiterate — we just inject the tokenize function (sourced from the
+        // active provider's countTokens) and let the framework do its thing.
+        this.#mimetypes = mimetypes ?? new Mimetypes({
+            tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
+        });
+        this.#engine = new Engine({ db, schemes: this.#schemes, mimetypes: this.#mimetypes });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();
@@ -82,12 +87,15 @@ export default class Daemon {
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }
-    get mimetypes(): MimetypeRegistry { return this.#mimetypes; }
+    get mimetypes(): Mimetypes { return this.#mimetypes; }
 
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
 
         await this.#discoverAndLoadPlugins();
+        // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
+        // packages; pre-warm it so first index render doesn't pay the cost.
+        await this.#mimetypes.ready();
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
@@ -199,21 +207,15 @@ export default class Daemon {
     }
 
     async #discoverAndLoadPlugins(): Promise<void> {
+        // Scheme discovery only. Providers are config-driven (wired via the
+        // bin script). Mimetypes self-discovers — Mimetypes.ready() in start()
+        // scans @plurnk/plurnk-mimetypes-* packages via the framework's own
+        // discover().
         const plugins = await discoverPlugins(this.#nodeModulesPath);
         for (const plugin of plugins) {
-            // Skip providers — they need config-driven construction; the single
-            // provider stays wired via the bin script until ProviderRegistry lands.
-            if (plugin.manifest.kind === "provider") continue;
-
+            if (plugin.manifest.kind !== "scheme") continue;
             const instance = await loadPlugin(plugin);
-            switch (plugin.manifest.kind) {
-                case "scheme":
-                    this.#schemes.register(plugin.manifest.name, instance as object);
-                    break;
-                case "mimetype":
-                    this.#mimetypes.register(instance as MimetypeHandler);
-                    break;
-            }
+            this.#schemes.register(plugin.manifest.name, instance as object);
         }
     }
 

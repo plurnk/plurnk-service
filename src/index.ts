@@ -6,7 +6,9 @@
 
 export { default as Engine } from "./core/Engine.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
-export { default as MimetypeRegistry } from "./core/MimetypeRegistry.ts";
+// Mimetype handling is owned by @plurnk/plurnk-mimetypes. Consumers needing
+// the orchestrator import directly from there.
+export { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export { default as Daemon } from "./server/Daemon.ts";
 export { default as MethodRegistry } from "./server/MethodRegistry.ts";
@@ -24,10 +26,6 @@ export { default as Log } from "./schemes/Log.ts";
 export { default as Plurnk } from "./schemes/Plurnk.ts";
 export { default as Exec } from "./schemes/Exec.ts";
 export { default as File } from "./schemes/File.ts";
-
-export { default as TextPlain } from "./mimetypes/TextPlain.ts";
-export { default as TextMarkdown } from "@plurnk/plurnk-mimetypes-text-markdown";
-export type { MimetypeHandler } from "./mimetypes/_types.ts";
 
 export { default as Mock } from "./providers/Mock.ts";
 export type { MockResponse, MockAssistant, ChatMessage } from "./providers/Mock.ts";

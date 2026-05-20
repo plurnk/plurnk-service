@@ -1,7 +1,7 @@
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp } from "@plurnk/plurnk-grammar";
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import MimetypeRegistry from "./MimetypeRegistry.ts";
+import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -169,7 +169,7 @@ export const detectCycle = (
 export default class Engine {
     #db: Db;
     #schemes: SchemeRegistry;
-    #mimetypes: MimetypeRegistry;
+    #mimetypes: Mimetypes;
     #previewBudget: number;
     // Per-loop transient buffer of actionless failures pending surface in the
     // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
@@ -181,10 +181,16 @@ export default class Engine {
     // `history` holds per-turn fingerprints for rail #39 cycle detection.
     #strikeState = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
 
-    constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: MimetypeRegistry }) {
+    constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: Mimetypes }) {
         this.#db = db;
         this.#schemes = schemes;
-        this.#mimetypes = mimetypes ?? new MimetypeRegistry();
+        // Default to empty discovery — standalone Engine construction (in
+        // tests) gets no handlers, and content flows through the framework's
+        // raw-content fitContent fallback. Daemon-managed Engine receives a
+        // production-configured Mimetypes via the constructor arg.
+        this.#mimetypes = mimetypes ?? new Mimetypes({
+            discovery: { registry: emptyRegistry(), handlers: new Map() },
+        });
         this.#previewBudget = readBudget();
     }
 
@@ -560,11 +566,17 @@ export default class Engine {
                 };
                 entries.set(row.entry_id, entry);
             }
-            const rendered = this.#mimetypes.has(row.mimetype)
-                ? this.#mimetypes.get(row.mimetype).preview(row.content, this.#previewBudget)
-                : row.content;
+            // Mimetypes.process owns the full preview pipeline: detect (or
+            // honor the hint), resolve handler, validate, extract → symbols,
+            // budget-truncate via the framework's fit/fitContent. Passing
+            // `hint: row.mimetype` short-circuits detection — service already
+            // knows what each channel is.
+            const result = await this.#mimetypes.process(
+                { content: row.content, hint: row.mimetype },
+                { budget: this.#previewBudget },
+            );
             entry.channels[row.channel] = {
-                content: rendered,
+                content: result.preview,
                 mimetype: row.mimetype,
                 tokens: row.tokens,
             };

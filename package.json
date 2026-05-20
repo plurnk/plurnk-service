@@ -36,7 +36,7 @@
     },
     "dependencies": {
         "@plurnk/plurnk-grammar": "^0.6.0",
-        "@plurnk/plurnk-mimetypes-text-markdown": "github:plurnk/plurnk-mimetypes-text-markdown",
+        "@plurnk/plurnk-mimetypes": "^0.1.0",
         "@plurnk/plurnk-providers-cloudflare": "github:plurnk/plurnk-providers-cloudflare",
         "@plurnk/plurnk-providers-google": "github:plurnk/plurnk-providers-google",
         "@plurnk/plurnk-providers-ollama": "github:plurnk/plurnk-providers-ollama",
