@@ -24,7 +24,9 @@
     ".": "./lib/antlrmap.js"
   },
   "bin": {
-    "antlrmap": "lib/index.js"
+    "antlrmap": "lib/index.js",
+    "plurnk-mimetypes-init": "./bin/plurnk-mimetypes-init.js",
+    "plurnk-mimetypes-compile": "./bin/plurnk-mimetypes-compile.js"
   },
   "files": [
     "lib/antlrmap.js",

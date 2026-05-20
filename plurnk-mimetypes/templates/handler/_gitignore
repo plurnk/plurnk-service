@@ -1,0 +1,13 @@
+node_modules/
+*.tgz
+*.log
+
+# Local working memory — family-wide convention is to keep this out of git.
+AGENTS.md
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# antlr-ng output (rebuilt by `npx plurnk-mimetypes-compile`)
+src/generated/

@@ -3,7 +3,9 @@ node_modules/
 *.log
 
 # Local working memory — family-wide convention is to keep this out of git.
-AGENTS.md
+# Scoped to repo root so templates/handler/AGENTS.md (the scaffolded handlers'
+# template) isn't accidentally ignored.
+/AGENTS.md
 
 # antlrmap — precompiled ANTLR4 output (build artifact, not source)
 languages/*/generated/
