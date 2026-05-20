@@ -61,9 +61,13 @@
     "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:legacy"
   },
   "peerDependencies": {
+    "antlr-ng": "^1.0.10",
     "antlr4ng": "^3.0.0"
   },
   "peerDependenciesMeta": {
+    "antlr-ng": {
+      "optional": true
+    },
     "antlr4ng": {
       "optional": true
     }

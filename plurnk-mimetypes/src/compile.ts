@@ -46,7 +46,19 @@ export async function runCompile(opts: CompileOptions = {}): Promise<void> {
 async function runChild(cmd: string, args: string[], cwd: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const proc = spawn(cmd, args, { cwd, stdio: "inherit" });
-        proc.on("error", reject);
+        proc.on("error", (err: NodeJS.ErrnoException) => {
+            if (err.code === "ENOENT") {
+                reject(new Error(
+                    `${cmd} not found on PATH. ANTLR-backed handlers need ` +
+                    `antlr-ng + antlr4ng in their own devDependencies:\n\n` +
+                    `  npm install --save-dev antlr-ng@^1.0.10 antlr4ng@^3.0.0\n\n` +
+                    `Then invoke via \`npx plurnk-mimetypes-compile\` so npx ` +
+                    `puts node_modules/.bin on PATH for the spawn.`,
+                ));
+            } else {
+                reject(err);
+            }
+        });
         proc.on("exit", (code) => {
             if (code === 0) resolve();
             else reject(new Error(`${cmd} exited with code ${code}`));

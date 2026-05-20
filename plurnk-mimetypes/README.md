@@ -66,7 +66,13 @@ Discovery: declare yourself in `package.json`.
 
 Reference handler: [plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Fork and adapt for new mimetypes — it's a real production handler, not a synthetic skeleton.
 
-For grammar-backed handlers, vendor your `.g4` files in `grammar/`, run `npx plurnk-mimetypes-compile`, and switch the parent class to `AntlrExtractor`. See [SPEC.md](SPEC.md#antlr-extractor) for details.
+For grammar-backed handlers, vendor your `.g4` files in `grammar/`, run `npx plurnk-mimetypes-compile`, and switch the parent class to `AntlrExtractor`. ANTLR handlers add the runtime and compiler to their own devDependencies (the framework declares both as optional peer deps so consumers who only use `BaseHandler`/`Mimetypes` don't pay):
+
+```
+npm install --save-dev antlr-ng@^1.0.10 antlr4ng@^3.0.0
+```
+
+See [SPEC.md](SPEC.md#9-antlr-extractor) for the full handler wiring.
 
 ## public API
 

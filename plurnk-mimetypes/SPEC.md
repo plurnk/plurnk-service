@@ -154,10 +154,14 @@ Returns the resolved mimetype string or `null`.
 For grammar-backed handlers:
 
 1. Vendor `.g4` files in `grammar/` at the handler repo root.
-2. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass).
-3. Extend `AntlrExtractor` instead of `BaseHandler`.
-4. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
-5. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
+2. Add the compiler and runtime to your own devDependencies (the framework declares both as optional peer deps; only ANTLR-backed handlers need them):
+   ```
+   npm install --save-dev antlr-ng@^1.0.10 antlr4ng@^3.0.0
+   ```
+3. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass). Invoke via `npx` so node_modules/.bin/ is on PATH when the spawn happens.
+4. Extend `AntlrExtractor` instead of `BaseHandler`.
+5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
+6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
 
 Parse failures and visit-time exceptions are caught by `AntlrExtractor.extract()` and converted to an empty `MimeSymbol[]`, allowing the orchestrator's raw-content fallback to take over.
 
