@@ -109,7 +109,7 @@ function topLevel(a, b) [50-60]
 
 `Mimetypes.process` accepts `{ budget?: number }`. When unspecified, budget is `Number.POSITIVE_INFINITY` (no truncation — preview equals symbols). The helper does NOT invent a magic default; plurnk-service supplies the real budget per call.
 
-**Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
+**Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. `TokenizeFn` accepts both sync and async signatures — `(text: string) => number | Promise<number>` — so providers with WASM-backed sync tokenizers (tiktoken-js, cl100k, llama-tokenizer-js, etc.) don't pay an unnecessary microtask hop, while genuinely-async tokenizers (Gemini's REST `countTokens`) work without ceremony. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
 
 **Truncation strategy (`fit`):**
 1. Render full outline. If it fits, return it.
@@ -148,6 +148,8 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 4. `content` — magic-byte sniffing. **Future hook**; no implementation in v0.1.
 
 Returns the resolved mimetype string or `null`.
+
+`Mimetypes.detect()` (the orchestrator method) wraps the pure `detect()` and additionally applies an optional **default fallback** from `MimetypesOptions.defaultMimetype`. When all four lanes above miss but a default is configured, the orchestrator returns the default — never `null`. plurnk-service sets `defaultMimetype: "text/markdown"` because LLM output is overwhelmingly markdown; standalone consumers omit the option to preserve strict null-on-miss behavior. The default only affects the orchestrator's resolution; downstream handler discovery still applies normally (an unknown default mimetype falls into the raw-content fallback path per §7).
 
 ## 9. ANTLR extractor
 

@@ -69,6 +69,22 @@ describe("Mimetypes — detection + discovery", () => {
         assert.equal(await m.detect({ path: "foo.txt" }), "text/plain");
     });
 
+    it("detect falls back to defaultMimetype when no match found", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            defaultMimetype: "text/markdown",
+        });
+        assert.equal(await m.detect({ path: "foo.unknown-ext" }), "text/markdown");
+    });
+
+    it("detect prefers a real match over the default", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            defaultMimetype: "text/markdown",
+        });
+        assert.equal(await m.detect({ path: "foo.txt" }), "text/plain");
+    });
+
     it("ready() is idempotent (multiple calls share state)", async () => {
         let discoverCalls = 0;
         const m = new Mimetypes({

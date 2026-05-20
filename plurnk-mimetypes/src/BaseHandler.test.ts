@@ -83,6 +83,26 @@ describe("BaseHandler", () => {
         assert.ok(called, "injected tokenize should be invoked");
     });
 
+    it("accepts a synchronous tokenize function (no Promise wrapping)", async () => {
+        // Sync tokenizers (tiktoken-js, llama-tokenizer-js, cl100k WASM) should
+        // not need to be wrapped in `async`. TokenizeFn = (text) => number | Promise<number>.
+        let calls = 0;
+        class TestHandler extends BaseHandler {
+            extract(_content: string): MimeSymbol[] {
+                return [{ name: "Foo", kind: "class", line: 1, endLine: 5 }];
+            }
+        }
+        const h = new TestHandler(metadata, {
+            tokenize: (text) => {
+                calls += 1;
+                return text.length;
+            },
+        });
+        const result = await h.preview("anything", 1000);
+        assert.ok(calls > 0, "sync tokenize should be invoked");
+        assert.equal(result, "class Foo [1-5]");
+    });
+
     it("defaults to text.length/2 ceiling when no tokenize is injected", async () => {
         // Indirect test: with default tokenize, a single symbol that produces a
         // 16-char string takes ceil(16/2) = 8 "tokens". Budget of 7 should drop it.

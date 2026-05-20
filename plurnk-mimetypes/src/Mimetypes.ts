@@ -35,6 +35,12 @@ export interface MimetypesOptions {
     // for consumers that build their registry programmatically.
     discovery?: Discovery;
     loader?: HandlerLoader;
+    // Mimetype to substitute when detection finds no match. plurnk-service sets
+    // this to "text/markdown" because LLM output is overwhelmingly markdown —
+    // null is a worse answer than markdown for almost all model-generated
+    // content. Unset → detection returns null when nothing matches (the
+    // original behavior, preserved for standalone use).
+    defaultMimetype?: string;
 }
 
 export interface ProcessInput {
@@ -63,6 +69,7 @@ export default class Mimetypes {
     readonly #tokenize: TokenizeFn;
     readonly #discoverOptions: DiscoverOptions;
     readonly #loader: HandlerLoader;
+    readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, BaseHandler>();
     #discovery: Discovery | null = null;
     #readyPromise: Promise<void> | null = null;
@@ -71,6 +78,7 @@ export default class Mimetypes {
         this.#tokenize = options.tokenize ?? defaultTokenize;
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader;
+        this.#defaultMimetype = options.defaultMimetype ?? null;
         if (options.discovery !== undefined) this.#discovery = options.discovery;
     }
 
@@ -88,7 +96,8 @@ export default class Mimetypes {
 
     async detect(input: DetectInput): Promise<string | null> {
         await this.ready();
-        return detect(input, this.#discovery!.registry);
+        const result = detect(input, this.#discovery!.registry);
+        return result ?? this.#defaultMimetype;
     }
 
     async getHandler(mimetype: string): Promise<BaseHandler | null> {

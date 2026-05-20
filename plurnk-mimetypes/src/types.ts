@@ -26,7 +26,12 @@ export interface HandlerMetadata {
     extensions: readonly string[];
 }
 
-export type TokenizeFn = (text: string) => Promise<number>;
+// Tokenize functions may be sync or async. Sync providers (most WASM-backed
+// tokenizers — tiktoken-js, llama-tokenizer-js, cl100k, etc.) return number
+// directly; genuinely-async providers (e.g., Gemini's REST countTokens)
+// return Promise<number>. All internal call sites `await` the result, which
+// is a no-op for non-thenables. (plurnk/plurnk-mimetypes#1.)
+export type TokenizeFn = (text: string) => number | Promise<number>;
 
 export interface HandlerOptions {
     tokenize?: TokenizeFn;

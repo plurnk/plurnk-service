@@ -18,7 +18,8 @@ Requires Node ≥ 25 (native TypeScript support, ESM only).
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const mimetypes = new Mimetypes({
-    tokenize: async (text) => myProviderTokenizer(text),
+    tokenize: (text) => myProviderTokenizer(text),   // sync or async
+    defaultMimetype: "text/markdown",                // fall back when nothing matches
 });
 
 const result = await mimetypes.process(
@@ -32,6 +33,10 @@ const result = await mimetypes.process(
 ```
 
 Without a budget the preview is unbounded — equivalent to `symbols`. plurnk-service supplies the real budget (sourced from `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`).
+
+`defaultMimetype` is the mimetype the orchestrator substitutes when detection finds no match. For LLM-driven systems where most content is model-generated, `"text/markdown"` is almost always the right default. Omit the option to preserve strict null-on-miss behavior.
+
+`tokenize` accepts sync or async signatures. Sync WASM-backed tokenizers (tiktoken-js, llama-tokenizer-js, etc.) don't need to be wrapped in `async`.
 
 Pipeline failure modes are documented in [SPEC.md](SPEC.md#error-policy).
 
