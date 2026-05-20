@@ -72,9 +72,13 @@ export default class Daemon {
         // Mimetypes owns discovery, detection, handler instantiation, and
         // budget-truncated preview rendering. plurnk-service stays mimetype-
         // illiterate — we just inject the tokenize function (sourced from the
-        // active provider's countTokens) and let the framework do its thing.
+        // active provider's countTokens) and configure text/markdown as the
+        // default mimetype (LLM output is overwhelmingly markdown; the
+        // text-markdown handler is a hard dep so the default actually
+        // resolves at runtime).
         this.#mimetypes = mimetypes ?? new Mimetypes({
             tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
+            defaultMimetype: "text/markdown",
         });
         this.#engine = new Engine({ db, schemes: this.#schemes, mimetypes: this.#mimetypes });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
