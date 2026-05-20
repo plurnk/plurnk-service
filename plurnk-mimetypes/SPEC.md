@@ -1,128 +1,183 @@
-# antlrmap Specification
+# @plurnk/plurnk-mimetypes — Specification
 
-## Purpose
+This document defines the duck contract, pipeline, data shapes, and policies that the framework owns. Per-mimetype handler repos consume this spec; plurnk-service consumes the pipeline.
 
-antlrmap produces a **structural table of contents** for a codebase — a list of definitions and their locations. It answers the question: "what is defined here and where?"
-
-It does **not** map usages, call graphs, dependencies, or relationships between symbols. That is a different tool.
+The eventual home for the formal version of this contract is JSON Schema in [`@plurnk/plurnk-grammar`](https://github.com/plurnk/plurnk-grammar). Until then, this plain-text spec is authoritative.
 
 ---
 
-## Guiding Principle
+## 1. Duck contract
 
-> List all symbols that are defined in a file and which are not confirmed to be invisible and/or inaccessible outside the file, with their parameters.
+A handler is any class instance whose shape matches:
 
-Imports, exports, and dependency edges are excluded — they describe *relationships*, not *definitions*. An LLM agent consuming a repomap needs to know what exists and where. When it needs to know what a file depends on, it reads the file.
+```ts
+interface Handler {
+    readonly mimetype: string;
+    readonly glyph: string;
+    readonly extensions: readonly string[];
+    extract(content: string): MimeSymbol[];
+    validate(content: string): void;
+    symbols(content: string): string;
+    preview(content: string, budget: number): Promise<string>;
+}
+```
 
----
+In practice handlers extend `BaseHandler` (or `AntlrExtractor`), which provides every method derived from a single `extract(content) → MimeSymbol[]`. Subclasses normally implement `extract` only. Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
-## Symbol Mapping Policy
+## 2. `package.json` `plurnk` discovery block
 
-Every language mapping (`map.js`) must follow these rules. The goal is consistency across all 300+ languages so that consumers can rely on the shape of the output regardless of source language.
+```json
+{
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "text/x-python",
+        "glyph": "🐍",
+        "extensions": [".py", ".pyw"]
+    }
+}
+```
 
-### Include (definitions visible outside the file)
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
+| `name` | string | yes | The canonical mimetype (`text/markdown`, `application/json`, `text/x-python`, …) |
+| `glyph` | string | no | Single-character display marker; defaults to empty string |
+| `extensions` | string[] | no | Mixed list: entries beginning with `.` are file extensions (lowercased on match); other entries are special filenames matched verbatim (`Dockerfile`, `Makefile`) |
 
-| Kind | What it means | Examples |
-|------|---------------|---------|
-| `class` | A named class or struct declaration | `class Foo`, `struct Bar` |
-| `function` | A named function declaration at module/file scope | `function parse()`, `def main()` |
-| `method` | A function defined inside a class/struct/impl | `parse(source)`, `__init__(self)` |
-| `field` | A named property/member declared on a class/struct | `#count`, `this.name`, `int x` |
-| `interface` | An interface or protocol declaration | `interface Readable`, `protocol Codable` |
-| `enum` | An enumeration type declaration | `enum Color`, `enum Direction` |
-| `type` | A type alias or typedef | `type ID = string`, `typedef int score` |
-| `module` | A module/namespace/package declaration | `module Foo`, `namespace Bar`, `package main` |
-| `variable` | A named binding at module scope, **only if not confirmed private to the file** | `export const PORT = 3000` |
-| `constant` | A named constant declaration visible outside the file | `pub const MAX: u32 = 100` |
-| `heading` | A markdown heading line. Carries an extra `level` field (1-6). | `# Title`, `## Section` |
+`discover()` scans `node_modules/@plurnk/` for packages with `plurnk.kind === "mimetype"`. Last-loaded wins on mimetype or extension conflicts.
 
-### Exclude (confirmed invisible or not definitions)
+## 3. `MimeSymbol` and `SymbolKind`
 
-| Excluded | Reason |
-|----------|--------|
-| Imports | Dependency, not definition — visible by reading the file |
-| Exports (as standalone symbols) | Relationship, not definition — the exported *declaration* is already captured |
-| Local variables inside function/method bodies | Confirmed invisible — scoped to the function |
-| Unexported module-scope variables (in languages with module privacy) | Confirmed invisible — e.g., non-exported `const` in ESM |
-| Function/method calls and references | Usage, not definition |
-| Control flow (if/for/while/switch) | Not a symbol |
-| Comments and documentation | Not structural |
-| String literals and magic numbers | Not a symbol |
-| Anonymous functions/classes | No name to reference |
+```ts
+interface MimeSymbol {
+    name: string;
+    kind: SymbolKind;
+    line: number;        // 1-indexed start
+    endLine: number;     // 1-indexed end (== line for single-line symbols)
+    params?: string[];   // present on functions and methods when names are available
+    level?: number;      // present on heading kinds; 1-6
+}
+
+type SymbolKind =
+    | "class" | "function" | "method" | "field"
+    | "interface" | "enum" | "type" | "module"
+    | "variable" | "constant" | "heading";
+```
+
+### Inclusion policy
+
+Handlers include symbols that are **defined in the content and not confirmed invisible outside their declaring scope**.
+
+- Include: classes, functions, methods, fields, interfaces, enums, types, modules, exported variables/constants, markdown headings.
+- Exclude: imports, exports as standalone symbols, local variables inside function bodies, unexported module-scope variables (in languages with module privacy), function calls, control flow, comments, magic numbers, anonymous declarations.
+- Class members (methods, fields) are always included — they're the API surface even though syntactically inside a class body.
+- When in doubt, include. Only exclude when the language semantics *confirm* the symbol is inaccessible from outside the file.
 
 ### Parameters
 
-Functions and methods **must** include their parameter names when the grammar makes them available.
+Functions and methods include `params` when the grammar exposes them:
 
-- `params` is an array of strings: `["source", "options"]`
-- Destructured params use the raw text: `["{host, port}"]`
-- Rest params include the ellipsis: `["...args"]`
-- Default values are included in the text when part of the assignable: `["entryRule=\"program\""]`
-- If a language grammar does not expose named parameters (e.g., some assembly grammars), omit the `params` field entirely.
+- Plain names: `["source", "options"]`
+- Destructured: `["{host, port}"]` (raw text)
+- Rest: `["...args"]`
+- Defaults: `["entryRule=\"program\""]` (included in the assignable text)
 
-### Scope Boundary
+Omit `params` entirely when the language doesn't expose named parameters.
 
-The mapping must identify the **scope boundary rule** in the grammar — the parser rule that separates "visible definitions" from "local implementation." In most languages this is the function/method body rule.
+## 4. Outline format (`symbols` / `format`)
 
-Examples:
-- JavaScript: `functionBody` (the `{ ... }` block of a function/method)
-- Python: indented suite after `def`/`class`
-- Java: `methodBody`, `constructorBody`
-- C: `compoundStatement` inside a function definition
+The framework owns outline rendering. Handlers produce structured `MimeSymbol[]`; `format(symbols)` turns it into a string.
 
-Everything declared inside a scope boundary is excluded from the repomap.
+**Tree hierarchy:**
+- Heading symbols: nested by `level` field (1–6).
+- Other symbols: nested by line-range containment. A symbol whose `[line, endLine]` is fully inside another's is its child.
 
-The one exception: **class members** (methods, fields) are always included even though they are inside a class body, because they are the API surface of the class.
+**Line rendering:**
+- Heading: `<indent># Name [line]` (hash count = level, indent = tree depth).
+- Other: `<indent>kind name(params)? [line-endLine]` (kind prefix, params if present, range collapses to `[N]` when single-line).
+- Indent unit: two spaces per depth level.
 
-### Visibility Ambiguity
-
-Some languages (C, Python, Lua) have no module-level privacy. In these cases, all file-scope declarations are potentially visible — include them. The rule is: **when in doubt, include**. Only exclude when the language's semantics *confirm* a symbol cannot be accessed from outside the file.
-
----
-
-## Output Format
-
-JSON array. One entry per file, each containing the file path and its symbols.
-
-```json
-[
-  {
-    "file": "lib/Parser.js",
-    "symbols": [
-      {
-        "name": "Parser",
-        "kind": "class",
-        "line": 5,
-        "endLine": 47
-      },
-      {
-        "name": "parse",
-        "kind": "method",
-        "line": 18,
-        "endLine": 26,
-        "params": ["source"]
-      }
-    ]
-  }
-]
+Example:
+```
+class Parser [5-47]
+  method parse(source) [10-20]
+  method load(dir) [22-45]
+function topLevel(a, b) [50-60]
 ```
 
-### Symbol fields
+## 5. `preview` — token-budgeted truncation
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | The symbol's identifier |
-| `kind` | string | yes | One of the kinds listed in the Include table |
-| `line` | number | yes | Start line (1-indexed) |
-| `endLine` | number | yes | End line (1-indexed) |
-| `params` | string[] | no | Parameter names, present on functions and methods when available |
-| `level` | number | no | Heading depth 1-6, present on `heading` symbols |
+`Mimetypes.process` accepts `{ budget?: number }`. When unspecified, budget is `Number.POSITIVE_INFINITY` (no truncation — preview equals symbols). The helper does NOT invent a magic default; plurnk-service supplies the real budget per call.
 
-### File entry fields
+**Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | string | yes | Relative path from the target directory |
-| `symbols` | object[] | yes | Array of symbols found in this file |
+**Truncation strategy (`fit`):**
+1. Render full outline. If it fits, return it.
+2. Drop deepest tree level. Render. Repeat until fits or only roots remain.
+3. If even all-roots overflows, drop trailing root symbols one at a time until fits.
+4. If even a single root overflows, return empty string (surrender — caller may invoke `fitContent` to substitute a raw-content fragment).
 
-Files with zero symbols are omitted from the output.
+**Raw content fallback (`fitContent`):**
+- Used when `extract()` returns `[]` (empty symbols) but the content is non-empty.
+- Iteratively shrinks the content slice to fit `budget` tokens via the same tokenize function, with safety margin and max-iterations clamp.
+
+## 6. `validate`
+
+Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
+
+When `validate` throws inside `Mimetypes.process`, the error propagates to the caller per the error policy (§7).
+
+## 7. Error policy
+
+| Failure | Behavior |
+|---|---|
+| Detection returns null | `{ mimetype: null, symbols: "", preview: "", ok: false }` |
+| Content read fails (path missing/unreadable) | `{ mimetype, symbols: "", preview: "", ok: false }` |
+| Handler package not loadable | `{ mimetype, symbols: "", preview: <raw fallback>, ok: false }` |
+| `validate()` throws | **Propagates** to the caller — contract violation |
+| `extract()` throws | Contained inside `AntlrExtractor` → empty `MimeSymbol[]` → raw-content fallback |
+| `extract()` returns `[]` with non-empty content | Symbols string empty; preview falls back to `fitContent(content, budget)` |
+
+## 8. Detection priority
+
+`detect({ path?, ext?, hint?, content? }, registry)` resolves in strict priority order, highest wins:
+
+1. `hint` — caller asserts a mimetype directly.
+2. `path` basename matches a registered filename (`Dockerfile`, `Makefile`).
+3. `ext` (explicit) or `extname(path)` matches a registered extension (case-insensitive, leading-dot enforced on lookup).
+4. `content` — magic-byte sniffing. **Future hook**; no implementation in v0.1.
+
+Returns the resolved mimetype string or `null`.
+
+## 9. ANTLR extractor
+
+For grammar-backed handlers:
+
+1. Vendor `.g4` files in `grammar/` at the handler repo root.
+2. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass).
+3. Extend `AntlrExtractor` instead of `BaseHandler`.
+4. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
+5. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
+
+Parse failures and visit-time exceptions are caught by `AntlrExtractor.extract()` and converted to an empty `MimeSymbol[]`, allowing the orchestrator's raw-content fallback to take over.
+
+## 10. Tokenization architecture
+
+The helper never reads any environment variable. Tokenization is a runtime injection from plurnk-service:
+
+```
+plurnk-providers-*           plurnk-service                @plurnk/plurnk-mimetypes
+─────────────────            ──────────────                ────────────────────────
+exports tokenize(text)  ─→   registers from active   ─→    receives at construction
+                              provider                      via { tokenize }
+                              caches by SHA256(text)
+                              budget per call sourced
+                              from PLURNK_ENTRY_SIZE_
+                              DEFAULT_TOKENS env (256)
+```
+
+Handlers never see the tokenize function. The framework uses it internally for `preview` only.
+
+## 11. Public API stability
+
+All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { defaultTokenize } from "./defaults.ts";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { fitContent } from "./fit.ts";
@@ -19,8 +20,6 @@ import type {
 // would silently shadow the env var and create drift when plurnk-service
 // changes its default.
 const UNBOUNDED_BUDGET = Number.POSITIVE_INFINITY;
-
-const defaultTokenize: TokenizeFn = async (text) => Math.ceil(text.length / 2);
 
 // Loader hook: how to resolve a handler package to its default-exported class.
 // Production uses dynamic import(); tests inject a custom loader to avoid

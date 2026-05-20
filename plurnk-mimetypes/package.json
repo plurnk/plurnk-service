@@ -1,17 +1,21 @@
 {
-  "name": "@possumtech/antlrmap",
-  "version": "0.1.1",
-  "description": "Use antlr4 to generate repomaps for llm agent context",
+  "name": "@plurnk/plurnk-mimetypes",
+  "version": "0.1.0",
+  "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
   "keywords": [
-    "repomap"
+    "plurnk",
+    "mimetype",
+    "llm",
+    "symbols",
+    "structural"
   ],
-  "homepage": "https://github.com/possumtech/antlrmap#readme",
+  "homepage": "https://github.com/plurnk/plurnk-mimetypes#readme",
   "bugs": {
-    "url": "https://github.com/possumtech/antlrmap/issues"
+    "url": "https://github.com/plurnk/plurnk-mimetypes/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/possumtech/antlrmap.git"
+    "url": "git+https://github.com/plurnk/plurnk-mimetypes.git"
   },
   "engines": {
     "node": ">=25"
@@ -19,22 +23,24 @@
   "license": "MIT",
   "author": "@wikitopian",
   "type": "module",
-  "main": "lib/antlrmap.js",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
-    ".": "./lib/antlrmap.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
-    "antlrmap": "lib/index.js",
     "plurnk-mimetypes-compile": "./bin/plurnk-mimetypes-compile.js"
   },
   "files": [
-    "lib/antlrmap.js",
-    "lib/index.js",
-    "lib/Parser.js",
-    "lib/Formatter.js",
-    "languages/*/map.js",
-    "languages/*/package.json",
-    "languages/*/generated/**/*.js"
+    "dist/**/*",
+    "bin/*.js",
+    "README.md",
+    "SPEC.md"
   ],
   "workspaces": [
     "languages/*"
@@ -45,17 +51,14 @@
     "build:legacy": "node scripts/compile.js",
     "build:dist": "tsc -p tsconfig.build.json",
     "build": "npm run build:dist",
+    "prepare": "npm run build",
     "test:lint": "tsc --noEmit",
     "test:unit": "node --test src/**/*.test.ts",
     "test:intg": "node --test test/integration/**/*.test.ts",
     "test:legacy": "node --test test/e2e/**/*.test.js",
     "test:languages": "node --test languages/*/map.test.js",
     "test:all": "node --test test/e2e/**/*.test.js languages/*/map.test.js",
-    "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:legacy",
-    "release": "npm version patch && git push --follow-tags"
-  },
-  "dependencies": {
-    "antlr4": "^4.13.2"
+    "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:legacy"
   },
   "peerDependencies": {
     "antlr4ng": "^3.0.0"
@@ -68,6 +71,7 @@
   "devDependencies": {
     "@types/node": "^25.8.0",
     "antlr-ng": "^1.0.10",
+    "antlr4": "^4.13.2",
     "antlr4ng": "^3.0.0",
     "typescript": "^6.0.3"
   }

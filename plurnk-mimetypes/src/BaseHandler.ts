@@ -1,8 +1,7 @@
+import { defaultTokenize } from "./defaults.ts";
 import { format } from "./format.ts";
 import { fit } from "./fit.ts";
 import type { HandlerMetadata, HandlerOptions, MimeSymbol, TokenizeFn } from "./types.ts";
-
-const defaultTokenize: TokenizeFn = async (text) => Math.ceil(text.length / 2);
 
 export default class BaseHandler {
     readonly mimetype: string;

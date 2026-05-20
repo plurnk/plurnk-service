@@ -1,258 +1,118 @@
-# antlrmap
+# @plurnk/plurnk-mimetypes
 
-Use ANTLR4 to generate repomaps for LLM agent context.
+Framework + detection service for the `@plurnk/plurnk-mimetypes-*` handler family. Sits between [plurnk-service](https://github.com/plurnk/plurnk-service) (the engine) and individual per-mimetype handler repos (the implementations).
 
-## Introduction
+plurnk-service hands a path or content blob to `Mimetypes.process(...)` and gets back `{ mimetype, symbols, preview, ok }`. The service stays mimetype-illiterate; this helper owns detection, discovery, handler instantiation, outline formatting, token-budgeted preview truncation, the duck contract spec, and the build utilities handler repos consume.
 
-antlrmap is a Node.js utility that generates a structural map of all symbols in a codebase — classes, functions, methods, fields, and their parameters — formatted as JSON for LLM consumption.
-
-Built on formal ANTLR4 grammars (EBNF-family `.g4` files) from the [Grammar Zoo](https://github.com/antlr/grammars-v4), antlrmap parses source files with real parsers, not regex. This makes it more thorough than ctags and more accessible than tree-sitter or LSPs. If you have a bespoke or obscure language, you can plug in your ANTLR4 grammar, write a mapping visitor, and you're good to go.
-
-No Java dependency. The entire build and runtime is pure JavaScript.
-
-## Supported Languages
-
-JavaScript, TypeScript, Python, Rust, Go, Java, C, C++, Kotlin, PHP, Lua, Markdown.
-
-```bash
-antlrmap --supported   # JSON of all languages and file extensions
-```
-
-## Installation
-
-```bash
-npm i -g @possumtech/antlrmap
-```
-
-## CLI Usage
-
-```bash
-# Map specific files
-antlrmap lib/Parser.js lib/Formatter.js
-
-# Pipe file lists from find, git, etc.
-find src -name '*.ts' | antlrmap
-git ls-files '*.py' | antlrmap
-
-# Explicit stdin
-antlrmap --stdin < filelist.txt
-```
-
-Output is JSON:
-
-```json
-[
-  {
-    "file": "lib/Parser.js",
-    "symbols": [
-      { "name": "Parser", "kind": "class", "line": 5, "endLine": 47 },
-      { "name": "parse", "kind": "method", "line": 18, "endLine": 26, "params": ["source"] },
-      { "name": "load", "kind": "method", "line": 28, "endLine": 46, "params": ["languageDir"] }
-    ]
-  }
-]
-```
-
-## Module API
-
-```js
-import Antlrmap from "@possumtech/antlrmap";
-
-const mapper = new Antlrmap();
-
-// Map a batch of files (parser loaded once, reused across all files)
-const results = await mapper.mapFiles(["src/index.js", "src/utils.js"]);
-
-// Map a single file
-const symbols = await mapper.mapFile("src/index.js");
-
-// Map source text directly (no filesystem)
-const symbols = await mapper.mapSource("class Foo { bar() {} }", ".js");
-
-// Introspect supported languages
-Antlrmap.supported;   // { "javascript--javascript": [".js", ".mjs"], ... }
-Antlrmap.extensions;  // { ".js": "javascript--javascript", ... }
-```
-
-## What Gets Mapped
-
-antlrmap lists all symbols that are defined in a file and which are not confirmed to be invisible outside the file, with their parameters. See [SPEC.md](SPEC.md) for the full policy.
-
-**Included:** classes, functions, methods, fields, interfaces, enums, types, modules, exported variables — with parameter names.
-
-**Excluded:** imports, exports (as standalone symbols), local variables, unexported module-scope variables (in languages with module privacy), usages, call graphs.
-
-## Development
-
-### Prerequisites
-
-- Node.js 25+
-- Git (with submodule support)
-
-### Setup
-
-```bash
-git clone --recurse-submodules https://github.com/possumtech/antlrmap.git
-cd antlrmap
-npm install
-npm run build    # compiles ANTLR4 grammars to JavaScript
-```
-
-### Build
-
-`npm run build` compiles all active `.g4` grammars from the grammar zoo submodule into JavaScript parsers using [antlr-ng](https://github.com/nicotordev/antlr-ng) (a pure JS/TS port of the ANTLR4 tool). Output lands in `languages/<id>/generated/`. This is a build-time step — the published package ships precompiled parsers with no build required at install time.
-
-```bash
-npm run build                        # compile all 12 languages
-node scripts/compile.js rust         # compile a single language
-```
-
-### Test
-
-```bash
-npm test                # e2e tests (maps own source, validates output)
-npm run test:languages  # grammar zoo examples (359 files across 11 languages)
-npm run test:all        # both
-```
-
-### Lint
-
-```bash
-npm run lint   # biome — checks lib/, scripts/, test/, languages/*/map.js
-```
-
-### Project Structure
+## install
 
 ```
-lib/
-  antlrmap.js         Public API (import Antlrmap from "@possumtech/antlrmap")
-  index.js            CLI entry point
-  Parser.js           Loads compiled grammar + mapping, parses source
-  Formatter.js        Formats output as relative-path JSON
-
-languages/<id>/
-  map.js              Symbol extraction visitor for this language
-  map.test.js         Grammar zoo example tests
-  bases/              Hand-ported base classes (survives generated/ rebuild)
-  generated/          Compiled ANTLR4 parser (gitignored, built by npm run build)
-
-scripts/
-  scaffold.js         Generates workspace stubs from the grammar zoo
-  compile.js          Compiles .g4 grammars to JavaScript
-
-vendor/grammars-v4/   Git submodule — the ANTLR4 grammar zoo
+npm install @plurnk/plurnk-mimetypes
 ```
 
-### Release
+Requires Node ≥ 25 (native TypeScript support, ESM only).
 
-Releases are automated via GitHub Actions. To publish a new version:
+## use — orchestrator (plurnk-service side)
 
-```bash
-npm version patch   # or minor, or major
-git push --follow-tags
-```
+```ts
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
-The `release.yml` workflow builds, tests, publishes to npm, and creates a GitHub Release.
-
-### Grammar Zoo Updates
-
-A scheduled workflow (`update-grammars.yml`) runs monthly, updates the grammars-v4 submodule to latest, rebuilds, tests, and opens a PR for review.
-
-## Adding a Custom Language
-
-antlrmap ships with 12 languages, but any language with an ANTLR4 grammar can be added — including your own proprietary or bespoke languages. You don't need to fork antlrmap or wait for upstream support.
-
-### Quick start (grammar zoo language)
-
-If the language has a grammar in the [ANTLR4 Grammar Zoo](https://github.com/antlr/grammars-v4):
-
-```bash
-# Clone with submodules to get the grammar zoo
-git clone --recurse-submodules https://github.com/possumtech/antlrmap.git
-cd antlrmap
-
-npm install
-
-# Scaffold the language
-node scripts/init-language.js \
-  --name smalltalk \
-  --grammar-dir vendor/grammars-v4/smalltalk \
-  --entry program \
-  --extensions '.st'
-```
-
-This compiles the grammar, generates a starter `map.js` with all available visitor methods listed, and wires up tests. Open `languages/smalltalk/map.js` and implement the visitor methods for the language's declarations (see [SPEC.md](SPEC.md) for what to include and exclude).
-
-### Quick start (custom grammar)
-
-If you have your own `.g4` grammar files:
-
-```bash
-node scripts/init-language.js \
-  --name my-dsl \
-  --grammar-dir /path/to/my/grammar \
-  --entry compilationUnit \
-  --extensions '.dsl,.mydsl' \
-  --out ./my-antlrmap-lang
-```
-
-### Using a custom language
-
-**CLI** — point to the language directory:
-
-```bash
-antlrmap --lang-dir ./languages/smalltalk src/*.st
-```
-
-**Module API** — register before mapping:
-
-```js
-import Antlrmap from "@possumtech/antlrmap";
-
-const mapper = new Antlrmap();
-mapper.registerLanguage("smalltalk", {
-  dir: "./languages/smalltalk",
-  extensions: [".st"],
+const mimetypes = new Mimetypes({
+    tokenize: async (text) => myProviderTokenizer(text),
 });
 
-const results = await mapper.mapFiles(["src/main.st"]);
+const result = await mimetypes.process(
+    { path: "src/main.py" },
+    { budget: 256 },
+);
+// result.mimetype === "text/x-python"
+// result.symbols  === structural outline (string)
+// result.preview  === bounded outline within budget tokens
+// result.ok       === true
 ```
 
-### Writing the map.js visitor
+Without a budget the preview is unbounded — equivalent to `symbols`. plurnk-service supplies the real budget (sourced from `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`).
 
-The generated `map.js` skeleton lists every visitor method available from the grammar. Your job is to implement the ones that correspond to definitions. The pattern is the same for every language:
+Pipeline failure modes are documented in [SPEC.md](SPEC.md#error-policy).
 
-1. **Identify the scope boundary** — the grammar rule that represents a function/method body. Override it to set `#inBody = true` so local declarations are suppressed.
+## use — handler authors
 
-2. **Override declaration visitors** — for each rule that represents a class, function, method, field, enum, etc., extract the name and call `#add(kind, name, ctx, params)`.
+A handler is a class extending `BaseHandler` (or `AntlrExtractor` for grammar-backed extraction). The framework derives `symbols`, `preview`, and `validate` from your single `extract(content)` method.
 
-3. **Extract parameters** — for functions and methods, walk the parameter list rule to collect names.
+```ts
+import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
-See the [JavaScript map.js](languages/javascript--javascript/map.js) as a reference implementation and [SPEC.md](SPEC.md) for the full mapping policy.
-
-LLMs are effective at writing these visitors — give them the `.g4` grammar file, the SPEC.md policy, and an existing map.js as a reference, and they can usually produce a working mapping.
-
-### Testing
-
-If the grammar zoo has example files, `init-language.js` automatically generates a test file:
-
-```bash
-node --test languages/smalltalk/map.test.js
+export default class TextSomething extends BaseHandler {
+    extract(content: string): MimeSymbol[] {
+        // return structural declarations as MimeSymbol[]
+        return [];
+    }
+}
 ```
 
-## Contributing
+Discovery: declare yourself in `package.json`.
 
-Providing mappings for all 380 grammars in the zoo is a work in progress. Contributions of new language mappings are welcome. The `init-language.js` script does the heavy lifting — the main work is implementing the visitor in `map.js`.
+```json
+{
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "text/something",
+        "glyph": "✨",
+        "extensions": [".sth"]
+    }
+}
+```
 
-To contribute a built-in language:
+Reference handler: [plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Fork and adapt for new mimetypes — it's a real production handler, not a synthetic skeleton.
 
-1. Run `init-language.js` to scaffold the language
-2. Implement the visitor in `map.js` (follow [SPEC.md](SPEC.md))
-3. Change `status` from `"todo"` to `"done"`
-4. Add a build config entry to `scripts/compile.js`
-5. Register file extensions in `lib/antlrmap.js`
-6. Run `node --test languages/<id>/map.test.js` to verify
+For grammar-backed handlers, vendor your `.g4` files in `grammar/`, run `npx plurnk-mimetypes-compile`, and switch the parent class to `AntlrExtractor`. See [SPEC.md](SPEC.md#antlr-extractor) for details.
 
-## License
+## public API
 
-MIT
+The package exposes its full primitive surface for tools building on top of it:
+
+| Export | Purpose |
+|---|---|
+| `Mimetypes` | top-level pipeline orchestrator (`process`, `detect`, `getHandler`, `ready`) |
+| `BaseHandler` | base class for handlers (default export) |
+| `AntlrExtractor` | base class for ANTLR-backed handlers |
+| `withExtractor(BaseVisitor)` | mixin that adds symbol-collection state to any antlr4ng visitor |
+| `detect(input, registry)` | path/ext/hint/content → mimetype resolver |
+| `discover(options)` | scan installed `@plurnk/plurnk-mimetypes-*` packages |
+| `emptyRegistry()` | construct an empty `Registry` |
+| `format(symbols)` | `MimeSymbol[]` → indented outline string |
+| `fit(symbols, budget, tokenize)` | drop-deepest-first token-budget truncation |
+| `fitContent(content, budget, tokenize)` | raw-content token-budget truncation |
+| `buildTree(symbols)` | flat `MimeSymbol[]` → nested `TreeNode[]` |
+| `renderTree(nodes)` | `TreeNode[]` → outline string |
+| `maxDepth(nodes)` | tree's maximum nesting depth |
+| `pruneToMaxDepth(nodes, limit)` | drop nodes deeper than `limit` |
+| `runCompile(opts)` | invoke antlr-ng + post-process imports |
+| `rewriteImports(dir)` | rewrite `.js` import extensions to `.ts` |
+| `defaultTokenize` | fallback heuristic (`text.length / 2`); biased toward safety |
+
+Public types: `MimeSymbol`, `SymbolKind`, `HandlerMetadata`, `HandlerOptions`, `TokenizeFn`, `ExtractionVisitor`, `Registry`, `DetectInput`, `HandlerInfo`, `Discovery`, `DiscoverOptions`, `TreeNode`, `CompileOptions`, `HandlerLoader`, `MimetypesOptions`, `ProcessInput`, `ProcessOptions`, `ProcessResult`.
+
+## cli
+
+```
+plurnk-mimetypes-compile      compile grammar/ → src/generated/ via antlr-ng
+                              and rewrite .js import extensions to .ts
+```
+
+Run from a handler repo's root directory.
+
+## development
+
+```
+npm install
+npm run build
+npm test
+```
+
+`test:lint`, `test:unit`, `test:intg` separately if needed. No biome / eslint — `tsc --noEmit` is lint.
+
+## license
+
+MIT.
