@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type MethodRegistry from "../MethodRegistry.ts";
 import { createClientEnvelope } from "../envelope.ts";
 
@@ -7,18 +8,29 @@ export const register = (registry: MethodRegistry): void => {
             if (ctx.session !== null) {
                 throw new Error("connection already has a session attached");
             }
-            const p = (params ?? {}) as { name?: string };
-            const envelope = await createClientEnvelope(ctx.db, { name: p.name });
+            const p = (params ?? {}) as { name?: string; projectRoot?: string | null };
+            const projectRoot = p.projectRoot ?? null;
+            if (projectRoot !== null) {
+                if (typeof projectRoot !== "string" || projectRoot.length === 0) {
+                    throw new Error("session.create: projectRoot must be a non-empty string or null");
+                }
+                if (!isAbsolute(projectRoot)) {
+                    throw new Error("session.create: projectRoot must be an absolute path");
+                }
+            }
+            const envelope = await createClientEnvelope(ctx.db, { name: p.name, projectRoot });
             ctx.attachSession(envelope);
             ctx.notify("all", "session/created", {
                 id: envelope.sessionId,
                 name: envelope.sessionName,
+                projectRoot: envelope.projectRoot,
             });
-            return { id: envelope.sessionId, name: envelope.sessionName };
+            return { id: envelope.sessionId, name: envelope.sessionName, projectRoot: envelope.projectRoot };
         },
-        description: "Create a new session and attach this connection to it.",
+        description: "Create a new session and attach this connection to it. Optionally pin the session to a workspace via projectRoot (absolute path supplied by the client).",
         params: {
             name: "string? — session name (auto-generated if omitted)",
+            projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
         },
     });
 
@@ -27,6 +39,7 @@ export const register = (registry: MethodRegistry): void => {
         params: {
             id: "number — session id",
             name: "string — session name",
+            projectRoot: "string|null — workspace pointer for the session (null = headless)",
         },
     });
 };

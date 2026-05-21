@@ -1,10 +1,17 @@
 -- Envelope lifecycle queries. SPEC §13.7.
 
 -- PREP: envelope_insert_session
-INSERT INTO sessions (name) VALUES ($name) RETURNING id, name;
+INSERT INTO sessions (name, project_root) VALUES ($name, $project_root)
+RETURNING id, name, project_root;
 
 -- PREP: envelope_get_session
-SELECT id, name FROM sessions WHERE id = $id;
+SELECT id, name, project_root FROM sessions WHERE id = $id;
+
+-- PREP: envelope_update_session_project_root
+-- Used by session.set_root (F.1). Returns the updated row so the caller can
+-- refresh its ClientEnvelope copy without a second query.
+UPDATE sessions SET project_root = $project_root WHERE id = $id
+RETURNING id, name, project_root;
 
 -- PREP: envelope_insert_run
 INSERT INTO runs (session_id, name) VALUES ($session_id, $name) RETURNING id, name;
@@ -32,6 +39,6 @@ RETURNING id;
 UPDATE loops SET status = $status WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_sessions
-SELECT id, name, created_at, cost_pico
+SELECT id, name, project_root, created_at, cost_pico
 FROM sessions
 ORDER BY created_at DESC;

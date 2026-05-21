@@ -119,6 +119,7 @@ export default class ClientConnection {
                 this.#broadcast("all", this, "session/created", {
                     id: envelope.sessionId,
                     name: envelope.sessionName,
+                    projectRoot: envelope.projectRoot,
                 });
             } catch (cause) {
                 const message = cause instanceof Error ? cause.message : String(cause);
