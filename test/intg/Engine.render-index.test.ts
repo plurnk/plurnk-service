@@ -204,7 +204,7 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
                 registry: { byExtension: new Map(), byFilename: new Map() },
                 handlers: new Map([["application/x-test", {
                     mimetype: "application/x-test", glyph: "🧪", extensions: [],
-                    packageName: "stub://test",
+                    packageName: "stub://test", binary: false,
                 }]]),
             },
             loader: async (_pkgName) => ({ default: TestHandler }),

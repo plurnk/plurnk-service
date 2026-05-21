@@ -49,62 +49,49 @@ The framework's `TokenizeFn` is async-shaped (`(text) => Promise<number>`); the 
 
 ## §4 Discovery manifest — package.json `plurnk` block
 
-The framework's [SPEC §2](https://github.com/plurnk/plurnk-mimetypes/blob/main/SPEC.md#2-packagejson-plurnk-discovery-block) owns the canonical shape. Plurnk-service consumes the framework's `discover()` and asks for this one extension to the manifest: an `also` block for packages that serve more than one closely-related mimetype.
+The framework's [SPEC §2](https://github.com/plurnk/plurnk-mimetypes/blob/main/SPEC.md#2-packagejson-plurnk-discovery-block) owns the canonical shape. Plurnk-service consumes the framework's `discover()` as-is — no extensions, no service-side overrides.
 
-### §4.1 Single-handler form (unchanged)
-
-```json
-{
-    "plurnk": {
-        "kind": "mimetype",
-        "name": "text/markdown",
-        "glyph": "📝",
-        "extensions": [".md", ".markdown"]
-    }
-}
-```
-
-### §4.2 Multi-handler form (shape A — primary + `also`)
-
-For packages that ship a single implementation under multiple closely-related names (jsonc as a json superset; x-yaml as the legacy alias of yaml; text/xml aliasing application/xml; etc.). The primary stays at the top level; additional names go in an `also` array.
+### §4.1 Manifest shape
 
 ```json
 {
     "plurnk": {
         "kind": "mimetype",
-        "name": "application/json",
-        "glyph": "📋",
-        "extensions": [".json"],
-        "also": [
-            { "name": "application/jsonc", "extensions": [".jsonc"] }
+        "handlers": [
+            { "name": "application/json",  "glyph": "📋", "extensions": [".json"] },
+            { "name": "application/jsonc", "glyph": "📋", "extensions": [".jsonc"] }
         ]
     }
 }
 ```
 
-`also` element shape: `{ name: string, extensions?: string[], glyph?: string }`. `glyph` defaults to the primary's glyph if omitted.
+Single-handler packages declare one entry in `handlers[]`; packages that ship a single implementation under multiple closely-related names (jsonc as a json superset; x-yaml aliasing yaml; text/xml aliasing application/xml) declare each name as its own entry. The handler class exported as `default` is shared across all entries; the framework constructs it once with the entry's metadata when that name is first resolved.
 
-The asymmetry is intentional — every motivating case has a real primary plus variants. Flat `handlers: [...]` would discard "which name is canonical."
+Per-entry fields:
+- `name` (required) — the mimetype string this entry registers
+- `extensions` (optional) — extensions and special filenames this entry matches during detection (entries beginning with `.` are file extensions, lowercased on match; other entries are verbatim filenames like `Dockerfile`)
+- `glyph` (optional) — display glyph for this name; the framework's own default applies if omitted
 
-### §4.3 Detection resolution semantics
+### §4.2 Detection resolution
 
-`detect()` matches against the primary and every `also[]` entry at the same tier (extension, filename, hint). The first match wins per the framework's priority (hint > filename > extension > content).
+`detect()` matches against every `handlers[]` entry at the same tier (extension, filename, hint, content). The first match wins per the framework's priority (hint > filename > extension > content).
 
-**`ProcessResult.mimetype` returns the matched name, not the canonical primary.** A `.jsonc` file detects as `"application/jsonc"`; service's `entry_channels.mimetype` column reflects what the operator actually stored. The handler instance is shared between primary and `also` entries — both flow through the same package's exported class. Only the metadata passed to the handler at construction time differs.
+`ProcessResult.mimetype` returns the matched name. Service's `entry_channels.mimetype` column reflects what the operator stored — a `.jsonc` file detects as `"application/jsonc"`, not collapsed to `"application/json"`. The variant identity matters when handler logic branches on which name is being served (jsonc allows comments; json does not).
 
 ```
-package: { name: "application/json", also: [{ name: "application/jsonc", extensions: [".jsonc"] }] }
+package handlers: [
+    { name: "application/json",  extensions: [".json"] },
+    { name: "application/jsonc", extensions: [".jsonc"] },
+]
 
-.jsonc file  → mimetype: "application/jsonc"   (matched, not canonical)
-.json file   → mimetype: "application/json"    (matched, equals canonical here)
+.jsonc file → mimetype: "application/jsonc"
+.json file  → mimetype: "application/json"
 hint: "application/jsonc" → mimetype: "application/jsonc"
 ```
 
-The variant identity matters for handler logic that flips behavior on which name is being served (jsonc allows comments; json does not).
+### §4.3 Collision policy
 
-### §4.4 Collision policy
-
-Collision on `(name)` or any `also[].name` across two installed packages: framework's discovery is last-loaded-wins. Service does not intervene.
+Collision on `name` across two installed packages: framework's discovery is last-loaded-wins. Service does not intervene.
 
 ---
 
