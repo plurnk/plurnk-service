@@ -1,0 +1,47 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-application-pdf",
+    "version": "0.1.0",
+    "description": "application/pdf mimetype handler for plurnk-service. Binary content; extracts text via pdfjs-dist.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "plurnk": {
+        "kind": "mimetype",
+        "binary": true,
+        "handlers": [
+            { "name": "application/pdf", "glyph": "📕", "extensions": [".pdf"] }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.3.0",
+        "pdfjs-dist": "^5.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
