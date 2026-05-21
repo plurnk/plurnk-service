@@ -35,6 +35,7 @@ import { register as registerLoopRun } from "./methods/loop_run.ts";
 import { register as registerEntryRead } from "./methods/entry_read.ts";
 import { register as registerLogRead } from "./methods/log_read.ts";
 import { register as registerProvidersList } from "./methods/providers_list.ts";
+import { register as registerLoopResolve } from "./methods/loop_resolve.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -85,6 +86,19 @@ export default class Daemon {
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();
         this.#registerNotifications();
+        // Wire proposal-pending events to the loop/proposal WS notification.
+        // Sessionid scopes the broadcast to clients on the same session.
+        this.#engine.onProposalPending((event) => {
+            this.#broadcast({ sessionId: event.sessionId }, null, "loop/proposal", {
+                logEntryId: event.logEntryId,
+                loopId: event.loopId,
+                turnId: event.turnId,
+                op: event.op,
+                target: event.target,
+                body: event.body,
+                attrs: event.attrs,
+            });
+        });
     }
 
     get registry(): MethodRegistry { return this.#registry; }
@@ -156,6 +170,7 @@ export default class Daemon {
         registerOpDispatch(this.#registry);
         registerOpParse(this.#registry);
         registerLoopRun(this.#registry);
+        registerLoopResolve(this.#registry);
         registerEntryRead(this.#registry);
         registerLogRead(this.#registry);
         registerProvidersList(this.#registry);
@@ -165,6 +180,18 @@ export default class Daemon {
         this.#registry.registerNotification("log/entry", {
             description: "A new log_entries row was written; scoped to the connection's attached session.",
             params: { entry: "LogEntry — wire-shape log_entries row" },
+        });
+        this.#registry.registerNotification("loop/proposal", {
+            description: "A side-effecting action emitted a proposal (status=202, state='proposed'); dispatch is paused awaiting client resolution via loop.resolve. Scoped to the connection's attached session.",
+            params: {
+                logEntryId: "number — the log_entries.id awaiting resolution",
+                loopId: "number",
+                turnId: "number",
+                op: "string — the operation (EDIT, EXEC, etc.)",
+                target: "{scheme, pathname} — the resource being acted on",
+                body: "string — preview body (udiff for file edits, command summary for exec)",
+                attrs: "object — scheme-specific payload (patch, command args, etc.); opaque to engine",
+            },
         });
         this.#registry.registerNotification("loop/terminated", {
             description: "A loop has reached a terminal status; scoped to the connection's attached session.",
