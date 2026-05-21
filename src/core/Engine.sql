@@ -3,6 +3,16 @@
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
 
+-- PREP: engine_get_loop_flags
+-- Loads the loop's persisted flags (json). Default '{}'; YOLO listener and
+-- SchemeRegistry.resolveForLoop merge over DEFAULT_LOOP_FLAGS for missing
+-- fields. Migration 014.
+SELECT flags FROM loops WHERE id = $loop_id;
+
+-- PREP: engine_set_loop_flags
+-- Updates the loop's persisted flags (json). Called by loop.run RPC handler.
+UPDATE loops SET flags = $flags WHERE id = $loop_id;
+
 -- PREP: engine_loop_cancel
 UPDATE loops SET status = 499 WHERE id = $loop_id;
 

@@ -226,6 +226,63 @@ test("proposal: onProposalPending listener fires with the right payload", async 
     } finally { await db.close(); }
 });
 
+test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        // Persist loop flags with yolo: true, then attach the YOLO listener.
+        await (db.engine_set_loop_flags as PrepMethod).run({
+            loop_id: ctx.loopId, flags: JSON.stringify({ yolo: true }),
+        });
+        const { attachYolo } = await import("../../src/server/yolo.ts");
+        attachYolo(ctx.engine, db);
+
+        const idDeferred = deferred<number>();
+        const result = await ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        assert.equal(result.status, 200, "YOLO accept produces status 200");
+        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        assert.equal(row?.state, "resolved");
+        assert.equal(row?.outcome, null);
+    } finally { await db.close(); }
+});
+
+test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", async (t) => {
+    // Tight timeout so the test doesn't wait the full 5m default.
+    const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_PROPOSAL_TIMEOUT_MS = original;
+    });
+    process.env.PLURNK_PROPOSAL_TIMEOUT_MS = "100";
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        // Default flags JSON ('{}') — yolo defaults false.
+        const { attachYolo } = await import("../../src/server/yolo.ts");
+        attachYolo(ctx.engine, db);
+
+        const idDeferred = deferred<number>();
+        const result = await ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        // YOLO doesn't engage → timeout fires → 499/cancelled/timeout.
+        assert.equal(result.status, 499);
+        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        assert.equal(row?.state, "cancelled");
+        assert.equal(row?.outcome, "timeout");
+    } finally { await db.close(); }
+});
+
 test("proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
     const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
     t.after(() => {

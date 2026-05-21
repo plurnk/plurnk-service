@@ -36,6 +36,7 @@ import { register as registerEntryRead } from "./methods/entry_read.ts";
 import { register as registerLogRead } from "./methods/log_read.ts";
 import { register as registerProvidersList } from "./methods/providers_list.ts";
 import { register as registerLoopResolve } from "./methods/loop_resolve.ts";
+import { attachYolo } from "./yolo.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -99,6 +100,9 @@ export default class Daemon {
                 attrs: event.attrs,
             });
         });
+        // In-tree YOLO listener — auto-accepts proposals when the loop's
+        // persisted flags.yolo === true. Skips client roundtrip entirely.
+        attachYolo(this.#engine, this.#db);
     }
 
     get registry(): MethodRegistry { return this.#registry; }
