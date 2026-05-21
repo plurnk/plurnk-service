@@ -1,9 +1,15 @@
 import { BaseHandler, fitContent } from "@plurnk/plurnk-mimetypes";
 
 // application/pdf handler. Binary mimetype — receives Uint8Array content.
-// Validates the PDF parses cleanly and extracts text via pdfjs-dist; the
-// preview is the joined text content, budgeted via the framework's
-// fitContent.
+// validate() does a sync header-magic check; preview() does the full parse
+// via pdfjs-dist and returns the extracted text.
+//
+// Why a header-magic validate and not a full parse: pdfjs transfers the
+// underlying ArrayBuffer for performance during getDocument(). If validate()
+// also called pdfjs, it would compete with preview()'s call on the same
+// buffer — second call sees a detached/emptied buffer and returns nothing.
+// The header check catches non-PDF content (wrong format, garbage bytes,
+// empty input) without touching the bytes preview() will need.
 //
 // Salvage pattern from rummy.web/WebFetcher.js:
 //   - pdfjs-dist legacy build (Node-compatible)
@@ -11,20 +17,21 @@ import { BaseHandler, fitContent } from "@plurnk/plurnk-mimetypes";
 //   - verbosity:0 (silences "standardFontDataUrl not provided" noise;
 //     we read text streams directly and don't render glyphs)
 //   - Pages joined with "\n\n"
-//   - Image-only PDFs (scans without OCR) parse cleanly but produce no
-//     text — surfaced as a validate error, not an empty preview
 //
 // symbols() stays empty — PDFs have no exposed structural outline in the
-// duck contract today. (A future enhancement could read the PDF's
-// document outline / bookmarks as heading symbols, but the simpler
-// "extracted text as preview" path covers the LLM-consumption use case
-// cleanly.)
+// duck contract today.
+
+// "%PDF-" — every PDF starts with this 5-byte magic, optionally preceded by
+// a UTF-8 BOM that some tools insert.
+const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+
 export default class ApplicationPdf extends BaseHandler {
-    async validate(content: string | Uint8Array): Promise<void> {
+    validate(content: string | Uint8Array): void {
         const bytes = toBytes(content);
-        const text = await extractAllText(bytes);
-        if (text.trim() === "") {
-            throw new Error("PDF has no extractable text (image-only scan, or encrypted/protected document)");
+        const offset = startsWith(bytes, UTF8_BOM) ? UTF8_BOM.length : 0;
+        if (!startsWith(bytes.subarray(offset), PDF_MAGIC)) {
+            throw new SyntaxError("Not a PDF: missing %PDF- header");
         }
     }
 
@@ -38,6 +45,14 @@ export default class ApplicationPdf extends BaseHandler {
         }
         return fitContent(text, budget, this.tokenize);
     }
+}
+
+function startsWith(haystack: Uint8Array, needle: Uint8Array): boolean {
+    if (haystack.length < needle.length) return false;
+    for (let i = 0; i < needle.length; i += 1) {
+        if (haystack[i] !== needle[i]) return false;
+    }
+    return true;
 }
 
 function toBytes(content: string | Uint8Array): Uint8Array {

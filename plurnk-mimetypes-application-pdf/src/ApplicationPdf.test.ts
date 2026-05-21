@@ -26,17 +26,26 @@ describe("ApplicationPdf", () => {
         assert.equal(h.glyph, "📕");
     });
 
-    it("validates a real PDF (text extractable)", async () => {
-        await assert.doesNotReject(() => h.validate(samplePdf()));
+    it("validates a real PDF by header magic", () => {
+        assert.doesNotThrow(() => h.validate(samplePdf()));
     });
 
-    it("rejects garbage bytes as invalid PDF", async () => {
+    it("rejects garbage bytes as invalid PDF", () => {
         const garbage = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
-        await assert.rejects(() => h.validate(garbage));
+        assert.throws(() => h.validate(garbage), /Not a PDF/);
     });
 
-    it("rejects empty input as invalid PDF", async () => {
-        await assert.rejects(() => h.validate(new Uint8Array(0)));
+    it("rejects empty input as invalid PDF", () => {
+        assert.throws(() => h.validate(new Uint8Array(0)), /Not a PDF/);
+    });
+
+    it("tolerates a UTF-8 BOM prefix before the header", () => {
+        const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+        const sample = samplePdf();
+        const withBom = new Uint8Array(bom.length + sample.length);
+        withBom.set(bom, 0);
+        withBom.set(sample, bom.length);
+        assert.doesNotThrow(() => h.validate(withBom));
     });
 
     it("preview returns extracted text content", async () => {
