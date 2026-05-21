@@ -31,6 +31,15 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
+// Bare-path edit — the form the sysprompt actually trains the model to
+// emit. plurnk.md: "Bare paths (no scheme) default to local relative
+// project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
+const bareEditStmt = (relPath: string, body: string): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null,
+    path: { kind: "local", raw: relPath },
+    lineMarker: null, body, position: { line: 1, column: 1 },
+});
+
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
     const promise = new Promise<T>((res) => { resolve = res; });
@@ -181,6 +190,42 @@ test("file.edit: refuses traversal escape", async () => {
                 loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
             });
             assert.equal(result.status, 403);
+        } finally { await db.close(); }
+    });
+});
+
+test("bare path: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
+    await withWorkspaceRoot(async (root) => {
+        const db = await openMigrated();
+        try {
+            const ctx = await setupEngine(db);
+            const target = "from-bare.txt";
+            await writeFile(join(root, target), "original\n", "utf8");
+
+            // No file:// prefix — the form the sysprompt teaches.
+            const stmt = bareEditStmt(target, "bare-path edit\n");
+            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
+
+            const idDeferred = deferred<number>();
+            const dispatchPromise = engine2.dispatch({
+                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+
+            // Confirm log entry reports file scheme (proves routing).
+            const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+            assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
+            assert.equal(row?.state, "proposed");
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };
+            assert.equal(attrs.path, target);
+
+            engine2.resolveProposal(logEntryId, { decision: "accept" });
+            const result = await dispatchPromise;
+            assert.equal(result.status, 200);
+            const onDisk = await readFile(join(root, target), "utf8");
+            assert.equal(onDisk, "bare-path edit\n");
         } finally { await db.close(); }
     });
 });
