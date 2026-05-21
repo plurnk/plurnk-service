@@ -170,7 +170,8 @@ export default class Mimetypes {
         }
 
         // Validate errors propagate per error policy — caller's contract.
-        handler.validate(content);
+        // Await in case the handler returns a Promise (async validators).
+        await handler.validate(content);
 
         const symbols = handler.symbols(content);
         let preview = await handler.preview(content, budget);

@@ -32,8 +32,10 @@ export default class BaseHandler {
         return [];
     }
 
-    validate(_content: HandlerContent): void {
+    validate(_content: HandlerContent): void | Promise<void> {
         // Default: anything is valid. Override for mimetypes with real syntax.
+        // Overrides may be sync (`void`) or async (`Promise<void>`); the
+        // orchestrator awaits the result either way.
     }
 
     symbols(content: HandlerContent): string {
