@@ -41,6 +41,7 @@ export async function runCompile(opts: CompileOptions = {}): Promise<void> {
 
     await runChild("antlr-ng", args, grammarDir);
     await rewriteImports(outDir);
+    await injectBaseImports(outDir);
 }
 
 async function runChild(cmd: string, args: string[], cwd: string): Promise<void> {
@@ -64,6 +65,52 @@ async function runChild(cmd: string, args: string[], cwd: string): Promise<void>
             else reject(new Error(`${cmd} exited with code ${code}`));
         });
     });
+}
+
+// Inject `import <BaseName> from "./<BaseName>.ts"` into any generated file
+// whose top-level class extends a `*Base` superclass that isn't already
+// imported. antlr-ng emits the `extends FooBase` clause from the grammar's
+// `superClass = FooBase` option but doesn't write the import — without this
+// step the generated parser/lexer fail to compile. Exposed as an importable
+// utility for handlers integrating the post-process into a custom pipeline.
+export async function injectBaseImports(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            await injectBaseImports(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+            const content = await fs.readFile(fullPath, "utf-8");
+            const match = content.match(/^export class \w+ extends (\w+Base)\b/m);
+            if (match === null) continue;
+            const baseName = match[1];
+            const importLine = `import ${baseName} from "./${baseName}.ts";`;
+            if (content.includes(importLine)) continue;
+            // Inject after the last existing top-of-file import, or at the very top.
+            const lastImportEnd = findLastImportEnd(content);
+            const updated = lastImportEnd > 0
+                ? `${content.slice(0, lastImportEnd)}\n${importLine}${content.slice(lastImportEnd)}`
+                : `${importLine}\n${content}`;
+            await fs.writeFile(fullPath, updated);
+        }
+    }
+}
+
+// Find the position immediately after the last `import ... from "...";` line
+// in the head of the file. Returns 0 if no imports are found.
+function findLastImportEnd(content: string): number {
+    const lines = content.split("\n");
+    let endByte = 0;
+    let byte = 0;
+    for (const line of lines) {
+        if (/^\s*import\b/.test(line)) {
+            endByte = byte + line.length;
+        } else if (line.trim().length > 0 && endByte > 0) {
+            break;
+        }
+        byte += line.length + 1; // include the \n
+    }
+    return endByte;
 }
 
 // Rewrite .js import extensions to .ts in every .ts file under `dir`. Exposed

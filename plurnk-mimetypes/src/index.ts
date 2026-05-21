@@ -32,7 +32,7 @@ export type { TreeNode } from "./format.ts";
 export { fit, fitContent } from "./fit.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)
-export { rewriteImports, runCompile } from "./compile.ts";
+export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
 export type { CompileOptions } from "./compile.ts";
 
 // Sensible defaults exposed for tests, standalone use, and consumers building
