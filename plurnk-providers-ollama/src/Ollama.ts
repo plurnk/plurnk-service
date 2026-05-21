@@ -1,9 +1,23 @@
+import llamaTokenizer from "llama-tokenizer-js";
 import { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
 
 // PROVIDERS.md §3.9 default — Ollama serves local models; local can mean
 // anything from sub-second to minutes per turn depending on parameter size
 // and hardware. 10m default matches the universal knob.
 const DEFAULT_FETCH_TIMEOUT_MS = 600000;
+
+// Tokenizer dispatch. Ollama exposes the model family via /api/show
+// `details.family`. Llama-family tokenization is accurate enough for these;
+// everything else falls back to the chars/4 heuristic until handler-specific
+// tokenizers land (pass-3 work).
+const LLAMA_TOKENIZER_FAMILIES = new Set([
+    "llama", "llama2", "llama3",
+    "mistral", "mixtral",
+]);
+type TokenizerKind = "llama" | "heuristic";
+
+const tokenizerForFamily = (family: string | null): TokenizerKind =>
+    family !== null && LLAMA_TOKENIZER_FAMILIES.has(family) ? "llama" : "heuristic";
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -36,6 +50,9 @@ export type OllamaConfig = {
     // endpoint accepts a non-standard `think: bool` body flag — any positive
     // budget toggles it on.
     reasonBudget: number;
+    // Resolved at fromEnv from /api/show details.family. Frozen on the
+    // instance for the lifetime of the provider.
+    tokenizer: TokenizerKind;
 };
 
 export default class Ollama {
@@ -44,6 +61,7 @@ export default class Ollama {
     #contextSize: number;
     #fetchTimeoutMs: number;
     #reasonBudget: number;
+    #tokenizer: TokenizerKind;
 
     constructor(config: OllamaConfig) {
         this.#baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -51,12 +69,12 @@ export default class Ollama {
         this.#contextSize = config.contextSize;
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#reasonBudget = config.reasonBudget;
+        this.#tokenizer = config.tokenizer;
     }
 
-    // PROVIDERS.md §3.7 factory contract. Async — resolves contextSize from
-    // Ollama's `/api/show` at construction time. The model's family-prefixed
-    // context_length (e.g. `qwen35.context_length`, `llama.context_length`)
-    // lives in model_info; sibling finds it by suffix match.
+    // PROVIDERS.md §3.7 factory contract. Async — resolves contextSize and
+    // tokenizer-family from Ollama's `/api/show` at construction time in a
+    // single round-trip.
     static async fromEnv(env: NodeJS.ProcessEnv, model: string): Promise<Ollama> {
         const baseUrl = env.OLLAMA_BASE_URL;
         if (baseUrl === undefined || baseUrl.length === 0) {
@@ -66,7 +84,7 @@ export default class Ollama {
             ? Number(env.PLURNK_PROVIDER_FETCH_TIMEOUT)
             : DEFAULT_FETCH_TIMEOUT_MS;
         const normalizedBase = baseUrl.replace(/\/$/, "");
-        const contextSize = await fetchContextSize({
+        const info = await fetchModelInfo({
             baseUrl: normalizedBase,
             model,
             fetchTimeoutMs,
@@ -74,22 +92,28 @@ export default class Ollama {
         return new Ollama({
             baseUrl,
             model,
-            contextSize,
+            contextSize: info.contextSize,
             fetchTimeoutMs,
             reasonBudget: Number(env.PLURNK_REASON ?? "0"),
+            tokenizer: tokenizerForFamily(info.family),
         });
     }
 
     get contextSize(): number { return this.#contextSize; }
     get model(): string { return this.#model; }
     get baseUrl(): string { return this.#baseUrl; }
+    get tokenizer(): TokenizerKind { return this.#tokenizer; }
 
-    // Heuristic tokenizer. Ollama doesn't expose a /tokenize endpoint; real
-    // tokenization would require loading the GGUF model's embedded tokenizer
-    // client-side (pass-2 work — possibly via wasm port of llama-tokenizer
-    // or the model-specific HuggingFace tokenizer.json when available).
+    // Family-dispatched tokenizer resolved at fromEnv. Llama family uses
+    // llama-tokenizer-js (Llama 1/2/3, also reasonably accurate for
+    // mistral/mixtral which share the BPE family). Everything else
+    // (qwen, gemma, phi, deepseek, etc.) falls through to the chars/4
+    // heuristic — per-family tokenizers for those are pass-3 work.
     countTokens(text: string): number {
-        return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+        if (text.length === 0) return 0;
+        return this.#tokenizer === "llama"
+            ? llamaTokenizer.encode(text).length
+            : Math.ceil(text.length / 4);
     }
 
     // Local models are free.
@@ -132,15 +156,16 @@ export default class Ollama {
     }
 }
 
-// Ollama's /api/show returns model_info as an object whose keys are
-// family-prefixed (`qwen35.context_length`, `llama.context_length`,
-// `gemma.context_length`, etc.). We scan for any key ending in
-// `.context_length`. Returns the first match; throws on miss.
-type ShowResponse = { model_info?: Record<string, unknown> };
+// Ollama's /api/show returns model_info (per-family-prefixed metadata) and
+// details (family/quantization/etc.). Two pieces of data we need:
+//   - context_length: scan model_info for any "*.context_length" key
+//   - family:          details.family (e.g. "llama", "qwen35", "gemma")
+type ShowDetails = { family?: string };
+type ShowResponse = { model_info?: Record<string, unknown>; details?: ShowDetails };
 
-const fetchContextSize = async ({
+const fetchModelInfo = async ({
     baseUrl, model, fetchTimeoutMs,
-}: { baseUrl: string; model: string; fetchTimeoutMs: number }): Promise<number> => {
+}: { baseUrl: string; model: string; fetchTimeoutMs: number }): Promise<{ contextSize: number; family: string | null }> => {
     const res = await fetch(`${baseUrl}/api/show`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,12 +178,18 @@ const fetchContextSize = async ({
     }
     const data = (await res.json()) as ShowResponse;
     const info = data.model_info ?? {};
+    let contextSize = 0;
     for (const [key, value] of Object.entries(info)) {
         if (key.endsWith(".context_length") && typeof value === "number" && value > 0) {
-            return value;
+            contextSize = value;
+            break;
         }
     }
-    throw new Error(`Ollama /api/show has no *.context_length key for "${model}"`);
+    if (contextSize === 0) {
+        throw new Error(`Ollama /api/show has no *.context_length key for "${model}"`);
+    }
+    const family = data.details?.family ?? null;
+    return { contextSize, family };
 };
 
 export { OpenAiHttpError };
