@@ -84,7 +84,22 @@ type DispatchContext = {
     onDispatch?: (logEntryId: number) => void;
 };
 
-type DispatchResult = { status: number; [key: string]: unknown };
+type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
+
+// Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
+// to propose; engine writes a state='proposed' log entry, registers a waiter
+// in #pendingProposals, and awaits resolution. Resolution arrives via
+// Engine.resolveProposal(id, decision, body?) — from the loop/resolve RPC
+// (Phase E.2), the in-tree YOLO listener (Phase E.3), or a timeout.
+export type ProposalDecision = "accept" | "reject" | "cancel";
+export interface ProposalResolution {
+    decision: ProposalDecision;
+    body?: string;
+    outcome?: string;
+}
+interface ProposalWaiter {
+    resolve: (resolution: ProposalResolution) => void;
+}
 
 type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
 
@@ -180,6 +195,12 @@ export default class Engine {
     // rails (cycle detection #39, etc.) — read and reset at end of each turn.
     // `history` holds per-turn fingerprints for rail #39 cycle detection.
     #strikeState = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
+    // Proposal lifecycle (task #42): pending dispatch pauses waiting for
+    // resolution. Engine.runTurn awaits the promise when a scheme returns
+    // status 202; Engine.resolveProposal feeds the resolution back in. Map
+    // is per-log-entry-id; entries clear on resolution. See AGENTS.md
+    // §Phase E for the broader lifecycle plan.
+    #pendingProposals = new Map<number, ProposalWaiter>();
 
     constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: Mimetypes }) {
         this.#db = db;
@@ -622,7 +643,72 @@ export default class Engine {
         }
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
         onDispatch?.(logEntryId);
+        // Proposal lifecycle (task #42, AGENTS.md §Phase E). When a scheme
+        // returns status 202, the entry is written as state='proposed';
+        // dispatch then PAUSES on a per-entry waiter until resolution
+        // arrives via Engine.resolveProposal (from the loop/resolve RPC,
+        // YOLO listener, or timeout — Phase E.2/E.3 work). The post-
+        // resolution status replaces 202 in the result the caller sees,
+        // so runTurn never branches on a pending state.
+        if (result.status === 202) {
+            const resolution = await this.#awaitResolution(logEntryId);
+            const post = await this.#applyResolution(logEntryId, resolution);
+            return post;
+        }
         return result;
+    }
+
+    // Engine.resolveProposal: external API to feed a resolution into a
+    // pending proposal. Called by the loop/resolve RPC handler (Phase E.2),
+    // the in-tree YOLO listener (Phase E.3), or the timeout watcher. Throws
+    // when the logEntryId has no pending waiter — duplicate resolutions, IDs
+    // for non-proposed entries, or entries already-resolved are caller
+    // errors.
+    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
+        const waiter = this.#pendingProposals.get(logEntryId);
+        if (waiter === undefined) {
+            throw new Error(`Engine.resolveProposal: no pending proposal for log_entry ${logEntryId}`);
+        }
+        this.#pendingProposals.delete(logEntryId);
+        waiter.resolve(resolution);
+    }
+
+    // Snapshot of pending proposals (for diagnostic / RPC listings). Returns
+    // the log entry IDs currently awaiting resolution.
+    pendingProposalIds(): number[] {
+        return [...this.#pendingProposals.keys()];
+    }
+
+    #awaitResolution(logEntryId: number): Promise<ProposalResolution> {
+        return new Promise<ProposalResolution>((resolve) => {
+            this.#pendingProposals.set(logEntryId, { resolve });
+        });
+    }
+
+    async #applyResolution(logEntryId: number, resolution: ProposalResolution): Promise<DispatchResult> {
+        // Map decision → terminal state + HTTP-aligned status:
+        //   accept  → state='resolved', status=200
+        //   reject  → state='failed',   status=400, outcome='rejected' (default)
+        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default)
+        // resolution.outcome wins over the default when supplied; this is how
+        // veto filters (Phase E.2 proposal.accepting) can specify a more
+        // precise outcome string like 'policy_veto' or 'timeout'.
+        const decision = resolution.decision;
+        const state = decision === "accept" ? "resolved"
+            : decision === "reject" ? "failed"
+            : "cancelled";
+        const status = decision === "accept" ? 200
+            : decision === "reject" ? 400
+            : 499;
+        const defaultOutcome = decision === "accept" ? null
+            : decision === "reject" ? "rejected"
+            : "loop_aborted";
+        const outcome = resolution.outcome ?? defaultOutcome;
+        const rx = JSON.stringify({ status, outcome, body: resolution.body ?? null });
+        await (this.#db.engine_resolve_log_entry as PrepMethod).run({
+            id: logEntryId, state, outcome, status_rx: status, rx,
+        });
+        return { status, outcome, body: resolution.body };
     }
 
     // SCHEMES.md §8 {§8-writable-by-enforcement}: engine rejects writes whose
@@ -787,6 +873,16 @@ export default class Engine {
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
             ? JSON.stringify(statement.lineMarker as LineMarker)
             : null;
+        // Status 202 from a scheme means the action is proposed — written to
+        // the log in state='proposed' until the proposal lifecycle resolves
+        // it. attrs holds the scheme-supplied payload (file diff, exec
+        // command, etc.) that the client renders for review and the scheme
+        // consumes on accept. All other statuses are terminal — state =
+        // 'resolved' for the common case.
+        const isProposed = result.status === 202;
+        const attrs = (result.attrs !== undefined && result.attrs !== null)
+            ? JSON.stringify(result.attrs)
+            : "{}";
         const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
             run_id: runId,
             loop_id: loopId,
@@ -810,6 +906,9 @@ export default class Engine {
             rx: JSON.stringify(result),
             mimetype_rx: "application/json",
             status_rx: result.status,
+            state: isProposed ? "proposed" : "resolved",
+            outcome: null,
+            attrs,
         });
         if (row === undefined) throw new Error("Engine.#writeLog: INSERT ... RETURNING produced no row");
         return row.id;
