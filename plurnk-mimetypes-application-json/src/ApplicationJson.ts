@@ -1,69 +1,91 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { type Node, type ParseError, parseTree, printParseErrorCode } from "jsonc-parser";
 
-// application/json handler. Two responsibilities beyond BaseHandler defaults:
+// One class serves two mimetype names — application/json (strict) and
+// application/jsonc (comments + trailing commas allowed). The framework
+// constructs one instance per registered name; this.mimetype distinguishes
+// them at runtime.
 //
-//   1. validate(content) throws on malformed JSON. Per framework error policy
-//      (SPEC §7), validate errors propagate through Mimetypes.process to the
-//      caller — this is the contract for "the consumer asserted this is JSON,
-//      but it isn't."
+// validate(): strict for application/json (no comments, no trailing commas);
+//             permissive for application/jsonc. Errors propagate per SPEC §7.
 //
-//   2. extract(content) returns the document's top-level keys as `field`
-//      symbols. Matches the legacy ANTLR-backed policy: a JSON document's
-//      "API surface" is its top-level keys; nested structure is recursive
-//      and out of scope for the structural outline. Array and scalar roots
-//      have no named top-level keys → empty Symbol[].
-//
-// Line numbers are derived from a single-pass scan of the raw source — JSON.parse
-// itself doesn't preserve positions. The scan is approximate (a `"key":` pattern
-// inside a string value could in principle be mis-matched as a key) but accurate
-// for well-formed documents in practical use.
+// extract(): every key occurrence at every depth as a `field` symbol, with
+//            line numbers from jsonc-parser's positional tree (Node.offset).
+//            No regex tokenization, no escape-handling reinvention — the
+//            parser does it.
 export default class ApplicationJson extends BaseHandler {
     validate(content: string): void {
-        JSON.parse(content);
+        const errors: ParseError[] = [];
+        const allowsRelaxation = this.mimetype === "application/jsonc";
+        parseTree(content, errors, {
+            allowTrailingComma: allowsRelaxation,
+            disallowComments: !allowsRelaxation,
+        });
+        if (errors.length === 0) return;
+        const first = errors[0];
+        const { line, column } = offsetToLineCol(content, first.offset);
+        throw new SyntaxError(
+            `${printParseErrorCode(first.error)} at line ${line}:${column}`,
+        );
     }
 
     extract(content: string): MimeSymbol[] {
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(content);
-        } catch {
-            return [];
-        }
-
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            return [];
-        }
-
-        const keys = Object.keys(parsed as Record<string, unknown>);
-        const lineMap = mapKeysToLines(content, keys);
-
-        return keys.map((name) => {
-            const line = lineMap.get(name) ?? 1;
-            return { name, kind: "field" as const, line, endLine: line };
+        const errors: ParseError[] = [];
+        const allowsRelaxation = this.mimetype === "application/jsonc";
+        const tree = parseTree(content, errors, {
+            allowTrailingComma: allowsRelaxation,
+            disallowComments: !allowsRelaxation,
         });
+        if (tree === undefined) return [];
+
+        const symbols: MimeSymbol[] = [];
+        collectKeys(tree, content, symbols);
+        return symbols;
     }
 }
 
-// Scan content for the first occurrence of each `"key":` pattern (key followed
-// by optional whitespace and a colon, signaling a key position rather than a
-// value). Returns key → 1-indexed line number.
-function mapKeysToLines(content: string, keys: string[]): Map<string, number> {
-    const result = new Map<string, number>();
-    const remaining = new Set(keys);
-    if (remaining.size === 0) return result;
+// Walk a jsonc-parser Node tree and emit a field symbol for every property
+// key encountered at every depth. Each property node has a `children` pair:
+// [keyNode, valueNode]. The keyNode's offset gives the source position.
+function collectKeys(node: Node, content: string, into: MimeSymbol[]): void {
+    if (node.type === "property" && node.children && node.children.length >= 2) {
+        const keyNode = node.children[0];
+        if (keyNode.type === "string" && typeof keyNode.value === "string") {
+            const line = offsetToLineCol(content, keyNode.offset).line;
+            into.push({
+                name: keyNode.value,
+                kind: "field",
+                line,
+                endLine: line,
+            });
+        }
+        // Recurse into the value to find nested keys.
+        const valueNode = node.children[1];
+        if (valueNode) collectKeys(valueNode, content, into);
+        return;
+    }
 
-    const lines = content.split("\n");
-    for (let i = 0; i < lines.length && remaining.size > 0; i += 1) {
-        const line = lines[i];
-        for (const key of remaining) {
-            const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const pattern = new RegExp(`"${escaped}"\\s*:`);
-            if (pattern.test(line)) {
-                result.set(key, i + 1);
-                remaining.delete(key);
-            }
+    // Objects, arrays, and the root all recurse through children.
+    if (node.children) {
+        for (const child of node.children) {
+            collectKeys(child, content, into);
         }
     }
-    return result;
+}
+
+// Convert a byte offset into 1-indexed line/column.
+function offsetToLineCol(content: string, offset: number): { line: number; column: number } {
+    let line = 1;
+    let column = 1;
+    const limit = Math.min(offset, content.length);
+    for (let i = 0; i < limit; i += 1) {
+        if (content.charCodeAt(i) === 0x0a) {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    return { line, column };
 }

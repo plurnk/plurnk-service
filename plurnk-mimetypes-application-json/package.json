@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-json",
-    "version": "0.1.0",
-    "description": "application/json mimetype handler for plurnk-service.",
+    "version": "0.2.0",
+    "description": "application/json and application/jsonc mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -12,9 +12,10 @@
     },
     "plurnk": {
         "kind": "mimetype",
-        "name": "application/json",
-        "glyph": "📋",
-        "extensions": [".json"]
+        "handlers": [
+            { "name": "application/json",  "glyph": "📋", "extensions": [".json"] },
+            { "name": "application/jsonc", "glyph": "📋", "extensions": [".jsonc"] }
+        ]
     },
     "exports": {
         ".": {
@@ -36,7 +37,8 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.1.1"
+        "@plurnk/plurnk-mimetypes": "^0.2.0",
+        "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
