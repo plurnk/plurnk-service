@@ -7,8 +7,8 @@
     "private": true,
     "plurnk": {
         "kind": "mimetype",
-        "name": "text/plain",
-        "glyph": "📄",
-        "extensions": [".txt"]
+        "handlers": [
+            { "name": "text/plain", "glyph": "📄", "extensions": [".txt"] }
+        ]
     }
 }

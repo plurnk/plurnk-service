@@ -44,14 +44,14 @@ describe("discover", () => {
         }
     });
 
-    it("registers a valid handler's mimetype and extensions", async () => {
+    it("registers a single-entry handlers array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-py", {
             name: "@plurnk/plurnk-mimetypes-text-x-python",
             plurnk: {
                 kind: "mimetype",
-                name: "text/x-python",
-                glyph: "🐍",
-                extensions: [".py", ".pyw"],
+                handlers: [
+                    { name: "text/x-python", glyph: "🐍", extensions: [".py", ".pyw"] },
+                ],
             },
         });
         const result = await discover({ packageDirs: [dir] });
@@ -70,9 +70,13 @@ describe("discover", () => {
             name: "@plurnk/plurnk-mimetypes-text-x-dockerfile",
             plurnk: {
                 kind: "mimetype",
-                name: "text/x-dockerfile",
-                glyph: "🐳",
-                extensions: [".dockerfile", "Dockerfile", "Containerfile"],
+                handlers: [
+                    {
+                        name: "text/x-dockerfile",
+                        glyph: "🐳",
+                        extensions: [".dockerfile", "Dockerfile", "Containerfile"],
+                    },
+                ],
             },
         });
         const result = await discover({ packageDirs: [dir] });
@@ -88,8 +92,7 @@ describe("discover", () => {
             name: "@plurnk/plurnk-mimetypes-cased",
             plurnk: {
                 kind: "mimetype",
-                name: "text/cased",
-                extensions: [".CAPS"],
+                handlers: [{ name: "text/cased", extensions: [".CAPS"] }],
             },
         });
         const result = await discover({ packageDirs: [dir] });
@@ -101,8 +104,7 @@ describe("discover", () => {
             name: "@plurnk/plurnk-mimetypes-filename",
             plurnk: {
                 kind: "mimetype",
-                name: "text/x-makefile",
-                extensions: ["Makefile"],
+                handlers: [{ name: "text/x-makefile", extensions: ["Makefile"] }],
             },
         });
         const result = await discover({ packageDirs: [dir] });
@@ -127,17 +129,57 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("skips packages with missing or empty plurnk.name", async () => {
-        const dirA = await makePackage(tmpRoot, "pkg-noname", {
-            name: "@plurnk/plurnk-mimetypes-noname",
-            plurnk: { kind: "mimetype", extensions: [".x"] },
+    it("skips packages missing the handlers array entirely", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-no-handlers", {
+            name: "@plurnk/plurnk-mimetypes-bad",
+            plurnk: { kind: "mimetype" },
         });
-        const dirB = await makePackage(tmpRoot, "pkg-emptyname", {
-            name: "@plurnk/plurnk-mimetypes-emptyname",
-            plurnk: { kind: "mimetype", name: "", extensions: [".y"] },
-        });
-        const result = await discover({ packageDirs: [dirA, dirB] });
+        const result = await discover({ packageDirs: [dir] });
         assert.equal(result.handlers.size, 0);
+    });
+
+    it("skips packages where handlers is not an array", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-nonarray", {
+            name: "@plurnk/plurnk-mimetypes-bad",
+            plurnk: { kind: "mimetype", handlers: "not an array" },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 0);
+    });
+
+    it("skips handler entries with missing or empty name", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-entry-noname", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [
+                    { extensions: [".x"] },        // missing name — skipped
+                    { name: "", extensions: [".y"] }, // empty name — skipped
+                    { name: "text/valid", extensions: [".z"] }, // valid
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 1);
+        assert.ok(result.handlers.has("text/valid"));
+    });
+
+    it("skips non-object handler entries without breaking valid ones", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-entry-junk", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [
+                    null,
+                    "not-an-object",
+                    42,
+                    { name: "text/valid", extensions: [".z"] },
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 1);
+        assert.ok(result.handlers.has("text/valid"));
     });
 
     it("skips directories without a package.json", async () => {
@@ -155,13 +197,14 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("filters non-string extension entries", async () => {
+    it("filters non-string extension entries within a handler", async () => {
         const dir = await makePackage(tmpRoot, "pkg-mixed-ext", {
             name: "@plurnk/plurnk-mimetypes-mixed",
             plurnk: {
                 kind: "mimetype",
-                name: "text/mixed",
-                extensions: [".js", 42, null, ".ts", ""],
+                handlers: [
+                    { name: "text/mixed", extensions: [".js", 42, null, ".ts", ""] },
+                ],
             },
         });
         const result = await discover({ packageDirs: [dir] });
@@ -170,14 +213,20 @@ describe("discover", () => {
         assert.deepEqual([...info.extensions], [".js", ".ts"]);
     });
 
-    it("last-loaded wins on conflicting mimetype", async () => {
+    it("last-loaded wins on conflicting mimetype across packages", async () => {
         const dirA = await makePackage(tmpRoot, "pkg-conflict-a", {
             name: "@plurnk/plurnk-mimetypes-conflict-a",
-            plurnk: { kind: "mimetype", name: "text/conflict", glyph: "A", extensions: [".c"] },
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "text/conflict", glyph: "A", extensions: [".c"] }],
+            },
         });
         const dirB = await makePackage(tmpRoot, "pkg-conflict-b", {
             name: "@plurnk/plurnk-mimetypes-conflict-b",
-            plurnk: { kind: "mimetype", name: "text/conflict", glyph: "B", extensions: [".c"] },
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "text/conflict", glyph: "B", extensions: [".c"] }],
+            },
         });
         const result = await discover({ packageDirs: [dirA, dirB] });
         assert.equal(result.handlers.size, 1);
@@ -185,38 +234,21 @@ describe("discover", () => {
         assert.equal(info?.glyph, "B");
     });
 
-    it("defaults glyph to empty string when not declared", async () => {
+    it("defaults glyph to empty string when not declared in a handler entry", async () => {
         const dir = await makePackage(tmpRoot, "pkg-noglyph", {
             name: "@plurnk/plurnk-mimetypes-noglyph",
-            plurnk: { kind: "mimetype", name: "text/noglyph", extensions: [".n"] },
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "text/noglyph", extensions: [".n"] }],
+            },
         });
         const result = await discover({ packageDirs: [dir] });
         const info = result.handlers.get("text/noglyph");
         assert.equal(info?.glyph, "");
     });
 
-    // --- canonical `handlers: HandlerDecl[]` shape (SPEC §2) ---
-
-    it("reads a single handler declared via the canonical `handlers` array", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-handlers-single", {
-            name: "@plurnk/plurnk-mimetypes-text-plain",
-            plurnk: {
-                kind: "mimetype",
-                handlers: [
-                    { name: "text/plain", glyph: "📄", extensions: [".txt"] },
-                ],
-            },
-        });
-        const result = await discover({ packageDirs: [dir] });
-        const info = result.handlers.get("text/plain");
-        assert.ok(info);
-        assert.equal(info.glyph, "📄");
-        assert.deepEqual([...info.extensions], [".txt"]);
-        assert.equal(result.registry.byExtension.get(".txt"), "text/plain");
-    });
-
-    it("registers each entry in a multi-handler `handlers` array as its own HandlerInfo", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-handlers-multi", {
+    it("registers each entry in a multi-handler array as its own HandlerInfo", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-multi", {
             name: "@plurnk/plurnk-mimetypes-application-json",
             plurnk: {
                 kind: "mimetype",
@@ -236,62 +268,9 @@ describe("discover", () => {
         assert.equal(jsonc.mimetype, "application/jsonc");
         // Both reference the same package (shared instantiation source).
         assert.equal(json.packageName, jsonc.packageName);
-        // Routing: each extension maps to its own mimetype (matched-name, not collapsed).
+        // Routing: each extension maps to its own mimetype (not collapsed).
         assert.equal(result.registry.byExtension.get(".json"), "application/json");
         assert.equal(result.registry.byExtension.get(".jsonc"), "application/jsonc");
-    });
-
-    it("skips malformed handler entries without breaking other entries", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-handlers-malformed", {
-            name: "@plurnk/plurnk-mimetypes-test",
-            plurnk: {
-                kind: "mimetype",
-                handlers: [
-                    { name: "" },                       // empty name — skipped
-                    { extensions: [".x"] },             // missing name — skipped
-                    null,                                // not an object — skipped
-                    "not-an-object",                     // not an object — skipped
-                    { name: "application/json", extensions: [".json"] },  // valid
-                    { name: "application/jsonc", extensions: [".jsonc"] }, // valid
-                ],
-            },
-        });
-        const result = await discover({ packageDirs: [dir] });
-        assert.equal(result.handlers.size, 2);
-        assert.ok(result.handlers.has("application/json"));
-        assert.ok(result.handlers.has("application/jsonc"));
-    });
-
-    it("returns empty when `handlers` is present but contains no valid entries", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-handlers-empty", {
-            name: "@plurnk/plurnk-mimetypes-test",
-            plurnk: {
-                kind: "mimetype",
-                handlers: [null, "string", { name: "" }],
-            },
-        });
-        const result = await discover({ packageDirs: [dir] });
-        assert.equal(result.handlers.size, 0);
-    });
-
-    it("`handlers` array takes precedence over legacy flat fields when both are present", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-handlers-precedence", {
-            name: "@plurnk/plurnk-mimetypes-test",
-            plurnk: {
-                kind: "mimetype",
-                // Legacy fields say one thing...
-                name: "text/legacy",
-                extensions: [".legacy"],
-                // ...handlers array says another. Handlers wins.
-                handlers: [
-                    { name: "text/canonical", extensions: [".canonical"] },
-                ],
-            },
-        });
-        const result = await discover({ packageDirs: [dir] });
-        assert.equal(result.handlers.size, 1);
-        assert.ok(result.handlers.has("text/canonical"));
-        assert.ok(!result.handlers.has("text/legacy"));
     });
 
     it("default cwd scan finds packages under node_modules/@plurnk/", async () => {
@@ -299,7 +278,10 @@ describe("discover", () => {
         try {
             await makePackage(path.join(sandbox, "node_modules", "@plurnk"), "plurnk-mimetypes-text-plain", {
                 name: "@plurnk/plurnk-mimetypes-text-plain",
-                plurnk: { kind: "mimetype", name: "text/plain", glyph: "📄", extensions: [".txt"] },
+                plurnk: {
+                    kind: "mimetype",
+                    handlers: [{ name: "text/plain", glyph: "📄", extensions: [".txt"] }],
+                },
             });
             const result = await discover({ cwd: sandbox });
             assert.equal(result.handlers.size, 1);

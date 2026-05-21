@@ -72,21 +72,6 @@ Multi-handler example (one package serving variants of the same content type):
 
 **Handler instantiation for multi-handler packages.** Each registered name produces its own handler instance with its own metadata. Handlers may branch behavior on `this.mimetype` — e.g., `validate()` can be strict for `application/json` and permissive for `application/jsonc`. The handler class is the same across all entries; only the per-instance metadata differs.
 
-**Legacy flat shape** — accepted for backwards compatibility during the schema transition:
-
-```json
-{
-    "plurnk": {
-        "kind": "mimetype",
-        "name": "text/plain",
-        "glyph": "📄",
-        "extensions": [".txt"]
-    }
-}
-```
-
-Equivalent to a single-entry `handlers` array. The canonical `handlers` shape is preferred; new packages should use it. The legacy shape will be removed once all `@plurnk/plurnk-mimetypes-*` packages have migrated.
-
 ## 3. `MimeSymbol` and `SymbolKind`
 
 ```ts
