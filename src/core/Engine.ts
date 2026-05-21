@@ -99,7 +99,34 @@ export interface ProposalResolution {
 }
 interface ProposalWaiter {
     resolve: (resolution: ProposalResolution) => void;
+    timeoutHandle: ReturnType<typeof setTimeout>;
 }
+
+// External observers of pending-proposal events. sessionId is included so
+// Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
+// (file diff, exec command, etc.) the client needs to render review UI.
+export interface ProposalPendingEvent {
+    logEntryId: number;
+    sessionId: number;
+    runId: number;
+    loopId: number;
+    turnId: number;
+    op: string;
+    target: { scheme: string | null; pathname: string | null };
+    body: string;
+    attrs: object;
+}
+
+// Resolution timeout — proposed entries auto-cancel if nothing arrives
+// within this window. Per AGENTS.md §Phase E.2.
+const PROPOSAL_TIMEOUT_DEFAULT_MS = 300000;
+const readProposalTimeoutMs = (): number => {
+    const raw = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+    if (raw === undefined || raw.length === 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
+    return n;
+};
 
 type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
 
@@ -201,6 +228,12 @@ export default class Engine {
     // is per-log-entry-id; entries clear on resolution. See AGENTS.md
     // §Phase E for the broader lifecycle plan.
     #pendingProposals = new Map<number, ProposalWaiter>();
+    // External observers of proposal lifecycle events. Daemon subscribes
+    // here to push `loop/proposal` notifications when an entry enters
+    // pending state. YOLO listener (Phase E.3) subscribes here too. Lean
+    // event emitter — no priority, no veto chain at this layer; filter
+    // chains come later if a real consumer needs them.
+    #proposalPendingListeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
     constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: Mimetypes }) {
         this.#db = db;
@@ -651,6 +684,20 @@ export default class Engine {
         // resolution status replaces 202 in the result the caller sees,
         // so runTurn never branches on a pending state.
         if (result.status === 202) {
+            // Notify external listeners (Daemon broadcasts loop/proposal;
+            // YOLO listener auto-resolves) BEFORE awaiting — they may
+            // resolve synchronously inside their handlers.
+            const target = this.#extractTarget(statement.path);
+            const event: ProposalPendingEvent = {
+                logEntryId, sessionId, runId, loopId, turnId,
+                op: statement.op,
+                target: { scheme: target.scheme, pathname: target.pathname },
+                body: typeof result.body === "string" ? result.body : "",
+                attrs: (result.attrs ?? {}) as object,
+            };
+            for (const listener of this.#proposalPendingListeners) {
+                try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
+            }
             const resolution = await this.#awaitResolution(logEntryId);
             const post = await this.#applyResolution(logEntryId, resolution);
             return post;
@@ -669,6 +716,7 @@ export default class Engine {
         if (waiter === undefined) {
             throw new Error(`Engine.resolveProposal: no pending proposal for log_entry ${logEntryId}`);
         }
+        clearTimeout(waiter.timeoutHandle);
         this.#pendingProposals.delete(logEntryId);
         waiter.resolve(resolution);
     }
@@ -679,9 +727,28 @@ export default class Engine {
         return [...this.#pendingProposals.keys()];
     }
 
+    // Subscribe to proposal-pending events. Daemon registers a listener
+    // that broadcasts the loop/proposal WS notification; YOLO listener
+    // (Phase E.3) registers one that auto-resolves. Listeners fire BEFORE
+    // dispatch awaits resolution, so synchronous (or fast-async) handlers
+    // can resolve inline.
+    onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
+        this.#proposalPendingListeners.push(listener);
+    }
+
     #awaitResolution(logEntryId: number): Promise<ProposalResolution> {
+        const timeoutMs = readProposalTimeoutMs();
         return new Promise<ProposalResolution>((resolve) => {
-            this.#pendingProposals.set(logEntryId, { resolve });
+            const timeoutHandle = setTimeout(() => {
+                // Timeout: synthesize a cancel resolution and feed it back
+                // through the same path as any other resolution. State
+                // transitions to cancelled with outcome='timeout'.
+                if (this.#pendingProposals.has(logEntryId)) {
+                    this.#pendingProposals.delete(logEntryId);
+                    resolve({ decision: "cancel", outcome: "timeout" });
+                }
+            }, timeoutMs);
+            this.#pendingProposals.set(logEntryId, { resolve, timeoutHandle });
         });
     }
 

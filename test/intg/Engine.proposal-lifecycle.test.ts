@@ -205,3 +205,50 @@ test("proposal: pendingProposalIds reports waiting entries", async () => {
         assert.deepEqual(ctx.engine.pendingProposalIds(), []);
     } finally { await db.close(); }
 });
+
+test("proposal: onProposalPending listener fires with the right payload", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const seen: { logEntryId: number; op: string; attrs: object; target: { scheme: string | null; pathname: string | null } }[] = [];
+        ctx.engine.onProposalPending((event) => {
+            seen.push({ logEntryId: event.logEntryId, op: event.op, attrs: event.attrs, target: event.target });
+        });
+        const { logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "accept" });
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0]?.logEntryId, logEntryId);
+        assert.equal(seen[0]?.op, "EDIT");
+        assert.equal(seen[0]?.target.scheme, "proposing-test");
+        assert.equal(seen[0]?.target.pathname, "/x");
+        const attrs = seen[0]?.attrs as { path: string; patch: string };
+        assert.equal(attrs.path, "/proposed-test");
+        assert.equal(attrs.patch, "@@ +x @@");
+    } finally { await db.close(); }
+});
+
+test("proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
+    const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_PROPOSAL_TIMEOUT_MS = original;
+    });
+    process.env.PLURNK_PROPOSAL_TIMEOUT_MS = "50";  // 50ms — fast for tests
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const idDeferred = deferred<number>();
+        // No resolveProposal call — wait for the timeout to fire and route
+        // through the same applyResolution path as a manual cancel.
+        const result = await ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        assert.equal(result.status, 499, "timeout produces a cancelled resolution → status 499");
+        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        assert.equal(row?.state, "cancelled");
+        assert.equal(row?.outcome, "timeout");
+    } finally { await db.close(); }
+});
