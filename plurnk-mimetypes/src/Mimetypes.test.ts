@@ -49,6 +49,7 @@ const plainInfo: HandlerInfo = {
     glyph: "📄",
     packageName: "@plurnk/plurnk-mimetypes-text-plain",
     extensions: [".txt"],
+    binary: false,
 };
 
 const strictInfo: HandlerInfo = {
@@ -56,6 +57,7 @@ const strictInfo: HandlerInfo = {
     glyph: "🛡",
     packageName: "@plurnk/plurnk-mimetypes-application-strict",
     extensions: [".strict"],
+    binary: false,
 };
 
 describe("Mimetypes — detection + discovery", () => {

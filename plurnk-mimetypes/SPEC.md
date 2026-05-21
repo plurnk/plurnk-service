@@ -11,16 +11,22 @@ The eventual home for the formal version of this contract is JSON Schema in [`@p
 A handler is any class instance whose shape matches:
 
 ```ts
+type HandlerContent = string | Uint8Array;
+
 interface Handler {
     readonly mimetype: string;
     readonly glyph: string;
     readonly extensions: readonly string[];
-    extract(content: string): MimeSymbol[];
-    validate(content: string): void;
-    symbols(content: string): string;
-    preview(content: string, budget: number): Promise<string>;
+    extract(content: HandlerContent): MimeSymbol[];
+    validate(content: HandlerContent): void;
+    symbols(content: HandlerContent): string;
+    preview(content: HandlerContent, budget: number): Promise<string>;
 }
 ```
+
+**Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
+
+**Tokenize access.** `BaseHandler.tokenize` is `protected readonly` — subclasses with custom `preview()` (typically content-transformation handlers like HTML→markdown or PDF→text) can call it directly. Handlers using the default `preview()` don't need to touch it.
 
 In practice handlers extend `BaseHandler` (or `AntlrExtractor`), which provides every method derived from a single `extract(content) → MimeSymbol[]`. Subclasses normally implement `extract` only. Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
@@ -56,6 +62,7 @@ Multi-handler example (one package serving variants of the same content type):
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
+| `binary` | boolean | no | `true` if all handlers in the package consume `Uint8Array` content. Default `false` (utf-8 string). |
 | `handlers` | HandlerDecl[] | yes | One or more handler entries (canonical shape) |
 
 `HandlerDecl`:

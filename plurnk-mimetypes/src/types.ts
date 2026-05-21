@@ -51,7 +51,10 @@ export interface DetectInput {
     path?: string;
     ext?: string;
     hint?: string;
-    content?: string;
+    // Raw content for magic-byte sniffing. Accepts string or Uint8Array since
+    // sniffing is most useful for binary mimetypes. Currently not consumed by
+    // detect() — reserved for the future content-sniffing lane.
+    content?: string | Uint8Array;
 }
 
 export interface HandlerInfo {
@@ -59,6 +62,11 @@ export interface HandlerInfo {
     glyph: string;
     packageName: string;
     extensions: readonly string[];
+    // When true, the framework reads file content as Uint8Array (not utf-8
+    // string) before passing to handler methods. Set via `plurnk.binary: true`
+    // at the top of the package's plurnk block — applies to all handler
+    // entries in the package.
+    binary: boolean;
 }
 
 export interface Discovery {

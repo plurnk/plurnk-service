@@ -45,7 +45,11 @@ export interface MimetypesOptions {
 
 export interface ProcessInput {
     path?: string;
-    content?: string;
+    // Inline content. `string` for text mimetypes (default); `Uint8Array` for
+    // binary mimetypes (handler declared via `plurnk.binary: true`). When path
+    // is supplied and content is not, the framework reads the file as whichever
+    // shape the resolved handler expects.
+    content?: string | Uint8Array;
     ext?: string;
     hint?: string;
 }
@@ -147,14 +151,21 @@ export default class Mimetypes {
             return { mimetype: null, symbols: "", preview: "", ok: false };
         }
 
-        const content = await this.#resolveContent(input);
+        // Look up the handler's binary flag before reading content, so we read
+        // the file as Uint8Array vs utf-8 string per the handler's expectation.
+        const info = this.#discovery!.handlers.get(mimetype) ?? null;
+        const isBinary = info?.binary ?? false;
+
+        const content = await this.#resolveContent(input, isBinary);
         if (content === null) {
             return { mimetype, symbols: "", preview: "", ok: false };
         }
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            const preview = await fitContent(content, budget, this.#tokenize);
+            const preview = typeof content === "string"
+                ? await fitContent(content, budget, this.#tokenize)
+                : "";
             return { mimetype, symbols: "", preview, ok: false };
         }
 
@@ -163,18 +174,20 @@ export default class Mimetypes {
 
         const symbols = handler.symbols(content);
         let preview = await handler.preview(content, budget);
-        if (preview === "" && content !== "") {
+        if (preview === "" && typeof content === "string" && content !== "") {
             preview = await fitContent(content, budget, this.#tokenize);
         }
 
         return { mimetype, symbols, preview, ok: true };
     }
 
-    async #resolveContent(input: ProcessInput): Promise<string | null> {
+    async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {
         if (input.content !== undefined) return input.content;
         if (input.path === undefined || input.path === "") return null;
         try {
-            return await fs.readFile(input.path, "utf-8");
+            return binary
+                ? new Uint8Array(await fs.readFile(input.path))
+                : await fs.readFile(input.path, "utf-8");
         } catch {
             return null;
         }

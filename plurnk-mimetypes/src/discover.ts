@@ -88,6 +88,9 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
     if (!Array.isArray(plurnkRec.handlers)) return [];
 
     const packageName = typeof record.name === "string" ? record.name : "";
+    // Package-level `binary: true` flag applies to every handler in the
+    // package — typical for whole-package binary handlers (PDF, images).
+    const binary = plurnkRec.binary === true;
     const infos: HandlerInfo[] = [];
 
     for (const entry of plurnkRec.handlers) {
@@ -99,6 +102,7 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
             glyph: typeof e.glyph === "string" ? e.glyph : "",
             packageName,
             extensions: filterExtensions(e.extensions),
+            binary,
         });
     }
 
