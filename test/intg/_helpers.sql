@@ -36,6 +36,10 @@ SELECT id, loop_id, sequence, status,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
+-- PREP: test_get_log_entry_by_id
+SELECT id, status_rx, state, outcome, attrs, rx
+FROM log_entries WHERE id = $id;
+
 -- PREP: test_get_session_cost
 SELECT cost_pico FROM sessions WHERE id = $id;
 

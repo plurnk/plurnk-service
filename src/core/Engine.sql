@@ -62,6 +62,9 @@ ORDER BY le.action_index;
 -- Render-time log assembly (SPEC §15 packet.system.log, task #44).
 -- Yields log_entries for this loop, joined with the turn's sequence so the
 -- model gets a stable log://<loop_seq>/<turn_seq>/<action_index> coordinate.
+-- Status 202 entries in state='proposed' are model-invisible until resolved
+-- (rummy SPEC #message_structure). Once state transitions to resolved/failed/
+-- cancelled the entry surfaces in the next packet's log.
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
@@ -71,25 +74,45 @@ SELECT
     le.target_scheme, le.target_username, le.target_password,
     le.target_hostname, le.target_port, le.target_pathname,
     le.target_params, le.target_fragment,
-    le.status_rx, le.rx, le.mimetype_rx
+    le.status_rx, le.rx, le.mimetype_rx,
+    le.state, le.outcome
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
+  AND NOT (le.status_rx = 202 AND le.state = 'proposed')
 ORDER BY t.sequence, le.action_index;
 
 -- PREP: engine_insert_log_entry
+-- Default state='resolved' covers the common path (non-proposing schemes
+-- return their final status immediately). Status 202 + state='proposed'
+-- triggers the proposal lifecycle (engine pauses dispatch; client resolves
+-- via loop/resolve RPC; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, action_index, origin,
     op, suffix, signal,
     target_scheme, target_username, target_password, target_hostname, target_port,
     target_pathname, target_params, target_fragment, lineMarker,
-    tx, mimetype_tx, rx, mimetype_rx, status_rx
+    tx, mimetype_tx, rx, mimetype_rx, status_rx,
+    state, outcome, attrs
 ) VALUES (
     $run_id, $loop_id, $turn_id, $action_index, $origin,
     $op, $suffix, $signal,
     $target_scheme, $target_username, $target_password, $target_hostname, $target_port,
     $target_pathname, $target_params, $target_fragment, $lineMarker,
-    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx
+    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx,
+    $state, $outcome, $attrs
 )
 RETURNING id;
+
+-- PREP: engine_resolve_log_entry
+-- Transitions a proposed log entry to its terminal state. Used by the
+-- proposal lifecycle (loop/resolve RPC, YOLO auto-accept, timeout, abort).
+-- Updates status_rx + rx + state + outcome atomically.
+UPDATE log_entries
+   SET state = $state,
+       outcome = $outcome,
+       status_rx = $status_rx,
+       rx = $rx
+ WHERE id = $id
+   AND state = 'proposed';
