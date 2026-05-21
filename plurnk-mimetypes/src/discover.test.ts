@@ -195,6 +195,105 @@ describe("discover", () => {
         assert.equal(info?.glyph, "");
     });
 
+    // --- canonical `handlers: HandlerDecl[]` shape (SPEC §2) ---
+
+    it("reads a single handler declared via the canonical `handlers` array", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-single", {
+            name: "@plurnk/plurnk-mimetypes-text-plain",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [
+                    { name: "text/plain", glyph: "📄", extensions: [".txt"] },
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        const info = result.handlers.get("text/plain");
+        assert.ok(info);
+        assert.equal(info.glyph, "📄");
+        assert.deepEqual([...info.extensions], [".txt"]);
+        assert.equal(result.registry.byExtension.get(".txt"), "text/plain");
+    });
+
+    it("registers each entry in a multi-handler `handlers` array as its own HandlerInfo", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-multi", {
+            name: "@plurnk/plurnk-mimetypes-application-json",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [
+                    { name: "application/json", glyph: "📋", extensions: [".json"] },
+                    { name: "application/jsonc", glyph: "📋", extensions: [".jsonc"] },
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 2);
+        const json = result.handlers.get("application/json");
+        const jsonc = result.handlers.get("application/jsonc");
+        assert.ok(json && jsonc);
+        // Each entry carries its own identity.
+        assert.equal(json.mimetype, "application/json");
+        assert.equal(jsonc.mimetype, "application/jsonc");
+        // Both reference the same package (shared instantiation source).
+        assert.equal(json.packageName, jsonc.packageName);
+        // Routing: each extension maps to its own mimetype (matched-name, not collapsed).
+        assert.equal(result.registry.byExtension.get(".json"), "application/json");
+        assert.equal(result.registry.byExtension.get(".jsonc"), "application/jsonc");
+    });
+
+    it("skips malformed handler entries without breaking other entries", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-malformed", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [
+                    { name: "" },                       // empty name — skipped
+                    { extensions: [".x"] },             // missing name — skipped
+                    null,                                // not an object — skipped
+                    "not-an-object",                     // not an object — skipped
+                    { name: "application/json", extensions: [".json"] },  // valid
+                    { name: "application/jsonc", extensions: [".jsonc"] }, // valid
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 2);
+        assert.ok(result.handlers.has("application/json"));
+        assert.ok(result.handlers.has("application/jsonc"));
+    });
+
+    it("returns empty when `handlers` is present but contains no valid entries", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-empty", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [null, "string", { name: "" }],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 0);
+    });
+
+    it("`handlers` array takes precedence over legacy flat fields when both are present", async () => {
+        const dir = await makePackage(tmpRoot, "pkg-handlers-precedence", {
+            name: "@plurnk/plurnk-mimetypes-test",
+            plurnk: {
+                kind: "mimetype",
+                // Legacy fields say one thing...
+                name: "text/legacy",
+                extensions: [".legacy"],
+                // ...handlers array says another. Handlers wins.
+                handlers: [
+                    { name: "text/canonical", extensions: [".canonical"] },
+                ],
+            },
+        });
+        const result = await discover({ packageDirs: [dir] });
+        assert.equal(result.handlers.size, 1);
+        assert.ok(result.handlers.has("text/canonical"));
+        assert.ok(!result.handlers.has("text/legacy"));
+    });
+
     it("default cwd scan finds packages under node_modules/@plurnk/", async () => {
         const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-sandbox-"));
         try {

@@ -26,13 +26,29 @@ In practice handlers extend `BaseHandler` (or `AntlrExtractor`), which provides 
 
 ## 2. `package.json` `plurnk` discovery block
 
+A package declares one or more mimetype handlers via a uniform `handlers` array. Single-handler and multi-handler packages use the same shape — no primary/alias asymmetry.
+
 ```json
 {
     "plurnk": {
         "kind": "mimetype",
-        "name": "text/x-python",
-        "glyph": "🐍",
-        "extensions": [".py", ".pyw"]
+        "handlers": [
+            { "name": "text/x-python", "glyph": "🐍", "extensions": [".py", ".pyw"] }
+        ]
+    }
+}
+```
+
+Multi-handler example (one package serving variants of the same content type):
+
+```json
+{
+    "plurnk": {
+        "kind": "mimetype",
+        "handlers": [
+            { "name": "application/json",  "glyph": "📋", "extensions": [".json"] },
+            { "name": "application/jsonc", "glyph": "📋", "extensions": [".jsonc"] }
+        ]
     }
 }
 ```
@@ -40,11 +56,36 @@ In practice handlers extend `BaseHandler` (or `AntlrExtractor`), which provides 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
-| `name` | string | yes | The canonical mimetype (`text/markdown`, `application/json`, `text/x-python`, …) |
+| `handlers` | HandlerDecl[] | yes | One or more handler entries (canonical shape) |
+
+`HandlerDecl`:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | The mimetype this entry registers (`text/markdown`, `application/json`, …) |
 | `glyph` | string | no | Single-character display marker; defaults to empty string |
 | `extensions` | string[] | no | Mixed list: entries beginning with `.` are file extensions (lowercased on match); other entries are special filenames matched verbatim (`Dockerfile`, `Makefile`) |
 
 `discover()` scans `node_modules/@plurnk/` for packages with `plurnk.kind === "mimetype"`. Last-loaded wins on mimetype or extension conflicts.
+
+**Resolution semantics for multi-handler packages.** Detection returns the matched name — never collapsed to another entry in the same package. A `.jsonc` file resolves to `application/jsonc`; a `.json` file resolves to `application/json`; an explicit `hint: "application/jsonc"` resolves to `application/jsonc`. `ProcessResult.mimetype` reflects the matched name so consumers (notably plurnk-service's `entry_channels.mimetype` column) preserve the variant identity.
+
+**Handler instantiation for multi-handler packages.** Each registered name produces its own handler instance with its own metadata. Handlers may branch behavior on `this.mimetype` — e.g., `validate()` can be strict for `application/json` and permissive for `application/jsonc`. The handler class is the same across all entries; only the per-instance metadata differs.
+
+**Legacy flat shape** — accepted for backwards compatibility during the schema transition:
+
+```json
+{
+    "plurnk": {
+        "kind": "mimetype",
+        "name": "text/plain",
+        "glyph": "📄",
+        "extensions": [".txt"]
+    }
+}
+```
+
+Equivalent to a single-entry `handlers` array. The canonical `handlers` shape is preferred; new packages should use it. The legacy shape will be removed once all `@plurnk/plurnk-mimetypes-*` packages have migrated.
 
 ## 3. `MimeSymbol` and `SymbolKind`
 
