@@ -699,10 +699,50 @@ export default class Engine {
                 try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
             }
             const resolution = await this.#awaitResolution(logEntryId);
-            const post = await this.#applyResolution(logEntryId, resolution);
+            // Run the scheme's applyResolution hook on accept (writes the
+            // file, spawns the process, etc.). If applyResolution returns a
+            // 4xx/5xx or throws, the resolution is downgraded to a reject
+            // with the failure outcome — engine treats it like a client
+            // rejection.
+            const effective = await this.#runApplyResolution(statement, result, resolution);
+            const post = await this.#applyResolution(logEntryId, effective);
             return post;
         }
         return result;
+    }
+
+    async #runApplyResolution(
+        statement: PlurnkStatement,
+        originalResult: DispatchResult,
+        resolution: ProposalResolution,
+    ): Promise<ProposalResolution> {
+        if (resolution.decision !== "accept") return resolution;
+        const schemeName = this.#schemeNameOf(statement.path);
+        if (schemeName === null) return resolution;
+        const handler = this.#schemes.get(schemeName) as
+            | { applyResolution?: (args: { attrs: object; body?: string }) => Promise<{ status: number; outcome?: string; body?: string }> }
+            | undefined;
+        if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
+        try {
+            const applyResult = await handler.applyResolution({
+                attrs: (originalResult.attrs ?? {}) as object,
+                body: resolution.body,
+            });
+            if (applyResult.status >= 400) {
+                return {
+                    decision: "reject",
+                    outcome: applyResult.outcome ?? "apply_failed",
+                    body: applyResult.body,
+                };
+            }
+            return resolution;
+        } catch (err) {
+            return {
+                decision: "reject",
+                outcome: "apply_threw",
+                body: err instanceof Error ? err.message : String(err),
+            };
+        }
     }
 
     // Engine.resolveProposal: external API to feed a resolution into a
