@@ -1,0 +1,106 @@
+{
+  "dbPath": "/home/hyzen/repo/plurnk/plurnk-service/plurnk.db",
+  "sessions": [
+    {
+      "id": 1,
+      "name": "session-1779399002-175px",
+      "cost_pico": 0
+    }
+  ],
+  "runs": [
+    {
+      "id": 1,
+      "session_id": 1,
+      "name": "run-1779399002-7bbka",
+      "cost_pico": 0
+    }
+  ],
+  "loops": [
+    {
+      "id": 1,
+      "run_id": 1,
+      "sequence": 1,
+      "status": 102,
+      "prompt": "",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "run_id": 1,
+      "sequence": 2,
+      "status": 499,
+      "prompt": "Write a poem to POEM.md describing the frustration of working with AI tools.",
+      "flags": {}
+    }
+  ],
+  "turns": [
+    {
+      "id": 1,
+      "loop_id": 2,
+      "sequence": 1,
+      "status": 102,
+      "usage_prompt": 1529,
+      "usage_completion": 1190,
+      "usage_cached": 0,
+      "usage_cost_pico": 0,
+      "finish_reason": "stop",
+      "model": "macher.gguf"
+    },
+    {
+      "id": 2,
+      "loop_id": 2,
+      "sequence": 2,
+      "status": 102,
+      "usage_prompt": 1529,
+      "usage_completion": 1590,
+      "usage_cached": 0,
+      "usage_cost_pico": 0,
+      "finish_reason": "stop",
+      "model": "macher.gguf"
+    },
+    {
+      "id": 3,
+      "loop_id": 2,
+      "sequence": 3,
+      "status": 102,
+      "usage_prompt": 1529,
+      "usage_completion": 3491,
+      "usage_cached": 0,
+      "usage_cost_pico": 0,
+      "finish_reason": "stop",
+      "model": "macher.gguf"
+    }
+  ],
+  "log_entries": [
+    {
+      "id": 1,
+      "turn_id": 1,
+      "action_index": 0,
+      "op": "EDIT",
+      "target": "://POEM.md",
+      "status_rx": 400,
+      "state": "resolved",
+      "outcome": null
+    },
+    {
+      "id": 2,
+      "turn_id": 2,
+      "action_index": 0,
+      "op": "EDIT",
+      "target": "://POEM.md",
+      "status_rx": 400,
+      "state": "resolved",
+      "outcome": null
+    },
+    {
+      "id": 3,
+      "turn_id": 3,
+      "action_index": 0,
+      "op": "EDIT",
+      "target": "://POEM.md",
+      "status_rx": 400,
+      "state": "resolved",
+      "outcome": null
+    }
+  ]
+}
