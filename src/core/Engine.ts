@@ -964,10 +964,13 @@ export default class Engine {
         return method.call(handler, statement, ctx);
     }
 
+    // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
+    // "Bare paths (no scheme) default to local relative project file paths."
+    // file:// remains an optional explicit form for absolute paths.
     #schemeNameOf(path: ParsedPath | null): string | null {
         if (path === null) return null;
         if (path.kind === "url") return path.scheme;
-        return null;
+        return "file";  // local (bare) → file
     }
 
     async #writeLog({
