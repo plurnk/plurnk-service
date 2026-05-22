@@ -4,13 +4,22 @@
 // emits per-run forensic artifacts to test/digest/. First-order forensic
 // surface; read-only; safe to re-run.
 //
-//   test/digest/digest.md     Run-shape header + waterfall (per-turn line:
-//                             status, model emission summary, indented op
-//                             list with target + status, reasoning excerpt)
-//   test/digest/digest.json   Same data, machine-queryable
-//   test/digest/reasoning.md  Per-turn reasoning text (full)
-//   test/digest/packets.md    Per-turn assembled wire packet (system,
-//                             user, assistant sections from turns.packet)
+//   test/digest/digest.md           Run-shape header + waterfall (per-turn:
+//                                   status, model emission summary, indented
+//                                   op list with target + status + error)
+//   test/digest/digest.json         Same data, machine-queryable
+//   test/digest/reasoning.md        Per-turn reasoning text (full)
+//   test/digest/packetNNN.system.json     BYTE-FOR-BYTE the system message
+//                                         the LLM received on turn id NNN.
+//   test/digest/packetNNN.user.json       Same for the user message.
+//   test/digest/packetNNN.assistant.json  Parsed model emission (Packet.json
+//                                         §assistant: content + ops + reasoning).
+//   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
+//
+// packet files are byte-identical to what Engine.#packetToWireMessages
+// emits (JSON.stringify of the Packet.json §system / §user sections). No
+// invented separators, no compact rendering — wire and digest CANNOT
+// structurally drift because they're produced from the same JSON form.
 //
 // Adapts rummy's bin/digest.js to plurnk-service's schema:
 //   - rummy: entries + run_views + log://N/T/S/action paths
@@ -21,12 +30,13 @@
 //   node bin/digest.js <path-to-plurnk.db>      explicit DB path
 //
 // npm hook:
-//   npm run dev:digest [-- path/to/plurnk.db]
+//   npm run test:digest [-- path/to/plurnk.db]
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { renderSystemContent, renderUserContent } from "../src/core/packet-wire.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -56,7 +66,11 @@ const parseJson = (s, fallback = null) => {
 
 // --- Read all the things ---------------------------------------------------
 
-const db = new DatabaseSync(dbPath, { readOnly: true });
+// Open without readOnly so WAL-mode dbs (the daemon's normal operating mode)
+// can be inspected while or after the daemon has run. node:sqlite's
+// `readOnly: true` blocks WAL recovery on open and throws SQLITE_IOERR.
+// This script never writes — discipline is in our hands, not the flag.
+const db = new DatabaseSync(dbPath);
 
 const sessions = db.prepare("SELECT * FROM sessions ORDER BY id").all();
 const runs = db.prepare("SELECT * FROM runs ORDER BY id").all();
@@ -126,7 +140,18 @@ const renderOpLine = (le) => {
     const state = le.state !== "resolved" ? ` state=${le.state}` : "";
     const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
     const fail = le.status_rx >= 400 ? " ✗" : "";
-    return `  ← ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}`;
+    // For non-2xx outcomes, surface the error string (or body) from rx so
+    // the waterfall view explains WHY each failure happened without making
+    // a reader open packets.md for every op.
+    let errLine = "";
+    if (le.status_rx >= 400) {
+        const rx = parseJson(le.rx, {});
+        const msg = rx.error ?? rx.body ?? null;
+        if (typeof msg === "string" && msg.length > 0) {
+            errLine = `\n    → ${summarize(msg, 140)}`;
+        }
+    }
+    return `  ← ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
 };
 
 const renderTurnLine = (turn) => {
@@ -241,124 +266,38 @@ const renderReasoning = () => {
     return lines.join("\n");
 };
 
-const renderPackets = () => {
-    const lines = [];
-    lines.push(`# plurnk-service packets`);
-    lines.push("");
-    lines.push("Per-turn assembled wire packet. `system` and `user` are what the engine sent");
-    lines.push("to the LLM (system_definition + persona + index + log entries; user prompt +");
-    lines.push("telemetry); `assistant` is the model's parsed emission (content + ops +");
-    lines.push("reasoning); `assistantRaw` is the unparsed wire response (for forensic detail).");
+// Per-turn packet files. Each turn produces four files:
+//   packetNNN.system.md         — system message content (markdown), BYTE-
+//                                 IDENTICAL to what the LLM received on the
+//                                 wire (Engine and digest both call
+//                                 renderSystemContent from packet-wire.js).
+//   packetNNN.user.md           — user message content (markdown), same.
+//   packetNNN.assistant.md      — model's raw DSL emission (string).
+//   packetNNN.assistantRaw.json — opaque provider response. JSON because
+//                                 it's structured (the provider's wire envelope).
+//
+// Wire ↔ digest cannot drift because they call the same projection function.
+const writePacketFiles = () => {
+    const written = [];
     for (const t of turns) {
-        const loop = loopsById.get(t.loop_id);
-        const run = loop ? runsById.get(loop.run_id) : null;
         const packet = parseJson(t.packet, {});
-        lines.push("");
-        lines.push(`## Run ${run?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id})`);
-        lines.push("");
-        lines.push(`Status: ${t.status}  Finish: ${t.finish_reason ?? "—"}  Model: ${t.model ?? "—"}`);
-        lines.push(`Usage:  prompt=${t.usage_prompt} completion=${t.usage_completion} cached=${t.usage_cached} cost_pico=${t.usage_cost_pico}`);
-        lines.push(`Packet token subtotals: total=${packet.tokens ?? 0} system=${packet.system?.tokens ?? 0} user=${packet.user?.tokens ?? 0}`);
-        lines.push("");
-        lines.push("### system");
-        lines.push("");
-        lines.push("```");
-        if (packet.system) {
-            const sys = packet.system;
-            if (sys.system_definition) {
-                lines.push("--- system_definition ---");
-                lines.push(sys.system_definition);
-            }
-            if (typeof sys.persona === "string" && sys.persona.length > 0) {
-                lines.push("");
-                lines.push("--- persona ---");
-                lines.push(sys.persona);
-            }
-            if (Array.isArray(sys.index)) {
-                lines.push("");
-                lines.push(`--- index (${sys.index.length} entries) ---`);
-                for (const entry of sys.index) {
-                    lines.push(`  ${entry.scheme ?? "?"}://${entry.pathname ?? ""}`);
-                    for (const [chanName, chan] of Object.entries(entry.channels ?? {})) {
-                        const c = chan;
-                        lines.push(`    ${chanName} (${c.mimetype}, ${c.tokens}t): ${summarize(c.content, 100)}`);
-                    }
-                }
-            }
-            if (Array.isArray(sys.log)) {
-                lines.push("");
-                lines.push(`--- log (${sys.log.length} entries) ---`);
-                for (const entry of sys.log) {
-                    lines.push(`  [${entry.coordinate ?? "?"}] ${entry.op ?? "?"} status=${entry.status_rx ?? "?"} ${summarize(JSON.stringify(entry.rx), 100)}`);
-                }
-            }
+        const padded = String(t.id).padStart(3, "0");
+        const systemMd = renderSystemContent(packet.system ?? {});
+        const userMd = renderUserContent(packet.user ?? {});
+        const assistantText = packet.assistant?.content ?? "";
+        const assistantRawJson = JSON.stringify(packet.assistantRaw ?? null, null, 2);
+        const files = [
+            [`packet${padded}.system.md`, systemMd],
+            [`packet${padded}.user.md`, userMd],
+            [`packet${padded}.assistant.md`, assistantText],
+            [`packet${padded}.assistantRaw.json`, assistantRawJson],
+        ];
+        for (const [file, body] of files) {
+            writeFileSync(join(DIGEST_DIR, file), body);
+            written.push(file);
         }
-        lines.push("```");
-        lines.push("");
-        lines.push("### user");
-        lines.push("");
-        lines.push("```");
-        if (packet.user) {
-            const u = packet.user;
-            if (u.prompt) {
-                lines.push("--- prompt ---");
-                lines.push(u.prompt);
-            }
-            if (u.telemetry) {
-                const t = u.telemetry;
-                if (t.budget && t.budget.length > 0) {
-                    lines.push("");
-                    lines.push("--- telemetry.budget ---");
-                    lines.push(t.budget);
-                }
-                if (Array.isArray(t.errors) && t.errors.length > 0) {
-                    lines.push("");
-                    lines.push(`--- telemetry.errors (${t.errors.length}) ---`);
-                    for (const err of t.errors) lines.push(JSON.stringify(err));
-                }
-            }
-            if (u.system_requirements) {
-                lines.push("");
-                lines.push("--- system_requirements ---");
-                lines.push(u.system_requirements);
-            }
-        }
-        lines.push("```");
-        lines.push("");
-        lines.push("### assistant");
-        lines.push("");
-        lines.push("```");
-        if (packet.assistant) {
-            const a = packet.assistant;
-            if (a.content) {
-                lines.push("--- content (raw DSL) ---");
-                lines.push(a.content);
-            }
-            if (Array.isArray(a.ops) && a.ops.length > 0) {
-                lines.push("");
-                lines.push(`--- ops (${a.ops.length} parsed) ---`);
-                for (const op of a.ops) {
-                    const path = op.path === null ? "(broadcast)"
-                        : op.path?.kind === "url" ? `${op.path.scheme}://${op.path.pathname}`
-                        : op.path?.raw ?? "?";
-                    lines.push(`  ${op.op} ${path}`);
-                }
-            }
-            if (a.reasoning) {
-                lines.push("");
-                lines.push("--- reasoning ---");
-                lines.push(summarize(a.reasoning, 240));
-            }
-        }
-        lines.push("```");
-        lines.push("");
-        lines.push("### assistantRaw");
-        lines.push("");
-        lines.push("```");
-        lines.push(JSON.stringify(packet.assistantRaw ?? null, null, 2));
-        lines.push("```");
     }
-    return lines.join("\n");
+    return written;
 };
 
 const renderJson = () => {
@@ -389,8 +328,8 @@ const renderJson = () => {
 writeFileSync(join(DIGEST_DIR, "digest.md"), renderWaterfall());
 writeFileSync(join(DIGEST_DIR, "digest.json"), renderJson());
 writeFileSync(join(DIGEST_DIR, "reasoning.md"), renderReasoning());
-writeFileSync(join(DIGEST_DIR, "packets.md"), renderPackets());
+const packetFiles = writePacketFiles();
 
-console.log(`digest: wrote test/digest/{digest.md,digest.json,reasoning.md,packets.md}`);
+console.log(`digest: wrote test/digest/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files`);
 console.log(`  source: ${dbPath}`);
 console.log(`  sessions=${sessions.length} runs=${runs.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);

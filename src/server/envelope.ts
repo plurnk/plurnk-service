@@ -12,6 +12,7 @@ export interface SessionRow {
     id: number;
     name: string;
     project_root: string | null;
+    persona: string | null;
     created_at: string;
     cost_pico: number;
 }
@@ -27,8 +28,10 @@ export interface ClientEnvelope {
     sessionId: number;
     sessionName: string;
     projectRoot: string | null;
+    sessionPersona: string | null;
     runId: number;
     runName: string;
+    runPersona: string | null;
     clientLoopId: number;
 }
 
@@ -44,17 +47,23 @@ const tsName = (prefix: string): string => {
 export const generateSessionName = (): string => tsName("session");
 export const generateRunName = (): string => tsName("run");
 
-export const createClientEnvelope = async (db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null } = {}): Promise<ClientEnvelope> => {
+export const createClientEnvelope = async (db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null; persona?: string | null } = {}): Promise<ClientEnvelope> => {
     const name = opts.name ?? tsName(opts.prefix ?? "session");
     const projectRoot = opts.projectRoot ?? null;
-    const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot });
+    const persona = opts.persona ?? null;
+    const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ name, project_root: projectRoot, persona });
     if (session === undefined) throw new Error("createClientEnvelope: session insert returned no row");
     const runName = generateRunName();
-    const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string }>({ session_id: session.id, name: runName });
+    const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: session.id, name: runName, persona: null });
     if (run === undefined) throw new Error("createClientEnvelope: run insert returned no row");
     const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
     if (loop === undefined) throw new Error("createClientEnvelope: loop insert returned no row");
-    return { sessionId: session.id, sessionName: session.name, projectRoot: session.project_root, runId: run.id, runName: run.name, clientLoopId: loop.id };
+    return {
+        sessionId: session.id, sessionName: session.name,
+        projectRoot: session.project_root, sessionPersona: session.persona,
+        runId: run.id, runName: run.name, runPersona: run.persona,
+        clientLoopId: loop.id,
+    };
 };
 
 // Resolve the run inside a session. Three modes:
@@ -62,35 +71,43 @@ export const createClientEnvelope = async (db: Db, opts: { name?: string; prefix
 // - opts.runName given: lookup by (sessionId, name); reuse if found, create otherwise.
 // - neither: create a new run with an auto-generated name (current behavior).
 // `runId` and `runName` are alternatives — passing both throws (use one).
-const resolveRun = async (db: Db, sessionId: number, opts: { runId?: number; runName?: string }): Promise<{ id: number; name: string }> => {
+// persona handling: only set when creating a NEW run. Reusing an existing
+// run (by runId or by runName matching an existing row) carries forward
+// whatever persona was stored on that row — overrides target NEW runs.
+const resolveRun = async (db: Db, sessionId: number, opts: { runId?: number; runName?: string; persona?: string | null }): Promise<{ id: number; name: string; persona: string | null }> => {
     if (opts.runId !== undefined && opts.runName !== undefined) {
         throw new Error("attachToSession: pass runId OR runName, not both");
     }
     if (opts.runId !== undefined) {
-        const existing = await (db.envelope_get_run_by_id as PrepMethod).get<{ id: number; name: string; session_id: number }>({ id: opts.runId });
+        const existing = await (db.envelope_get_run_by_id as PrepMethod).get<{ id: number; name: string; session_id: number; persona: string | null }>({ id: opts.runId });
         if (existing === undefined) throw new Error(`run ${opts.runId} not found`);
         if (existing.session_id !== sessionId) throw new Error(`run ${opts.runId} belongs to session ${existing.session_id}, not ${sessionId}`);
-        return { id: existing.id, name: existing.name };
+        return { id: existing.id, name: existing.name, persona: existing.persona };
     }
     if (opts.runName !== undefined) {
-        const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number; name: string }>({ session_id: sessionId, name: opts.runName });
+        const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName });
         if (existing !== undefined) return existing;
-        const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string }>({ session_id: sessionId, name: opts.runName });
+        const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName, persona: opts.persona ?? null });
         if (created === undefined) throw new Error("resolveRun: run insert returned no row");
         return created;
     }
-    const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string }>({ session_id: sessionId, name: generateRunName() });
+    const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: generateRunName(), persona: opts.persona ?? null });
     if (created === undefined) throw new Error("resolveRun: run insert returned no row");
     return created;
 };
 
-export const attachToSession = async (db: Db, sessionId: number, opts: { runId?: number; runName?: string } = {}): Promise<ClientEnvelope> => {
-    const session = await (db.envelope_get_session as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ id: sessionId });
+export const attachToSession = async (db: Db, sessionId: number, opts: { runId?: number; runName?: string; persona?: string | null } = {}): Promise<ClientEnvelope> => {
+    const session = await (db.envelope_get_session as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ id: sessionId });
     if (session === undefined) throw new Error(`session ${sessionId} not found`);
     const run = await resolveRun(db, session.id, opts);
     const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
     if (loop === undefined) throw new Error("attachToSession: loop insert returned no row");
-    return { sessionId: session.id, sessionName: session.name, projectRoot: session.project_root, runId: run.id, runName: run.name, clientLoopId: loop.id };
+    return {
+        sessionId: session.id, sessionName: session.name,
+        projectRoot: session.project_root, sessionPersona: session.persona,
+        runId: run.id, runName: run.name, runPersona: run.persona,
+        clientLoopId: loop.id,
+    };
 };
 
 export const listRunsForSession = async (db: Db, sessionId: number): Promise<RunRow[]> => {
@@ -108,7 +125,15 @@ export const listSessions = async (db: Db): Promise<SessionRow[]> => {
 // Updates sessions.project_root for an existing session and returns the new
 // value. Throws if the session does not exist. Used by session.set_root (F.1).
 export const updateSessionProjectRoot = async (db: Db, sessionId: number, projectRoot: string | null): Promise<string | null> => {
-    const row = await (db.envelope_update_session_project_root as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ id: sessionId, project_root: projectRoot });
+    const row = await (db.envelope_update_session_project_root as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ id: sessionId, project_root: projectRoot });
     if (row === undefined) throw new Error(`session ${sessionId} not found`);
     return row.project_root;
+};
+
+// Updates sessions.persona. Mirrors updateSessionProjectRoot. Used by
+// session.set_persona (issue #150).
+export const updateSessionPersona = async (db: Db, sessionId: number, persona: string | null): Promise<string | null> => {
+    const row = await (db.envelope_update_session_persona as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ id: sessionId, persona });
+    if (row === undefined) throw new Error(`session ${sessionId} not found`);
+    return row.persona;
 };

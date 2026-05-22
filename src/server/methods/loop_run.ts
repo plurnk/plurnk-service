@@ -23,6 +23,7 @@ interface Params {
     maxTurns?: number;
     alias?: string;
     flags?: LoopRunFlags;
+    persona?: string | null;
 }
 
 export const register = (registry: MethodRegistry): void => {
@@ -42,6 +43,10 @@ export const register = (registry: MethodRegistry): void => {
                 if (p.flags.yolo !== undefined && typeof p.flags.yolo !== "boolean") {
                     throw new Error("loop.run: flags.yolo must be a boolean");
                 }
+            }
+            const loopPersona = p.persona ?? null;
+            if (loopPersona !== null && typeof loopPersona !== "string") {
+                throw new Error("loop.run: persona must be a string or null");
             }
             const maxTurns = p.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50");
 
@@ -66,11 +71,15 @@ export const register = (registry: MethodRegistry): void => {
 
             const { sessionId, runId } = ctx.session;
             const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
+            // packet.system.persona — default from persona.md. issue #150 will
+            // add loop.run({persona}) and session.attach({persona}) overrides;
+            // until then every loop carries the default.
+            const persona = await readFile(PATHS.defaultPersona, "utf8");
 
             const seqRow = await (ctx.db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
             if (seqRow === undefined) throw new Error("loop.run: next-sequence query returned no row");
             const loop = await (ctx.db.loop_run_insert_loop as PrepMethod).get<{ id: number }>({
-                run_id: runId, sequence: seqRow.next, prompt: p.prompt,
+                run_id: runId, sequence: seqRow.next, prompt: p.prompt, persona: loopPersona,
             });
             if (loop === undefined) throw new Error("loop.run: loop insert returned no row");
             const loopId = loop.id;
@@ -99,6 +108,7 @@ export const register = (registry: MethodRegistry): void => {
                     { role: "system", content: systemPrompt },
                     { role: "user", content: p.prompt },
                 ],
+                persona,
                 sessionId, runId, loopId, maxTurns,
                 origin: "model",
                 onDispatch,
@@ -112,12 +122,13 @@ export const register = (registry: MethodRegistry): void => {
 
             return { loopId, ...result };
         },
-        description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Streams log/entry notifications; fires loop/terminated on completion.",
+        description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
         params: {
             prompt: "string — user prompt for the loop",
             maxTurns: "number? — safety cap on turns (default PLURNK_MAX_TURNS or 50)",
             alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
             flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
+            persona: "string? — loop-level persona (text/markdown); takes precedence over session and run personas",
         },
         requiresInit: true,
         longRunning: true,
