@@ -328,6 +328,8 @@ const minimalLogEntry = () => ({
     rx: "",
     mimetype_rx: "text/plain",
     status_rx: 201,
+    state: "resolved" as const,
+    outcome: null,
     tokens: 32,
 });
 
@@ -458,6 +460,59 @@ test("Validator: LogEntry accepts plugin origin with custom mimetype_tx", () => 
     };
     const { valid, errors } = Validator.validateLogEntry(log);
     assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: LogEntry accepts proposed state with null outcome", () => {
+    const log = {
+        ...minimalLogEntry(),
+        status_rx: 202,
+        state: "proposed" as const,
+        outcome: null,
+    };
+    const { valid, errors } = Validator.validateLogEntry(log);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: LogEntry accepts failed state with outcome reason", () => {
+    const log = {
+        ...minimalLogEntry(),
+        status_rx: 400,
+        state: "failed" as const,
+        outcome: "rejected",
+    };
+    const { valid, errors } = Validator.validateLogEntry(log);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: LogEntry accepts cancelled state with outcome reason", () => {
+    const log = {
+        ...minimalLogEntry(),
+        status_rx: 499,
+        state: "cancelled" as const,
+        outcome: "loop_aborted",
+    };
+    const { valid, errors } = Validator.validateLogEntry(log);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: LogEntry rejects unknown state value", () => {
+    const log: any = { ...minimalLogEntry(), state: "pending" };
+    const { valid } = Validator.validateLogEntry(log);
+    assert.equal(valid, false);
+});
+
+test("Validator: LogEntry rejects missing state", () => {
+    const log: any = minimalLogEntry();
+    delete log.state;
+    const { valid } = Validator.validateLogEntry(log);
+    assert.equal(valid, false);
+});
+
+test("Validator: LogEntry rejects missing outcome", () => {
+    const log: any = minimalLogEntry();
+    delete log.outcome;
+    const { valid } = Validator.validateLogEntry(log);
+    assert.equal(valid, false);
 });
 
 test("Validator: Entry params via $ref to Params.json validates multi-value", () => {
