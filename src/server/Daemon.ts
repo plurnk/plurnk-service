@@ -20,6 +20,7 @@ import { register as registerSessionCreate } from "./methods/session_create.ts";
 import { register as registerSessionList } from "./methods/session_list.ts";
 import { register as registerSessionAttach } from "./methods/session_attach.ts";
 import { register as registerSessionRuns } from "./methods/session_runs.ts";
+import { register as registerSessionSetRoot } from "./methods/session_set_root.ts";
 import { register as registerOpEdit } from "./methods/op_edit.ts";
 import { register as registerOpRead } from "./methods/op_read.ts";
 import { register as registerOpFind } from "./methods/op_find.ts";
@@ -162,6 +163,7 @@ export default class Daemon {
         registerSessionList(this.#registry);
         registerSessionAttach(this.#registry);
         registerSessionRuns(this.#registry);
+        registerSessionSetRoot(this.#registry);
         registerOpEdit(this.#registry);
         registerOpRead(this.#registry);
         registerOpFind(this.#registry);
