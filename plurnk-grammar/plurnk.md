@@ -94,11 +94,13 @@ Body content is character-perfect, exactly matching whitespace.
 <<READ(https://en.wikipedia.org/wiki/Paris)<426-465>::READ
 <<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
+
 <<EDIT[plan,france,task](known://plan):
 - [ ] Decompose prompt into unknowns
 - [ ] Discover capital of France
 - [ ] Deliver
 :EDIT
+
 <<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known://countries/france/capital)::EDIT
@@ -107,11 +109,13 @@ Body content is character-perfect, exactly matching whitespace.
 <<SHOW[france](known://countries/**):Paris*:SHOW
 <<HIDE(log://**/get)<101-200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
+
 <<EXEC[node](./):
 const sum = [1, 2, 3].reduce((a, b) => a + b, 0);
 console.log(sum);
 :EXEC
+
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
-<<SEND[200]:{"city":"Paris","population":2161000}:SEND
 <<SEND[200]:Paris:SEND
+<<SEND[200]:{"city":"Paris","population":2161000}:SEND
 ```
