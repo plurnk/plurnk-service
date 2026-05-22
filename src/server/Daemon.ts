@@ -98,6 +98,11 @@ export default class Daemon {
                 target: event.target,
                 body: event.body,
                 attrs: event.attrs,
+                // event.flags is carried for discoverability — a client in
+                // server-YOLO mode (event.flags.yolo=true) knows to skip
+                // rendering review UI because the entry will resolve in-
+                // process before any human can react.
+                flags: event.flags,
             });
         });
         // In-tree YOLO listener — auto-accepts proposals when the loop's
@@ -195,6 +200,7 @@ export default class Daemon {
                 target: "{scheme, pathname} — the resource being acted on",
                 body: "string — preview body (udiff for file edits, command summary for exec)",
                 attrs: "object — scheme-specific payload (patch, command args, etc.); opaque to engine",
+                flags: "{yolo, mode, noWeb, noInteraction, noProposals} — loop's persisted flags. flags.yolo=true means server-side YOLO is active and the engine will auto-accept in-process; clients can skip review UI for those entries.",
             },
         });
         this.#registry.registerNotification("loop/terminated", {

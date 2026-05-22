@@ -4,7 +4,8 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
+import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 
 // SCHEMES.md §8: writer must be in target scheme's manifest.writableBy.
 // SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
@@ -105,6 +106,9 @@ interface ProposalWaiter {
 // External observers of pending-proposal events. sessionId is included so
 // Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
 // (file diff, exec command, etc.) the client needs to render review UI.
+// flags carries the loop's persisted flags so listeners (YOLO auto-accept,
+// the client-facing notification) can decide policy without a second DB
+// roundtrip — loaded once in Engine, shared with all listeners.
 export interface ProposalPendingEvent {
     logEntryId: number;
     sessionId: number;
@@ -115,6 +119,7 @@ export interface ProposalPendingEvent {
     target: { scheme: string | null; pathname: string | null };
     body: string;
     attrs: object;
+    flags: LoopFlags;
 }
 
 // Resolution timeout — proposed entries auto-cancel if nothing arrives
@@ -684,21 +689,29 @@ export default class Engine {
         // resolution status replaces 202 in the result the caller sees,
         // so runTurn never branches on a pending state.
         if (result.status === 202) {
+            // Register the resolution waiter SYNCHRONOUSLY before any await
+            // yields. A same-tick resolveProposal() (e.g. from a test that
+            // awaits the onDispatch callback and immediately resolves) must
+            // find the waiter registered — adding an await between insert
+            // and waiter-registration would open a race window.
+            const resolutionPromise = this.#awaitResolution(logEntryId);
             // Notify external listeners (Daemon broadcasts loop/proposal;
             // YOLO listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
             const target = this.#extractTarget(statement.path);
+            const flags = await this.#loadLoopFlags(loopId);
             const event: ProposalPendingEvent = {
                 logEntryId, sessionId, runId, loopId, turnId,
                 op: statement.op,
                 target: { scheme: target.scheme, pathname: target.pathname },
                 body: typeof result.body === "string" ? result.body : "",
                 attrs: (result.attrs ?? {}) as object,
+                flags,
             };
             for (const listener of this.#proposalPendingListeners) {
                 try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
             }
-            const resolution = await this.#awaitResolution(logEntryId);
+            const resolution = await resolutionPromise;
             // Run the scheme's applyResolution hook on accept (writes the
             // file, spawns the process, etc.). If applyResolution returns a
             // 4xx/5xx or throws, the resolution is downgraded to a reject
@@ -774,6 +787,21 @@ export default class Engine {
     // can resolve inline.
     onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
         this.#proposalPendingListeners.push(listener);
+    }
+
+    // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
+    // missing keys read as their documented defaults. Single read site —
+    // ProposalPendingEvent.flags is constructed from this, and listeners
+    // (Daemon broadcast, YOLO auto-accept) share the result.
+    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
+        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
+        if (row === undefined) return DEFAULT_LOOP_FLAGS;
+        try {
+            const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
+            return { ...DEFAULT_LOOP_FLAGS, ...parsed };
+        } catch {
+            return DEFAULT_LOOP_FLAGS;
+        }
     }
 
     #awaitResolution(logEntryId: number): Promise<ProposalResolution> {
