@@ -1,51 +1,50 @@
-// YOLO listener — in-tree subscriber to Engine.onProposalPending that
-// auto-accepts proposals when the loop has flags.yolo === true. No client
-// roundtrip; no human approval; no RPC involvement. Mirrors rummy SPEC
-// #yolo_mode but server-side flag-only (no in-process sh/env spawning yet —
-// that's exec-stream phase F).
+// Server-side YOLO listener — in-tree subscriber to Engine.onProposalPending
+// that auto-accepts proposals when the loop's persisted flags.yolo === true.
+// No client roundtrip; no human approval; no RPC involvement.
+//
+// === Server-side vs client-side YOLO ===
+//
+// These are distinct features. Both have legitimate use cases. Neither
+// replaces the other.
+//
+//   Server-side YOLO (this file)
+//     - Enabled via loops.flags.yolo = true. RPC opt-in:
+//       loop.run({ prompt, flags: { yolo: true } }).
+//     - Engine auto-accepts in-process; the client need not be connected.
+//     - Use cases: benchmarks (pure model+grammar timing, no RPC roundtrip
+//       in the hot loop), CI runs, ad-hoc internal automation, test
+//       fixtures. Anywhere "just run and tell me the final state" is the
+//       right contract.
+//     - Client apps (@plurnk/plurnk CLI / TUI) intentionally do NOT expose
+//       this flag — server YOLO is not standard end-user ergonomics.
+//
+//   Client-side YOLO (@plurnk/plurnk --yolo / PLURNK_YOLO)
+//     - Client receives the loop/proposal notification and immediately
+//       sends loop.resolve({decision:"accept", outcome:"client_yolo"}).
+//     - The wire roundtrip still happens; the daemon stays unaware that
+//       no human reviewed.
+//     - Use cases: real users who want "stop bothering me" ergonomics
+//       across an interactive session. Documented in client SPEC §6.3.
 //
 // Listener fires BEFORE Engine.#awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
 // without yielding. The loop/proposal broadcast still goes out (listeners
-// fan out independently) — clients in YOLO runs may see a brief
-// proposed-then-resolved blink in their UI; that's expected and harmless.
+// fan out independently) — clients in server-YOLO runs may see a brief
+// proposed-then-resolved blink in their UI. The carried event.flags.yolo
+// lets clients suppress review-UI rendering for those entries.
 
 import type Engine from "../core/Engine.ts";
 import type { ProposalPendingEvent } from "../core/Engine.ts";
-import type { Db, PrepMethod } from "../core/Db.ts";
-import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
-import type { LoopFlags } from "../core/scheme-types.ts";
+import type { Db } from "../core/Db.ts";
 
-// Reads the loop's stored flags from `loops.flags` (json column added in
-// migration 014). Merges over the DEFAULT_LOOP_FLAGS so unknown / missing
-// fields fall back cleanly.
-const loadLoopFlags = async (db: Db, loopId: number): Promise<LoopFlags> => {
-    const row = await (db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
-    if (row === undefined) return DEFAULT_LOOP_FLAGS;
-    try {
-        const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
-        return { ...DEFAULT_LOOP_FLAGS, ...parsed };
-    } catch {
-        return DEFAULT_LOOP_FLAGS;
-    }
-};
-
-export const attachYolo = (engine: Engine, db: Db): void => {
+export const attachYolo = (engine: Engine, _db: Db): void => {
     engine.onProposalPending((event: ProposalPendingEvent) => {
-        // The listener is sync-shaped; loadLoopFlags is async. Fire and
-        // forget — if the flags lookup completes before the dispatch's
-        // await is hit (typically the case for fast SQL queries), the
-        // resolveProposal resolves the waiter immediately. Otherwise the
-        // dispatch waits normally; resolution arrives slightly later.
-        void (async () => {
-            try {
-                const flags = await loadLoopFlags(db, event.loopId);
-                if (!flags.yolo) return;
-                engine.resolveProposal(event.logEntryId, { decision: "accept" });
-            } catch {
-                // Errors here don't abort dispatch — the proposal stays
-                // pending and falls through to the RPC / timeout path.
-            }
-        })();
+        if (!event.flags.yolo) return;
+        try {
+            engine.resolveProposal(event.logEntryId, { decision: "accept" });
+        } catch {
+            // Errors here don't abort dispatch — the proposal stays
+            // pending and falls through to the RPC / timeout path.
+        }
     });
 };

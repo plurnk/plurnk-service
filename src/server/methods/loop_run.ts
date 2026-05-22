@@ -9,11 +9,20 @@ import { fetchLogEntry } from "../logEntry.ts";
 import { PATHS } from "../../index.ts";
 import { parseAliasesFromEnv, instantiateProvider } from "../../core/ProviderRegistry.ts";
 import type { Provider } from "../../core/ProviderRegistry.ts";
+import { DEFAULT_LOOP_FLAGS } from "../../core/scheme-types.ts";
+
+// Per-call flags shape on loop.run. Only documented working flags are
+// accepted today; LoopFlags.noProposals / noWeb / noInteraction are inert
+// pending an askUser-style primitive (see plurnk:// pondering notes).
+interface LoopRunFlags {
+    yolo?: boolean;
+}
 
 interface Params {
     prompt: string;
     maxTurns?: number;
     alias?: string;
+    flags?: LoopRunFlags;
 }
 
 export const register = (registry: MethodRegistry): void => {
@@ -23,6 +32,16 @@ export const register = (registry: MethodRegistry): void => {
             const p = (params ?? {}) as Params;
             if (typeof p.prompt !== "string" || p.prompt.length === 0) {
                 throw new Error("loop.run requires non-empty params.prompt");
+            }
+            // Validate flags early — fail-fast on bad input regardless of
+            // provider config. Actual persistence happens after loop insert.
+            if (p.flags !== undefined) {
+                if (typeof p.flags !== "object" || p.flags === null || Array.isArray(p.flags)) {
+                    throw new Error("loop.run: flags must be an object");
+                }
+                if (p.flags.yolo !== undefined && typeof p.flags.yolo !== "boolean") {
+                    throw new Error("loop.run: flags.yolo must be a boolean");
+                }
             }
             const maxTurns = p.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50");
 
@@ -56,6 +75,17 @@ export const register = (registry: MethodRegistry): void => {
             if (loop === undefined) throw new Error("loop.run: loop insert returned no row");
             const loopId = loop.id;
 
+            // Persist per-loop flags if supplied. Merge over DEFAULT_LOOP_FLAGS
+            // so the JSON column always has a complete shape — yolo listener
+            // and scheme dispatch read with the same merge convention.
+            // (Param validation happened up-front; this branch only persists.)
+            if (p.flags !== undefined) {
+                const merged = { ...DEFAULT_LOOP_FLAGS, ...p.flags };
+                await (ctx.db.engine_set_loop_flags as PrepMethod).run({
+                    loop_id: loopId, flags: JSON.stringify(merged),
+                });
+            }
+
             const onDispatch = (logEntryId: number): void => {
                 void (async () => {
                     const entry = await fetchLogEntry(ctx.db, logEntryId);
@@ -82,11 +112,12 @@ export const register = (registry: MethodRegistry): void => {
 
             return { loopId, ...result };
         },
-        description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Streams log/entry notifications; fires loop/terminated on completion.",
+        description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Streams log/entry notifications; fires loop/terminated on completion.",
         params: {
             prompt: "string — user prompt for the loop",
             maxTurns: "number? — safety cap on turns (default PLURNK_MAX_TURNS or 50)",
             alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
+            flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
         },
         requiresInit: true,
         longRunning: true,
