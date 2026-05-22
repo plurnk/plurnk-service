@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the HEREDOC-inspired Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC).
 
 ## Syntax
 
@@ -8,27 +8,31 @@ YOU MUST ONLY use the HEREDOC-inspired Plurnk Operations (FIND|READ|EDIT|COPY|MO
 <<OPsuffix[signal]?(path)?<L>?:body?:OPsuffix
 ```
 
-Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty). Close tag's `OPsuffix` must character-match the open. Emit slots in the canonical order shown; the grammar tolerates other orderings.
+Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty).
 
 ## Operations
 
-| OP   | `[signal]`    | `(path)` | `<L>`            | body                     |
-|------|---------------|----------|------------------|--------------------------|
-| FIND | filter tags   | required | results `N-M`    | matcher                  |
-| READ | filter tags   | required | lines `N-M`      | matcher                  |
-| EDIT | tags          | required | lines `N-M`      | content (empty = clear)  |
-| COPY | apply tags    | required | lines `N-M`      | destination URI          |
-| MOVE | apply tags    | required | lines `N-M`      | destination URI          |
-| SHOW | filter tags   | required | results `N-M`    | matcher                  |
-| HIDE | filter tags   | required | results `N-M`    | matcher                  |
-| SEND | HTTP status   | recipient | —               | message (JSON for data)  |
-| EXEC | Runtime Tag   | cwd       | —               | command or code          |
+| OP   | `[signal]`  | `(path)`  | `<L>`            | body                     |
+|------|-------------|-----------|------------------|--------------------------|
+| FIND | filter tags | required  | results `N-M`    | matcher                  |
+| READ | filter tags | required  | lines `N-M`      | matcher                  |
+| EDIT | tags        | required  | lines `N-M`      | content (empty = clear)  |
+| COPY | apply tags  | required  | lines `N-M`      | destination URI          |
+| MOVE | apply tags  | required  | lines `N-M`      | destination URI          |
+| SHOW | filter tags | required  | results `N-M`    | matcher                  |
+| HIDE | filter tags | required  | results `N-M`    | matcher                  |
+| SEND | status code | recipient | —                | message body             |
+| EXEC | runtime tag | cwd       | —                | command or code          |
 
-SEND signal is a single integer. SEND broadcasts when path is omitted; with a path it is directed (path must be a URI). EXEC signal is a single Runtime Tag (`sh`, `node`, `python`, etc.). All other signals are tags.
+SEND broadcasts to uri when a path is included and messages the user when no path is included.
+EXEC may include an optional runtime tag (`"sh"`, `"node"`, etc.).
 
 ## `<L>`
 
-`<N>` selects position N. `<N-M>` selects the inclusive range N-M. N and M are signed integers. Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append). Range example: `<-3--1>` is positions -3..-1.
+`<N>` selects position N.
+`<N-M>` selects the inclusive range N-M. N and M are signed integers.
+
+Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
@@ -53,27 +57,34 @@ Internal schemes:
 - `unknown://` — pending / open questions.
 - `known://` — knowledgebase entries.
 - `skill://` — available skill entries.
-- `log://<loop>/<turn>/<action>/...` — event log.
-- `exec://` — actions and external interactions; each entry carries the request (TX) and response (RX).
+- `exec://` — actions.
+- `log://` — internal record of commands performed.
 
 ## Context
 
-The agent maintains two contexts:
+The agent maintains two contexts for budgeting tokens for working memory and available storage:
 
 - **Index** — entries listed in the active index.
 - **Archive** — entries archived; out of working memory (HIDE), but promotable (SHOW) by path or pattern lookup.
 
-`SHOW` promotes matching entries to the active index. `HIDE` demotes to archive. The model curates its own working memory by issuing these between substantive operations. New entries created via `EDIT` enter active index by default.
+`SHOW` promotes matching entries to the active index and spends tokens.
+`HIDE` demotes matching entries to archive and saves tokens.
+
+YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
 
 ## Suffix
 
-For nested Plurnk Operations inside a body (recording, quoting, demonstrating), the outer statement uses an optional non-empty suffix so its close tag is distinct from inner close tags. Empty suffix is default. The suffix character class is `[A-Za-z0-9_]`.
+YOU MAY use an optional matching suffix on the opening and closing tags for disambiguation.
 
 ```
 <<EDITouter(known://demo):
 quoted: <<EDIT(known://inner):hello:EDIT
 :EDITouter
 ```
+
+## Body
+
+Body content is character-perfect, exactly matching whitespace.
 
 ## Examples
 
@@ -100,17 +111,7 @@ quoted: <<EDIT(known://inner):hello:EDIT
 const sum = [1, 2, 3].reduce((a, b) => a + b, 0);
 console.log(sum);
 :EXEC
-<<SEND[102]:decomposed prompt; plan initialized:SEND
-<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND
+<<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
+<<SEND[200]:{"city":"Paris","population":2161000}:SEND
+<<SEND[200]:Paris:SEND
 ```
-
-## Invariants
-
-- `<<OPsuffix` and `:OPsuffix` MUST character-match.
-- `:body:` fences MUST be present (use `::` for empty body).
-- `:` and `OPsuffix` in the close tag MUST be character-adjacent.
-- Header slot order MUST be `[signal]` → `(path)` → `<L>` → `:`.
-- Inside `[…]`, `(…)`, `<…>`, between `OP` and `suffix` — no whitespace.
-- Between header elements — whitespace is non-significant.
-- Inside body — whitespace and newlines are preserved verbatim.
-- A body containing `:OPkeyword` MUST use a suffix on the enclosing statement.
