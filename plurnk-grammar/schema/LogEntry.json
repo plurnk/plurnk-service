@@ -13,6 +13,7 @@
         "lineMarker",
         "tx", "mimetype_tx",
         "rx", "mimetype_rx", "status_rx",
+        "state", "outcome",
         "tokens"
     ],
     "additionalProperties": false,
@@ -62,6 +63,14 @@
         "rx": { "type": "string", "description": "Raw response payload bytes/string." },
         "mimetype_rx": { "type": "string", "minLength": 1 },
         "status_rx": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "state": {
+            "enum": ["proposed", "resolved", "failed", "cancelled"],
+            "description": "Lifecycle position; orthogonal to status_rx. status_rx is the HTTP-aligned outcome of the network call; state is where the entry sits in the proposal lifecycle. Side-effecting ops that route through a proposal flow transition proposed → {resolved | failed | cancelled}; non-proposing ops settle at 'resolved' on first write."
+        },
+        "outcome": {
+            "type": ["string", "null"],
+            "description": "Short reason string when state ∈ {failed, cancelled}; null otherwise. Common values: rejected, loop_aborted, timeout, policy_veto, apply_failed, write_failed. Open vocabulary — schemes mint their own as needed."
+        },
         "tokens": { "type": "integer", "minimum": 0 }
     },
     "allOf": [

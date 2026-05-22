@@ -57,6 +57,8 @@ const logEntry = () => ({
     rx: "",
     mimetype_rx: "text/plain",
     status_rx: 201,
+    state: "resolved" as const,
+    outcome: null,
     tokens: 32,
 });
 
