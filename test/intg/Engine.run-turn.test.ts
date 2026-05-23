@@ -556,7 +556,11 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 // SPEC §15 packet.system.log — chronological action-entries for the loop.
 // Task #44.
 
-test("Engine.runTurn: packet.system.log is empty on the first turn (no prior actions)", async () => {
+test("Engine.runTurn: packet.system.log on first turn contains only the synthetic prompt entry", async () => {
+    // Shim per AGENTS.md §Open: #buildLog prepends a PROMPT entry sourced
+    // from loops.prompt so the wire's `# Plurnk System Log` is never empty
+    // on turn 1. Real fix logs the prompt as a first-class log_entries
+    // row that's URI-addressable.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -565,8 +569,10 @@ test("Engine.runTurn: packet.system.log is empty on the first turn (no prior act
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: object[] } };
-        assert.deepEqual(packet.system.log, [], "first turn: packet snapshot taken pre-dispatch, no prior log_entries");
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; origin: string }> } };
+        assert.equal(packet.system.log.length, 1, "first turn: only the synthetic prompt entry");
+        assert.equal(packet.system.log[0].op, "PROMPT");
+        assert.equal(packet.system.log[0].origin, "client");
     } finally { await db.close(); }
 });
 
@@ -586,15 +592,17 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const packet = JSON.parse(row?.packet ?? "{}") as {
             system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null } }> };
         };
-        assert.equal(packet.system.log.length, 2, "turn 2 packet snapshots turn 1's 2 actions");
-        assert.equal(packet.system.log[0].coordinate, "1/1/0");
-        assert.equal(packet.system.log[0].op, "EDIT");
-        assert.equal(packet.system.log[0].status, 201);
-        assert.equal(packet.system.log[0].target.scheme, "known");
-        assert.equal(packet.system.log[0].target.pathname, "/a");
-        assert.equal(packet.system.log[1].coordinate, "1/1/1");
-        assert.equal(packet.system.log[1].op, "SEND");
-        assert.equal(packet.system.log[1].status, 102);
+        // 1 synthetic PROMPT entry + 2 real actions from turn 1
+        assert.equal(packet.system.log.length, 3, "turn 2 packet: PROMPT + 2 actions from turn 1");
+        assert.equal(packet.system.log[0].op, "PROMPT");
+        assert.equal(packet.system.log[1].coordinate, "1/1/0");
+        assert.equal(packet.system.log[1].op, "EDIT");
+        assert.equal(packet.system.log[1].status, 201);
+        assert.equal(packet.system.log[1].target.scheme, "known");
+        assert.equal(packet.system.log[1].target.pathname, "/a");
+        assert.equal(packet.system.log[2].coordinate, "1/1/1");
+        assert.equal(packet.system.log[2].op, "SEND");
+        assert.equal(packet.system.log[2].status, 102);
     } finally { await db.close(); }
 });
 
@@ -611,9 +619,13 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ rx: { status: number; entryId?: number } }> } };
-        assert.equal(packet.system.log[0].rx.status, 201);
-        assert.ok(typeof packet.system.log[0].rx.entryId === "number", "entryId hydrated from parsed JSON rx");
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; rx: { status?: number; entryId?: number } | string }> } };
+        // index 0 = synthetic PROMPT (text/plain rx); index 1 = first real EDIT
+        const firstEdit = packet.system.log[1];
+        assert.equal(firstEdit.op, "EDIT");
+        const rx = firstEdit.rx as { status: number; entryId?: number };
+        assert.equal(rx.status, 201);
+        assert.ok(typeof rx.entryId === "number", "entryId hydrated from parsed JSON rx");
     } finally { await db.close(); }
 });
 
