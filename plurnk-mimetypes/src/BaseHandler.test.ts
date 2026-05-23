@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";
-import type { MimeSymbol } from "./types.ts";
+import type { MimeSymbol, Preview, SymbolPreview } from "./types.ts";
 
 const metadata = {
     mimetype: "text/plain",
@@ -22,14 +22,14 @@ describe("BaseHandler", () => {
         assert.ok(Object.isFrozen(h.extensions));
     });
 
-    it("returns an empty array from extract by default", () => {
+    it("returns an empty array from extractRaw by default", () => {
         const h = new BaseHandler(metadata);
-        assert.deepEqual(h.extract("anything"), []);
+        assert.deepEqual(h.extractRaw("anything"), []);
     });
 
-    it("returns an empty string from symbols when extract is empty", () => {
+    it("returns an empty string from symbolsRaw when extractRaw is empty", () => {
         const h = new BaseHandler(metadata);
-        assert.equal(h.symbols("anything"), "");
+        assert.equal(h.symbolsRaw("anything"), "");
     });
 
     it("treats validate as a no-op by default", () => {
@@ -37,24 +37,26 @@ describe("BaseHandler", () => {
         assert.doesNotThrow(() => h.validate("anything"));
     });
 
-    it("returns an empty preview string when extract is empty", async () => {
+    it("returns a symbols Preview with an empty symbol list when extractRaw is empty", async () => {
         const h = new BaseHandler(metadata);
-        assert.equal(await h.preview("anything", 100), "");
+        const preview = (await h.preview("anything")) as SymbolPreview;
+        assert.equal(preview.kind, "symbols");
+        assert.deepEqual([...preview.symbols], []);
     });
 
-    it("derives symbols string from a subclass's extract via format", () => {
+    it("renders symbolsRaw from a subclass's extractRaw via format", () => {
         class TestHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
+            extractRaw(_content: string): MimeSymbol[] {
                 return [{ name: "Foo", kind: "class", line: 1, endLine: 10 }];
             }
         }
         const h = new TestHandler(metadata);
-        assert.equal(h.symbols("anything"), "class Foo [1-10]");
+        assert.equal(h.symbolsRaw("anything"), "class Foo [1-10]");
     });
 
-    it("derives preview from a subclass's extract via fit", async () => {
+    it("returns a symbols Preview carrying the extractRaw output", async () => {
         class TestHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
+            extractRaw(_content: string): MimeSymbol[] {
                 return [
                     { name: "A", kind: "class", line: 1, endLine: 5 },
                     { name: "B", kind: "class", line: 10, endLine: 15 },
@@ -62,57 +64,39 @@ describe("BaseHandler", () => {
             }
         }
         const h = new TestHandler(metadata);
-        const preview = await h.preview("anything", 10000);
-        assert.equal(preview, ["class A [1-5]", "class B [10-15]"].join("\n"));
+        const preview = (await h.preview("anything")) as SymbolPreview;
+        assert.equal(preview.kind, "symbols");
+        assert.deepEqual(
+            [...preview.symbols],
+            [
+                { name: "A", kind: "class", line: 1, endLine: 5 },
+                { name: "B", kind: "class", line: 10, endLine: 15 },
+            ],
+        );
     });
 
-    it("uses the injected tokenize function for budgeting", async () => {
-        let called = false;
-        class TestHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
-                return [{ name: "Foo", kind: "class", line: 1, endLine: 5 }];
+    it("allows subclasses to return a text Preview with an orientation", async () => {
+        class TextHandler extends BaseHandler {
+            override preview(content: string): Preview {
+                return { kind: "text", text: content, orientation: "head" };
             }
         }
-        const h = new TestHandler(metadata, {
-            tokenize: async (text) => {
-                called = true;
-                return text.length;
-            },
+        const h = new TextHandler(metadata);
+        const preview = await h.preview("hello world");
+        assert.deepEqual(preview, {
+            kind: "text",
+            text: "hello world",
+            orientation: "head",
         });
-        await h.preview("anything", 1000);
-        assert.ok(called, "injected tokenize should be invoked");
     });
 
-    it("accepts a synchronous tokenize function (no Promise wrapping)", async () => {
-        // Sync tokenizers (tiktoken-js, llama-tokenizer-js, cl100k WASM) should
-        // not need to be wrapped in `async`. TokenizeFn = (text) => number | Promise<number>.
-        let calls = 0;
-        class TestHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
-                return [{ name: "Foo", kind: "class", line: 1, endLine: 5 }];
+    it("allows subclasses to return null when no preview material is appropriate", async () => {
+        class NullHandler extends BaseHandler {
+            override preview(_content: string | Uint8Array): Preview {
+                return null;
             }
         }
-        const h = new TestHandler(metadata, {
-            tokenize: (text) => {
-                calls += 1;
-                return text.length;
-            },
-        });
-        const result = await h.preview("anything", 1000);
-        assert.ok(calls > 0, "sync tokenize should be invoked");
-        assert.equal(result, "class Foo [1-5]");
-    });
-
-    it("defaults to text.length/2 ceiling when no tokenize is injected", async () => {
-        // Indirect test: with default tokenize, a single symbol that produces a
-        // 16-char string takes ceil(16/2) = 8 "tokens". Budget of 7 should drop it.
-        class TestHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
-                return [{ name: "Foo", kind: "class", line: 1, endLine: 10 }]; // "class Foo [1-10]" = 16 chars
-            }
-        }
-        const h = new TestHandler(metadata);
-        const out = await h.preview("anything", 7);
-        assert.equal(out, "");
+        const h = new NullHandler(metadata);
+        assert.equal(await h.preview("anything"), null);
     });
 });

@@ -45,7 +45,7 @@ describe("full pipeline — text/plain fixture", () => {
         assert.deepEqual([...handler.extensions], [".txt"]);
     });
 
-    it("processes inline content end-to-end", async () => {
+    it("processes inline content end-to-end via the text-Preview path", async () => {
         const m = buildMimetypes();
         const result = await m.process({
             path: "greeting.txt",
@@ -53,9 +53,6 @@ describe("full pipeline — text/plain fixture", () => {
         });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
-        // BaseHandler's default extract returns [], so symbols are empty —
-        // and the orchestrator falls back to a raw-content preview.
-        assert.equal(result.symbols, "");
         assert.equal(result.preview, "hello world\nsecond line");
     });
 
@@ -72,13 +69,18 @@ describe("full pipeline — text/plain fixture", () => {
 
     it("honors budget — preview gets shrunk to fit", async () => {
         const m = buildMimetypes();
-        // 1 char = 1 token (test tokenize). Budget 5 → preview truncated to 5 chars.
+        // 1 char = 1 token (test tokenize). Budget 5 → preview ≤ 5 chars,
+        // head-oriented (text/plain's canonical orientation).
         const result = await m.process(
             { path: "long.txt", content: "this is much longer content" },
             { budget: 5 },
         );
         assert.equal(result.ok, true);
         assert.ok(result.preview.length <= 5);
+        assert.ok(
+            "this is much longer content".startsWith(result.preview),
+            "head orientation should retain the prefix",
+        );
     });
 
     it("returns ok:false when the file doesn't exist", async () => {

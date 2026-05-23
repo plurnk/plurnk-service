@@ -2,23 +2,22 @@ import fs from "node:fs/promises";
 import { defaultTokenize } from "./defaults.ts";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
-import { fitContent } from "./fit.ts";
+import { fitPreview } from "./fit.ts";
 import type BaseHandler from "./BaseHandler.ts";
 import type {
     DetectInput,
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
-    HandlerOptions,
     TokenizeFn,
 } from "./types.ts";
 
 // No default budget in the helper. plurnk-service owns the real default
 // (PLURNK_ENTRY_SIZE_DEFAULT_TOKENS, runtime env, currently 256 tokens for the
 // channel preview portal) and passes it per call. When budget is unspecified
-// here, preview is unbounded — equivalent to symbols. Baking a fallback number
-// would silently shadow the env var and create drift when plurnk-service
-// changes its default.
+// here, preview is unbounded — the handler's full material is returned as-is.
+// Baking a fallback number would silently shadow the env var and create drift
+// when plurnk-service changes its default.
 const UNBOUNDED_BUDGET = Number.POSITIVE_INFINITY;
 
 // Loader hook: how to resolve a handler package to its default-exported class.
@@ -60,7 +59,6 @@ export interface ProcessOptions {
 
 export interface ProcessResult {
     mimetype: string | null;
-    symbols: string;
     preview: string;
     ok: boolean;
 }
@@ -129,26 +127,32 @@ export default class Mimetypes {
             glyph: info.glyph,
             extensions: info.extensions,
         };
-        const handlerOptions: HandlerOptions = { tokenize: this.#tokenize };
-        const Ctor = HandlerClass as new (m: HandlerMetadata, o: HandlerOptions) => BaseHandler;
-        const handler = new Ctor(metadata, handlerOptions);
+        const Ctor = HandlerClass as new (m: HandlerMetadata) => BaseHandler;
+        const handler = new Ctor(metadata);
 
         this.#handlerInstances.set(mimetype, handler);
         return handler;
     }
 
-    // The pipeline. Detection -> content read -> handler resolve -> validate ->
-    // extract -> symbols -> preview. Errors are routed per policy:
-    //   * detection fails or content read fails -> ok:false, empty strings
-    //   * handler missing -> ok:false, raw-content preview as fallback
-    //   * validate throws -> propagates (caller's contract; bug in content or handler)
-    //   * extract throws -> contained inside handler -> empty symbols -> raw fallback
+    // The pipeline. Detection → content read → handler resolve → validate →
+    // preview material → fit. The handler is the sole authority on what
+    // material the preview is built from (structured symbols, oriented text,
+    // or nothing); the framework is the sole authority on fitting that
+    // material into the token budget. There is no fallback — if the handler
+    // returns null, the preview is empty by design.
+    //
+    // Error routing:
+    //   * detection fails → ok:false, empty preview
+    //   * content read fails → ok:false, empty preview
+    //   * handler missing → ok:false, empty preview
+    //   * validate throws → propagates (caller's contract; bug in content or handler)
+    //   * preview throws inside handler → contained per handler's own discipline
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
         const budget = options.budget ?? UNBOUNDED_BUDGET;
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
-            return { mimetype: null, symbols: "", preview: "", ok: false };
+            return { mimetype: null, preview: "", ok: false };
         }
 
         // Look up the handler's binary flag before reading content, so we read
@@ -158,28 +162,22 @@ export default class Mimetypes {
 
         const content = await this.#resolveContent(input, isBinary);
         if (content === null) {
-            return { mimetype, symbols: "", preview: "", ok: false };
+            return { mimetype, preview: "", ok: false };
         }
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            const preview = typeof content === "string"
-                ? await fitContent(content, budget, this.#tokenize)
-                : "";
-            return { mimetype, symbols: "", preview, ok: false };
+            return { mimetype, preview: "", ok: false };
         }
 
         // Validate errors propagate per error policy — caller's contract.
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
 
-        const symbols = handler.symbols(content);
-        let preview = await handler.preview(content, budget);
-        if (preview === "" && typeof content === "string" && content !== "") {
-            preview = await fitContent(content, budget, this.#tokenize);
-        }
+        const material = await handler.preview(content);
+        const preview = await fitPreview(material, budget, this.#tokenize);
 
-        return { mimetype, symbols, preview, ok: true };
+        return { mimetype, preview, ok: true };
     }
 
     async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {

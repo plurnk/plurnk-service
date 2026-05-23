@@ -28,8 +28,9 @@ export {
 } from "./format.ts";
 export type { TreeNode } from "./format.ts";
 
-// Budget-fitting (token-aware truncation for symbols and raw content)
-export { fit, fitContent } from "./fit.ts";
+// Budget-fitting (Preview dispatcher + symbol/content primitives for handler
+// authors building their own orchestration on top of the framework).
+export { fitContent, fitPreview, fitSymbols } from "./fit.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
@@ -47,9 +48,11 @@ export type {
     ExtractionVisitor,
     HandlerInfo,
     HandlerMetadata,
-    HandlerOptions,
     MimeSymbol,
+    Preview,
     Registry,
     SymbolKind,
+    SymbolPreview,
+    TextPreview,
     TokenizeFn,
 } from "./types.ts";

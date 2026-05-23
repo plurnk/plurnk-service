@@ -17,18 +17,47 @@ interface Handler {
     readonly mimetype: string;
     readonly glyph: string;
     readonly extensions: readonly string[];
-    extract(content: HandlerContent): MimeSymbol[];
-    validate(content: HandlerContent): void;
-    symbols(content: HandlerContent): string;
-    preview(content: HandlerContent, budget: number): Promise<string>;
+    validate(content: HandlerContent): void | Promise<void>;
+    preview(content: HandlerContent): Preview | Promise<Preview>;
+    // Optional escape hatches (used by callers that want to bypass framework
+    // fitting — notably plurnk-service's passive radar index path). Default
+    // implementations exist on BaseHandler.
+    extractRaw(content: HandlerContent): MimeSymbol[];
+    symbolsRaw(content: HandlerContent): string;
 }
 ```
 
+**Authority split (v0.4.0).** The handler owns *what* the preview is made of; the framework owns *how* it is fit to a budget. Handlers never see the token budget or the tokenize function — they return preview *material* and the framework dispatches to the right fitter.
+
+```ts
+type Preview = SymbolPreview | TextPreview | null;
+
+interface SymbolPreview {
+    readonly kind: "symbols";
+    readonly symbols: readonly MimeSymbol[];
+}
+
+interface TextPreview {
+    readonly kind: "text";
+    readonly text: string;
+    readonly orientation: "head" | "tail";
+}
+```
+
+- `SymbolPreview` — for content with extractable structure (Markdown headings, JSON/YAML/TOML keypaths, source-file outlines). Framework fits via the symbol algorithm (drop-deepest-first, then drop-trailing-roots).
+- `TextPreview` — for content best previewed verbatim (plain text, HTML→markdown, PDF→text). Handler must declare `orientation`: `"head"` keeps the start (documents, articles); `"tail"` keeps the end (logs, append-only feeds).
+- `null` — handler declines to produce material. Framework returns empty preview.
+
 **Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
 
-**Tokenize access.** `BaseHandler.tokenize` is `protected readonly` — subclasses with custom `preview()` (typically content-transformation handlers like HTML→markdown or PDF→text) can call it directly. Handlers using the default `preview()` don't need to touch it.
+**Escape hatches.** `extractRaw` and `symbolsRaw` exist for callers that want unfitted structural data — they bypass `preview` entirely and are not part of the budgeted-render path. The `Raw` suffix signals "not Plan A": the framework's pipeline drives `preview` exclusively. Subclasses extending `BaseHandler` get `symbolsRaw` derived automatically from `extractRaw → format`.
 
-In practice handlers extend `BaseHandler` (or `AntlrExtractor`), which provides every method derived from a single `extract(content) → MimeSymbol[]`. Subclasses normally implement `extract` only. Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
+In practice handlers extend `BaseHandler` (or `AntlrExtractor`). The minimal override is whichever method matches the handler's preview shape:
+
+- Structured handlers (markdown, JSON, YAML, source) implement `extractRaw`; the default `preview` wraps it as a `SymbolPreview` automatically.
+- Text handlers (plain text, HTML, PDF) override `preview` to return a `TextPreview` with the right orientation.
+
+Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
 ## 2. `package.json` `plurnk` discovery block
 
@@ -117,9 +146,9 @@ Functions and methods include `params` when the grammar exposes them:
 
 Omit `params` entirely when the language doesn't expose named parameters.
 
-## 4. Outline format (`symbols` / `format`)
+## 4. Outline format (`symbolsRaw` / `format`)
 
-The framework owns outline rendering. Handlers produce structured `MimeSymbol[]`; `format(symbols)` turns it into a string.
+The framework owns outline rendering. Handlers produce structured `MimeSymbol[]`; `format(symbols)` turns it into a string. `BaseHandler.symbolsRaw` is the default `format(extractRaw(content))` composition.
 
 **Tree hierarchy:**
 - Heading symbols: nested by `level` field (1–6).
@@ -138,21 +167,29 @@ class Parser [5-47]
 function topLevel(a, b) [50-60]
 ```
 
-## 5. `preview` — token-budgeted truncation
+## 5. `preview` — token-budgeted fitting
 
-`Mimetypes.process` accepts `{ budget?: number }`. When unspecified, budget is `Number.POSITIVE_INFINITY` (no truncation — preview equals symbols). The helper does NOT invent a magic default; plurnk-service supplies the real budget per call.
+`Mimetypes.process` accepts `{ budget?: number }`. When unspecified, budget is `Number.POSITIVE_INFINITY` (no fitting — the handler's full material renders as-is). The helper does NOT invent a magic default; plurnk-service supplies the real budget per call.
 
 **Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. `TokenizeFn` accepts both sync and async signatures — `(text: string) => number | Promise<number>` — so providers with WASM-backed sync tokenizers (tiktoken-js, cl100k, llama-tokenizer-js, etc.) don't pay an unnecessary microtask hop, while genuinely-async tokenizers (Gemini's REST `countTokens`) work without ceremony. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
 
-**Truncation strategy (`fit`):**
+**Authority.** Handlers are the sole authority on preview material. The framework is the sole authority on fitting that material to the budget. The framework never substitutes, falls back, or alters the *kind* of material a handler returned — there is no raw-content fallback, no symbol-to-text downgrade, no inferred orientation. A handler that returns `null` produces an empty preview by design; a handler that returns a non-empty text preview whose first character won't fit produces an empty preview, again by design.
+
+**Dispatcher (`fitPreview`):**
+- `null` → `""`.
+- `SymbolPreview` → `fitSymbols(symbols, budget, tokenize)`.
+- `TextPreview` → `fitContent(text, budget, tokenize, orientation)`.
+
+**Symbol fitting (`fitSymbols`):**
 1. Render full outline. If it fits, return it.
 2. Drop deepest tree level. Render. Repeat until fits or only roots remain.
 3. If even all-roots overflows, drop trailing root symbols one at a time until fits.
-4. If even a single root overflows, return empty string (surrender — caller may invoke `fitContent` to substitute a raw-content fragment).
+4. If even a single root overflows, return empty string (handler asked for symbols; symbols would not fit; framework reports the empty result rather than swapping in a different material).
 
-**Raw content fallback (`fitContent`):**
-- Used when `extract()` returns `[]` (empty symbols) but the content is non-empty.
+**Text fitting (`fitContent`):**
 - Iteratively shrinks the content slice to fit `budget` tokens via the same tokenize function, with safety margin and max-iterations clamp.
+- `orientation: "head"` (default for documents) keeps `working.slice(0, newLen)`.
+- `orientation: "tail"` (logs, append-only feeds, diffs) keeps `working.slice(working.length - newLen)`.
 
 ## 6. `validate`
 
@@ -162,14 +199,17 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
+`ProcessResult = { mimetype, preview, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+
 | Failure | Behavior |
 |---|---|
-| Detection returns null | `{ mimetype: null, symbols: "", preview: "", ok: false }` |
-| Content read fails (path missing/unreadable) | `{ mimetype, symbols: "", preview: "", ok: false }` |
-| Handler package not loadable | `{ mimetype, symbols: "", preview: <raw fallback>, ok: false }` |
+| Detection returns null | `{ mimetype: null, preview: "", ok: false }` |
+| Content read fails (path missing/unreadable) | `{ mimetype, preview: "", ok: false }` |
+| Handler package not loadable | `{ mimetype, preview: "", ok: false }` |
 | `validate()` throws | **Propagates** to the caller — contract violation |
-| `extract()` throws | Contained inside `AntlrExtractor` → empty `MimeSymbol[]` → raw-content fallback |
-| `extract()` returns `[]` with non-empty content | Symbols string empty; preview falls back to `fitContent(content, budget)` |
+| `preview()` (handler) throws | Contained per handler discipline (`AntlrExtractor` catches inside `extractRaw`; HTML/PDF return `null` on parse failure). Framework does not catch. |
+| `preview()` returns `null` | `{ mimetype, preview: "", ok: true }` — handler authority respected |
+| `SymbolPreview` whose first root won't fit | `preview: ""`, no substitution to text |
 
 ## 8. Detection priority
 
@@ -198,7 +238,7 @@ For grammar-backed handlers:
 5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
 6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
 
-Parse failures and visit-time exceptions are caught by `AntlrExtractor.extract()` and converted to an empty `MimeSymbol[]`, allowing the orchestrator's raw-content fallback to take over.
+Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`. The default `preview` then returns a `SymbolPreview` with an empty `symbols` array, which the framework fits to an empty string — there is no substitution to text content.
 
 ## 10. Tokenization architecture
 
@@ -215,7 +255,7 @@ exports tokenize(text)  ─→   registers from active   ─→    receives at c
                               DEFAULT_TOKENS env (256)
 ```
 
-Handlers never see the tokenize function. The framework uses it internally for `preview` only.
+Handlers never see the tokenize function or the budget — they return preview *material* (`SymbolPreview | TextPreview | null`) and the framework dispatches to the right fitter. This is what makes the authority split clean: handlers cannot accidentally double-count tokens, cannot pick the wrong tokenizer, and cannot leak budget logic into per-mimetype repos.
 
 ## 11. Public API stability
 

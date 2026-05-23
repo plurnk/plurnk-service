@@ -33,13 +33,31 @@ export interface HandlerMetadata {
 // is a no-op for non-thenables. (plurnk/plurnk-mimetypes#1.)
 export type TokenizeFn = (text: string) => number | Promise<number>;
 
-export interface HandlerOptions {
-    tokenize?: TokenizeFn;
-}
-
 export interface ExtractionVisitor {
     visit(tree: unknown): unknown;
     readonly symbols: MimeSymbol[];
+}
+
+// Preview material returned by Handler.preview(). The handler authors its
+// preview policy (form + orientation); the framework owns the budget math.
+// Handlers never see budget or tokenize values.
+export type Preview = SymbolPreview | TextPreview | null;
+
+// Structural preview: an outline of symbols. Framework fits via fit(),
+// dropping deepest-first then trailing roots until the budget is met.
+export interface SymbolPreview {
+    readonly kind: "symbols";
+    readonly symbols: readonly MimeSymbol[];
+}
+
+// Text preview: raw content slice. Framework fits via fitContent() with
+// the specified orientation. `head` keeps the start (most common —
+// documents, articles, source files). `tail` keeps the end (logs, append-
+// only feeds, diffs).
+export interface TextPreview {
+    readonly kind: "text";
+    readonly text: string;
+    readonly orientation: "head" | "tail";
 }
 
 export interface Registry {

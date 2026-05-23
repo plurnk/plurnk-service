@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";
-import type { ExtractionVisitor, MimeSymbol } from "./types.ts";
+import type { ExtractionVisitor, MimeSymbol, SymbolPreview } from "./types.ts";
 
 const metadata = {
     mimetype: "application/x-test",
@@ -36,7 +36,7 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(e.extract("content"), expected);
+        assert.deepEqual(e.extractRaw("content"), expected);
     });
 
     it("returns [] when parseTree throws (parse failure)", () => {
@@ -49,7 +49,7 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(e.extract("malformed"), []);
+        assert.deepEqual(e.extractRaw("malformed"), []);
     });
 
     it("returns [] when parseTree returns null or undefined", () => {
@@ -69,8 +69,8 @@ describe("AntlrExtractor", () => {
                 throw new Error("should not be called");
             }
         }
-        assert.deepEqual(new NullExtractor(metadata).extract("x"), []);
-        assert.deepEqual(new UndefExtractor(metadata).extract("x"), []);
+        assert.deepEqual(new NullExtractor(metadata).extractRaw("x"), []);
+        assert.deepEqual(new UndefExtractor(metadata).extractRaw("x"), []);
     });
 
     it("returns [] when visit throws (visitor bug, defensively contained)", () => {
@@ -90,7 +90,7 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(e.extract("content"), []);
+        assert.deepEqual(e.extractRaw("content"), []);
     });
 
     it("calls visit on the tree returned by parseTree", () => {
@@ -112,11 +112,11 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        e.extract("content");
+        e.extractRaw("content");
         assert.deepEqual(visitedTree, { tag: "root" });
     });
 
-    it("inherits BaseHandler symbols/preview behavior via extracted output", async () => {
+    it("inherits BaseHandler symbolsRaw/preview behavior via extractRaw output", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return { fake: "tree" };
@@ -128,8 +128,12 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.equal(e.symbols("anything"), "class Foo [1-10]");
-        const preview = await e.preview("anything", 1000);
-        assert.equal(preview, "class Foo [1-10]");
+        assert.equal(e.symbolsRaw("anything"), "class Foo [1-10]");
+        const preview = (await e.preview("anything")) as SymbolPreview;
+        assert.equal(preview.kind, "symbols");
+        assert.deepEqual(
+            [...preview.symbols],
+            [{ name: "Foo", kind: "class", line: 1, endLine: 10 }],
+        );
     });
 });

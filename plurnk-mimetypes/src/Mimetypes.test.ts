@@ -9,6 +9,7 @@ import type {
     Discovery,
     HandlerInfo,
     MimeSymbol,
+    Preview,
     Registry,
 } from "./types.ts";
 
@@ -29,18 +30,27 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
 
 // A canned handler that emits a single symbol regardless of content.
 class FakePlainHandler extends BaseHandler {
-    extract(_content: string): MimeSymbol[] {
+    override extractRaw(_content: string): MimeSymbol[] {
         return [{ name: "Plain", kind: "module", line: 1, endLine: 1 }];
     }
 }
 
 // A handler whose validate throws — exercises propagation policy.
 class FakeStrictHandler extends BaseHandler {
-    validate(content: string): void {
+    override validate(content: string): void {
         if (content === "BAD") throw new Error("invalid content");
     }
-    extract(_content: string): MimeSymbol[] {
+    override extractRaw(_content: string): MimeSymbol[] {
         return [{ name: "Strict", kind: "class", line: 1, endLine: 5 }];
+    }
+}
+
+// A handler that returns a text Preview — exercises the framework's
+// content-fitting path with handler-declared orientation.
+class FakeTextHandler extends BaseHandler {
+    override preview(content: string | Uint8Array): Preview {
+        const text = typeof content === "string" ? content : "";
+        return { kind: "text", text, orientation: "head" };
     }
 }
 
@@ -88,15 +98,12 @@ describe("Mimetypes — detection + discovery", () => {
     });
 
     it("ready() is idempotent (multiple calls share state)", async () => {
-        let discoverCalls = 0;
         const m = new Mimetypes({
             discoverOptions: { packageDirs: [] },
         });
-        // Override discovery by triggering ready then checking handlers map stays consistent.
         await m.ready();
         await m.ready();
         await m.ready();
-        // No external observable beyond stability — the test just verifies no exceptions.
         assert.ok(true);
     });
 });
@@ -150,20 +157,26 @@ describe("Mimetypes — getHandler", () => {
         assert.equal(await m.getHandler("text/plain"), null);
     });
 
-    it("passes the orchestrator's tokenize into instantiated handlers", async () => {
-        let tokenizeCalled = false;
+    it("passes only metadata to handlers (no tokenize injection)", async () => {
+        // v0.4.0: handlers see only their HandlerMetadata. The framework owns
+        // tokenize entirely and never exposes it to the handler layer.
+        let receivedArgs: unknown[] = [];
+        class CapturingHandler extends BaseHandler {
+            constructor(...args: unknown[]) {
+                super(args[0] as ConstructorParameters<typeof BaseHandler>[0]);
+                receivedArgs = args;
+            }
+        }
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-            tokenize: async (text) => {
-                tokenizeCalled = true;
-                return text.length;
-            },
+            loader: async () => ({ default: CapturingHandler }),
+            tokenize: async (text) => text.length,
         });
         const h = await m.getHandler("text/plain");
         assert.ok(h);
-        await h.preview("any content", 1000);
-        assert.ok(tokenizeCalled, "injected tokenize should reach handler.preview");
+        assert.equal(receivedArgs.length, 1, "handler constructor should receive metadata only");
+        const md = receivedArgs[0] as { mimetype: string };
+        assert.equal(md.mimetype, "text/plain");
     });
 });
 
@@ -171,7 +184,7 @@ describe("Mimetypes — process", () => {
     it("returns ok:false with null mimetype when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
-        assert.deepEqual(result, { mimetype: null, symbols: "", preview: "", ok: false });
+        assert.deepEqual(result, { mimetype: null, preview: "", ok: false });
     });
 
     it("processes inline content (no fs read) when content is provided", async () => {
@@ -181,7 +194,7 @@ describe("Mimetypes — process", () => {
         });
         const result = await m.process({ path: "anything.txt", content: "hello" });
         assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.symbols, "module Plain [1]");
+        assert.equal(result.preview, "module Plain [1]");
         assert.equal(result.ok, true);
     });
 
@@ -198,13 +211,13 @@ describe("Mimetypes — process", () => {
             const result = await m.process({ path: filePath });
             assert.equal(result.mimetype, "text/plain");
             assert.equal(result.ok, true);
-            assert.equal(result.symbols, "module Plain [1]");
+            assert.equal(result.preview, "module Plain [1]");
         } finally {
             await fs.rm(tmp, { recursive: true, force: true });
         }
     });
 
-    it("returns ok:false when content cannot be read and not provided inline", async () => {
+    it("returns ok:false with empty preview when content cannot be read", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
@@ -212,14 +225,16 @@ describe("Mimetypes — process", () => {
         const result = await m.process({ path: "/nonexistent/path/foo.txt" });
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.ok, false);
-        assert.equal(result.symbols, "");
         assert.equal(result.preview, "");
     });
 
-    it("falls back to raw-content preview when handler is missing", async () => {
+    it("returns ok:false with empty preview when handler is missing (no raw fallback)", async () => {
+        // v0.4.0: there is no raw-content fallback. Handler authority over
+        // preview material is absolute; if the handler is unreachable, the
+        // framework reports failure rather than inventing material.
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: undefined }), // can't load handler
+            loader: async () => ({ default: undefined }),
             tokenize: async (text) => text.length,
         });
         const result = await m.process(
@@ -227,8 +242,7 @@ describe("Mimetypes — process", () => {
             { budget: 1000 },
         );
         assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.symbols, "");
-        assert.equal(result.preview, "raw fallback content");
+        assert.equal(result.preview, "");
         assert.equal(result.ok, false);
     });
 
@@ -258,9 +272,34 @@ describe("Mimetypes — process", () => {
         assert.equal(result.preview, "module Plain [1]");
     });
 
+    it("framework fits a text Preview against the budget using handler-declared orientation", async () => {
+        const textInfo: HandlerInfo = {
+            mimetype: "text/sample",
+            glyph: "📄",
+            packageName: "@plurnk/plurnk-mimetypes-text-sample",
+            extensions: [".sample"],
+            binary: false,
+        };
+        const m = new Mimetypes({
+            discovery: makeDiscovery([textInfo]),
+            loader: async () => ({ default: FakeTextHandler }),
+            tokenize: async (text) => text.length,
+        });
+        const result = await m.process(
+            { path: "foo.sample", content: "abcdefghij" },
+            { budget: 4 },
+        );
+        assert.equal(result.ok, true);
+        assert.ok(result.preview.length <= 4, "framework should fit text to budget");
+        assert.ok(
+            "abcdefghij".startsWith(result.preview),
+            "head orientation should retain the prefix",
+        );
+    });
+
     it("treats missing budget as unbounded (no truncation when budget is unspecified)", async () => {
         class BigHandler extends BaseHandler {
-            extract(_content: string): MimeSymbol[] {
+            override extractRaw(_content: string): MimeSymbol[] {
                 return Array.from({ length: 50 }, (_, i) => ({
                     name: `Sym${i}`,
                     kind: "class" as const,
@@ -272,13 +311,11 @@ describe("Mimetypes — process", () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: BigHandler }),
-            tokenize: async (text) => text.length, // 1 char = 1 token
+            tokenize: async (text) => text.length,
         });
-        // No budget option — preview should match symbols (full output, no truncation).
         const result = await m.process({ path: "foo.txt", content: "x" });
         assert.equal(result.ok, true);
-        assert.equal(result.preview, result.symbols);
-        assert.ok(result.symbols.includes("Sym49"), "all 50 symbols should appear");
+        assert.ok(result.preview.includes("Sym49"), "all 50 symbols should appear");
     });
 
     it("hint overrides extension during detection", async () => {
