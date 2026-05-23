@@ -86,6 +86,9 @@ const MAPPING: Record<string, SchemaMapping> = {
             tx: direct("tx"), mimetype_tx: direct("mimetype_tx"),
             rx: direct("rx"), mimetype_rx: direct("mimetype_rx"), status_rx: direct("status_rx"),
             tokens: direct("tokens"),
+            // Added in grammar 0.7.0 (proposal lifecycle); columns added
+            // service-side in migrations 012/013.
+            state: direct("state"), outcome: direct("outcome"),
         },
     },
     Visibility: {
