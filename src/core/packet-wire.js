@@ -60,43 +60,81 @@ export const packetToWireMessages = (packet) => [
     { role: "user", content: renderUserContent(packet.user) },
 ];
 
-// Render one Index entry → h2 heading + metadata list + body fence.
-// Input shape comes from Engine.#buildIndex (Entry.json projection):
-//   { id, scheme, pathname, channels: { body: { content, mimetype, tokens } }, ... }
+// Number each line of body as `<N>:\t<line>` — mirrors rummy
+// plugins/helpers.js numberLines. The leading digit prevents column-zero
+// fence collisions and gives the model line refs for free (`READ<42-46>`).
+const numberLines = (body, start = 1) => {
+    if (!body) return "";
+    const trailingNewline = body.endsWith("\n");
+    const source = trailingNewline ? body.slice(0, -1) : body;
+    const numbered = source.split("\n").map((line, i) => `${start + i}:\t${line}`).join("\n");
+    return trailingNewline ? `${numbered}\n` : numbered;
+};
+
+// Stable JSON: keys sorted alphabetically so the same meta produces the
+// same string across turns — prefix-cache friendly. Mirrors rummy
+// plugins/helpers.js canonicalJson.
+const canonicalJson = (obj) => {
+    const keys = Object.keys(obj).sort();
+    const sorted = {};
+    for (const k of keys) sorted[k] = obj[k];
+    return JSON.stringify(sorted);
+};
+
+// Heredoc block for one channel of one entry. The fence is `URI#channel`
+// (plurnk-grammar-native form) so model emissions and entry projections
+// share one syntax. Body is line-numbered.
+const renderHeredoc = (uri, channel, body) => {
+    const fence = `${uri}#${channel}`;
+    const numbered = numberLines(body);
+    return `<<${fence}:\n${numbered}\n:${fence}`;
+};
+
+// Render one Index entry → `* {meta}` line followed by per-channel
+// heredoc blocks (one fence per channel). meta carries entry-level
+// fields (path, tags); channel-level fields (mimetype, tokens) are
+// implicit in the fence ID for now — model can READ to dig further.
 const renderIndexEntries = (entries) =>
     entries.map((e) => {
         const scheme = e.scheme ?? "?";
         const path = e.pathname ?? "";
         const uri = `${scheme}://${path}`;
-        const body = e.channels?.body ?? null;
-        const meta = [];
-        if (body !== null) {
-            meta.push(`mimetype: ${body.mimetype ?? "text/markdown"}`);
-            if (typeof body.tokens === "number") meta.push(`tokens: ${body.tokens}`);
+        const meta = { path: uri };
+        if (Array.isArray(e.tags) && e.tags.length > 0) meta.tags = e.tags;
+        const blocks = [];
+        for (const [channelName, ch] of Object.entries(e.channels ?? {})) {
+            const content = ch?.content;
+            if (typeof content !== "string") continue;
+            blocks.push(renderHeredoc(uri, channelName, content));
         }
-        const metaBlock = meta.length > 0 ? `- ${meta.join(", ")}\n\n` : "";
-        const bodyContent = body?.content ?? "";
-        return `## ${uri}\n\n${metaBlock}\`\`\`\n${bodyContent}\n\`\`\``;
-    }).join("\n\n");
+        return blocks.length > 0
+            ? `* ${canonicalJson(meta)}\n${blocks.join("\n")}`
+            : `* ${canonicalJson(meta)}`;
+    }).join("\n");
 
-// Render one Log entry → h2 heading + rx body fence.
-// Input shape comes from Engine.#buildLog (LogEntry.json projection).
+// Render one Log entry → `* {meta}` line followed by an `rx` heredoc.
+// URI is `log://<coordinate>`; rx is what the action returned, which is
+// what the model actually wants to read (status, body, etc.).
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const coordinate = e.coordinate ?? "?";
-        const op = e.op ?? "?";
+        const uri = `log://${coordinate}`;
+        const meta = {};
+        if (typeof e.origin === "string") meta.origin = e.origin;
+        if (typeof e.op === "string") meta.op = e.op;
+        if (typeof e.status === "number") meta.status = e.status;
         const target = renderLogTarget(e.target);
-        const status = e.status ?? "?";
+        if (target !== null) meta.target = target;
         const rxBody = typeof e.rx === "string" ? e.rx : JSON.stringify(e.rx);
-        return `## [${coordinate}] ${op} ${target} → ${status}\n\n\`\`\`\n${rxBody}\n\`\`\``;
-    }).join("\n\n");
+        return `* ${canonicalJson(meta)}\n${renderHeredoc(uri, "rx", rxBody)}`;
+    }).join("\n");
 
 const renderLogTarget = (target) => {
-    if (target === null || target === undefined) return "—";
+    if (target === null || target === undefined) return null;
     const scheme = target.scheme;
     const pathname = target.pathname ?? "";
     if (scheme !== null && scheme !== undefined) return `${scheme}://${pathname}`;
-    return pathname.length > 0 ? pathname : "—";
+    return pathname.length > 0 ? pathname : null;
 };
 
 // Render TelemetryError[] → bullet list. v0 schema is open per Packet.json
@@ -104,4 +142,4 @@ const renderLogTarget = (target) => {
 // solidify"), so this just emits each error as a JSON line until the
 // shape settles.
 const renderTelemetryErrors = (errors) =>
-    errors.map((e) => `- ${JSON.stringify(e)}`).join("\n");
+    errors.map((e) => `* ${canonicalJson(e)}`).join("\n");
