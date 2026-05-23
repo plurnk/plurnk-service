@@ -160,14 +160,15 @@ test("proposal: status=202 + state='proposed' rows hidden from packet.system.log
         const logEntryId = await idDeferred.promise;
 
         // Render the log — proposed entry should be invisible.
-        const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ loop_id: ctx.loopId });
+        // engine_render_log is run-scoped per SPEC §0.6 (runs own log entries).
+        const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ run_id: ctx.runId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");
 
         // Now resolve and re-render — entry should surface.
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         await pending;
-        const rerendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ loop_id: ctx.loopId });
+        const rerendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ run_id: ctx.runId });
         const resolvedVisible = rerendered.find((r) => r.state === "resolved");
         assert.notEqual(resolvedVisible, undefined, "resolved entries must surface in log render");
         assert.equal(resolvedVisible?.status_rx, 200);
