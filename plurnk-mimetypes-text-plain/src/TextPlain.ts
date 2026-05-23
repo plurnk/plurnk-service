@@ -1,7 +1,12 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import type { Preview } from "@plurnk/plurnk-mimetypes";
 
-// text/plain handler. BaseHandler's defaults (empty extract, no-op validate,
-// derived symbols/preview) are exactly right — text/plain has no structural
-// declarations to extract. The framework's raw-content fallback path in
-// Mimetypes.process supplies preview content when extract is empty.
-export default class TextPlain extends BaseHandler {}
+// text/plain: the entire content is the preview material, head-oriented.
+// No extractable structure, so symbols/extractRaw stay at BaseHandler's
+// empty defaults — only `preview` is overridden to return a TextPreview.
+export default class TextPlain extends BaseHandler {
+    override preview(content: string | Uint8Array): Preview {
+        const text = typeof content === "string" ? content : "";
+        return { kind: "text", text, orientation: "head" };
+    }
+}

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-plain",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "text/plain mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -13,7 +13,13 @@
     "plurnk": {
         "kind": "mimetype",
         "handlers": [
-            { "name": "text/plain", "glyph": "📄", "extensions": [".txt"] }
+            {
+                "name": "text/plain",
+                "glyph": "📄",
+                "extensions": [
+                    ".txt"
+                ]
+            }
         ]
     },
     "exports": {
@@ -36,7 +42,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.2.0"
+        "@plurnk/plurnk-mimetypes": "^0.4.0"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",

@@ -16,14 +16,14 @@ describe("TextPlain", () => {
         assert.deepEqual([...handler.extensions], [".txt"]);
     });
 
-    it("extract returns an empty array (text/plain has no structural symbols)", () => {
+    it("extractRaw returns an empty array (text/plain has no structural symbols)", () => {
         const handler = new TextPlain(metadata);
-        assert.deepEqual(handler.extract("any content"), []);
+        assert.deepEqual(handler.extractRaw("any content"), []);
     });
 
-    it("symbols returns empty string for empty extract", () => {
+    it("symbolsRaw returns empty string for empty extractRaw", () => {
         const handler = new TextPlain(metadata);
-        assert.equal(handler.symbols("any content"), "");
+        assert.equal(handler.symbolsRaw("any content"), "");
     });
 
     it("validate is a no-op (any content is valid plain text)", () => {
@@ -31,11 +31,13 @@ describe("TextPlain", () => {
         assert.doesNotThrow(() => handler.validate("anything"));
     });
 
-    it("preview returns empty when called with default tokenize (extract is empty)", async () => {
+    it("preview returns a head-oriented text Preview carrying the content", async () => {
         const handler = new TextPlain(metadata);
-        // BaseHandler.preview derives from extract(); for text/plain that's [].
-        // The orchestrator's raw-content fallback is what supplies preview content
-        // in production — the handler itself produces empty.
-        assert.equal(await handler.preview("any content", 1000), "");
+        const preview = await handler.preview("hello world");
+        assert.deepEqual(preview, {
+            kind: "text",
+            text: "hello world",
+            orientation: "head",
+        });
     });
 });
