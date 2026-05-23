@@ -24,14 +24,11 @@ JOIN runs r ON r.id = l.run_id
 JOIN sessions s ON s.id = r.session_id
 WHERE l.id = $loop_id;
 
--- PREP: engine_get_run_prompts
--- All loop prompts in a run — used by #buildLog to synthesize PROMPT
--- entries (shim per AGENTS.md §Open: prompt as first-class log entry).
--- ORDER matches engine_render_log so synthetic prompts interleave
--- correctly with real actions when sorted by (loop_seq, turn_seq, action).
-SELECT id, sequence, prompt FROM loops
-WHERE run_id = $run_id AND prompt != ''
-ORDER BY sequence;
+-- PREP: engine_get_loop_prompt
+-- Loop's prompt + sequence — runTurn reads it on turn 1 to write a
+-- client-origin SEND[200] log entry for the prompt at action_index=0.
+-- Prompts are first-class log entries (no synthetic / shim layer).
+SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_loop_cancel
 UPDATE loops SET status = 499 WHERE id = $loop_id;
@@ -42,18 +39,31 @@ UPDATE loops SET status = $status WHERE id = $loop_id;
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
--- PREP: engine_insert_turn
-INSERT INTO turns (
-    loop_id, sequence, status, packet,
-    usage_prompt, usage_completion, usage_cached, usage_cost_pico,
-    finish_reason, model
-)
-VALUES (
-    $loop_id, $sequence, $status, $packet,
-    $usage_prompt, $usage_completion, $usage_cached, $usage_cost_pico,
-    $finish_reason, $model
-)
+-- PREP: engine_open_turn
+-- Turn-as-container model: insert a turn row at runTurn open with a
+-- placeholder packet and status=102 (in-progress). Pre-model writes
+-- (the user prompt; later, system signals/telemetry events) land into
+-- this row before the provider is called. The turn is then "closed"
+-- via engine_close_turn with the final packet + status + usage stats
+-- after dispatch completes.
+INSERT INTO turns (loop_id, sequence, status, packet)
+VALUES ($loop_id, $sequence, 102, '{}')
 RETURNING id;
+
+-- PREP: engine_close_turn
+-- Updates the turn with the response packet, terminal status, and
+-- provider usage stats once dispatch is complete. Paired with
+-- engine_open_turn at runTurn boundaries.
+UPDATE turns SET
+    status = $status,
+    packet = $packet,
+    usage_prompt = $usage_prompt,
+    usage_completion = $usage_completion,
+    usage_cached = $usage_cached,
+    usage_cost_pico = $usage_cost_pico,
+    finish_reason = $finish_reason,
+    model = $model
+WHERE id = $id;
 
 -- PREP: engine_render_index
 -- Render-time index assembly (SPEC §5.2 {§5.2-render-filters-by-indexed}).
@@ -73,9 +83,12 @@ ORDER BY e.id, ec.name;
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_render_telemetry_errors
--- SPEC §15.1: action-bound failures from the immediately previous turn are
--- mirrored into the next packet's telemetry.errors[]. Forces the model to
--- confront 4xx/5xx outcomes instead of letting them rot in log://.
+-- SPEC §15.1: action-bound failures from the immediately previous turn
+-- are mirrored into the next packet's telemetry.errors[]. Forces the
+-- model to confront 4xx/5xx outcomes instead of letting them rot in
+-- log://. "Previous turn" = sequence one below the currently-open one
+-- (turn-as-container model: the current turn exists with status=102
+-- when this query fires, so we explicitly look one back).
 SELECT
     le.op, le.action_index, le.status_rx, le.rx, le.mimetype_rx,
     le.target_scheme, le.target_pathname,
@@ -85,7 +98,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
-  AND t.sequence = (SELECT MAX(sequence) FROM turns WHERE loop_id = $loop_id)
+  AND t.sequence = $current_turn_seq - 1
 ORDER BY le.action_index;
 
 -- PREP: engine_render_log

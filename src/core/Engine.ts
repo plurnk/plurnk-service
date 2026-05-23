@@ -421,12 +421,60 @@ export default class Engine {
         turnNumber?: number;
         maxTurns?: number;
     }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
-        // Build the spec'd packet (Packet.json) request half BEFORE the
-        // provider call. The wire payload is a projection OF this packet;
-        // the stored packet is the same object completed with the
-        // assistant section after the response arrives.
+        // === Turn-as-container model ===
+        //
+        // Turn rows are created at runTurn OPEN (status=102, placeholder
+        // packet) so things can be written into the turn before the model
+        // is called: the user prompt on turn 1; later, system signals or
+        // injected telemetry events on any turn. The turn is CLOSED at
+        // the end with the final packet + status + usage stats.
+        //
+        // action_index is "ordinal of stuff in this turn." Pre-model
+        // writes consume low indices; model ops continue from there.
+        const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
+        const seq = (seqRow as { next: number }).next;
+        const openRow = await (this.#db.engine_open_turn as PrepMethod).get<{ id: number }>({
+            loop_id: loopId, sequence: seq,
+        });
+        if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
+        const turnId = openRow.id;
+
+        // Pre-model writes. For the loop's first turn (DB sequence 1,
+        // not the caller-supplied turnNumber — direct runTurn callers
+        // may default-1 across multiple calls), the user's prompt logs
+        // as a client-origin SEND[200] entry at action_index=0. Reuses
+        // the grammar's SEND op vocabulary (SPEC §0.5: "one assembled
+        // prompt sent") — no enum churn. Model ops dispatch from
+        // action_index=1 onward on the first turn; 0 onward thereafter.
+        let nextActionIndex = 0;
+        if (seq === 1) {
+            const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
+            if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
+                await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                    run_id: runId, loop_id: loopId, turn_id: turnId,
+                    action_index: nextActionIndex,
+                    origin: "client",
+                    op: "SEND", suffix: "",
+                    signal: JSON.stringify(200),
+                    target_scheme: null, target_username: null, target_password: null,
+                    target_hostname: null, target_port: null,
+                    target_pathname: null, target_params: null, target_fragment: null,
+                    lineMarker: null,
+                    tx: promptRow.prompt, mimetype_tx: "text/plain",
+                    rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                    status_rx: 200,
+                    state: "resolved", outcome: null, attrs: "{}",
+                });
+                nextActionIndex++;
+            }
+        }
+
+        // Build the spec'd packet (Packet.json) request half. #buildLog
+        // queries log_entries scoped to the run — the prompt entry just
+        // written (if turn 1) is part of that query result.
         const requestPacket = await this.#buildRequestPacket({
-            initialMessages: messages, persona, runId, loopId, turnNumber, maxTurns, provider,
+            initialMessages: messages, persona, runId, loopId,
+            turnNumber, currentTurnSeq: seq, maxTurns, provider,
         });
         const modelMessages = this.#packetToWireMessages(requestPacket);
         const response = await provider.generate({ messages: modelMessages, signal });
@@ -448,16 +496,11 @@ export default class Engine {
             ? sendOp.signal
             : opsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
-        const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
-        const seq = (seqRow as { next: number }).next;
-        // Complete the spec'd packet by adding the response section.
-        // requestPacket already has system + user matching what was sent
-        // to the LLM (one source of truth across wire payload and storage).
+        // Close the turn with the final packet, status, and usage stats.
         const packet = this.#completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
         const { usage, finishReason, model } = callMetadata;
-        const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
-            loop_id: loopId,
-            sequence: seq,
+        await (this.#db.engine_close_turn as PrepMethod).run({
+            id: turnId,
             status: turnStatus,
             packet: JSON.stringify(packet),
             usage_prompt: usage.prompt,
@@ -467,13 +510,15 @@ export default class Engine {
             finish_reason: finishReason,
             model,
         });
-        if (turnRow === undefined) throw new Error("Engine.runTurn: turn insert returned no row");
-        const turnId = turnRow.id;
 
+        // Dispatch model ops starting at nextActionIndex (continues the
+        // turn's running counter after any pre-model writes).
         const statuses: number[] = [];
-        for (const [actionIndex, statement] of packetAssistant.ops.entries()) {
+        for (const [i, statement] of packetAssistant.ops.entries()) {
             const result = await this.dispatch({
-                statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch,
+                statement, sessionId, runId, loopId, turnId,
+                actionIndex: nextActionIndex + i,
+                origin, onDispatch,
             });
             statuses.push(result.status);
         }
@@ -537,7 +582,7 @@ export default class Engine {
     // a continuation turn"; the turn-N-of-M continuation marker rides on
     // user.system_requirements (per-turn rules), NOT a mutated prompt.
     async #buildRequestPacket({
-        initialMessages, persona: defaultPersona, runId, loopId, turnNumber, maxTurns, provider,
+        initialMessages, persona: defaultPersona, runId, loopId, turnNumber, currentTurnSeq, maxTurns, provider,
     }: {
         initialMessages: ChatMessage[];
         // Fallback persona content — used only when no per-loop, per-run, or
@@ -547,6 +592,11 @@ export default class Engine {
         persona: string;
         runId: number; loopId: number;
         turnNumber: number; maxTurns: number;
+        // DB-level turn sequence for "look at the previous turn" queries
+        // (e.g. telemetry errors). Distinct from turnNumber (loop iteration
+        // counter) because runTurn can be called directly in tests without
+        // an iteration loop.
+        currentTurnSeq: number;
         provider: Provider;
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
@@ -560,7 +610,7 @@ export default class Engine {
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
         const index = await this.#buildIndex(runId);
         const log = await this.#buildLog(runId);
-        const telemetryErrors = await this.#buildTelemetryErrors(loopId);
+        const telemetryErrors = await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Rummy AgentLoop.js #buildContinuationPrompt: literally
         // `Turn ${turn}/${maxTurns}`. That's the whole string. The model
         // can read the action log to see what it already did; it does
@@ -656,13 +706,13 @@ export default class Engine {
     //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
     //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
     // Buffer drains on read — each error appears in exactly one packet.
-    async #buildTelemetryErrors(loopId: number): Promise<object[]> {
+    async #buildTelemetryErrors(loopId: number, currentTurnSeq: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
             op: string; action_index: number; status_rx: number;
             rx: string; mimetype_rx: string;
             target_scheme: string | null; target_pathname: string | null;
             turn_seq: number; loop_seq: number;
-        }>({ loop_id: loopId });
+        }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         const actionFailures = rows.map((r) => {
             const target = r.target_scheme !== null
                 ? `${r.target_scheme}://${r.target_pathname ?? ""}`
@@ -690,6 +740,11 @@ export default class Engine {
         // SPEC §0.6: runs own log entries — log is the run's history,
         // not the loop's. Span all loops in the run so the model sees
         // earlier loops' work as conversational memory.
+        //
+        // User prompts are first-class log entries: runTurn writes a
+        // client-origin SEND[200] row at action_index=0 of each new
+        // turn-1. Prompts thus surface naturally in this query — no
+        // synthetic / shim layer.
         const rows = await (this.#db.engine_render_log as PrepMethod).all<{
             loop_seq: number; turn_seq: number; action_index: number;
             origin: string; op: string; suffix: string; signal: string | null;
@@ -698,58 +753,24 @@ export default class Engine {
             target_params: string | null; target_fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
         }>({ run_id: runId });
-        const realEntries = rows.map((r) => ({
-            sortKey: [r.loop_seq, r.turn_seq, r.action_index] as [number, number, number],
-            entry: {
-                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
-                origin: r.origin,
-                op: r.op,
-                suffix: r.suffix,
-                signal: r.signal === null ? null : JSON.parse(r.signal),
-                target: {
-                    scheme: r.target_scheme,
-                    username: r.target_username, password: r.target_password,
-                    hostname: r.target_hostname, port: r.target_port,
-                    pathname: r.target_pathname,
-                    params: r.target_params === null ? null : JSON.parse(r.target_params),
-                    fragment: r.target_fragment,
-                },
-                status: r.status_rx,
-                rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
-                mimetype_rx: r.mimetype_rx,
+        return rows.map((r) => ({
+            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+            origin: r.origin,
+            op: r.op,
+            suffix: r.suffix,
+            signal: r.signal === null ? null : JSON.parse(r.signal),
+            target: {
+                scheme: r.target_scheme,
+                username: r.target_username, password: r.target_password,
+                hostname: r.target_hostname, port: r.target_port,
+                pathname: r.target_pathname,
+                params: r.target_params === null ? null : JSON.parse(r.target_params),
+                fragment: r.target_fragment,
             },
+            status: r.status_rx,
+            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
+            mimetype_rx: r.mimetype_rx,
         }));
-        // Synthetic PROMPT entries — SHIM per AGENTS.md §Open. One per
-        // loop in the run with a non-empty prompt, coordinate L/0/0 so
-        // sort-by-(loop,turn,action) places it before that loop's actions.
-        // NOT URI-addressable yet; real fix writes a first-class log_entries
-        // row at loop start so the model can READ it.
-        const loopRows = await (this.#db.engine_get_run_prompts as PrepMethod).all<{ id: number; sequence: number; prompt: string }>({ run_id: runId });
-        const promptEntries = loopRows.map((l) => ({
-            sortKey: [l.sequence, 0, 0] as [number, number, number],
-            entry: {
-                coordinate: `${l.sequence}/0/0`,
-                origin: "client",
-                op: "PROMPT",
-                suffix: "",
-                signal: null,
-                target: {
-                    scheme: null, username: null, password: null,
-                    hostname: null, port: null, pathname: null,
-                    params: null, fragment: null,
-                },
-                status: 200,
-                rx: l.prompt,
-                mimetype_rx: "text/plain",
-            },
-        }));
-        return [...realEntries, ...promptEntries]
-            .sort((a, b) => {
-                if (a.sortKey[0] !== b.sortKey[0]) return a.sortKey[0] - b.sortKey[0];
-                if (a.sortKey[1] !== b.sortKey[1]) return a.sortKey[1] - b.sortKey[1];
-                return a.sortKey[2] - b.sortKey[2];
-            })
-            .map((e) => e.entry);
     }
 
     async #buildIndex(runId: number): Promise<object[]> {
