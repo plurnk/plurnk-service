@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-html",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Converts to markdown via turndown.",
     "type": "module",
     "license": "MIT",
@@ -13,8 +13,21 @@
     "plurnk": {
         "kind": "mimetype",
         "handlers": [
-            { "name": "text/html", "glyph": "🌐", "extensions": [".html", ".htm"] },
-            { "name": "application/xhtml+xml", "glyph": "🌐", "extensions": [".xhtml"] }
+            {
+                "name": "text/html",
+                "glyph": "🌐",
+                "extensions": [
+                    ".html",
+                    ".htm"
+                ]
+            },
+            {
+                "name": "application/xhtml+xml",
+                "glyph": "🌐",
+                "extensions": [
+                    ".xhtml"
+                ]
+            }
         ]
     },
     "exports": {
@@ -37,9 +50,9 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.3.0",
-        "turndown": "^7.2.0",
-        "@types/turndown": "^5.0.5"
+        "@plurnk/plurnk-mimetypes": "^0.4.0",
+        "@types/turndown": "^5.0.5",
+        "turndown": "^7.2.0"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
