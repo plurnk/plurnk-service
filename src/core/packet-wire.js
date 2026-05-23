@@ -91,9 +91,9 @@ const renderHeredoc = (uri, channel, body) => {
 };
 
 // Render one Index entry → `* {meta}` line followed by per-channel
-// heredoc blocks (one fence per channel). meta carries entry-level
-// fields (path, tags); channel-level fields (mimetype, tokens) are
-// implicit in the fence ID for now — model can READ to dig further.
+// heredoc blocks. meta describes the entry; nested `channels` carries
+// per-channel mimetype/tokens so the model doesn't have to READ to
+// learn the shape of a channel's content.
 const renderIndexEntries = (entries) =>
     entries.map((e) => {
         const scheme = e.scheme ?? "?";
@@ -101,12 +101,18 @@ const renderIndexEntries = (entries) =>
         const uri = `${scheme}://${path}`;
         const meta = { path: uri };
         if (Array.isArray(e.tags) && e.tags.length > 0) meta.tags = e.tags;
+        const channelsMeta = {};
         const blocks = [];
         for (const [channelName, ch] of Object.entries(e.channels ?? {})) {
             const content = ch?.content;
             if (typeof content !== "string") continue;
+            const channelInfo = {};
+            if (typeof ch.mimetype === "string") channelInfo.mimetype = ch.mimetype;
+            if (typeof ch.tokens === "number") channelInfo.tokens = ch.tokens;
+            channelsMeta[channelName] = channelInfo;
             blocks.push(renderHeredoc(uri, channelName, content));
         }
+        if (Object.keys(channelsMeta).length > 0) meta.channels = channelsMeta;
         return blocks.length > 0
             ? `* ${canonicalJson(meta)}\n${blocks.join("\n")}`
             : `* ${canonicalJson(meta)}`;
