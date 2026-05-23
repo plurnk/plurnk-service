@@ -48,7 +48,24 @@ import { dirname, resolve } from "node:path";
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
 
+// Resolve the default persona file path: PLURNK_PERSONA env (absolute or
+// relative-to-package-root) → `persona.md` in package root as the
+// hardcoded fallback. The env var lets operators point at a custom
+// persona without forking the file in PACKAGE_ROOT.
+const resolveDefaultPersona = (): string => {
+    const env = process.env.PLURNK_PERSONA;
+    if (typeof env === "string" && env.length > 0) {
+        return resolve(PACKAGE_ROOT, env);
+    }
+    return resolve(PACKAGE_ROOT, "persona.md");
+};
+
 export const PATHS = {
     migrations: resolve(PACKAGE_ROOT, "migrations"),
     instructionsSystem: resolve(GRAMMAR_ROOT, "plurnk.md"),
+    // packet.system.persona DEFAULT. Cascade at packet-build time is
+    //   loops.persona > runs.persona > sessions.persona > this file
+    // RPC overrides on loop.run / session.attach / session.create populate
+    // the three persistence layers; this file is the final fallback.
+    defaultPersona: resolveDefaultPersona(),
 };

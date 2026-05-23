@@ -6,6 +6,9 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
+// @ts-expect-error -- plain JS module shared with bin/digest.js so wire
+// projection and digest projection are structurally one function.
+import { packetToWireMessages } from "./packet-wire.js";
 
 // SCHEMES.md §8: writer must be in target scheme's manifest.writableBy.
 // SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
@@ -64,6 +67,28 @@ type PacketAssistant = {
     content: string;
     ops: PlurnkStatement[];
     reasoning: string | null;
+};
+
+// Spec'd packet (Packet.json) sans the assistant + assistantRaw fields,
+// which aren't known until the provider responds. Engine builds this
+// before the call (so the wire projection has a source) and completes
+// it with the response section after. Two consumers: serialized to
+// ChatMessage[] via #packetToWireMessages, and stored in turns.packet
+// (via #completePacket) as the canonical record of the exchange.
+type RequestPacket = {
+    system: {
+        tokens: number;
+        system_definition: string;
+        persona: string;
+        index: object[];
+        log: object[];
+    };
+    user: {
+        tokens: number;
+        prompt: string;
+        telemetry: { budget: string; errors: object[] };
+        system_requirements: string;
+    };
 };
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -267,7 +292,7 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, sessionId, runId, loopId,
+        provider, messages, persona = "", sessionId, runId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
@@ -275,6 +300,10 @@ export default class Engine {
     }: {
         provider: Provider;
         messages: ChatMessage[];
+        // packet.system.persona content. Caller resolves the source (client
+        // override, session-persisted persona once #150 lands, or the
+        // service-default persona.md). Engine just plumbs into the packet.
+        persona?: string;
         sessionId: number; runId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
@@ -308,7 +337,10 @@ export default class Engine {
                 return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
             }
 
-            const turn = await this.runTurn({ provider, messages, sessionId, runId, loopId, origin, signal, onDispatch });
+            const turn = await this.runTurn({
+                provider, messages, persona, sessionId, runId, loopId, origin, signal, onDispatch,
+                turnNumber: turnIds.length + 1, maxTurns,
+            });
             turnIds.push(turn.turnId);
 
             // Rail #39: cycle detection. Push this turn's fingerprint to
@@ -371,16 +403,32 @@ export default class Engine {
     }
 
     async runTurn({
-        provider, messages, sessionId, runId, loopId, origin = "model", signal, onDispatch,
+        provider, messages, persona = "", sessionId, runId, loopId, origin = "model", signal, onDispatch,
+        turnNumber = 1, maxTurns = 50,
     }: {
         provider: Provider;
         messages: ChatMessage[];
+        persona?: string;
         sessionId: number; runId: number; loopId: number;
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
+        // Position in the surrounding loop. Used to build per-turn LLM
+        // context: turn 1 carries the initial user prompt verbatim; turn
+        // N>1 substitutes a continuation marker (rummy's pattern). Both
+        // are augmented with the durable state (index/log/telemetry).
+        turnNumber?: number;
+        maxTurns?: number;
     }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
-        const response = await provider.generate({ messages, signal });
+        // Build the spec'd packet (Packet.json) request half BEFORE the
+        // provider call. The wire payload is a projection OF this packet;
+        // the stored packet is the same object completed with the
+        // assistant section after the response arrives.
+        const requestPacket = await this.#buildRequestPacket({
+            initialMessages: messages, persona, runId, loopId, turnNumber, maxTurns, provider,
+        });
+        const modelMessages = this.#packetToWireMessages(requestPacket);
+        const response = await provider.generate({ messages: modelMessages, signal });
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
@@ -401,10 +449,10 @@ export default class Engine {
 
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
-        // Build packet BEFORE pushing this turn's actionless failures so the
-        // drain at packet-build sees only PRIOR turns' failures. THIS turn's
-        // failures are buffered AFTER and surface in the next packet.
-        const packet = await this.#buildPacket(messages, packetAssistant, response.assistantRaw, runId, loopId, provider);
+        // Complete the spec'd packet by adding the response section.
+        // requestPacket already has system + user matching what was sent
+        // to the LLM (one source of truth across wire payload and storage).
+        const packet = this.#completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
         const { usage, finishReason, model } = callMetadata;
         const turnRow = await (this.#db.engine_insert_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId,
@@ -480,41 +528,92 @@ export default class Engine {
         };
     }
 
-    async #buildPacket(
-        messages: ChatMessage[], assistant: PacketAssistant, assistantRaw: unknown,
-        runId: number, loopId: number, provider: Provider,
-    ): Promise<object> {
+    // Assemble the request half of the spec'd packet (Packet.json §system
+    // and §user) BEFORE the provider call. The same packet object is then
+    // completed with assistant + assistantRaw after the model responds, so
+    // the stored packet and the wire payload share one source of truth.
+    // Per Packet.json: user.prompt is "Copy of loop.prompt — never null on
+    // a continuation turn"; the turn-N-of-M continuation marker rides on
+    // user.system_requirements (per-turn rules), NOT a mutated prompt.
+    async #buildRequestPacket({
+        initialMessages, persona: defaultPersona, runId, loopId, turnNumber, maxTurns, provider,
+    }: {
+        initialMessages: ChatMessage[];
+        // Fallback persona content — used only when no per-loop, per-run, or
+        // per-session override exists in the database (issue #150 cascade).
+        // Caller sources this from PATHS.defaultPersona (PLURNK_PERSONA env
+        // override → persona.md package default).
+        persona: string;
+        runId: number; loopId: number;
+        turnNumber: number; maxTurns: number;
+        provider: Provider;
+    }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
-            messages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
-        const systemDef = byRole("system");
-        const userPrompt = byRole("user");
+            initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
+        const system_definition = byRole("system");
+        const prompt = byRole("user");
+        // Resolve persona cascade: loops.persona > runs.persona >
+        // sessions.persona > caller-supplied default. SQL coalesces in one
+        // query; null result means no DB override exists, use the default.
+        const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
+        const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
         const index = await this.#buildIndex(runId);
         const log = await this.#buildLog(loopId);
         const telemetryErrors = await this.#buildTelemetryErrors(loopId);
-        // Per-section render-cost subtotals via provider's tokenizer. Engine
-        // approximates each section by tokenizing its serialized form — exact
-        // wire-payload tokens may differ slightly because OpenAI-compat
-        // serialization adds chat-template scaffolding, but the subtotal
-        // tracks "what the model has to process" closely enough to drive
-        // context-bloat diagnostics + packet.user.telemetry.budget.
-        const systemTokens = provider.countTokens(systemDef) + provider.countTokens(JSON.stringify(index)) + provider.countTokens(JSON.stringify(log));
-        const userTokens = provider.countTokens(userPrompt) + provider.countTokens(JSON.stringify(telemetryErrors));
-        const assistantTokens = provider.countTokens(assistant.content);
+        // Rummy AgentLoop.js #buildContinuationPrompt: literally
+        // `Turn ${turn}/${maxTurns}`. That's the whole string. The model
+        // can read the action log to see what it already did; it does
+        // not need editorial instructions from us about not repeating.
+        const system_requirements = turnNumber > 1
+            ? `Turn ${turnNumber}/${maxTurns}`
+            : "";
+        // Per-section render-cost subtotals via provider's tokenizer.
+        // Engine approximates each section by tokenizing its serialized
+        // form — wire-payload tokens may differ slightly because chat-
+        // template scaffolding adds bytes, but the subtotal tracks "what
+        // the model has to process" closely enough for budget diagnostics.
+        const systemTokens =
+            provider.countTokens(system_definition) +
+            provider.countTokens(persona) +
+            provider.countTokens(JSON.stringify(index)) +
+            provider.countTokens(JSON.stringify(log));
+        const userTokens =
+            provider.countTokens(prompt) +
+            provider.countTokens(system_requirements) +
+            provider.countTokens(JSON.stringify(telemetryErrors));
         return {
-            tokens: systemTokens + userTokens + assistantTokens,
             system: {
                 tokens: systemTokens,
-                system_definition: systemDef,
-                persona: "",
+                system_definition,
+                persona,
                 index,
                 log,
             },
             user: {
                 tokens: userTokens,
-                prompt: userPrompt,
+                prompt,
                 telemetry: { budget: "", errors: telemetryErrors },
-                system_requirements: "",
+                system_requirements,
             },
+        };
+    }
+
+    // Wire projection lives in ./packet-wire.js (plain JS) so Engine and
+    // bin/digest.js import the exact same function — structurally one
+    // implementation, no drift between wire and digest possible.
+    // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
+    #packetToWireMessages(packet: RequestPacket): ChatMessage[] {
+        return packetToWireMessages(packet) as ChatMessage[];
+    }
+
+    // Complete the packet by adding the model's response. After this the
+    // packet matches Packet.json fully and is ready for storage.
+    #completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
+        const assistantTokens = provider.countTokens(assistant.content);
+        return {
+            tokens: requestPacket.system.tokens + requestPacket.user.tokens + assistantTokens,
+            system: requestPacket.system,
+            user: requestPacket.user,
             assistant,
             assistantRaw,
         };

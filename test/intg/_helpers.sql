@@ -143,6 +143,17 @@ SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index LIMIT 1
 -- PREP: test_set_loop_status
 UPDATE loops SET status = $status WHERE id = $id;
 
+-- PREP: test_set_loop_persona
+-- Used by persona-cascade intg tests to seed loops.persona without going
+-- through the full loop.run RPC path.
+UPDATE loops SET persona = $persona WHERE id = $id;
+
+-- PREP: test_set_run_persona
+UPDATE runs SET persona = $persona WHERE id = $id;
+
+-- PREP: test_set_session_persona
+UPDATE sessions SET persona = $persona WHERE id = $id;
+
 -- PREP: test_read_log_entries_for_turn_by_op
 SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
 

@@ -70,8 +70,28 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
         console.log("\n=== entries written ===");
         for (const e of entries) console.log(`  known://${e.pathname}`);
 
-        assert.ok(result.turnIds.length >= 1, "at least one turn ran");
-        assert.ok([200, 499].includes(result.finalStatus), "loop terminated cleanly");
+        // Outcome assertions — not just "the loop terminated cleanly,"
+        // which silently passed for a loop that wrote `paris` five times
+        // and never advanced. The task says: paris pop, then tokyo pop,
+        // then a comparison. Both city entries must exist.
+        const pathnames = entries.map((e) => e.pathname);
+        assert.ok(
+            pathnames.some((p) => p.includes("paris")),
+            `expected a known://city/paris/* entry; got ${JSON.stringify(pathnames)}`,
+        );
+        assert.ok(
+            pathnames.some((p) => p.includes("tokyo")),
+            `expected a known://city/tokyo/* entry; got ${JSON.stringify(pathnames)} — model never advanced past turn 1`,
+        );
+        assert.ok(
+            entries.length >= 2,
+            `expected at least 2 distinct entries (paris, tokyo); got ${entries.length}`,
+        );
+        assert.ok(result.turnIds.length >= 2, "multi-turn task needs more than 1 turn");
+        assert.ok(
+            [200, 499].includes(result.finalStatus),
+            `loop must terminate cleanly; got ${result.finalStatus}`,
+        );
     } finally { await db.close(); }
 });
 
