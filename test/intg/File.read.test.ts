@@ -4,8 +4,10 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
-import { makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -20,22 +22,51 @@ const readStmt = (path: ParsedPath | null, opts: { lineMarker?: ReadStatement["l
     position: { line: 1, column: 1 },
 });
 
-const withWorkspace = async (fn: (root: string) => Promise<void>): Promise<void> => {
+// Set up a session whose project_root points at a fresh temp directory,
+// build a real PlurnkSchemeContext against it, run the test, clean up.
+// Workspace root is now per-session (F.1 + F.5) — sourced from
+// sessions.project_root, not an env var.
+const withSessionWorkspace = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-"));
-    const previousRoot = process.env.PLURNK_WORKSPACE_ROOT;
-    process.env.PLURNK_WORKSPACE_ROOT = root;
-    try { await fn(root); }
-    finally {
-        if (previousRoot === undefined) delete process.env.PLURNK_WORKSPACE_ROOT;
-        else process.env.PLURNK_WORKSPACE_ROOT = previousRoot;
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `file-test-${crypto.randomUUID()}`);
+        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const ctx: PlurnkSchemeContext = {
+            db, sessionId, runId, loopId, turnId,
+            writer: "model", signal: undefined,
+        };
+        await fn(root, ctx, db);
+    } finally {
+        await db.close();
         await rm(root, { recursive: true, force: true });
     }
 };
 
+// Build a ctx whose session has NULL project_root, to exercise the
+// "headless / no workspace" branch.
+const withHeadlessSession = async (fn: (ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `headless-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const ctx: PlurnkSchemeContext = {
+            db, sessionId, runId, loopId, turnId,
+            writer: "model", signal: undefined,
+        };
+        await fn(ctx, db);
+    } finally { await db.close(); }
+};
+
 test("File.read: read existing file inside workspace → 200 + content + mimetype", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "hello.txt"), "Paris is the capital of France.\n");
-        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), makeSchemeCtx({  }));
+        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris is the capital of France.\n");
         assert.equal(result.mimetype, "text/plain");
@@ -43,106 +74,99 @@ test("File.read: read existing file inside workspace → 200 + content + mimetyp
 });
 
 test("File.read: nested path inside workspace works", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
-        const result = await new File().read(readStmt(urlPath("file", "docs/readme.md")), makeSchemeCtx({  }));
+        const result = await new File().read(readStmt(urlPath("file", "docs/readme.md")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "# Doc\n");
     });
 });
 
 test("File.read: missing file → 404", async () => {
-    await withWorkspace(async () => {
-        const result = await new File().read(readStmt(urlPath("file", "missing.txt")), makeSchemeCtx({  }));
+    await withSessionWorkspace(async (_root, ctx) => {
+        const result = await new File().read(readStmt(urlPath("file", "missing.txt")), ctx);
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     });
 });
 
-test("File.read: workspace escape via .. → 403", async () => {
-    await withWorkspace(async (root) => {
-        // Create a file OUTSIDE the workspace
+test("File.read: workspace escape via .. → 403 or 404", async () => {
+    await withSessionWorkspace(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
-            // Try to read it via .. traversal
-            const result = await new File().read(readStmt(urlPath("file", `../${outside.split("/").pop()}/secret.txt`)), makeSchemeCtx({  }));
-            // Either 403 (canonical detected outside) or 404 (path doesn't exist relative to root, depending on resolution)
+            const result = await new File().read(readStmt(urlPath("file", `../${outside.split("/").pop()}/secret.txt`)), ctx);
             assert.ok(result.status === 403 || result.status === 404, `expected 403 or 404, got ${result.status}`);
         } finally { await rm(outside, { recursive: true, force: true }); }
     });
 });
 
 test("File.read: symlink pointing outside workspace → 403", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
             await symlink(join(outside, "secret.txt"), join(root, "link-to-secret"));
-            const result = await new File().read(readStmt(urlPath("file", "link-to-secret")), makeSchemeCtx({  }));
+            const result = await new File().read(readStmt(urlPath("file", "link-to-secret")), ctx);
             assert.equal(result.status, 403, "symlink should be rejected after canonical resolution");
             assert.equal(result.content, null);
         } finally { await rm(outside, { recursive: true, force: true }); }
     });
 });
 
-test("File.read: PLURNK_WORKSPACE_ROOT not set → 400", async () => {
-    const previous = process.env.PLURNK_WORKSPACE_ROOT;
-    delete process.env.PLURNK_WORKSPACE_ROOT;
-    try {
-        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), makeSchemeCtx({  }));
+test("File.read: headless session (no project_root) → 400", async () => {
+    await withHeadlessSession(async (ctx) => {
+        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
         assert.equal(result.status, 400);
-    } finally {
-        if (previous !== undefined) process.env.PLURNK_WORKSPACE_ROOT = previous;
-    }
+    });
 });
 
 test("File.read: null path → 400", async () => {
-    await withWorkspace(async () => {
-        const result = await new File().read(readStmt(null), makeSchemeCtx({  }));
+    await withSessionWorkspace(async (_root, ctx) => {
+        const result = await new File().read(readStmt(null), ctx);
         assert.equal(result.status, 400);
     });
 });
 
 test("File.read: lineMarker / body matcher / non-empty tag filter → 501", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
         const file = new File();
         const path = urlPath("file", "f.txt");
-        assert.equal((await file.read(readStmt(path, { lineMarker: { first: 1, last: null } }), makeSchemeCtx({  }))).status, 501);
-        assert.equal((await file.read(readStmt(path, { body: { dialect: "glob", raw: "*" } }), makeSchemeCtx({  }))).status, 501);
-        assert.equal((await file.read(readStmt(path, { tags: ["any"] }), makeSchemeCtx({  }))).status, 501);
+        assert.equal((await file.read(readStmt(path, { lineMarker: { first: 1, last: null } }), ctx)).status, 501);
+        assert.equal((await file.read(readStmt(path, { body: { dialect: "glob", raw: "*" } }), ctx)).status, 501);
+        assert.equal((await file.read(readStmt(path, { tags: ["any"] }), ctx)).status, 501);
     });
 });
 
 test("File.read: long content round-trips", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
-        const result = await new File().read(readStmt(urlPath("file", "big.txt")), makeSchemeCtx({  }));
+        const result = await new File().read(readStmt(urlPath("file", "big.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content?.length, big.length);
     });
 });
 
 test("File.read: absolute path inside workspace resolves correctly", async () => {
-    await withWorkspace(async (root) => {
+    await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
-        const result = await new File().read(readStmt(urlPath("file", absolutePath)), makeSchemeCtx({  }));
+        const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "abs content");
     });
 });
 
 test("File.read: absolute path OUTSIDE workspace → 403", async () => {
-    await withWorkspace(async () => {
+    await withSessionWorkspace(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             const outsideFile = join(outside, "leak.txt");
             await writeFile(outsideFile, "should not be readable");
-            const result = await new File().read(readStmt(urlPath("file", outsideFile)), makeSchemeCtx({  }));
+            const result = await new File().read(readStmt(urlPath("file", outsideFile)), ctx);
             assert.equal(result.status, 403);
             assert.equal(result.content, null);
         } finally { await rm(outside, { recursive: true, force: true }); }

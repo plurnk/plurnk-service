@@ -15,7 +15,8 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 // Minimal scheme that always proposes — same shape as the one in
 // Engine.proposal-lifecycle.test.ts. Lets us trigger the lifecycle from a
 // full Daemon RPC roundtrip without depending on the File scheme (whose
-// PLURNK_WORKSPACE_ROOT path is being backed out in Phase F).
+// File scheme used to require PLURNK_WORKSPACE_ROOT but now reads
+// sessions.project_root — out of scope for these YOLO tests anyway).
 class ProposingTest {
     static manifest: SchemeManifest = {
         name: "proposing-test",

@@ -154,6 +154,11 @@ UPDATE runs SET persona = $persona WHERE id = $id;
 -- PREP: test_set_session_persona
 UPDATE sessions SET persona = $persona WHERE id = $id;
 
+-- PREP: test_set_session_project_root
+-- Sets sessions.project_root for File-scheme intg tests. F.1 added the
+-- column; F.5 made the File scheme read from it instead of an env var.
+UPDATE sessions SET project_root = $project_root WHERE id = $id;
+
 -- PREP: test_read_log_entries_for_turn_by_op
 SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
 

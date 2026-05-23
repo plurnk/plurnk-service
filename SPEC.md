@@ -729,7 +729,6 @@ Model selection uses a separate alias cascade managed by `ProviderRegistry` (`sr
 | `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§0.5).             |
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§0.5).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§0.5).            |
-| `PLURNK_WORKSPACE_ROOT`              | `""`               | enforced   | Filesystem root for `file://` scheme reads. Empty = `file://` returns 400. |
 | `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format (PROVIDERS.md §3.8). |
 | `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (characters; §14.2). |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
