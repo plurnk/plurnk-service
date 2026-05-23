@@ -11,6 +11,7 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "verbatimModuleSyntax": false,
+        "allowJs": true,
         "types": ["node"],
         "lib": ["ES2024"]
     },

@@ -6,8 +6,9 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-// @ts-expect-error -- plain JS module shared with bin/digest.js so wire
-// projection and digest projection are structurally one function.
+// Plain JS module shared with bin/digest.js so wire projection and
+// digest projection are structurally one function. tsconfig.build.json
+// has allowJs:true so this gets copied through to dist/.
 import { packetToWireMessages } from "./packet-wire.js";
 
 // SCHEMES.md §8: writer must be in target scheme's manifest.writableBy.
