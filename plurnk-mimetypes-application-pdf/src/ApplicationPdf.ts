@@ -1,8 +1,9 @@
-import { BaseHandler, fitContent } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import type { Preview } from "@plurnk/plurnk-mimetypes";
 
 // application/pdf handler. Binary mimetype — receives Uint8Array content.
 // validate() does a sync header-magic check; preview() does the full parse
-// via pdfjs-dist and returns the extracted text.
+// via pdfjs-dist and returns the extracted text as a head-oriented Preview.
 //
 // Why a header-magic validate and not a full parse: pdfjs transfers the
 // underlying ArrayBuffer for performance during getDocument(). If validate()
@@ -11,15 +12,16 @@ import { BaseHandler, fitContent } from "@plurnk/plurnk-mimetypes";
 // The header check catches non-PDF content (wrong format, garbage bytes,
 // empty input) without touching the bytes preview() will need.
 //
+// On parse failure, preview returns null — the framework converts that to
+// an empty preview string. We never fall back to raw bytes-as-string; PDF
+// bytes are not human-readable and would only pollute the index.
+//
 // Salvage pattern from rummy.web/WebFetcher.js:
 //   - pdfjs-dist legacy build (Node-compatible)
 //   - isEvalSupported:false (no PDF JS execution)
 //   - verbosity:0 (silences "standardFontDataUrl not provided" noise;
 //     we read text streams directly and don't render glyphs)
 //   - Pages joined with "\n\n"
-//
-// symbols() stays empty — PDFs have no exposed structural outline in the
-// duck contract today.
 
 // "%PDF-" — every PDF starts with this 5-byte magic, optionally preceded by
 // a UTF-8 BOM that some tools insert.
@@ -27,7 +29,7 @@ const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 
 export default class ApplicationPdf extends BaseHandler {
-    validate(content: string | Uint8Array): void {
+    override validate(content: string | Uint8Array): void {
         const bytes = toBytes(content);
         const offset = startsWith(bytes, UTF8_BOM) ? UTF8_BOM.length : 0;
         if (!startsWith(bytes.subarray(offset), PDF_MAGIC)) {
@@ -35,15 +37,15 @@ export default class ApplicationPdf extends BaseHandler {
         }
     }
 
-    async preview(content: string | Uint8Array, budget: number): Promise<string> {
+    override async preview(content: string | Uint8Array): Promise<Preview> {
         const bytes = toBytes(content);
         let text: string;
         try {
             text = await extractAllText(bytes);
         } catch {
-            return "";
+            return null;
         }
-        return fitContent(text, budget, this.tokenize);
+        return { kind: "text", text, orientation: "head" };
     }
 }
 

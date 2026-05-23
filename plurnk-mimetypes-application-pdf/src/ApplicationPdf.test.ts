@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
+import type { TextPreview } from "@plurnk/plurnk-mimetypes";
 
 const metadata = {
     mimetype: "application/pdf",
@@ -48,30 +49,24 @@ describe("ApplicationPdf", () => {
         assert.doesNotThrow(() => h.validate(withBom));
     });
 
-    it("preview returns extracted text content", async () => {
-        const text = await h.preview(samplePdf(), Number.POSITIVE_INFINITY);
-        assert.ok(text.includes("Hello, world!"));
+    it("preview returns a head-oriented text Preview carrying extracted content", async () => {
+        const preview = (await h.preview(samplePdf())) as TextPreview;
+        assert.equal(preview.kind, "text");
+        assert.equal(preview.orientation, "head");
+        assert.ok(preview.text.includes("Hello, world!"));
     });
 
-    it("preview budgets via the injected tokenize function", async () => {
-        const tokenizingHandler = new ApplicationPdf(metadata, {
-            tokenize: (text) => text.length,
-        });
-        const text = await tokenizingHandler.preview(samplePdf(), 5);
-        assert.ok(text.length <= 5);
-    });
-
-    it("preview returns empty string on parse failure (graceful)", async () => {
+    it("preview returns null on parse failure (handler authority — no raw byte leak)", async () => {
         const garbage = new Uint8Array([0x00, 0x01, 0x02, 0x03]);
-        const text = await h.preview(garbage, Number.POSITIVE_INFINITY);
-        assert.equal(text, "");
+        const preview = await h.preview(garbage);
+        assert.equal(preview, null);
     });
 
-    it("symbols returns empty string (PDFs don't expose structural symbols in this canary)", () => {
-        assert.equal(h.symbols(samplePdf()), "");
+    it("symbolsRaw returns empty string (PDFs don't expose structural symbols in this canary)", () => {
+        assert.equal(h.symbolsRaw(samplePdf()), "");
     });
 
-    it("extract returns empty array", () => {
-        assert.deepEqual(h.extract(samplePdf()), []);
+    it("extractRaw returns empty array", () => {
+        assert.deepEqual(h.extractRaw(samplePdf()), []);
     });
 });
