@@ -121,7 +121,15 @@ type DispatchResult = { status: number; attrs?: object; [key: string]: unknown }
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
     decision: ProposalDecision;
+    // Final body the resolver wants written/applied (e.g., reviewer-
+    // edited content). INPUT to applyResolution; not in the model-facing
+    // rx — the model sees the result via the entry/index now (post-F.5
+    // and EDIT-registers-entry), not via input echoes.
     body?: string;
+    // Operational reason (rejected / timeout / policy_veto / etc.).
+    // Stored on log_entries.outcome COLUMN for forensics; NOT included
+    // in the rx body — model doesn't need to know administratively how
+    // a proposal was resolved (per AGENTS.md hygiene rule).
     outcome?: string;
 }
 interface ProposalWaiter {
@@ -901,7 +909,7 @@ export default class Engine {
             // 4xx/5xx or throws, the resolution is downgraded to a reject
             // with the failure outcome — engine treats it like a client
             // rejection.
-            const effective = await this.#runApplyResolution(statement, result, resolution);
+            const effective = await this.#runApplyResolution(statement, result, resolution, { sessionId, runId, loopId, turnId });
             const post = await this.#applyResolution(logEntryId, effective);
             return post;
         }
@@ -912,19 +920,29 @@ export default class Engine {
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: ProposalResolution,
+        ids: { sessionId: number; runId: number; loopId: number; turnId: number },
     ): Promise<ProposalResolution> {
+        const { sessionId, runId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return resolution;
         const schemeName = this.#schemeNameOf(statement.path);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
-            | { applyResolution?: (args: { attrs: object; body?: string }) => Promise<{ status: number; outcome?: string; body?: string }> }
+            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
             | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
         try {
+            // Build a ctx for the scheme's applyResolution. The proposal
+            // was raised inside a specific (session, run, loop, turn);
+            // the scheme uses ctx to write the entry that makes the
+            // operation's artifact visible in the next packet's index.
+            const applyCtx: PlurnkSchemeContext = {
+                db: this.#db, sessionId, runId, loopId, turnId,
+                writer: "model", signal: undefined,
+            };
             const applyResult = await handler.applyResolution({
                 attrs: (originalResult.attrs ?? {}) as object,
                 body: resolution.body,
-            });
+            }, applyCtx);
             if (applyResult.status >= 400) {
                 return {
                     decision: "reject",
@@ -1023,7 +1041,13 @@ export default class Engine {
             : decision === "reject" ? "rejected"
             : "loop_aborted";
         const outcome = resolution.outcome ?? defaultOutcome;
-        const rx = JSON.stringify({ status, outcome, body: resolution.body ?? null });
+        // rx is the model-facing operation result. ONLY status — outcome
+        // is operational (security/admin) and stays on the log_entries
+        // column for forensics; body was an input echo with no value to
+        // the model; target/path lives in log_entries metadata and
+        // surfaces via the log section's `target` field uniformly.
+        // Per AGENTS.md "Operational hygiene on what the model sees."
+        const rx = JSON.stringify({ status });
         await (this.#db.engine_resolve_log_entry as PrepMethod).run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });
