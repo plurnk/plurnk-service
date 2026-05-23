@@ -1,14 +1,9 @@
 {
-  "dbPath": "/home/hyzen/repo/plurnk/plurnk-service/plurnk.db",
+  "dbPath": "/tmp/digest-input.db",
   "sessions": [
     {
       "id": 1,
-      "name": "session-1779461554-9hemf",
-      "cost_pico": 0
-    },
-    {
-      "id": 2,
-      "name": "session-1779493413-97m3s",
+      "name": "session-1779498958-6ptti",
       "cost_pico": 0
     }
   ],
@@ -16,13 +11,7 @@
     {
       "id": 1,
       "session_id": 1,
-      "name": "run-1779461554-9l0nh",
-      "cost_pico": 0
-    },
-    {
-      "id": 2,
-      "session_id": 2,
-      "name": "run-1779493413-81ocq",
+      "name": "run-1779498958-6p7qm",
       "cost_pico": 0
     }
   ],
@@ -31,7 +20,7 @@
       "id": 1,
       "run_id": 1,
       "sequence": 1,
-      "status": 200,
+      "status": 102,
       "prompt": "",
       "flags": {}
     },
@@ -40,31 +29,7 @@
       "run_id": 1,
       "sequence": 2,
       "status": 200,
-      "prompt": "What is the population of Argentina?",
-      "flags": {}
-    },
-    {
-      "id": 3,
-      "run_id": 1,
-      "sequence": 3,
-      "status": 200,
-      "prompt": "What is the population of Belarus?",
-      "flags": {}
-    },
-    {
-      "id": 4,
-      "run_id": 2,
-      "sequence": 1,
-      "status": 102,
-      "prompt": "",
-      "flags": {}
-    },
-    {
-      "id": 5,
-      "run_id": 2,
-      "sequence": 2,
-      "status": 200,
-      "prompt": "What is the capital of Saudi Arabia?",
+      "prompt": "What is the capital of Iran?",
       "flags": {}
     }
   ],
@@ -74,32 +39,8 @@
       "loop_id": 2,
       "sequence": 1,
       "status": 200,
-      "usage_prompt": 1704,
-      "usage_completion": 4156,
-      "usage_cached": 0,
-      "usage_cost_pico": 0,
-      "finish_reason": "stop",
-      "model": "macher.gguf"
-    },
-    {
-      "id": 2,
-      "loop_id": 3,
-      "sequence": 1,
-      "status": 200,
-      "usage_prompt": 1926,
-      "usage_completion": 2372,
-      "usage_cached": 0,
-      "usage_cost_pico": 0,
-      "finish_reason": "stop",
-      "model": "macher.gguf"
-    },
-    {
-      "id": 3,
-      "loop_id": 5,
-      "sequence": 1,
-      "status": 200,
-      "usage_prompt": 1705,
-      "usage_completion": 4145,
+      "usage_prompt": 1306,
+      "usage_completion": 1051,
       "usage_cached": 0,
       "usage_cost_pico": 0,
       "finish_reason": "stop",
@@ -112,7 +53,7 @@
       "turn_id": 1,
       "action_index": 0,
       "op": "EDIT",
-      "target": "unknown://countries/argentina/population",
+      "target": "unknown://countries/iran/capital",
       "status_rx": 201,
       "state": "resolved",
       "outcome": null
@@ -120,46 +61,6 @@
     {
       "id": 2,
       "turn_id": 1,
-      "action_index": 1,
-      "op": "SEND",
-      "target": "://",
-      "status_rx": 200,
-      "state": "resolved",
-      "outcome": null
-    },
-    {
-      "id": 3,
-      "turn_id": 2,
-      "action_index": 0,
-      "op": "EDIT",
-      "target": "unknown://countries/belarus/population",
-      "status_rx": 201,
-      "state": "resolved",
-      "outcome": null
-    },
-    {
-      "id": 4,
-      "turn_id": 2,
-      "action_index": 1,
-      "op": "SEND",
-      "target": "://",
-      "status_rx": 200,
-      "state": "resolved",
-      "outcome": null
-    },
-    {
-      "id": 5,
-      "turn_id": 3,
-      "action_index": 0,
-      "op": "EDIT",
-      "target": "known://countries/saudi_arabia/capital",
-      "status_rx": 201,
-      "state": "resolved",
-      "outcome": null
-    },
-    {
-      "id": 6,
-      "turn_id": 3,
       "action_index": 1,
       "op": "SEND",
       "target": "://",

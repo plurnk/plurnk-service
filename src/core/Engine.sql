@@ -24,6 +24,11 @@ JOIN runs r ON r.id = l.run_id
 JOIN sessions s ON s.id = r.session_id
 WHERE l.id = $loop_id;
 
+-- PREP: engine_get_loop_prompt
+-- Loop-level prompt + sequence — used by #buildLog to synthesize a prompt
+-- log entry (shim per AGENTS.md §Open: prompt as first-class log entry).
+SELECT prompt, sequence FROM loops WHERE id = $loop_id;
+
 -- PREP: engine_loop_cancel
 UPDATE loops SET status = 499 WHERE id = $loop_id;
 

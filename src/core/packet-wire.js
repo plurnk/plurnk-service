@@ -9,69 +9,46 @@
 // fenced code blocks for entry bodies, lists for arrays. No invented
 // separators. Models parse markdown natively.
 
+// Section headers follow the `# Plurnk System X` convention so the model
+// sees consistent framing across every section it might receive. Sections
+// with no content are omitted entirely (no empty headers in the wire).
+
 // Render packet.system → system message content (markdown string).
-// Layout:
-//   {system_definition verbatim — already a markdown doc with its own headers}
-//
-//   # Persona            (only if non-empty)
-//   {persona text}
-//
-//   # Index              (only if entries present)
-//   ## known://path/one
-//   - mimetype: ..., tokens: ...
-//   ```
-//   <body>
-//   ```
-//   ## known://path/two
-//   ...
-//
-//   # Log                (only if entries present)
-//   ## [loop/turn/action] OP target → status
-//   ```
-//   <rx>
-//   ```
+//   {system_definition verbatim}
+//   # Plurnk System Instructions   (persona)
+//   # Plurnk System Index          (entries — only when present)
+//   # Plurnk System Log            (log entries — only when present)
 export const renderSystemContent = (system) => {
     const parts = [system.system_definition];
     if (typeof system.persona === "string" && system.persona.length > 0) {
         parts.push(`# Plurnk System Instructions\n\n${system.persona}`);
     }
     if (Array.isArray(system.index) && system.index.length > 0) {
-        parts.push(`# Index\n\n${renderIndexEntries(system.index)}`);
+        parts.push(`# Plurnk System Index\n\n${renderIndexEntries(system.index)}`);
     }
     if (Array.isArray(system.log) && system.log.length > 0) {
-        parts.push(`# Log\n\n${renderLogEntries(system.log)}`);
+        parts.push(`# Plurnk System Log\n\n${renderLogEntries(system.log)}`);
     }
     return parts.join("\n\n");
 };
 
 // Render packet.user → user message content (markdown string).
-// Layout:
-//   {prompt verbatim — the user's actual ask}
-//
-//   # System Requirements  (per-turn rules — turn-N/M continuation lives here)
-//   {system_requirements text}
-//
-//   # Telemetry
-//   ## Budget              (only if non-empty)
-//   {budget text}
-//   ## Errors              (only if non-empty)
-//   - <error1>
-//   - <error2>
+//   # Plurnk System User Prompt
+//   # Plurnk System Budget         (token budget table — only when present)
+//   # Plurnk System Errors         (telemetry errors — only when present)
+//   # Plurnk System Requirements   (per-turn rules incl. Turn N/M marker)
 export const renderUserContent = (user) => {
-    const parts = [user.prompt];
-    if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
-        parts.push(`# System Requirements\n\n${user.system_requirements}`);
-    }
+    const parts = [];
+    parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
     const telemetry = user.telemetry ?? { budget: "", errors: [] };
-    const telemetryParts = [];
     if (typeof telemetry.budget === "string" && telemetry.budget.length > 0) {
-        telemetryParts.push(`## Budget\n\n${telemetry.budget}`);
+        parts.push(`# Plurnk System Budget\n\n${telemetry.budget}`);
     }
     if (Array.isArray(telemetry.errors) && telemetry.errors.length > 0) {
-        telemetryParts.push(`## Errors\n\n${renderTelemetryErrors(telemetry.errors)}`);
+        parts.push(`# Plurnk System Errors\n\n${renderTelemetryErrors(telemetry.errors)}`);
     }
-    if (telemetryParts.length > 0) {
-        parts.push(`# Telemetry\n\n${telemetryParts.join("\n\n")}`);
+    if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
+        parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
     }
     return parts.join("\n\n");
 };

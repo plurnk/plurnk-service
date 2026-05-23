@@ -577,10 +577,15 @@ export default class Engine {
             provider.countTokens(persona) +
             provider.countTokens(JSON.stringify(index)) +
             provider.countTokens(JSON.stringify(log));
+        // user.telemetry.budget — shimmed with section-aggregate table.
+        // Real per-scheme breakdown is on AGENTS.md TODO (provider doesn't
+        // yet expose getContextSize; user-side token count is below).
+        const budget = this.#renderBudgetShim(systemTokens, provider, prompt, system_requirements, telemetryErrors);
         const userTokens =
             provider.countTokens(prompt) +
             provider.countTokens(system_requirements) +
-            provider.countTokens(JSON.stringify(telemetryErrors));
+            provider.countTokens(JSON.stringify(telemetryErrors)) +
+            provider.countTokens(budget);
         return {
             system: {
                 tokens: systemTokens,
@@ -592,10 +597,31 @@ export default class Engine {
             user: {
                 tokens: userTokens,
                 prompt,
-                telemetry: { budget: "", errors: telemetryErrors },
+                telemetry: { budget, errors: telemetryErrors },
                 system_requirements,
             },
         };
+    }
+
+    // user.telemetry.budget — SHIM. Per AGENTS.md §Open: real per-scheme
+    // breakdown + context-window "free/percent-of-total" awaits provider
+    // contract additions (getContextSize). Until then, render the section-
+    // aggregate counts we already compute so the wire's `# Plurnk System
+    // Budget` section is non-empty for picking-apart purposes.
+    #renderBudgetShim(systemTokens: number, provider: Provider, prompt: string, system_requirements: string, telemetryErrors: object[]): string {
+        const userPromptTokens = provider.countTokens(prompt);
+        const userReqTokens = provider.countTokens(system_requirements);
+        const userErrTokens = provider.countTokens(JSON.stringify(telemetryErrors));
+        const userTokens = userPromptTokens + userReqTokens + userErrTokens;
+        const total = systemTokens + userTokens;
+        const pct = (n: number): string => total === 0 ? "0.0%" : `${((n / total) * 100).toFixed(1)}%`;
+        return [
+            "| Section | Used | Percent |",
+            "|---|---|---|",
+            `| system | ${systemTokens} | ${pct(systemTokens)} |`,
+            `| user | ${userTokens} | ${pct(userTokens)} |`,
+            `| **Total** | **${total}** | **100.0%** |`,
+        ].join("\n");
     }
 
     // Wire projection lives in ./packet-wire.js (plain JS) so Engine and
@@ -668,7 +694,7 @@ export default class Engine {
             target_params: string | null; target_fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
         }>({ loop_id: loopId });
-        return rows.map((r) => ({
+        const entries: object[] = rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
             origin: r.origin,
             op: r.op,
@@ -686,6 +712,30 @@ export default class Engine {
             rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
             mimetype_rx: r.mimetype_rx,
         }));
+        // Synthetic prompt entry — SHIM per AGENTS.md §Open. Prepends a
+        // "PROMPT" entry sourced from loops.prompt so `# Plurnk System Log`
+        // is never empty on turn 1. NOT URI-addressable yet (no
+        // corresponding row in log_entries / no scheme handler); real fix
+        // logs the prompt as a first-class entry the model can READ.
+        const loopRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
+        if (loopRow !== undefined && typeof loopRow.prompt === "string" && loopRow.prompt.length > 0) {
+            entries.unshift({
+                coordinate: `${loopRow.sequence}/0/0`,
+                origin: "client",
+                op: "PROMPT",
+                suffix: "",
+                signal: null,
+                target: {
+                    scheme: null, username: null, password: null,
+                    hostname: null, port: null, pathname: null,
+                    params: null, fragment: null,
+                },
+                status: 200,
+                rx: loopRow.prompt,
+                mimetype_rx: "text/plain",
+            });
+        }
+        return entries;
     }
 
     async #buildIndex(runId: number): Promise<object[]> {
