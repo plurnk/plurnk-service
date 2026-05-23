@@ -46,205 +46,172 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-const withWorkspaceRoot = async <T>(fn: (root: string) => Promise<T>): Promise<T> => {
+// Set up a temp workspace + a session whose project_root points at it.
+// F.1 added the column; F.5 made File read it instead of an env var.
+// Returns the temp root for body assertions + a cleanup fn.
+const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; sessionId: number; runId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-test-"));
-    const original = process.env.PLURNK_WORKSPACE_ROOT;
-    process.env.PLURNK_WORKSPACE_ROOT = root;
+    const db = await openMigrated();
     try {
-        return await fn(root);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const sessionId = await insertSession(db, `file-${crypto.randomUUID()}`);
+        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "file edit test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        return await fn(root, { db, engine, sessionId, runId, loopId, turnId });
     } finally {
-        if (original === undefined) delete process.env.PLURNK_WORKSPACE_ROOT;
-        else process.env.PLURNK_WORKSPACE_ROOT = original;
+        await db.close();
         await rm(root, { recursive: true, force: true });
     }
 };
 
-const setupEngine = async (db: Db): Promise<{
-    engine: Engine; sessionId: number; runId: number; loopId: number; turnId: number;
-}> => {
-    const schemes = new SchemeRegistry();
-    // Re-register file scheme as a fresh instance — caches workspace_root
-    // at first use, so a fresh process.env doesn't apply to the singleton
-    // SchemeRegistry already created. The default registry's File is
-    // shadowed by reading from this new schemes instance.
-    schemes.register("file-test", new File());
-    const engine = new Engine({ db, schemes });
-    const sessionId = await insertSession(db, `file-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "file edit test");
-    const turnId = await insertTurn(db, loopId, 1, 102);
-    return { engine, sessionId, runId, loopId, turnId };
-};
-
 test("file.edit: writes file on accept via applyResolution", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            // Pre-seed an existing file so the EDIT computes a real diff.
-            const target = "src/hello.txt";
-            await mkdir(join(root, "src"), { recursive: true });
-            await writeFile(join(root, target), "hello\n", "utf8");
+    await withWorkspaceRoot(async (root, ctx) => {
+        // Pre-seed an existing file so the EDIT computes a real diff.
+        const target = "src/hello.txt";
+        await mkdir(join(root, "src"), { recursive: true });
+        await writeFile(join(root, target), "hello\n", "utf8");
 
-            const stmt = fileEditStmt(target, "hello world\n");
-            // Need to route through "file" scheme name (Engine uses
-            // statement.path.scheme to look up the handler). Adjust by
-            // re-registering under "file" — we'll just register a fresh
-            // engine with the proper scheme name binding.
-            const schemes2 = new SchemeRegistry();
-            // SchemeRegistry already registers "file" → File in its
-            // constructor; just use the engine's default.
-            const engine2 = new Engine({ db, schemes: schemes2 });
+        const stmt = fileEditStmt(target, "hello world\n");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        assert.equal(row?.state, "proposed");
+        assert.equal(row?.status_rx, 202);
+        const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string; canonical: string; patch: string; patched: string };
+        assert.equal(attrs.path, target);
+        assert.equal(attrs.patched, "hello world\n");
+        assert.match(attrs.patch, /^Index: src\/hello\.txt/);
+        assert.match(attrs.patch, /-hello/);
+        assert.match(attrs.patch, /\+hello world/);
 
-            const idDeferred = deferred<number>();
-            const dispatchPromise = engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-                onDispatch: (id) => idDeferred.resolve(id),
-            });
-            const logEntryId = await idDeferred.promise;
-            // Verify the proposed entry has the right shape.
-            const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
-            assert.equal(row?.state, "proposed");
-            assert.equal(row?.status_rx, 202);
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string; canonical: string; patch: string; patched: string };
-            assert.equal(attrs.path, target);
-            assert.equal(attrs.patched, "hello world\n");
-            assert.match(attrs.patch, /^Index: src\/hello\.txt/);
-            assert.match(attrs.patch, /-hello/);
-            assert.match(attrs.patch, /\+hello world/);
-
-            // Accept the proposal → applyResolution writes to disk.
-            engine2.resolveProposal(logEntryId, { decision: "accept" });
-            const result = await dispatchPromise;
-            assert.equal(result.status, 200);
-            const onDisk = await readFile(join(root, target), "utf8");
-            assert.equal(onDisk, "hello world\n");
-        } finally { await db.close(); }
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200);
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, "hello world\n");
     });
 });
 
 test("file.edit: rejection leaves file untouched", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            const target = "untouched.txt";
-            await writeFile(join(root, target), "original\n", "utf8");
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "untouched.txt";
+        await writeFile(join(root, target), "original\n", "utf8");
 
-            const stmt = fileEditStmt(target, "should-not-land\n");
-            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
-
-            const idDeferred = deferred<number>();
-            const dispatchPromise = engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-                onDispatch: (id) => idDeferred.resolve(id),
-            });
-            const logEntryId = await idDeferred.promise;
-            engine2.resolveProposal(logEntryId, { decision: "reject", outcome: "reviewer_said_no" });
-            const result = await dispatchPromise;
-            assert.equal(result.status, 400);
-            const onDisk = await readFile(join(root, target), "utf8");
-            assert.equal(onDisk, "original\n", "rejected EDIT must not touch disk");
-        } finally { await db.close(); }
+        const stmt = fileEditStmt(target, "should-not-land\n");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "reject", outcome: "reviewer_said_no" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 400);
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, "original\n", "rejected EDIT must not touch disk");
     });
 });
 
 test("file.edit: creates a new file on accept (target doesn't exist)", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            await mkdir(join(root, "new-dir"), { recursive: true });
-            const target = "new-dir/new-file.md";
-            const stmt = fileEditStmt(target, "# Created via proposal\n");
-            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
+    await withWorkspaceRoot(async (root, ctx) => {
+        await mkdir(join(root, "new-dir"), { recursive: true });
+        const target = "new-dir/new-file.md";
+        const stmt = fileEditStmt(target, "# Created via proposal\n");
 
-            const idDeferred = deferred<number>();
-            const dispatchPromise = engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-                onDispatch: (id) => idDeferred.resolve(id),
-            });
-            const logEntryId = await idDeferred.promise;
-            engine2.resolveProposal(logEntryId, { decision: "accept" });
-            const result = await dispatchPromise;
-            assert.equal(result.status, 200);
-            const onDisk = await readFile(join(root, target), "utf8");
-            assert.equal(onDisk, "# Created via proposal\n");
-        } finally { await db.close(); }
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200);
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, "# Created via proposal\n");
     });
 });
 
 test("file.edit: refuses traversal escape", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            const stmt = fileEditStmt("../escape.txt", "nope\n");
-            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
-
-            const result = await engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-            });
-            assert.equal(result.status, 403);
-        } finally { await db.close(); }
+    await withWorkspaceRoot(async (_root, ctx) => {
+        const stmt = fileEditStmt("../escape.txt", "nope\n");
+        const result = await ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 403);
     });
 });
 
 test("bare path: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            const target = "from-bare.txt";
-            await writeFile(join(root, target), "original\n", "utf8");
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "from-bare.txt";
+        await writeFile(join(root, target), "original\n", "utf8");
 
-            // No file:// prefix — the form the sysprompt teaches.
-            const stmt = bareEditStmt(target, "bare-path edit\n");
-            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
+        // No file:// prefix — the form the sysprompt teaches.
+        const stmt = bareEditStmt(target, "bare-path edit\n");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
 
-            const idDeferred = deferred<number>();
-            const dispatchPromise = engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-                onDispatch: (id) => idDeferred.resolve(id),
-            });
-            const logEntryId = await idDeferred.promise;
+        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
+        assert.equal(row?.state, "proposed");
+        const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };
+        assert.equal(attrs.path, target);
 
-            // Confirm log entry reports file scheme (proves routing).
-            const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
-            assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
-            assert.equal(row?.state, "proposed");
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };
-            assert.equal(attrs.path, target);
-
-            engine2.resolveProposal(logEntryId, { decision: "accept" });
-            const result = await dispatchPromise;
-            assert.equal(result.status, 200);
-            const onDisk = await readFile(join(root, target), "utf8");
-            assert.equal(onDisk, "bare-path edit\n");
-        } finally { await db.close(); }
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200);
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, "bare-path edit\n");
     });
 });
 
 test("file.read: still works alongside the new edit path", async () => {
-    await withWorkspaceRoot(async (root) => {
-        const db = await openMigrated();
-        try {
-            const ctx = await setupEngine(db);
-            const target = "read-me.txt";
-            await writeFile(join(root, target), "content\n", "utf8");
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "read-me.txt";
+        await writeFile(join(root, target), "content\n", "utf8");
 
-            const stmt = fileReadStmt(target);
-            const engine2 = new Engine({ db, schemes: new SchemeRegistry() });
-            const result = await engine2.dispatch({
-                statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-                loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
-            });
-            assert.equal(result.status, 200);
-        } finally { await db.close(); }
+        const stmt = fileReadStmt(target);
+        const result = await ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 200);
     });
+});
+
+test("file.edit: headless session (no project_root) → 400", async () => {
+    // Reproduce the live-blocker bug we just fixed: session with no
+    // project_root set returns 400 with a clear error pointing at the
+    // session.set_root RPC. Previously this would have been the env-var
+    // case.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `headless-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "headless");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const stmt = bareEditStmt("any.txt", "content\n");
+        const result = await engine.dispatch({
+            statement: stmt, sessionId, runId, loopId, turnId,
+            actionIndex: 0, origin: "model",
+        });
+        assert.equal(result.status, 400);
+    } finally { await db.close(); }
 });

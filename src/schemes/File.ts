@@ -2,12 +2,46 @@ import { readFile, realpath, writeFile } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
+
+// Workspace root for file ops is sourced from `sessions.project_root`,
+// supplied by the client at session.create or session.set_root (issue
+// #150 wired the RPC; F.1 added the column). Server doesn't guess —
+// the client owns workspace identity. If a session is headless
+// (project_root=null), file ops fail at 400; the client either supplies
+// a root or the op isn't appropriate for this session.
+const loadSessionRoot = async (db: Db, sessionId: number): Promise<string | null> => {
+    const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+    return row?.project_root ?? null;
+};
+
+type ContainmentResult =
+    | { canonical: string; root: string }
+    | { error: "no-root" | "traversal" | "not-found" };
+
+// Resolve + workspace-root containment check. Returns the canonical
+// path on success; classified error on absence/traversal. Used by read.
+const resolveContained = async (pathname: string, root: string): Promise<ContainmentResult> => {
+    const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
+    let canonical: string;
+    try {
+        canonical = await realpath(requested);
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            return { error: "not-found" };
+        }
+        throw err;
+    }
+    const rel = relative(root, canonical);
+    if (rel.startsWith("..") || isAbsolute(rel)) return { error: "traversal" };
+    return { canonical, root };
+};
 
 export default class File {
     static manifest: SchemeManifest = {
@@ -24,48 +58,18 @@ export default class File {
         },
     };
 
-    #workspaceRoot: string | null = null;
-
-    #resolveWorkspaceRoot(): string | null {
-        if (this.#workspaceRoot !== null) return this.#workspaceRoot;
-        const root = process.env.PLURNK_WORKSPACE_ROOT;
-        if (root === undefined || root === "") return null;
-        this.#workspaceRoot = resolve(root);
-        return this.#workspaceRoot;
-    }
-
-    // Resolve + workspace-root containment check. Returns null on absence;
-    // throws on traversal escape. Used by both read and edit.
-    async #resolveContained(pathname: string): Promise<{ canonical: string; root: string } | { error: "no-root" | "traversal" | "not-found" }> {
-        const root = this.#resolveWorkspaceRoot();
-        if (root === null) return { error: "no-root" };
-        const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
-        let canonical: string;
-        try {
-            canonical = await realpath(requested);
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-                // For edit, missing target is OK — we'll write it. Caller
-                // distinguishes by checking error === "not-found".
-                return { error: "not-found" };
-            }
-            throw err;
-        }
-        const rel = relative(root, canonical);
-        if (rel.startsWith("..") || isAbsolute(rel)) return { error: "traversal" };
-        return { canonical, root };
-    }
-
-    async read(statement: ReadStatement, _ctx: PlurnkSchemeContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         if (statement.path === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };
         if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null };
 
+        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        if (root === null) return { status: 400, content: null, mimetype: null };
+
         const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
-        const resolved = await this.#resolveContained(pathname);
+        const resolved = await resolveContained(pathname, root);
         if ("error" in resolved) {
-            if (resolved.error === "no-root") return { status: 400, content: null, mimetype: null };
             if (resolved.error === "not-found") return { status: 404, content: null, mimetype: null };
             return { status: 403, content: null, mimetype: null };  // traversal
         }
@@ -77,14 +81,16 @@ export default class File {
     // with a udiff body for client review + attrs carrying the full patched
     // content. Engine writes the proposed log entry, pauses dispatch, and
     // calls applyResolution() (below) after the proposal accepts.
-    async edit(statement: EditStatement, _ctx: PlurnkSchemeContext): Promise<EditResult> {
+    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
         if (statement.path === null) return { status: 400, error: "EDIT requires a path" };
         if (statement.lineMarker !== null) return { status: 501, error: "lineMarker-based edits not yet supported" };
 
-        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
-        const root = this.#resolveWorkspaceRoot();
-        if (root === null) return { status: 400, error: "PLURNK_WORKSPACE_ROOT must be set" };
+        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        if (root === null) {
+            return { status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
+        }
 
+        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
         // Containment check (canonical path inside workspace). For edits,
         // a not-found target is fine — we're proposing to create or
         // overwrite. Traversal escape is fatal.
