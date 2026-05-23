@@ -13,7 +13,7 @@ import { Lexer, type Token } from "marked";
 //
 // validate() inherits BaseHandler's no-op default (any string is valid markdown).
 export default class TextMarkdown extends BaseHandler {
-    extract(content: string): MimeSymbol[] {
+    override extractRaw(content: string): MimeSymbol[] {
         const tokens = new Lexer().lex(content);
         const symbols: MimeSymbol[] = [];
         let currentLine = 1;

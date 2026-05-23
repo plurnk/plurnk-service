@@ -23,7 +23,7 @@ describe("TextMarkdown", () => {
 
     it("extracts a single ATX heading", () => {
         const h = new TextMarkdown(metadata);
-        const symbols = h.extract("# Title\n");
+        const symbols = h.extractRaw("# Title\n");
         assert.equal(symbols.length, 1);
         assert.deepEqual(symbols[0], {
             name: "Title",
@@ -47,7 +47,7 @@ describe("TextMarkdown", () => {
             "",
             "## Other",
         ].join("\n");
-        const symbols = h.extract(src);
+        const symbols = h.extractRaw(src);
         const byName = new Map(symbols.map((s) => [s.name, s]));
         assert.equal(byName.get("Top")?.line, 1);
         assert.equal(byName.get("Top")?.level, 1);
@@ -68,7 +68,7 @@ describe("TextMarkdown", () => {
             "Title Two",
             "---------",
         ].join("\n");
-        const symbols = h.extract(src);
+        const symbols = h.extractRaw(src);
         const names = symbols.map((s) => s.name);
         assert.ok(names.includes("Title One"));
         assert.ok(names.includes("Title Two"));
@@ -89,7 +89,7 @@ describe("TextMarkdown", () => {
             "",
             "After code.",
         ].join("\n");
-        const symbols = h.extract(src);
+        const symbols = h.extractRaw(src);
         const code = symbols.find((s) => s.kind === "module");
         assert.ok(code);
         assert.equal(code.name, "typescript");
@@ -104,7 +104,7 @@ describe("TextMarkdown", () => {
             "raw code",
             "```",
         ].join("\n");
-        const symbols = h.extract(src);
+        const symbols = h.extractRaw(src);
         const code = symbols.find((s) => s.kind === "module");
         assert.ok(code);
         assert.equal(code.name, "code");
@@ -120,22 +120,22 @@ describe("TextMarkdown", () => {
             "- item one",
             "- item two",
         ].join("\n");
-        const symbols = h.extract(src);
+        const symbols = h.extractRaw(src);
         assert.equal(symbols.length, 1);
         assert.equal(symbols[0].name, "Heading");
     });
 
     it("returns empty array for content with no headings or code blocks", () => {
         const h = new TextMarkdown(metadata);
-        assert.deepEqual(h.extract("Just a paragraph with no structure."), []);
+        assert.deepEqual(h.extractRaw("Just a paragraph with no structure."), []);
     });
 
     it("returns empty array for empty input", () => {
         const h = new TextMarkdown(metadata);
-        assert.deepEqual(h.extract(""), []);
+        assert.deepEqual(h.extractRaw(""), []);
     });
 
-    it("symbols() renders heading hierarchy via format()", () => {
+    it("symbolsRaw() renders heading hierarchy via format()", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "# Top",
@@ -144,9 +144,18 @@ describe("TextMarkdown", () => {
             "",
             "### Subsection",
         ].join("\n");
-        const out = h.symbols(src);
+        const out = h.symbolsRaw(src);
         assert.ok(out.includes("# Top"));
         assert.ok(out.includes("## Section"));
         assert.ok(out.includes("### Subsection"));
+    });
+
+    it("preview returns a SymbolPreview wrapping extractRaw output", async () => {
+        const h = new TextMarkdown(metadata);
+        const preview = await h.preview("# Top\n\n## Section\n");
+        assert.equal(preview?.kind, "symbols");
+        if (preview?.kind !== "symbols") return;
+        const names = [...preview.symbols].map((s) => s.name);
+        assert.deepEqual(names, ["Top", "Section"]);
     });
 });
