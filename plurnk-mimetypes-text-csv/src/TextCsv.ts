@@ -6,13 +6,13 @@ import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 //
 // validate(): walk all records, throw on unbalanced quotes or non-uniform
 //             column count across rows.
-// extract(): emit one `field` symbol per header column, at line 1.
+// extractRaw(): emit one `field` symbol per header column, at line 1.
 //
 // Quote-stripped header tokens become field names. Empty headers become
 // empty-named symbols (still emitted — surfacing the column count is
 // meaningful even when headers are blank).
 export default class TextCsv extends BaseHandler {
-    validate(content: string): void {
+    override validate(content: string): void {
         const records = parseAll(content);
         if (records.length === 0) return;
         const expected = records[0].length;
@@ -25,7 +25,7 @@ export default class TextCsv extends BaseHandler {
         }
     }
 
-    extract(content: string): MimeSymbol[] {
+    override extractRaw(content: string): MimeSymbol[] {
         const records = parseAll(content);
         if (records.length === 0) return [];
         return records[0].map((name) => ({

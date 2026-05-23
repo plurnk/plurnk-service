@@ -12,7 +12,7 @@ const h = new TextCsv(metadata);
 
 describe("TextCsv — extract", () => {
     it("extracts header columns as field symbols at line 1", () => {
-        const result = h.extract("name,age,role\nalice,30,admin\nbob,25,user\n");
+        const result = h.extractRaw("name,age,role\nalice,30,admin\nbob,25,user\n");
         assert.deepEqual(
             result.map((s) => ({ name: s.name, kind: s.kind, line: s.line })),
             [
@@ -24,31 +24,31 @@ describe("TextCsv — extract", () => {
     });
 
     it("respects quoted fields containing commas", () => {
-        const result = h.extract('"name, formal","desc"\nalice,nope\n');
+        const result = h.extractRaw('"name, formal","desc"\nalice,nope\n');
         assert.deepEqual(result.map((s) => s.name), ["name, formal", "desc"]);
     });
 
     it("unescapes double-quote-inside-quoted-field", () => {
-        const result = h.extract('"she said ""hi""",x\nfoo,bar\n');
+        const result = h.extractRaw('"she said ""hi""",x\nfoo,bar\n');
         assert.deepEqual(result.map((s) => s.name), ['she said "hi"', "x"]);
     });
 
     it("handles CRLF line endings", () => {
-        const result = h.extract("a,b,c\r\n1,2,3\r\n");
+        const result = h.extractRaw("a,b,c\r\n1,2,3\r\n");
         assert.deepEqual(result.map((s) => s.name), ["a", "b", "c"]);
     });
 
     it("handles file without trailing newline", () => {
-        const result = h.extract("a,b,c");
+        const result = h.extractRaw("a,b,c");
         assert.deepEqual(result.map((s) => s.name), ["a", "b", "c"]);
     });
 
     it("returns empty array for empty input", () => {
-        assert.deepEqual(h.extract(""), []);
+        assert.deepEqual(h.extractRaw(""), []);
     });
 
     it("emits empty-named symbols for blank headers (column count preserved)", () => {
-        const result = h.extract("a,,c\n1,2,3\n");
+        const result = h.extractRaw("a,,c\n1,2,3\n");
         assert.deepEqual(result.map((s) => s.name), ["a", "", "c"]);
     });
 });
