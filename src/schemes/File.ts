@@ -4,10 +4,11 @@ import { createPatch } from "diff";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import { writeEntry } from "./_entry-crud.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
-type ApplyArgs = { attrs: { path?: string; patched?: string; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
 // Workspace root for file ops is sourced from `sessions.project_root`,
@@ -128,22 +129,29 @@ export default class File {
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
-    // entry resolves with decision=accept. Reads the attrs that the
-    // earlier edit() returned and writes the patched content to disk.
-    // Returns the final outcome that gets stored on the log entry.
-    async applyResolution(args: ApplyArgs): Promise<ApplyResult> {
+    // entry resolves with decision=accept. Two responsibilities:
+    //   1. Write the patched content to disk.
+    //   2. Register an entries+visibility row so the file appears in
+    //      the next packet's # Plurnk System Index. Without (2), the
+    //      model has no artifact of completion to read and tends to
+    //      re-EDIT the same file across turns. The index is what tells
+    //      the model "your prior work landed."
+    async applyResolution(args: ApplyArgs, ctx: PlurnkSchemeContext): Promise<ApplyResult> {
         const { attrs, body } = args;
         const canonical = attrs.canonical;
+        const relPath = attrs.path;
         const patched = body ?? attrs.patched;
         if (typeof canonical !== "string" || canonical.length === 0) {
             return { status: 500, outcome: "applyResolution: missing attrs.canonical" };
+        }
+        if (typeof relPath !== "string" || relPath.length === 0) {
+            return { status: 500, outcome: "applyResolution: missing attrs.path" };
         }
         if (typeof patched !== "string") {
             return { status: 500, outcome: "applyResolution: missing patched content" };
         }
         try {
             await writeFile(canonical, patched, "utf8");
-            return { status: 200 };
         } catch (err) {
             return {
                 status: 500,
@@ -151,5 +159,28 @@ export default class File {
                 body: err instanceof Error ? err.message : String(err),
             };
         }
+        // Register the file as an indexed entry so the next packet's
+        // # Plurnk System Index shows it under file://<relPath> with
+        // the body content visible. mimetype is best-effort by file
+        // extension; .md → text/markdown, anything else → text/plain.
+        const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
+        try {
+            await writeEntry(relPath, {
+                channels: { body: { content: patched, mimetype } },
+                tags: [],
+            }, ctx, "file");
+        } catch (err) {
+            // Disk write succeeded; entry registration failed. Surface
+            // the write as 200 (file is on disk) but log the failure —
+            // index just won't reflect it until next time.
+            // (Could harden to roll back the file write; for v0,
+            // disk-truth-of-record wins.)
+            return {
+                status: 200,
+                outcome: "indexed_failed",
+                body: err instanceof Error ? err.message : String(err),
+            };
+        }
+        return { status: 200 };
     }
 }
