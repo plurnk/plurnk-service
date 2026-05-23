@@ -66,8 +66,12 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal(turn.usage_completion, 42);
 
+        // 3 log_entries: 1 client-origin SEND[200] for the prompt at
+        // action_index=0 (written when the turn opens) + 2 model ops
+        // (EDIT at 1, SEND at 2). Turn-as-container model — pre-model
+        // writes share the turn's action_index counter.
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 2);
+        assert.equal(logCount, 3);
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
@@ -95,7 +99,10 @@ test("Engine.runTurn: packet stores system + user content from messages", async 
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
+test("Engine.runTurn: multi-op turn — prompt at 0, model ops at 1..N", async () => {
+    // Turn-as-container model. Turn 1 opens with action_index=0 reserved
+    // for the prompt (client-origin SEND[200]). The 4 model ops dispatch
+    // at 1, 2, 3, 4 — continuing the turn's running counter.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -107,8 +114,17 @@ test("Engine.runTurn: multi-op turn action_indexes 0..N-1", async () => {
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         assert.deepEqual(result.statuses, [201, 201, 201, 200]);
-        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number }>({ turn_id: result.turnId });
-        assert.deepEqual(indices.map((r) => r.action_index), [0, 1, 2, 3]);
+        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; op: string }>({ turn_id: result.turnId });
+        assert.deepEqual(
+            indices.map((r) => ({ idx: r.action_index, op: r.op })),
+            [
+                { idx: 0, op: "SEND" }, // the prompt
+                { idx: 1, op: "EDIT" },
+                { idx: 2, op: "EDIT" },
+                { idx: 3, op: "EDIT" },
+                { idx: 4, op: "SEND" },
+            ],
+        );
     } finally { await db.close(); }
 });
 
@@ -556,11 +572,13 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 // SPEC §15 packet.system.log — chronological action-entries for the loop.
 // Task #44.
 
-test("Engine.runTurn: packet.system.log on first turn contains only the synthetic prompt entry", async () => {
-    // Shim per AGENTS.md §Open: #buildLog prepends a PROMPT entry sourced
-    // from loops.prompt so the wire's `# Plurnk System Log` is never empty
-    // on turn 1. Real fix logs the prompt as a first-class log_entries
-    // row that's URI-addressable.
+test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
+    // Turn-as-container: turn 1 opens with the prompt written as a real
+    // log_entries row (origin=client, op=SEND, action_index=0). When
+    // #buildLog snapshots the log for THIS turn's packet, the prompt is
+    // already there. The 2 model ops dispatch AFTER the packet builds,
+    // so they don't appear in this turn's snapshot — they'll surface
+    // in turn 2's snapshot.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -569,9 +587,10 @@ test("Engine.runTurn: packet.system.log on first turn contains only the syntheti
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; origin: string }> } };
-        assert.equal(packet.system.log.length, 1, "first turn: only the synthetic prompt entry");
-        assert.equal(packet.system.log[0].op, "PROMPT");
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ coordinate: string; op: string; origin: string }> } };
+        assert.equal(packet.system.log.length, 1);
+        assert.equal(packet.system.log[0].coordinate, "1/1/0");
+        assert.equal(packet.system.log[0].op, "SEND");
         assert.equal(packet.system.log[0].origin, "client");
     } finally { await db.close(); }
 });
@@ -590,17 +609,19 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null } }> };
+            system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null }; origin: string }> };
         };
-        // 1 synthetic PROMPT entry + 2 real actions from turn 1
-        assert.equal(packet.system.log.length, 3, "turn 2 packet: PROMPT + 2 actions from turn 1");
-        assert.equal(packet.system.log[0].op, "PROMPT");
-        assert.equal(packet.system.log[1].coordinate, "1/1/0");
+        // Turn 2 packet sees: prompt at 1/1/0 + 2 model ops at 1/1/1 + 1/1/2
+        assert.equal(packet.system.log.length, 3);
+        assert.equal(packet.system.log[0].coordinate, "1/1/0");
+        assert.equal(packet.system.log[0].op, "SEND");
+        assert.equal(packet.system.log[0].origin, "client");
+        assert.equal(packet.system.log[1].coordinate, "1/1/1");
         assert.equal(packet.system.log[1].op, "EDIT");
         assert.equal(packet.system.log[1].status, 201);
         assert.equal(packet.system.log[1].target.scheme, "known");
         assert.equal(packet.system.log[1].target.pathname, "/a");
-        assert.equal(packet.system.log[2].coordinate, "1/1/1");
+        assert.equal(packet.system.log[2].coordinate, "1/1/2");
         assert.equal(packet.system.log[2].op, "SEND");
         assert.equal(packet.system.log[2].status, 102);
     } finally { await db.close(); }
@@ -671,7 +692,8 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(packet.user.telemetry.errors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.user.telemetry.errors;
         assert.equal(err.kind, "action_failure");
-        assert.equal(err.coordinate, "1/1/0");
+        // Turn-as-container: prompt at 1/1/0; model's EDIT shifts to 1/1/1.
+        assert.equal(err.coordinate, "1/1/1");
         assert.equal(err.op, "EDIT");
         assert.equal(err.target, "log:///illegal");
         assert.equal(err.status, 403);
