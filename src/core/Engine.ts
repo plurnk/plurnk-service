@@ -559,7 +559,7 @@ export default class Engine {
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
         const index = await this.#buildIndex(runId);
-        const log = await this.#buildLog(loopId);
+        const log = await this.#buildLog(runId);
         const telemetryErrors = await this.#buildTelemetryErrors(loopId);
         // Rummy AgentLoop.js #buildContinuationPrompt: literally
         // `Turn ${turn}/${maxTurns}`. That's the whole string. The model
@@ -686,7 +686,10 @@ export default class Engine {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log://<loop_seq>/<turn_seq>/<action_index> coordinate the model can READ.
-    async #buildLog(loopId: number): Promise<object[]> {
+    async #buildLog(runId: number): Promise<object[]> {
+        // SPEC §0.6: runs own log entries — log is the run's history,
+        // not the loop's. Span all loops in the run so the model sees
+        // earlier loops' work as conversational memory.
         const rows = await (this.#db.engine_render_log as PrepMethod).all<{
             loop_seq: number; turn_seq: number; action_index: number;
             origin: string; op: string; suffix: string; signal: string | null;
@@ -694,34 +697,38 @@ export default class Engine {
             target_hostname: string | null; target_port: number | null; target_pathname: string | null;
             target_params: string | null; target_fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-        }>({ loop_id: loopId });
-        const entries: object[] = rows.map((r) => ({
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
-            origin: r.origin,
-            op: r.op,
-            suffix: r.suffix,
-            signal: r.signal === null ? null : JSON.parse(r.signal),
-            target: {
-                scheme: r.target_scheme,
-                username: r.target_username, password: r.target_password,
-                hostname: r.target_hostname, port: r.target_port,
-                pathname: r.target_pathname,
-                params: r.target_params === null ? null : JSON.parse(r.target_params),
-                fragment: r.target_fragment,
+        }>({ run_id: runId });
+        const realEntries = rows.map((r) => ({
+            sortKey: [r.loop_seq, r.turn_seq, r.action_index] as [number, number, number],
+            entry: {
+                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+                origin: r.origin,
+                op: r.op,
+                suffix: r.suffix,
+                signal: r.signal === null ? null : JSON.parse(r.signal),
+                target: {
+                    scheme: r.target_scheme,
+                    username: r.target_username, password: r.target_password,
+                    hostname: r.target_hostname, port: r.target_port,
+                    pathname: r.target_pathname,
+                    params: r.target_params === null ? null : JSON.parse(r.target_params),
+                    fragment: r.target_fragment,
+                },
+                status: r.status_rx,
+                rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
+                mimetype_rx: r.mimetype_rx,
             },
-            status: r.status_rx,
-            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
-            mimetype_rx: r.mimetype_rx,
         }));
-        // Synthetic prompt entry — SHIM per AGENTS.md §Open. Prepends a
-        // "PROMPT" entry sourced from loops.prompt so `# Plurnk System Log`
-        // is never empty on turn 1. NOT URI-addressable yet (no
-        // corresponding row in log_entries / no scheme handler); real fix
-        // logs the prompt as a first-class entry the model can READ.
-        const loopRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
-        if (loopRow !== undefined && typeof loopRow.prompt === "string" && loopRow.prompt.length > 0) {
-            entries.unshift({
-                coordinate: `${loopRow.sequence}/0/0`,
+        // Synthetic PROMPT entries — SHIM per AGENTS.md §Open. One per
+        // loop in the run with a non-empty prompt, coordinate L/0/0 so
+        // sort-by-(loop,turn,action) places it before that loop's actions.
+        // NOT URI-addressable yet; real fix writes a first-class log_entries
+        // row at loop start so the model can READ it.
+        const loopRows = await (this.#db.engine_get_run_prompts as PrepMethod).all<{ id: number; sequence: number; prompt: string }>({ run_id: runId });
+        const promptEntries = loopRows.map((l) => ({
+            sortKey: [l.sequence, 0, 0] as [number, number, number],
+            entry: {
+                coordinate: `${l.sequence}/0/0`,
                 origin: "client",
                 op: "PROMPT",
                 suffix: "",
@@ -732,11 +739,17 @@ export default class Engine {
                     params: null, fragment: null,
                 },
                 status: 200,
-                rx: loopRow.prompt,
+                rx: l.prompt,
                 mimetype_rx: "text/plain",
-            });
-        }
-        return entries;
+            },
+        }));
+        return [...realEntries, ...promptEntries]
+            .sort((a, b) => {
+                if (a.sortKey[0] !== b.sortKey[0]) return a.sortKey[0] - b.sortKey[0];
+                if (a.sortKey[1] !== b.sortKey[1]) return a.sortKey[1] - b.sortKey[1];
+                return a.sortKey[2] - b.sortKey[2];
+            })
+            .map((e) => e.entry);
     }
 
     async #buildIndex(runId: number): Promise<object[]> {

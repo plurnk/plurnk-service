@@ -24,10 +24,14 @@ JOIN runs r ON r.id = l.run_id
 JOIN sessions s ON s.id = r.session_id
 WHERE l.id = $loop_id;
 
--- PREP: engine_get_loop_prompt
--- Loop-level prompt + sequence — used by #buildLog to synthesize a prompt
--- log entry (shim per AGENTS.md §Open: prompt as first-class log entry).
-SELECT prompt, sequence FROM loops WHERE id = $loop_id;
+-- PREP: engine_get_run_prompts
+-- All loop prompts in a run — used by #buildLog to synthesize PROMPT
+-- entries (shim per AGENTS.md §Open: prompt as first-class log entry).
+-- ORDER matches engine_render_log so synthetic prompts interleave
+-- correctly with real actions when sorted by (loop_seq, turn_seq, action).
+SELECT id, sequence, prompt FROM loops
+WHERE run_id = $run_id AND prompt != ''
+ORDER BY sequence;
 
 -- PREP: engine_loop_cancel
 UPDATE loops SET status = 499 WHERE id = $loop_id;
@@ -86,11 +90,10 @@ ORDER BY le.action_index;
 
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §15 packet.system.log, task #44).
--- Yields log_entries for this loop, joined with the turn's sequence so the
--- model gets a stable log://<loop_seq>/<turn_seq>/<action_index> coordinate.
--- Status 202 entries in state='proposed' are model-invisible until resolved
--- (rummy SPEC #message_structure). Once state transitions to resolved/failed/
--- cancelled the entry surfaces in the next packet's log.
+-- Yields log_entries for the whole RUN — the conversation's working
+-- memory carries across loops within a session's run, not just the
+-- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<action_index>.
+-- Status 202 entries in state='proposed' are model-invisible until resolved.
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
@@ -105,9 +108,9 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
-WHERE le.loop_id = $loop_id
+WHERE le.run_id = $run_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
-ORDER BY t.sequence, le.action_index;
+ORDER BY l.sequence, t.sequence, le.action_index;
 
 -- PREP: engine_insert_log_entry
 -- Default state='resolved' covers the common path (non-proposing schemes
