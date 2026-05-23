@@ -21,8 +21,13 @@
         "bin/plurnk-service.js",
         "dist/**/*",
         "migrations/**/*.sql",
-        "instructions-system.md"
+        "persona.md",
+        "README.md",
+        "SPEC.md"
     ],
+    "publishConfig": {
+        "access": "public"
+    },
     "scripts": {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --test src/**/*.test.ts",
