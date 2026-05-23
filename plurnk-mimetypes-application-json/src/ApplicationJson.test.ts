@@ -82,7 +82,7 @@ describe("ApplicationJson — extract", () => {
     const h = new ApplicationJson(jsonMetadata);
 
     it("returns top-level keys as field symbols", () => {
-        const result = h.extract(`{"name":"plurnk","version":"0.2.0"}`);
+        const result = h.extractRaw(`{"name":"plurnk","version":"0.2.0"}`);
         assert.deepEqual(
             result.map((s) => ({ name: s.name, kind: s.kind })),
             [
@@ -104,7 +104,7 @@ describe("ApplicationJson — extract", () => {
             "    }",
             "}",
         ].join("\n");
-        const result = h.extract(src);
+        const result = h.extractRaw(src);
         const names = result.map((s) => s.name);
         assert.ok(names.includes("scripts"));
         assert.ok(names.includes("test"));
@@ -120,7 +120,7 @@ describe("ApplicationJson — extract", () => {
             '    "admin": { "name": "bob" }',
             "}",
         ].join("\n");
-        const result = h.extract(src);
+        const result = h.extractRaw(src);
         const nameEntries = result.filter((s) => s.name === "name");
         assert.equal(nameEntries.length, 2);
         assert.equal(nameEntries[0].line, 2);
@@ -136,7 +136,7 @@ describe("ApplicationJson — extract", () => {
             "    ]",
             "}",
         ].join("\n");
-        const result = h.extract(src);
+        const result = h.extractRaw(src);
         const names = result.map((s) => s.name);
         assert.ok(names.includes("users"));
         assert.equal(names.filter((n) => n === "id").length, 2);
@@ -150,7 +150,7 @@ describe("ApplicationJson — extract", () => {
             '    "third": 3',
             "}",
         ].join("\n");
-        const result = h.extract(src);
+        const result = h.extractRaw(src);
         const byName = new Map(result.map((s) => [s.name, s.line]));
         assert.equal(byName.get("first"), 2);
         assert.equal(byName.get("second"), 3);
@@ -158,22 +158,22 @@ describe("ApplicationJson — extract", () => {
     });
 
     it("returns empty array for array root", () => {
-        assert.deepEqual(h.extract(`[1,2,3]`), []);
+        assert.deepEqual(h.extractRaw(`[1,2,3]`), []);
     });
 
     it("returns empty array for scalar root", () => {
-        assert.deepEqual(h.extract(`42`), []);
-        assert.deepEqual(h.extract(`"hello"`), []);
-        assert.deepEqual(h.extract(`null`), []);
-        assert.deepEqual(h.extract(`true`), []);
+        assert.deepEqual(h.extractRaw(`42`), []);
+        assert.deepEqual(h.extractRaw(`"hello"`), []);
+        assert.deepEqual(h.extractRaw(`null`), []);
+        assert.deepEqual(h.extractRaw(`true`), []);
     });
 
     it("extract is non-throwing on malformed JSON (validate is the throwing path)", () => {
-        assert.deepEqual(h.extract(`{not valid`), []);
+        assert.deepEqual(h.extractRaw(`{not valid`), []);
     });
 
     it("handles empty object", () => {
-        assert.deepEqual(h.extract(`{}`), []);
+        assert.deepEqual(h.extractRaw(`{}`), []);
     });
 
     it("extracts from JSONC (comments + trailing commas) when handler is application/jsonc", () => {
@@ -186,7 +186,7 @@ describe("ApplicationJson — extract", () => {
             '    "version": "0.2.0",  // with trailing comma',
             "}",
         ].join("\n");
-        const result = jsoncHandler.extract(src);
+        const result = jsoncHandler.extractRaw(src);
         const names = result.map((s) => s.name);
         assert.ok(names.includes("name"));
         assert.ok(names.includes("version"));
@@ -196,16 +196,25 @@ describe("ApplicationJson — extract", () => {
         // The string value contains `"fake":` but it's parsed as a string,
         // not a key. jsonc-parser sees only one real property.
         const src = `{"real":"oops \\"fake\\": looks like a key"}`;
-        const result = h.extract(src);
+        const result = h.extractRaw(src);
         assert.deepEqual(result.map((s) => s.name), ["real"]);
     });
 });
 
 describe("ApplicationJson — framework integration via BaseHandler", () => {
-    it("symbols renders extracted fields via format()", () => {
+    it("symbolsRaw renders extracted fields via format()", () => {
         const h = new ApplicationJson(jsonMetadata);
-        const out = h.symbols(`{"a":1,"b":2}`);
+        const out = h.symbolsRaw(`{"a":1,"b":2}`);
         assert.ok(out.includes("field a"));
         assert.ok(out.includes("field b"));
+    });
+
+    it("preview returns a SymbolPreview wrapping extractRaw output", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        const preview = await h.preview(`{"a":1,"b":2}`);
+        assert.equal(preview?.kind, "symbols");
+        if (preview?.kind !== "symbols") return;
+        const names = [...preview.symbols].map((s) => s.name);
+        assert.deepEqual(names, ["a", "b"]);
     });
 });

@@ -10,12 +10,12 @@ import { type Node, type ParseError, parseTree, printParseErrorCode } from "json
 // validate(): strict for application/json (no comments, no trailing commas);
 //             permissive for application/jsonc. Errors propagate per SPEC §7.
 //
-// extract(): every key occurrence at every depth as a `field` symbol, with
-//            line numbers from jsonc-parser's positional tree (Node.offset).
-//            No regex tokenization, no escape-handling reinvention — the
-//            parser does it.
+// extractRaw(): every key occurrence at every depth as a `field` symbol, with
+//               line numbers from jsonc-parser's positional tree (Node.offset).
+//               No regex tokenization, no escape-handling reinvention — the
+//               parser does it.
 export default class ApplicationJson extends BaseHandler {
-    validate(content: string): void {
+    override validate(content: string): void {
         const errors: ParseError[] = [];
         const allowsRelaxation = this.mimetype === "application/jsonc";
         parseTree(content, errors, {
@@ -30,7 +30,7 @@ export default class ApplicationJson extends BaseHandler {
         );
     }
 
-    extract(content: string): MimeSymbol[] {
+    override extractRaw(content: string): MimeSymbol[] {
         const errors: ParseError[] = [];
         const allowsRelaxation = this.mimetype === "application/jsonc";
         const tree = parseTree(content, errors, {
