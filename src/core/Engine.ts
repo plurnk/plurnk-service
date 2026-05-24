@@ -791,6 +791,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string;
             params: Record<string, string> | null;
             channels: Record<string, { content: string; mimetype: string; tokens: number }>;
+            defaultChannel: string;
             attributes: Record<string, unknown>;
             tags: string[];
         }>();
@@ -799,6 +800,12 @@ export default class Engine {
             let entry = entries.get(row.entry_id);
             if (entry === undefined) {
                 const tagRows = await tagsStmt.all<{ tag: string }>({ entry_id: row.entry_id });
+                // defaultChannel pulled from the row's scheme manifest. The
+                // wire renderer uses it to omit `#channel` on fences whose
+                // channel is the scheme's default — that absence is the
+                // addressing of the default channel.
+                const handler = this.#schemes.get(row.scheme ?? "");
+                const manifest = (handler?.constructor as { manifest?: SchemeManifest } | undefined)?.manifest;
                 entry = {
                     id: row.entry_id,
                     version: row.version,
@@ -812,6 +819,7 @@ export default class Engine {
                     pathname: row.pathname,
                     params: row.params === null ? null : JSON.parse(row.params),
                     channels: {},
+                    defaultChannel: manifest?.defaultChannel ?? "",
                     attributes: JSON.parse(row.attributes),
                     tags: tagRows.map((r) => r.tag),
                 };
