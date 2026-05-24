@@ -62,24 +62,8 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
     }
 
     const body = statement.body ?? "";
-    const upsertChannel = db.ops_upsert_channel as PrepMethod;
-    const writeVisibility = db.crud_write_visibility as PrepMethod;
-
-    if (fragment === null) {
-        // Default-channel EDIT — write target channel + preview companion.
-        await upsertChannel.run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
-        await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: targetChannel });
-        if ("preview" in channels && targetChannel !== "preview") {
-            // v0: preview is a verbatim copy of body. MimetypeHandler.preview()
-            // will refine this in a later PR (per SPEC §5.1).
-            await upsertChannel.run({ entry_id: entryId, name: "preview", content: body, mimetype: channels.preview });
-            await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: "preview" });
-        }
-    } else {
-        // Fragment-targeted EDIT — write only that channel.
-        await upsertChannel.run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
-        await writeVisibility.run({ run_id: runId, entry_id: entryId, channel: targetChannel });
-    }
+    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
+    await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: targetChannel });
 
     if (Array.isArray(statement.signal)) {
         for (const tag of statement.signal) {

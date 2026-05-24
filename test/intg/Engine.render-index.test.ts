@@ -105,11 +105,15 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
 
         const md = "# Heading\n\nbody text";
         const plain = "raw\nplain\ntext";
+        // Synthetic multi-channel entry — production schemes today are
+        // single-channel; this exercises the render-path's per-channel
+        // mimetype dispatch in advance of multi-channel schemes (exec,
+        // http) landing.
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "doc",
             channels: [
                 { name: "body", content: md, mimetype: "text/markdown" },
-                { name: "preview", content: plain, mimetype: "text/plain" },
+                { name: "summary", content: plain, mimetype: "text/plain" },
             ],
         });
 
@@ -117,10 +121,8 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
         const packet = await readPacket(db, result.turnId);
         const entry = packet.system.index[0];
 
-        // Both channels route through fitContent (empty discovery); each
-        // returns its raw content under the 256-token budget.
         assert.equal(entry.channels.body.content, md);
-        assert.equal(entry.channels.preview.content, plain);
+        assert.equal(entry.channels.summary.content, plain);
     } finally { await db.close(); }
 });
 

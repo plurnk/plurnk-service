@@ -12,7 +12,7 @@ import type { FindResult } from "./_entry-find.ts";
 export default class Unknown {
     static manifest: SchemeManifest = {
         name: "unknown",
-        channels: { body: "text/markdown", preview: "text/markdown" },
+        channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
         scope: "session",

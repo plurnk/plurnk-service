@@ -33,7 +33,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.ok(typeof unknownEntryId === "number");
 
         const channels1 = await (db.test_list_channel_names as PrepMethod).all<{ name: string }>({ entry_id: unknownEntryId });
-        assert.deepEqual(channels1.map((c) => c.name), ["body", "preview"]);
+        assert.deepEqual(channels1.map((c) => c.name), ["body"]);
 
         const [editUnknownAgain] = parse("<<EDIT[geography](unknown://france/capital):rephrased question:EDIT");
         const r2 = await dispatch(editUnknownAgain, 1);
@@ -57,39 +57,30 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const knownBody = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: knownEntryId, name: "body" }))?.content;
         assert.equal(knownBody, "Paris");
 
-        const [editPreview] = parse("<<EDIT(known://france/capital#preview):capital of france: Paris:EDIT");
-        const r5 = await dispatch(editPreview, 4);
-        assert.equal(r5.status, 200);
-        assert.equal(r5.channel, "preview");
-        const previewBody = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: knownEntryId, name: "preview" }))?.content;
-        assert.equal(previewBody, "capital of france: Paris");
-        const bodyStillParis = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: knownEntryId, name: "body" }))?.content;
-        assert.equal(bodyStillParis, "Paris");
-
         const [findByTag] = parse("<<FIND[answer](known://)::FIND");
-        const r6 = await dispatch(findByTag, 5);
+        const r6 = await dispatch(findByTag, 4);
         assert.equal(r6.status, 200);
         assert.deepEqual(r6.results, ["known://france/capital"]);
 
         const [findByGlob] = parse("<<FIND(known://):france*:FIND");
-        const r7 = await dispatch(findByGlob, 6);
+        const r7 = await dispatch(findByGlob, 5);
         assert.equal(r7.status, 200);
         assert.deepEqual(r7.results, ["known://france/capital"]);
 
         const [hideOp] = parse("<<HIDE(known://france/capital)::HIDE");
-        const r8 = await dispatch(hideOp, 7);
+        const r8 = await dispatch(hideOp, 6);
         assert.equal(r8.status, 200);
         const hiddenRows = await (db.test_visibility_for_entry_indexed as PrepMethod).all<{ indexed: number }>({ entry_id: knownEntryId });
         assert.ok(hiddenRows.every((r) => r.indexed === 0));
 
         const [showOp] = parse("<<SHOW(known://france/capital)::SHOW");
-        const r9 = await dispatch(showOp, 8);
+        const r9 = await dispatch(showOp, 7);
         assert.equal(r9.status, 200);
         const shownRows = await (db.test_visibility_for_entry_indexed as PrepMethod).all<{ indexed: number }>({ entry_id: knownEntryId });
         assert.ok(shownRows.every((r) => r.indexed === 1));
 
         const [moveOp] = parse("<<MOVE(known://france/capital):known://archive/france/capital:MOVE");
-        const r10 = await dispatch(moveOp, 9);
+        const r10 = await dispatch(moveOp, 8);
         assert.equal(r10.status, 201);
         const oldGone = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname: "france/capital" });
         assert.equal(oldGone, undefined);
@@ -98,13 +89,13 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.equal(archiveBody, "Paris");
 
         const [deleteOp] = parse("<<SEND[410](unknown://france/capital)::SEND");
-        const r11 = await dispatch(deleteOp, 10);
+        const r11 = await dispatch(deleteOp, 9);
         assert.equal(r11.status, 200);
         const unknownGone = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "unknown", pathname: "france/capital" });
         assert.equal(unknownGone, undefined);
 
         const [sendTerminal] = parse("<<SEND[200]:answer delivered:SEND");
-        const r12 = await dispatch(sendTerminal, 11);
+        const r12 = await dispatch(sendTerminal, 10);
         assert.equal(r12.status, 200);
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: env.loopId }))?.status;
         assert.equal(loopStatus, 200);
@@ -113,9 +104,9 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.deepEqual(allEntries, [{ scheme: "known", pathname: "archive/france/capital" }]);
 
         const logCount = (await (db.test_count_log_entries_by_run as PrepMethod).get<{ n: number }>({ run_id: env.runId }))?.n;
-        assert.equal(logCount, 12);
+        assert.equal(logCount, 11);
 
         const clientLogCount = (await (db.test_count_log_entries_run_origin as PrepMethod).get<{ n: number }>({ run_id: env.runId, origin: "client" }))?.n;
-        assert.equal(clientLogCount, 12);
+        assert.equal(clientLogCount, 11);
     } finally { await db.close(); }
 });

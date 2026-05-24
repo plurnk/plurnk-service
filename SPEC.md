@@ -2,9 +2,7 @@
 
 Single source of truth for what plurnk-service IS — the contracts it exposes, the architecture it implements, the promises it makes to the rest of the constellation (`plurnk-grammar`, `plurnk-providers-*`, `plurnk-schemes-*`, `plurnk-mimetypes-*`, the user-facing `plurnk` CLI). `AGENTS.md` covers how we work on it; this file covers what we're working on.
 
-Section numbers are stable. Future anchor-to-test wiring binds individual promises here to integration / live / demo tests, giving semi-deterministic specification-testing alignment.
-
-Floor scope is green (capstone intg test exercises every non-EXEC DSL op end-to-end). Post-floor work landed in #123: PlurnkSchemeContext (#33), the engine rails (#38–#41), packet shape (§15), single-cap constraint (§7.8), ProviderRegistry (#58), and first sibling-package extraction (#47). This document evolves with each phase; the next refinements will come from Phase C (mimetype integration story) and Phase F (exec + streams).
+Section numbers are stable. Anchor-to-test wiring binds individual promises here to integration / live / demo tests, giving semi-deterministic specification-testing alignment.
 
 **Promise anchors.** Individual contract assertions in this document carry a trailing `{§<id>}` marker. Tests reference these anchors in their names (`test("[§<id>] description", ...)`). An alignment test (`test/intg/spec-anchors.test.ts`) fails if a test cites a nonexistent anchor (orphan — typo or stale reference) and surfaces gaps (anchored promises with no test) informationally. The anchors are **grounding against drift**, not a forcing function on development — write the spec, write the test, jot the link, move on. Coverage grows organically.
 
@@ -342,20 +340,7 @@ Promises:
 
 ### §4.4 Bundled vs sibling handlers
 
-Only `text/plain` ships in `plurnk-service`'s `src/mimetypes/` — the universal fallback that every deployment needs and that has no external dependency. Every other mimetype handler ships as a sibling `@plurnk/plurnk-mimetypes-*` package and registers via Daemon's plugin discovery scan (§9).
-
-The first such extraction is `@plurnk/plurnk-mimetypes-text-markdown`, separate repo since #47. Validates the "bundle minimally" pattern. `application/json` and the DSL mimetype (`text/vnd.plurnk` — grammar #6 closed in favor of this id) follow the same pattern when they have consumers.
-
-Locked glyph assignments for the standard set:
-
-| Mimetype                          | Glyph | Where                              |
-|-----------------------------------|-------|------------------------------------|
-| `text/plain`                      | 📄    | bundled (`src/mimetypes/`)         |
-| `text/markdown`                   | 📝    | sibling (`@plurnk/plurnk-mimetypes-text-markdown`) |
-| `application/json` *(deferred)*   | 🗂    | future sibling                     |
-| `text/vnd.plurnk` *(deferred)*    | 📜    | future sibling                     |
-
-Deferred handlers reserve their glyphs now so external packages don't collide.
+No mimetype handlers ship in-tree. Every handler is a sibling `@plurnk/plurnk-mimetypes-*` package; the framework (`@plurnk/plurnk-mimetypes`) is also a sibling and is the surface plurnk-service consumes via `Mimetypes.process()`. Handlers register at boot via plugin discovery (§9). The in-tree set is empty by design — the framework is responsible for the universal fallback, not us.
 
 ---
 
@@ -365,14 +350,11 @@ Every entry has named channels. **Channels are append-only content stores** keye
 
 ### §5.1 Per-entry channels
 
-EDIT writes a minimum of two channels per entry, in one transaction: {§5.1-edit-writes-body-plus-preview}
+EDIT writes one channel per call — the channel resolved from the path's fragment (or the scheme's `defaultChannel` when no fragment). {§5.1-edit-writes-only-body}
 
-- **`body`** — the raw content.
-- **`preview`** — the render-time structural summary. The stored content here is the result of `mimetype.preview(body, budget)` for the body's mimetype. When the mimetype handler is unsophisticated (text/plain head-truncation), the preview is short. As handlers mature (markdown heading outline, JSON key tree, DSL op summary), the preview becomes structural. {§5.1-preview-is-handler-output}
+There is no stored `preview` channel. Preview is a **render-time output**, computed by passing the channel's content through `Mimetypes.process()` at packet-build time. The result lands in `packet.system.index[].channels[name].content`. {§5.1-preview-is-handler-output} The mimetype framework owns the preview pipeline; plurnk-service consumes the returned preview and never inspects the framework's internals.
 
-Whether preview is stored (write-time memoization) or computed fresh on each render is an implementation choice behind the contract — both behave the same to callers. v0 implementation stores it (avoids per-render compute); future implementation may switch to compute-on-render with content-hash cache.
-
-Schemes MAY declare additional channels (exec will declare `stdout`/`stderr`; file may declare an `outline` channel; SSE may declare per-event-type channels). Each additional channel goes in the scheme's `channels` manifest (§3.1) and has its mimetype pinned there.
+Schemes MAY declare multiple channels (exec will declare `stdout`/`stderr`/`stdin`; http will declare `body`/`header`; SSE may declare per-event-type channels). Each channel goes in the scheme's `channels` manifest (§3.1) and has its mimetype pinned there. Each channel is rendered independently at packet-build time.
 
 ### §5.2 Visibility lattice
 
@@ -386,10 +368,6 @@ The mimetype of a channel is declared by the scheme's manifest (§3.1) or — fo
 
 Implications:
 - Cross-mimetype COPY/MOVE crashes (`415 Unsupported Media Type`) — never coerces. See §6.4.
-
-### §5.4 Orientation hint
-
-The grammar's `SchemeRegistration.channel_orientations` declares each scheme's channels as `head` or `tail` — "which end of the content matters for preview." Mimetype handlers consult this hint when truncating. Channels not listed default to `head`.
 
 ### §5.5 Channel selection in the DSL
 
@@ -422,7 +400,16 @@ Implications for operations:
 - **SHOW / HIDE** flip visibility for the resolved channel only — channel-specific visibility is achievable via fragments. Fragment-less SHOW/HIDE flips ALL channels of the entry per §5.2 (existing behavior).
 - **COPY / MOVE** with a fragment is a per-channel operation; deferred design pass needed before specifying (out of scope for v0).
 
-The clean-shape RPC params (§13.5) carry the fragment naturally inside the `path` string: `{ path: "known://x#preview" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+The clean-shape RPC params (§13.5) carry the fragment naturally inside the `path` string: `{ path: "known://x#stderr" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+
+**Wire-rendering inverse: default channel is path-only.** When the engine projects entries to the model's view, the heredoc fence omits `#channel` whenever the channel name matches the scheme's `defaultChannel`. Single-channel entries (the channel IS the default) render path-only; multi-channel entries render the default channel path-only and only non-default channels carry `#name` in the fence. {§5.5-wire-omits-suffix-on-default-channel} Examples:
+
+- `<<file://notes.md:...:file://notes.md` — file's default (`body`)
+- `<<exec://run:...:exec://run` — exec's default (`stdout`)
+- `<<exec://run#stderr:...:exec://run#stderr` — explicit non-default
+- `<<log://1/1/0:...:log://1/1/0` — log responses (single-payload; no channel concept)
+
+The absence of `#channel` IS the addressing of the default. This matches what models naturally emit and removes `#body` / `#rx` clutter from every packet.
 
 ### §5.6 Channel state — metadata, not gating
 
@@ -450,8 +437,7 @@ AST: `{ op: "EDIT", path: ParsedPath, body: string | null, signal: tags | null, 
 Engine dispatches to `scheme.edit(statement, ctx)`. Scheme:
 - Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `manifest.defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
 - Writes the body to the resolved channel.
-- For entry-bearing schemes (known/unknown/skill), also writes the `preview` channel in the same transaction when writing `body`. Storage is verbatim body at write time; structural rendering happens at packet build time via `mimetype.preview(content, budget)` (§5.1).
-- Indexes the written channels in the current run (visibility = 1).
+- Indexes the written channel in the current run (visibility = 1).
 - Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates.
 - `body: null` clears the content (writes empty string).
 - Tags from `signal[]` are applied via `entry_tags` (additive on update for the v0 entry schemes; final policy may vary by scheme).
@@ -501,7 +487,7 @@ Two modes:
 
 **Deletion** (`body` is null): engine runs `src_scheme.deleteEntry(source_pathname, ctx)` directly. The null-body MOVE expresses "relocate to nowhere" = delete. {§6.5-null-body-deletes} Returns 200 on success, 404 if source absent. {§6.5-missing-source-404}
 
-Log history is preserved through MOVE because `log_entries.target_*` columns store the path tuple as text, not FK to `entries.id`.
+Log history is preserved through MOVE because `log_entries`' URI-bit columns (`scheme`, `pathname`, etc.) store the path tuple as text, not FK to `entries.id`.
 
 ### §6.6 FIND
 
@@ -647,40 +633,31 @@ Versioning: a `plurnkContractVersion` field on each plugin's `plurnk` manifest d
 
 ## §10 Bundled Set
 
-These ship in `plurnk-service` directly, not as separate `@plurnk/*` packages:
+What ships in-tree vs. in sibling `@plurnk/*` packages. Plugin discovery (§9) finds every installed `@plurnk/*` package at boot and registers what they declare; the system runs against whatever is present in `node_modules`.
 
-**Providers:**
-- `mock` — fake provider used exclusively in `intg` for deterministic engine tests. Also serves as a minimal worked example for authors of external `@plurnk/plurnk-providers-*` packages.
+**Providers in-tree (`src/providers/`):**
+- `Mock` — fake provider used exclusively in `intg` for deterministic engine tests. Also serves as a minimal worked example for authors of external provider packages.
 
-**Mimetypes** (in `src/mimetypes/`):
-- `text/plain` — universal fallback. Identity validate; head-truncated preview. Stays bundled because every deployment needs it and it has no external dependency.
+All real providers are siblings, registered via plugin discovery.
 
-**Schemes** (in `src/schemes/`):
+**Mimetypes in-tree:** none. The framework (`@plurnk/plurnk-mimetypes`) and every handler are siblings.
+
+**Schemes in-tree (`src/schemes/`):**
 - `plurnk` — meta-scheme for scheme registration ops (manifest only; ops not implemented yet).
 - `log` — coordinate-addressed run/turn/action log reads.
 - `known` — primary narrative entries.
 - `unknown` — decomposition / open questions.
 - `skill` — sibling of known/unknown; semantics provisional.
-- `exec` — manifest only; subprocess invocation deferred to Phase F.
-- `file` — currently in-tree but flagged for extraction to `@plurnk/plurnk-schemes-file` once exec/streams phase shapes the file scheme's full surface.
+- `exec` — manifest only; subprocess invocation not yet implemented.
+- `file` — in-tree; extraction to a sibling repo is planned once the workspace + exec/streams work shapes the scheme's full surface.
 
-**Sibling repos** (live `@plurnk/*` packages we own):
-- **Mimetypes:** `@plurnk/plurnk-mimetypes-text-markdown` — first extraction (#47). Validates the "bundle minimally" pattern.
-- **Providers:** `@plurnk/plurnk-providers-openai` — talks to any OpenAI-compatible endpoint (OpenAI proper, llama-server, Ollama OpenAI-compat, etc.).
-- **Client:** `@plurnk/plurnk` — user-facing CLI/TUI (independent agent ownership since #57).
-
-**Future external** (separate repos, separate npm packages, optional install when written):
-- **Providers:** `openrouter`, `xai`, `google`, `ollama` (native API), `anthropic`, `cf` (Cloudflare). Phase D.
-- **Schemes:** `http(s)`, `ws(s)`, `sse`, `graphql`, `openapi`, `grpc`, `mailto`, `mcp`, `sftp`, `rest`, `search`. Streaming schemes land in Phase F.
-- **Mimetypes:** `application/json`, `text/vnd.plurnk`, anything beyond. Phase C.
-
-Plugin discovery (§9) finds every installed `@plurnk/*` package at boot and registers what they declare. The bundled set is the floor; siblings are what's installed; the system runs against whatever is present in `node_modules`.
+In-tree schemes will move to siblings as their surfaces stabilize.
 
 ---
 
 ## §11 Grammar Dependency
 
-`@plurnk/plurnk-grammar@0.5.0` is the contract. Consumed via `github:plurnk/plurnk-grammar` HEAD during pre-1.0 iteration. Treat the grammar as authoritative; surface gaps to the user, don't redesign from this side.
+`@plurnk/plurnk-grammar` is the contract. Treat it as authoritative; surface gaps to the user, don't redesign from this side. When a gap surfaces, file an issue upstream and adopt whatever lands.
 
 ### §11.1 What grammar provides
 
@@ -691,23 +668,13 @@ Plugin discovery (§9) finds every installed `@plurnk/*` package at boot and reg
 
 ### §11.2 What plurnk-service tracks in its own runtime state (NOT in the grammar)
 
-- Channel lifecycle (`active` / `closed` / `errored`) — subscription registry, not on `ChannelContent`. Was rejected as a contract field with good reason: streams are not a distinct paradigm at the contract layer; they're a runtime relationship between an entry and an open connection.
-- Render budget per channel (token count) — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` operator config (§12).
+- Channel lifecycle (`active` / `closed` / `errored`) — subscription registry, not on `ChannelContent`. Streams are not a distinct paradigm at the contract layer; they're a runtime relationship between an entry and an open connection.
+- Render budget per channel — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` operator config (§12); character-count today (§14.2).
 - Backpressure caps — none in v0 (§7.8). Providers/schemes/mimetypes own their own throttling.
 - Stream cancel verb — no dedicated cancel op or signal in the grammar. SEND[499] to the URI is the pattern (§7.7).
 - Delete verb — no dedicated DELETE op. SEND[410] to the URI is the pattern (§3.5, §6.5).
-
-### §11.3 Grammar contract changes (resolved)
-
-All grammar issues filed against the upstream contract have closed and shipped. Service tracks the resolution:
-
-- **#6 `text/vnd.plurnk`** — closed; DSL mimetype identifier confirmed.
-- **#7 public `parsePath` helper** — closed; landed in grammar 0.3.2.
-- **#8 SEND broadcast vs directed clarification** — closed; grammar plurnk.md docs tightened.
-- **#9 packet contract + parse-error surface** — closed; grammar 0.4.0 renamed `packet.user.turn` → `packet.user.telemetry` and shipped the `{budget, errors}` shape. Service aligned in #123.
-- **#10 Run.name + dual-handle** — closed; grammar 0.5.0 added required `Run.name`. Service aligned in #123.
-
-When future gaps surface, they get filed as grammar issues (not redesigned in plurnk-service), and the relevant SPEC.md section notes the pending request.
+- Per-loop flag plumbing — `loops.flags` JSON column. Engine plumbs the grammar's `LoopFlags` shape (yolo, mode, noWeb, noInteraction, noProposals) per-loop; today `yolo` is end-to-end, others are scheduled.
+- Wire-rendering conventions on top of grammar fences — see §5.5 default-channel addressing.
 
 ---
 
@@ -729,7 +696,10 @@ Model selection uses a separate alias cascade managed by `ProviderRegistry` (`sr
 | `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§0.5).             |
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§0.5).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§0.5).            |
-| `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format (PROVIDERS.md §3.8). |
+| `PLURNK_PERSONA`                     | `persona.md`       | enforced   | Path to the default persona file. Tail of the persona cascade: loops.persona > runs.persona > sessions.persona > this file. |
+| `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
+| `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format. |
+| `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
 | `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (characters; §14.2). |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
@@ -837,21 +807,31 @@ The minimum v0 surface. Methods are grouped by concern.
 
 **Sessions**
 
-| Method            | Params              | Result            | Notes |
-|-------------------|---------------------|-------------------|-------|
-| `session.create`  | `name?: string`     | `{ id, name }`    | Creates new session; auto-name from timestamp if unprovided. |
-| `session.list`    | none                | `{ sessions: Session[] }` | Lists all sessions. |
-| `session.attach`  | `id: number`, `runId?: number`, `runName?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. |
-| `session.runs`    | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
+| Method                 | Params              | Result            | Notes |
+|------------------------|---------------------|-------------------|-------|
+| `session.create`       | `name?: string`, `projectRoot?: string`, `persona?: string` | `{ id, name, projectRoot, persona }` | Creates new session; auto-name if unprovided. Optional `projectRoot` pins the workspace (null/omitted = headless). Optional `persona` sets the session-level persona override. |
+| `session.list`         | none                | `{ sessions: Session[] }` | Lists all sessions. |
+| `session.attach`       | `id: number`, `runId?: number`, `runName?: string`, `persona?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. Optional `persona` sets run-level persona only when a NEW run is created. |
+| `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
+| `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
+| `session.set_persona`  | `persona: string \| null` | `{ persona }`  | Update the session-level persona. Null clears the override (falls through to PLURNK_PERSONA file). |
 
 If a client issues a method requiring init (`requiresInit: true`) without first calling `session.attach` or `session.create`, the daemon auto-creates the envelope on demand: session → run → client loop, all persisted normally. Auto-creation is a convenience for one-off invocations (Telegram quick-queries, neovim ad-hoc dispatches, `plurnk "prompt"` CLI shots); the records carry through the same way explicitly-created ones do. **Auto-created ≠ auto-deleted.** Records persist for the log's forensic value. If a client wants active cleanup, that's a future `session.delete` / `session.archive` endpoint, opt-in.
 
 **Loops (model-driven)**
 
+| Method            | Params                              | Result                 | Notes |
+|-------------------|-------------------------------------|------------------------|-------|
+| `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags`, `persona?: string` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §0.5). Optional `persona` sets the loop-level persona (highest precedence in the cascade). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. |
+| `loop.resolve`    | `logEntryId: number`, `decision: "accept" \| "reject" \| "cancel"`, `body?: string`, `outcome?: string` | `{ status, logEntryId }` | Resolve a pending proposal (status=202 log entry). Engine.dispatch unpauses on resolution. |
+| `providers.list`  | none                                | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
+
+**Reads**
+
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
-| `loop.run`    | `prompt`, `maxTurns?`, `alias?`     | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the daemon's boot-time `PLURNK_MODEL` for this call (resolves via `ProviderRegistry`); unknown alias → error. Streams `log/entry` notifications during. `longRunning: true`. |
-| `providers.list` | none                             | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
+| `entry.read`  | `path: string`                      | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given path. |
+| `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. |
 
 **DSL operations (client-driven, mirror the grammar)**
 
@@ -888,7 +868,8 @@ Server-initiated events streamed to the client over the same WebSocket. Critical
 |--------------------|-------------------------------------|------------|
 | `log/entry`        | `{ entry: LogEntry }`               | Every time a `log_entries` row is written. |
 | `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | When a loop reaches a terminal status. |
-| `session/created`  | `{ session: Session }`              | When a session is created (any client's action; gives multi-client awareness). |
+| `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Fired when dispatch pauses on a status=202 proposed entry. Carries the proposal payload + the loop's `flags` so a client connected to a server-YOLO loop can suppress its review UI. Client responds with `loop.resolve` (or ignores, in which case the daemon's `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
+| `session/created`  | `{ id, name, projectRoot, persona }` | When a session is created (any client's action; gives multi-client awareness). |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | When a channel's content grows or its state transitions. For clients rendering live; the model only sees state at turn boundaries. {§13.6-stream-event-on-channel-change} |
 
 The `stream/event` payload deliberately carries metadata, NOT content. Clients that want the new content call `entry.read({path})` to fetch — this avoids large notification payloads and gives the client agency over whether to refresh. Sample-driven (notifications include `contentLength` so clients can dedupe / batch).
@@ -957,9 +938,7 @@ Error responses MAY include `data: { ... }` with structured context (the path th
 
 ### §13.9 Versioning
 
-`plurnk-service` exposes a `protocolVersion` field in `discover`'s response (semver). Major version mismatches are a contract break — clients SHOULD refuse to operate on a major mismatch. Minor/patch increments are backward-compatible.
-
-Current: `protocolVersion: "0.1.0"`. The floor is green and the daemon has been exercised end-to-end via the `plurnk` TUI client (which now graduates to its own agent). Promotes to `1.0.0` when an independent external client (neovim plugin or Telegram bot) lands AND the mimetype/channel/transaction work below has settled.
+Pre-interface-stabilization. The RPC surface evolves freely; clients track HEAD. No semver promises until we have an actual interface worth committing to.
 
 ---
 
@@ -981,24 +960,21 @@ Each entry: the question, the answer, the rationale, the migration path if revis
 
 **Migration path if revisited.** If a future plugin needs to inject a packet section (e.g., a `<turn>` metadata table per rummy SPEC §packet_structure), the engine grows a single `packet.augment` filter hook called after `#buildIndex` returns. Plugins subscribe with a priority; each returns a `system` and/or `user` augmentation object that gets merged into the packet shape. This is additive — the engine-direct base case stays; plugins augment.
 
-### §14.2 Budget unit: character count for v0
+### §14.2 Budget unit: character count
 
-**Question.** `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` is named for tokens; current implementation in `Engine.#previewBudget` treats it as a character-count cap passed to `MimetypeHandler.preview(content, budget)`. The MIMETYPES.md contract documents budget as a number, semantic-agnostic. The env var name and the implementation disagree.
+**Question.** `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` is named for tokens; the engine passes it as a character-count budget to mimetype processing. Env var name and implementation disagree.
 
-**Decision.** v0 treats budget as character count. The env var keeps its `_TOKENS` suffix as forward-naming for the eventual switch but currently means characters. {§14.2-budget-is-characters-v0}
+**Decision.** Budget is character count. The env var name is a forward-naming placeholder for an eventual token unit; today it means characters. {§14.2-budget-is-characters-v0}
 
-**Rationale.**
-- Token counts require a per-provider tokenizer. PROVIDERS.md §11 marks `countTokens` as out of v0 contract; no provider currently exposes it.
-- Character count is a tokenizer-independent first approximation. Wrong by a factor of ~3-4× for English (1 token ≈ 3-4 chars), but consistent and zero-config.
-- Switching the unit later requires: (a) `countTokens` lands on the provider contract, (b) engine caches token counts per `(provider_id, content_hash)`, (c) mimetype.preview gets a tokenizer reference or returns content for engine to tokenize-and-truncate. Out of v0 scope.
+**Rationale.** Mimetype handlers operate on strings. They have no tokenizer reference and shouldn't — tokenization is provider-bound (§2.3). Character-count is the tokenizer-independent budget that fits the handler's domain. Engine *could* post-tokenize the resulting preview for accounting (the provider's `countTokens` is available), but the budget passed *into* the handler is characters by design.
 
-**Migration path if revisited.** When provider `countTokens` lands and the engine has per-channel token accounting, `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` becomes literal tokens. Mimetype handlers either receive a tokenizer reference in `preview(content, budget, countTokens?)` or the engine post-processes character-bounded `preview` output through tokenizer + truncate. The MIMETYPES.md contract revision is non-breaking (signature stays `(content, budget) → string`); the semantic of `budget` changes from char-count to token-count.
+**Migration path if revisited.** Either rename the env var to reflect characters, or change the budget semantic to tokens by handing handlers a tokenizer reference (`preview(content, budget, countTokens?)`). The latter conflates concerns and isn't appealing.
 
 ---
 
 ## §15 Packet shape
 
-The canonical packet shape is defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`, ≥0.4.0). Engine assembles in `Engine.#buildPacket`; plugins do not augment in v0 (§14.1). This section describes plurnk-service's responsibilities under that contract — see grammar for the authoritative schema.
+The canonical packet shape is defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`). Engine assembles in `Engine.#buildRequestPacket`; plugins do not augment in v0 (§14.1). This section describes plurnk-service's responsibilities under that contract — see grammar for the authoritative schema.
 
 ```ts
 type Packet = {
