@@ -106,15 +106,4 @@ describe("fitPreview", () => {
         };
         assert.equal(await fitPreview(preview, 1000, charTokenize), "class Foo [1-10]");
     });
-
-    it("dispatches text material through fitContent with declared orientation", async () => {
-        const preview: Preview = {
-            kind: "text",
-            text: "abcdefghij",
-            orientation: "tail",
-        };
-        const out = await fitPreview(preview, 4, charTokenize);
-        assert.ok("abcdefghij".endsWith(out));
-        assert.ok(out.length <= 4);
-    });
 });

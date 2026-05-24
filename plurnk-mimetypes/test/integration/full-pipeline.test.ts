@@ -8,7 +8,7 @@ import Mimetypes from "../../src/Mimetypes.ts";
 const fixtureDir = path.join(import.meta.dirname, "fixtures", "text-plain");
 const handlerPath = path.join(fixtureDir, "src", "index.ts");
 
-describe("full pipeline — text/plain fixture", () => {
+describe("full pipeline — text/plain fixture (no structural signal)", () => {
     let tmp: string;
 
     before(async () => {
@@ -22,8 +22,6 @@ describe("full pipeline — text/plain fixture", () => {
     function buildMimetypes(): Mimetypes {
         return new Mimetypes({
             discoverOptions: { packageDirs: [fixtureDir] },
-            // Real handler import, but routed to the local fixture path because
-            // we're testing in-tree (no npm resolution available).
             loader: async (_packageName) => import(handlerPath),
             tokenize: async (text) => text.length,
         });
@@ -39,13 +37,13 @@ describe("full pipeline — text/plain fixture", () => {
     it("instantiates the handler with discovered metadata", async () => {
         const m = buildMimetypes();
         const handler = await m.getHandler("text/plain");
-        assert.ok(handler !== null, "handler should be returned");
+        assert.ok(handler !== null);
         assert.equal(handler.mimetype, "text/plain");
         assert.equal(handler.glyph, "📄");
         assert.deepEqual([...handler.extensions], [".txt"]);
     });
 
-    it("processes inline content end-to-end via the text-Preview path", async () => {
+    it("processes inline content end-to-end and returns ok:true with empty preview", async () => {
         const m = buildMimetypes();
         const result = await m.process({
             path: "greeting.txt",
@@ -53,10 +51,12 @@ describe("full pipeline — text/plain fixture", () => {
         });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.preview, "hello world\nsecond line");
+        // text/plain has no structural extraction path; preview is empty by
+        // design. The body never enters the radar — fetch is required.
+        assert.equal(result.preview, "");
     });
 
-    it("processes content read from disk", async () => {
+    it("processes content read from disk and returns empty preview", async () => {
         const filePath = path.join(tmp, "from-disk.txt");
         await fs.writeFile(filePath, "disk content");
 
@@ -64,23 +64,17 @@ describe("full pipeline — text/plain fixture", () => {
         const result = await m.process({ path: filePath });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.preview, "disk content");
+        assert.equal(result.preview, "");
     });
 
-    it("honors budget — preview gets shrunk to fit", async () => {
+    it("budget is irrelevant — empty preview regardless of budget size", async () => {
         const m = buildMimetypes();
-        // 1 char = 1 token (test tokenize). Budget 5 → preview ≤ 5 chars,
-        // head-oriented (text/plain's canonical orientation).
         const result = await m.process(
-            { path: "long.txt", content: "this is much longer content" },
-            { budget: 5 },
+            { path: "long.txt", content: "any content at all" },
+            { budget: 1_000_000 },
         );
         assert.equal(result.ok, true);
-        assert.ok(result.preview.length <= 5);
-        assert.ok(
-            "this is much longer content".startsWith(result.preview),
-            "head orientation should retain the prefix",
-        );
+        assert.equal(result.preview, "");
     });
 
     it("returns ok:false when the file doesn't exist", async () => {

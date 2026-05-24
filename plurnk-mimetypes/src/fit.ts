@@ -12,19 +12,15 @@ const FIT_CONTENT_RATIO_MARGIN = 0.9;
 // Top-level dispatcher for Preview material. Handlers return a Preview; the
 // framework calls this to produce the final budgeted string.
 //
-//   null     → ""
+//   null     → "" (no structural signal for this content)
 //   symbols  → fit-symbols (drop-deepest-first, then drop-trailing-roots)
-//   text     → fit-content (head- or tail-oriented truncation)
 export async function fitPreview(
     preview: Preview,
     budget: number,
     tokenize: TokenizeFn,
 ): Promise<string> {
     if (preview === null) return "";
-    if (preview.kind === "symbols") {
-        return fitSymbols([...preview.symbols], budget, tokenize);
-    }
-    return fitContent(preview.text, budget, tokenize, preview.orientation);
+    return fitSymbols([...preview.symbols], budget, tokenize);
 }
 
 // Fit a flat MimeSymbol[] to a token budget. Builds a containment tree from

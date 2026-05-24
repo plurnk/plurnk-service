@@ -53,6 +53,5 @@ export type {
     Registry,
     SymbolKind,
     SymbolPreview,
-    TextPreview,
     TokenizeFn,
 } from "./types.ts";

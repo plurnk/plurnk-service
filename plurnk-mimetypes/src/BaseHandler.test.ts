@@ -75,21 +75,6 @@ describe("BaseHandler", () => {
         );
     });
 
-    it("allows subclasses to return a text Preview with an orientation", async () => {
-        class TextHandler extends BaseHandler {
-            override preview(content: string): Preview {
-                return { kind: "text", text: content, orientation: "head" };
-            }
-        }
-        const h = new TextHandler(metadata);
-        const preview = await h.preview("hello world");
-        assert.deepEqual(preview, {
-            kind: "text",
-            text: "hello world",
-            orientation: "head",
-        });
-    });
-
     it("allows subclasses to return null when no preview material is appropriate", async () => {
         class NullHandler extends BaseHandler {
             override preview(_content: string | Uint8Array): Preview {

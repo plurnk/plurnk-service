@@ -45,12 +45,11 @@ class FakeStrictHandler extends BaseHandler {
     }
 }
 
-// A handler that returns a text Preview — exercises the framework's
-// content-fitting path with handler-declared orientation.
-class FakeTextHandler extends BaseHandler {
-    override preview(content: string | Uint8Array): Preview {
-        const text = typeof content === "string" ? content : "";
-        return { kind: "text", text, orientation: "head" };
+// A handler that returns null — exercises the framework's
+// no-structural-signal path (mimetypes without extractable symbols).
+class FakeNullHandler extends BaseHandler {
+    override preview(_content: string | Uint8Array): Preview {
+        return null;
     }
 }
 
@@ -272,8 +271,8 @@ describe("Mimetypes — process", () => {
         assert.equal(result.preview, "module Plain [1]");
     });
 
-    it("framework fits a text Preview against the budget using handler-declared orientation", async () => {
-        const textInfo: HandlerInfo = {
+    it("framework returns empty preview (with ok:true) when handler returns null", async () => {
+        const nullInfo: HandlerInfo = {
             mimetype: "text/sample",
             glyph: "📄",
             packageName: "@plurnk/plurnk-mimetypes-text-sample",
@@ -281,20 +280,16 @@ describe("Mimetypes — process", () => {
             binary: false,
         };
         const m = new Mimetypes({
-            discovery: makeDiscovery([textInfo]),
-            loader: async () => ({ default: FakeTextHandler }),
+            discovery: makeDiscovery([nullInfo]),
+            loader: async () => ({ default: FakeNullHandler }),
             tokenize: async (text) => text.length,
         });
         const result = await m.process(
             { path: "foo.sample", content: "abcdefghij" },
-            { budget: 4 },
+            { budget: 1000 },
         );
         assert.equal(result.ok, true);
-        assert.ok(result.preview.length <= 4, "framework should fit text to budget");
-        assert.ok(
-            "abcdefghij".startsWith(result.preview),
-            "head orientation should retain the prefix",
-        );
+        assert.equal(result.preview, "");
     });
 
     it("treats missing budget as unbounded (no truncation when budget is unspecified)", async () => {

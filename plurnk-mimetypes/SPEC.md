@@ -27,35 +27,31 @@ interface Handler {
 }
 ```
 
-**Authority split (v0.4.0).** The handler owns *what* the preview is made of; the framework owns *how* it is fit to a budget. Handlers never see the token budget or the tokenize function — they return preview *material* and the framework dispatches to the right fitter.
+**Authority split (v0.5.0).** The handler owns *what* the preview is made of; the framework owns *how* it is fit to a budget. Handlers never see the token budget or the tokenize function — they return preview *material* and the framework fits it.
 
 ```ts
-type Preview = SymbolPreview | TextPreview | null;
+type Preview = SymbolPreview | null;
 
 interface SymbolPreview {
     readonly kind: "symbols";
     readonly symbols: readonly MimeSymbol[];
 }
-
-interface TextPreview {
-    readonly kind: "text";
-    readonly text: string;
-    readonly orientation: "head" | "tail";
-}
 ```
 
-- `SymbolPreview` — for content with extractable structure (Markdown headings, JSON/YAML/TOML keypaths, source-file outlines). Framework fits via the symbol algorithm (drop-deepest-first, then drop-trailing-roots).
-- `TextPreview` — for content best previewed verbatim (plain text, HTML→markdown, PDF→text). Handler must declare `orientation`: `"head"` keeps the start (documents, articles); `"tail"` keeps the end (logs, append-only feeds).
-- `null` — handler declines to produce material. Framework returns empty preview.
+- `SymbolPreview` — structural outline. Framework fits via the symbol algorithm (drop-deepest-first, then drop-trailing-roots). An empty `symbols` array is fitted to an empty string.
+- `null` — handler declines to produce material. Framework returns an empty preview, `ok:true`. This is the correct return for mimetypes with no structural extraction path (`text/plain` raw text, scanned PDFs without a bookmark TOC, HTML pages without headings).
+
+**The radar is structural-only.** There is no text-body preview shape. The preview channel is a passive structural signal — designed to be insufficient as a substitute for fetching the full content — so that downstream consumers (LLMs in particular) cannot learn to read the preview *as* the content and skip the fetch. A mimetype without a structural extraction path produces an empty preview, even when budget would otherwise allow a body slice. Handlers that wrap a transforming pipeline (HTML, PDF) extract structure *after* the transform: HTML headings from parsed DOM, PDF outline from bookmark TOC.
 
 **Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
 
 **Escape hatches.** `extractRaw` and `symbolsRaw` exist for callers that want unfitted structural data — they bypass `preview` entirely and are not part of the budgeted-render path. The `Raw` suffix signals "not Plan A": the framework's pipeline drives `preview` exclusively. Subclasses extending `BaseHandler` get `symbolsRaw` derived automatically from `extractRaw → format`.
 
-In practice handlers extend `BaseHandler` (or `AntlrExtractor`). The minimal override is whichever method matches the handler's preview shape:
+In practice handlers extend `BaseHandler` (or `AntlrExtractor`):
 
-- Structured handlers (markdown, JSON, YAML, source) implement `extractRaw`; the default `preview` wraps it as a `SymbolPreview` automatically.
-- Text handlers (plain text, HTML, PDF) override `preview` to return a `TextPreview` with the right orientation.
+- Structured handlers (markdown, JSON, YAML, source) implement `extractRaw`; the default `preview` wraps the result as a `SymbolPreview` automatically.
+- Async-source handlers (PDF, anything requiring I/O during extraction) override `preview` directly to return `Promise<Preview>`.
+- Handlers with no structural extraction path (canonical example: `text/plain`) inherit `BaseHandler` unchanged — its default `preview` returns an empty `SymbolPreview`, which fits to an empty string.
 
 Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
@@ -173,23 +169,19 @@ function topLevel(a, b) [50-60]
 
 **Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. `TokenizeFn` accepts both sync and async signatures — `(text: string) => number | Promise<number>` — so providers with WASM-backed sync tokenizers (tiktoken-js, cl100k, llama-tokenizer-js, etc.) don't pay an unnecessary microtask hop, while genuinely-async tokenizers (Gemini's REST `countTokens`) work without ceremony. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
 
-**Authority.** Handlers are the sole authority on preview material. The framework is the sole authority on fitting that material to the budget. The framework never substitutes, falls back, or alters the *kind* of material a handler returned — there is no raw-content fallback, no symbol-to-text downgrade, no inferred orientation. A handler that returns `null` produces an empty preview by design; a handler that returns a non-empty text preview whose first character won't fit produces an empty preview, again by design.
+**Authority.** Handlers are the sole authority on preview material. The framework is the sole authority on fitting that material to the budget. The framework never substitutes, falls back, or invents content — there is no raw-content fallback, no body slice, no transformation. A handler that returns `null` produces an empty preview by design; a handler that returns symbols whose first root won't fit produces an empty preview, again by design.
 
 **Dispatcher (`fitPreview`):**
 - `null` → `""`.
 - `SymbolPreview` → `fitSymbols(symbols, budget, tokenize)`.
-- `TextPreview` → `fitContent(text, budget, tokenize, orientation)`.
 
 **Symbol fitting (`fitSymbols`):**
 1. Render full outline. If it fits, return it.
 2. Drop deepest tree level. Render. Repeat until fits or only roots remain.
 3. If even all-roots overflows, drop trailing root symbols one at a time until fits.
-4. If even a single root overflows, return empty string (handler asked for symbols; symbols would not fit; framework reports the empty result rather than swapping in a different material).
+4. If even a single root overflows, return empty string.
 
-**Text fitting (`fitContent`):**
-- Iteratively shrinks the content slice to fit `budget` tokens via the same tokenize function, with safety margin and max-iterations clamp.
-- `orientation: "head"` (default for documents) keeps `working.slice(0, newLen)`.
-- `orientation: "tail"` (logs, append-only feeds, diffs) keeps `working.slice(working.length - newLen)`.
+**Why no text-body preview.** Even when budget would allow it, a body slice in the preview channel teaches consumers (especially LLM consumers) to treat the preview as a substitute for fetching the content. The preview is supposed to be a passive structural radar — *insufficient* for content consumption, sufficient only for navigation and recognition. Mimetypes with no structural extraction path (raw text, scanned PDFs) produce empty previews; the model must fetch the real content to read it. `fitContent` remains exported as a standalone primitive for handler authors who need it inside their own logic, but the framework's preview pipeline does not invoke it.
 
 ## 6. `validate`
 
@@ -208,8 +200,8 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 | Handler package not loadable | `{ mimetype, preview: "", ok: false }` |
 | `validate()` throws | **Propagates** to the caller — contract violation |
 | `preview()` (handler) throws | Contained per handler discipline (`AntlrExtractor` catches inside `extractRaw`; HTML/PDF return `null` on parse failure). Framework does not catch. |
-| `preview()` returns `null` | `{ mimetype, preview: "", ok: true }` — handler authority respected |
-| `SymbolPreview` whose first root won't fit | `preview: ""`, no substitution to text |
+| `preview()` returns `null` | `{ mimetype, preview: "", ok: true }` — mimetype has no structural signal, by design |
+| `SymbolPreview` whose first root won't fit | `{ mimetype, preview: "", ok: true }` — handler asked for symbols, symbols would not fit; framework reports the empty result rather than inventing material |
 
 ## 8. Detection priority
 
