@@ -13,8 +13,8 @@ CREATE TRIGGER log_entries_immutable_core
 BEFORE UPDATE OF
     run_id, loop_id, turn_id, action_index, at, origin,
     op, suffix, signal,
-    target_scheme, target_username, target_password, target_hostname,
-    target_port, target_pathname, target_params, target_fragment,
+    scheme, username, password, hostname,
+    port, pathname, params, fragment,
     lineMarker, tx, mimetype_tx, mimetype_rx, attrs
 ON log_entries
 BEGIN

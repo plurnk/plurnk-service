@@ -1,5 +1,5 @@
 // Hydrate a log_entries row for the wire. Re-parses JSON-encoded columns
-// (signal, target_params, lineMarker, tx, rx) so the client receives
+// (signal, params, lineMarker, tx, rx) so the client receives
 // structured values, not opaque strings.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -15,14 +15,14 @@ export interface LogEntryWire {
     op: string;
     suffix: string;
     signal: unknown;
-    target_scheme: string | null;
-    target_username: string | null;
-    target_password: string | null;
-    target_hostname: string | null;
-    target_port: number | null;
-    target_pathname: string | null;
-    target_params: unknown;
-    target_fragment: string | null;
+    scheme: string | null;
+    username: string | null;
+    password: string | null;
+    hostname: string | null;
+    port: number | null;
+    pathname: string | null;
+    params: unknown;
+    fragment: string | null;
     lineMarker: unknown;
     tx: unknown;
     mimetype_tx: string;
@@ -52,14 +52,14 @@ export const fetchLogEntry = async (db: Db, id: number): Promise<LogEntryWire> =
         op: row.op as string,
         suffix: row.suffix as string,
         signal: parseJsonOrNull(row.signal),
-        target_scheme: row.target_scheme as string | null,
-        target_username: row.target_username as string | null,
-        target_password: row.target_password as string | null,
-        target_hostname: row.target_hostname as string | null,
-        target_port: row.target_port as number | null,
-        target_pathname: row.target_pathname as string | null,
-        target_params: parseJsonOrNull(row.target_params),
-        target_fragment: row.target_fragment as string | null,
+        scheme: row.scheme as string | null,
+        username: row.username as string | null,
+        password: row.password as string | null,
+        hostname: row.hostname as string | null,
+        port: row.port as number | null,
+        pathname: row.pathname as string | null,
+        params: parseJsonOrNull(row.params),
+        fragment: row.fragment as string | null,
         lineMarker: parseJsonOrNull(row.lineMarker),
         tx: parseJsonOrNull(row.tx),
         mimetype_tx: row.mimetype_tx as string,

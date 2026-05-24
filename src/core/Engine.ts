@@ -464,9 +464,9 @@ export default class Engine {
                     origin: "client",
                     op: "SEND", suffix: "",
                     signal: JSON.stringify(200),
-                    target_scheme: null, target_username: null, target_password: null,
-                    target_hostname: null, target_port: null,
-                    target_pathname: null, target_params: null, target_fragment: null,
+                    scheme: null, username: null, password: null,
+                    hostname: null, port: null,
+                    pathname: null, params: null, fragment: null,
                     lineMarker: null,
                     tx: promptRow.prompt, mimetype_tx: "text/plain",
                     rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
@@ -718,13 +718,13 @@ export default class Engine {
         const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
             op: string; action_index: number; status_rx: number;
             rx: string; mimetype_rx: string;
-            target_scheme: string | null; target_pathname: string | null;
+            scheme: string | null; pathname: string | null;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         const actionFailures = rows.map((r) => {
-            const target = r.target_scheme !== null
-                ? `${r.target_scheme}://${r.target_pathname ?? ""}`
-                : (r.target_pathname ?? null);
+            const target = r.scheme !== null
+                ? `${r.scheme}://${r.pathname ?? ""}`
+                : (r.pathname ?? null);
             const parsedRx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
             return {
                 kind: "action_failure",
@@ -756,9 +756,9 @@ export default class Engine {
         const rows = await (this.#db.engine_render_log as PrepMethod).all<{
             loop_seq: number; turn_seq: number; action_index: number;
             origin: string; op: string; suffix: string; signal: string | null;
-            target_scheme: string | null; target_username: string | null; target_password: string | null;
-            target_hostname: string | null; target_port: number | null; target_pathname: string | null;
-            target_params: string | null; target_fragment: string | null;
+            scheme: string | null; username: string | null; password: string | null;
+            hostname: string | null; port: number | null; pathname: string | null;
+            params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
         }>({ run_id: runId });
         return rows.map((r) => ({
@@ -768,12 +768,12 @@ export default class Engine {
             suffix: r.suffix,
             signal: r.signal === null ? null : JSON.parse(r.signal),
             target: {
-                scheme: r.target_scheme,
-                username: r.target_username, password: r.target_password,
-                hostname: r.target_hostname, port: r.target_port,
-                pathname: r.target_pathname,
-                params: r.target_params === null ? null : JSON.parse(r.target_params),
-                fragment: r.target_fragment,
+                scheme: r.scheme,
+                username: r.username, password: r.password,
+                hostname: r.hostname, port: r.port,
+                pathname: r.pathname,
+                params: r.params === null ? null : JSON.parse(r.params),
+                fragment: r.fragment,
             },
             status: r.status_rx,
             rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
@@ -1238,14 +1238,14 @@ export default class Engine {
             op: statement.op,
             suffix: statement.suffix,
             signal: this.#signalToJson(statement.signal),
-            target_scheme: target.scheme,
-            target_username: target.username,
-            target_password: target.password,
-            target_hostname: target.hostname,
-            target_port: target.port,
-            target_pathname: target.pathname,
-            target_params: target.params,
-            target_fragment: target.fragment,
+            scheme: target.scheme,
+            username: target.username,
+            password: target.password,
+            hostname: target.hostname,
+            port: target.port,
+            pathname: target.pathname,
+            params: target.params,
+            fragment: target.fragment,
             lineMarker: lineMarkerJson,
             tx: JSON.stringify(statement),
             mimetype_tx: "application/json",

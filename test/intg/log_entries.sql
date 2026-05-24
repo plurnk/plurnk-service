@@ -4,11 +4,11 @@ SELECT sql FROM sqlite_master WHERE name = 'log_entries';
 -- PREP: test_log_entries_insert_full
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, action_index, origin, op, suffix, signal,
-    target_scheme, target_pathname, target_port, target_params,
+    scheme, pathname, port, params,
     lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens
 ) VALUES (
     $run_id, $loop_id, $turn_id, $action_index, $origin, $op, $suffix, $signal,
-    $target_scheme, $target_pathname, $target_port, $target_params,
+    $scheme, $pathname, $port, $params,
     $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens
 ) RETURNING id;
 
@@ -22,7 +22,7 @@ SELECT tx FROM log_entries WHERE id = $id;
 SELECT COUNT(*) AS n FROM log_entries;
 
 -- PREP: test_log_entries_insert_minimal
-INSERT INTO log_entries (run_id, loop_id, turn_id, action_index, origin, op, target_pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+INSERT INTO log_entries (run_id, loop_id, turn_id, action_index, origin, op, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
 VALUES ($run_id, $loop_id, $turn_id, 0, 'model', 'READ', '/x', '', 'text/x-plurnk', '', 'text/plain', 200)
 RETURNING id;
 

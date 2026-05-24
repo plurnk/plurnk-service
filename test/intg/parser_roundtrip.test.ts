@@ -70,9 +70,9 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
         assert.deepEqual(statuses, [201, 201, 201]);
         const pathnames = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
         assert.deepEqual(pathnames.map((p) => p.pathname), ["a", "b", "c"]);
-        const logIndices = await (db.test_parser_log_indices as PrepMethod).all<{ action_index: number; target_pathname: string }>();
+        const logIndices = await (db.test_parser_log_indices as PrepMethod).all<{ action_index: number; pathname: string }>();
         assert.deepEqual(logIndices.map((r) => r.action_index), [0, 1, 2]);
-        assert.deepEqual(logIndices.map((r) => r.target_pathname), ["a", "b", "c"]);
+        assert.deepEqual(logIndices.map((r) => r.pathname), ["a", "b", "c"]);
     } finally { await db.close(); }
 });
 
@@ -110,10 +110,10 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        const log = await (db.test_parser_log_first as PrepMethod).get<{ target_scheme: string; target_hostname: string | null; target_pathname: string }>();
-        assert.equal(log?.target_scheme, "https");
-        assert.equal(log?.target_hostname, "en.wikipedia.org");
-        assert.equal(log?.target_pathname, "/wiki/Paris");
+        const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string }>();
+        assert.equal(log?.scheme, "https");
+        assert.equal(log?.hostname, "en.wikipedia.org");
+        assert.equal(log?.pathname, "/wiki/Paris");
     } finally { await db.close(); }
 });
 
@@ -129,12 +129,12 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             actionIndex: 0, origin: "model",
         });
-        const log = await (db.test_parser_log_first as PrepMethod).get<{ target_scheme: string; target_hostname: string | null; target_pathname: string; target_params: string | null; target_fragment: string | null }>();
-        assert.equal(log?.target_scheme, "known");
-        assert.equal(log?.target_hostname, null);
-        assert.equal(log?.target_pathname, "france");
-        const params = JSON.parse(log?.target_params ?? "{}") as Record<string, unknown>;
+        const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();
+        assert.equal(log?.scheme, "known");
+        assert.equal(log?.hostname, null);
+        assert.equal(log?.pathname, "france");
+        const params = JSON.parse(log?.params ?? "{}") as Record<string, unknown>;
         assert.equal(params.lang, "fr");
-        assert.equal(log?.target_fragment, "History");
+        assert.equal(log?.fragment, "History");
     } finally { await db.close(); }
 });

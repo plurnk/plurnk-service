@@ -10,7 +10,7 @@ const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: 
         run_id: ctx.runId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         action_index: 0, origin: "model", op: "EDIT", suffix: "",
         signal: JSON.stringify(["philosophy"]),
-        target_scheme: "known", target_pathname: "/meaning", target_port: null, target_params: null,
+        scheme: "known", pathname: "/meaning", port: null, params: null,
         lineMarker: null,
         tx: "<<EDIT[philosophy](known://meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
@@ -122,38 +122,38 @@ test("log_entries: mimetype CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: target_scheme nullable; non-empty CHECK", async () => {
+test("log_entries: scheme nullable; non-empty CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tscheme");
-        await minimalLog(db, ctx, { action_index: 0, target_scheme: null });
+        await minimalLog(db, ctx, { action_index: 0, scheme: null });
         await assert.rejects(
-            () => minimalLog(db, ctx, { action_index: 1, target_scheme: "" }),
+            () => minimalLog(db, ctx, { action_index: 1, scheme: "" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("log_entries: target_port range", async () => {
+test("log_entries: port range", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tport");
-        await minimalLog(db, ctx, { action_index: 0, target_port: 443 });
-        await minimalLog(db, ctx, { action_index: 1, target_port: 0 });
-        await minimalLog(db, ctx, { action_index: 2, target_port: 65535 });
-        await minimalLog(db, ctx, { action_index: 3, target_port: null });
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, target_port: 65536 }), /CHECK constraint failed/);
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 5, target_port: -1 }), /CHECK constraint failed/);
+        await minimalLog(db, ctx, { action_index: 0, port: 443 });
+        await minimalLog(db, ctx, { action_index: 1, port: 0 });
+        await minimalLog(db, ctx, { action_index: 2, port: 65535 });
+        await minimalLog(db, ctx, { action_index: 3, port: null });
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, port: 65536 }), /CHECK constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 5, port: -1 }), /CHECK constraint failed/);
     } finally { await db.close(); }
 });
 
-test("log_entries: target_params + signal + lineMarker JSON validation", async () => {
+test("log_entries: params + signal + lineMarker JSON validation", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
-        await minimalLog(db, ctx, { action_index: 0, target_params: null, signal: null, lineMarker: null });
-        await minimalLog(db, ctx, { action_index: 1, target_params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 2, target_params: "{not json" }), /CHECK constraint failed/);
+        await minimalLog(db, ctx, { action_index: 0, params: null, signal: null, lineMarker: null });
+        await minimalLog(db, ctx, { action_index: 1, params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 2, params: "{not json" }), /CHECK constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { action_index: 3, signal: "{bad" }), /CHECK constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, lineMarker: "broken" }), /CHECK constraint failed/);
     } finally { await db.close(); }

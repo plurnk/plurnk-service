@@ -23,7 +23,7 @@ INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequenc
 SELECT COUNT(*) AS n FROM log_entries WHERE turn_id = $turn_id;
 
 -- PREP: test_log_action_indexes_by_turn
-SELECT action_index, status_rx, target_pathname, op FROM log_entries
+SELECT action_index, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
 ORDER BY action_index;
 
@@ -109,11 +109,11 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT action_index, status_rx, target_pathname, target_scheme, target_fragment, op, origin, signal, status_rx
+SELECT action_index, status_rx, pathname, scheme, fragment, op, origin, signal, status_rx
 FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index;
 
 -- PREP: test_log_entries_by_run
-SELECT id, op, target_pathname, target_scheme, action_index, turn_id, loop_id, status_rx
+SELECT id, op, pathname, scheme, action_index, turn_id, loop_id, status_rx
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
 -- PREP: test_count_log_entries

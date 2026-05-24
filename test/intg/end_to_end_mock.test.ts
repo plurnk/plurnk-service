@@ -76,16 +76,16 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         });
         assert.ok(entry !== undefined);
 
-        const logRows = await (db.test_log_entries_by_turn as PrepMethod).all<{ op: string; action_index: number; status_rx: number; target_pathname: string | null }>({ turn_id: result.turnId });
+        const logRows = await (db.test_log_entries_by_turn as PrepMethod).all<{ op: string; action_index: number; status_rx: number; pathname: string | null }>({ turn_id: result.turnId });
         assert.equal(logRows.length, 2);
         assert.equal(logRows[0]?.op, "EDIT");
         assert.equal(logRows[0]?.action_index, 0);
         assert.equal(logRows[0]?.status_rx, 201);
-        assert.equal(logRows[0]?.target_pathname, "/france/capital");
+        assert.equal(logRows[0]?.pathname, "/france/capital");
         assert.equal(logRows[1]?.op, "SEND");
         assert.equal(logRows[1]?.action_index, 1);
         assert.equal(logRows[1]?.status_rx, 200);
-        assert.equal(logRows[1]?.target_pathname, null);
+        assert.equal(logRows[1]?.pathname, null);
     } finally { await db.close(); }
 });
 
@@ -136,12 +136,12 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         assert.deepEqual(turn1.statuses, [201, 102]);
         assert.deepEqual(turn2.statuses, [200, 200], "READ → 200; terminal SEND broadcast → 200");
 
-        const turn2Reads = (await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; status_rx: number; target_pathname: string; op: string }>({ turn_id: turn2.turnId }))
+        const turn2Reads = (await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
             .filter((r) => r.op === "READ");
         assert.equal(turn2Reads.length, 1);
         assert.equal(turn2Reads[0]?.action_index, 0, "action_index resets per turn");
         assert.equal(turn2Reads[0]?.status_rx, 200);
-        assert.equal(turn2Reads[0]?.target_pathname, "/state");
+        assert.equal(turn2Reads[0]?.pathname, "/state");
     } finally { await db.close(); }
 });
 
