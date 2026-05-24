@@ -55,7 +55,6 @@ test("entry.read returns full entry shape (channels + tags + metadata)", async (
             assert.equal(result.entry.pathname, "france/capital");
             assert.equal(result.entry.channels.body.content, "Paris");
             assert.equal(result.entry.channels.body.mimetype, "text/markdown");
-            assert.equal(result.entry.channels.preview.content, "Paris", "v0: preview = body verbatim");
             assert.deepEqual(result.entry.tags.toSorted(), ["europe", "france"]);
         } finally { ws.close(); }
     });
@@ -95,15 +94,13 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
         try {
             await rpcCall(ws, 1, "session.create", { name: "fragment-test" });
             await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "body content" });
-            const r = await rpcCall(ws, 3, "entry.read", { path: "known://x#preview" });
+            const r = await rpcCall(ws, 3, "entry.read", { path: "known://x#anything" });
             if (r.result === undefined) {
                 throw new Error(`entry.read failed: ${JSON.stringify(r)}`);
             }
             const result = r.result as { status: number; entry: { channels: Record<string, unknown> } };
             assert.equal(result.status, 200);
-            // All channels present regardless of fragment
             assert.ok(result.entry.channels.body !== undefined);
-            assert.ok(result.entry.channels.preview !== undefined);
         } finally { ws.close(); }
     });
 });

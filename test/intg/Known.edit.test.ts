@@ -141,7 +141,7 @@ test("Known.edit: visibility rows idempotent across multiple EDITs of same path"
         await k.edit(editStatement({ path, body: "b" }), makeSchemeCtx({ db, sessionId, runId }));
         await k.edit(editStatement({ path, body: "c" }), makeSchemeCtx({ db, sessionId, runId }));
         const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
-        assert.equal(count, 2, "INSERT OR IGNORE produces exactly one visibility row per channel (body, preview)");
+        assert.equal(count, 1, "INSERT OR IGNORE produces exactly one visibility row per channel (body)");
     } finally { await db.close(); }
 });
 
@@ -154,7 +154,7 @@ test("Known.edit: visibility is per-run — same entry edited in different runs 
         const r = await k.edit(editStatement({ path, body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
         await k.edit(editStatement({ path, body: "b" }), makeSchemeCtx({ db, sessionId, runId: runB }));
         const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
-        assert.equal(count, 4, "2 runs × 2 channels (body, preview) = 4 visibility rows");
+        assert.equal(count, 2, "2 runs × 1 channel (body) = 2 visibility rows");
     } finally { await db.close(); }
 });
 
