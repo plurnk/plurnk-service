@@ -1,32 +1,37 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { Preview } from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
 
 // application/pdf handler. Binary mimetype — receives Uint8Array content.
-// validate() does a sync header-magic check; preview() does the full parse
-// via pdfjs-dist and returns the extracted text as a head-oriented Preview.
+// validate() does a sync header-magic check; preview() walks the PDF's
+// outline (bookmark TOC) and emits each entry as a heading symbol nested by
+// outline depth. PDFs without an outline fall back to the document's
+// metadata title (if present); without that, preview is null and the
+// channel is dark in the radar.
+//
+// We deliberately do NOT extract the full text body. Per the v0.5.0
+// framework contract, the preview is a structural signal — never a body
+// slice. A body slice would teach LLM consumers to read the preview as
+// content and skip the actual fetch.
 //
 // Why a header-magic validate and not a full parse: pdfjs transfers the
-// underlying ArrayBuffer for performance during getDocument(). If validate()
-// also called pdfjs, it would compete with preview()'s call on the same
-// buffer — second call sees a detached/emptied buffer and returns nothing.
-// The header check catches non-PDF content (wrong format, garbage bytes,
-// empty input) without touching the bytes preview() will need.
+// underlying ArrayBuffer during getDocument(), so a parse in validate()
+// would compete with the same parse in preview() and detach the buffer.
+// The header check catches non-PDF content cheaply without touching the
+// bytes preview() will need.
 //
-// On parse failure, preview returns null — the framework converts that to
-// an empty preview string. We never fall back to raw bytes-as-string; PDF
-// bytes are not human-readable and would only pollute the index.
-//
-// Salvage pattern from rummy.web/WebFetcher.js:
-//   - pdfjs-dist legacy build (Node-compatible)
-//   - isEvalSupported:false (no PDF JS execution)
-//   - verbosity:0 (silences "standardFontDataUrl not provided" noise;
-//     we read text streams directly and don't render glyphs)
-//   - Pages joined with "\n\n"
+// Salvage pattern from rummy.web/WebFetcher.js: pdfjs-dist legacy build
+// (Node-compatible), isEvalSupported:false (no PDF JS execution),
+// verbosity:0 (silences "standardFontDataUrl not provided" noise).
 
 // "%PDF-" — every PDF starts with this 5-byte magic, optionally preceded by
 // a UTF-8 BOM that some tools insert.
 const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+
+interface OutlineItem {
+    title: string;
+    items?: OutlineItem[];
+}
 
 export default class ApplicationPdf extends BaseHandler {
     override validate(content: string | Uint8Array): void {
@@ -39,13 +44,14 @@ export default class ApplicationPdf extends BaseHandler {
 
     override async preview(content: string | Uint8Array): Promise<Preview> {
         const bytes = toBytes(content);
-        let text: string;
+        let symbols: MimeSymbol[];
         try {
-            text = await extractAllText(bytes);
+            symbols = await extractStructure(bytes);
         } catch {
             return null;
         }
-        return { kind: "text", text, orientation: "head" };
+        if (symbols.length === 0) return null;
+        return { kind: "symbols", symbols };
     }
 }
 
@@ -59,13 +65,10 @@ function startsWith(haystack: Uint8Array, needle: Uint8Array): boolean {
 
 function toBytes(content: string | Uint8Array): Uint8Array {
     if (content instanceof Uint8Array) return content;
-    // Treat string content as latin1 byte sequence — preserves bytes round-tripped
-    // through utf-8 only if every byte fits in 0–255, but consumers passing inline
-    // string content for binary mimetypes are responsible for the encoding choice.
     return new TextEncoder().encode(content);
 }
 
-async function extractAllText(bytes: Uint8Array): Promise<string> {
+async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     // isEvalSupported and verbosity are real pdfjs runtime parameters but
     // aren't declared in DocumentInitParameters' published .d.ts — cast through
@@ -77,18 +80,60 @@ async function extractAllText(bytes: Uint8Array): Promise<string> {
     } as unknown as Parameters<typeof pdfjs.getDocument>[0];
     const doc = await pdfjs.getDocument(params).promise;
     try {
-        const pages: string[] = [];
-        for (let i = 1; i <= doc.numPages; i += 1) {
-            const page = await doc.getPage(i);
-            const tc = await page.getTextContent();
-            const pageText = tc.items
-                .map((it: unknown) => (it as { str?: string }).str ?? "")
-                .join(" ");
-            pages.push(pageText);
-            page.cleanup();
+        const symbols: MimeSymbol[] = [];
+        const outline = (await doc.getOutline()) as OutlineItem[] | null;
+        if (outline !== null && outline.length > 0) {
+            const counter = { n: 1 };
+            walkOutline(outline, 1, symbols, counter);
         }
-        return pages.join("\n\n");
+        if (symbols.length === 0) {
+            // Outline missing or empty — try the document Title from the PDF
+            // Info dict. Most authored PDFs have one even when they lack an
+            // outline; scanned/unstructured PDFs will have neither.
+            const meta = await doc.getMetadata();
+            const info = (meta.info ?? {}) as { Title?: string };
+            if (typeof info.Title === "string" && info.Title.trim().length > 0) {
+                symbols.push({
+                    name: info.Title.trim(),
+                    kind: "heading",
+                    level: 1,
+                    line: 1,
+                    endLine: 1,
+                });
+            }
+        }
+        return symbols;
     } finally {
         await doc.destroy();
+    }
+}
+
+// Walk a pdfjs outline (nested bookmark TOC). Each item produces one
+// heading symbol; `level` matches outline nesting depth (root items are
+// level 1, their children level 2, etc.). PDFs don't have lines, so we
+// use a monotonic counter for `line` so format()'s downstream tree-builder
+// gets unique, ordered positions.
+function walkOutline(
+    items: OutlineItem[],
+    level: number,
+    out: MimeSymbol[],
+    counter: { n: number },
+): void {
+    for (const item of items) {
+        const title = (item.title ?? "").trim();
+        if (title.length > 0) {
+            const line = counter.n;
+            counter.n += 1;
+            out.push({
+                name: title,
+                kind: "heading",
+                level: Math.min(level, 6),
+                line,
+                endLine: line,
+            });
+        }
+        if (item.items && item.items.length > 0) {
+            walkOutline(item.items, level + 1, out, counter);
+        }
     }
 }
