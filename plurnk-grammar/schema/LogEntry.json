@@ -6,7 +6,7 @@
     "type": "object",
     "required": [
         "id", "version",
-        "run_id", "loop_id", "turn_id", "action_index",
+        "run_id", "loop_id", "turn_id", "sequence",
         "at", "origin",
         "op", "suffix", "signal",
         "scheme", "username", "password", "hostname", "port", "pathname", "params", "fragment",
@@ -23,7 +23,7 @@
         "run_id": { "type": "integer", "minimum": 1 },
         "loop_id": { "type": "integer", "minimum": 1 },
         "turn_id": { "type": "integer", "minimum": 1 },
-        "action_index": { "type": "integer", "minimum": 0 },
+        "sequence": { "type": "integer", "minimum": 1, "description": "1-based within the turn; resets at each new turn." },
         "at": { "type": "string", "format": "date-time" },
         "origin": { "enum": ["model", "client", "system", "plugin"] },
         "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"] },

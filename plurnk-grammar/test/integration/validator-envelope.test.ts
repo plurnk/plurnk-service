@@ -308,7 +308,7 @@ const minimalLogEntry = () => ({
     run_id: 1,
     loop_id: 1,
     turn_id: 1,
-    action_index: 0,
+    sequence: 1,
     at: "2026-05-16T12:00:00Z",
     origin: "model" as const,
     op: "EDIT" as const,
