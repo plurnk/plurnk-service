@@ -9,7 +9,7 @@
         "run_id", "loop_id", "turn_id", "action_index",
         "at", "origin",
         "op", "suffix", "signal",
-        "target_scheme", "target_username", "target_password", "target_hostname", "target_port", "target_pathname", "target_params", "target_fragment",
+        "scheme", "username", "password", "hostname", "port", "pathname", "params", "fragment",
         "lineMarker",
         "tx", "mimetype_tx",
         "rx", "mimetype_rx", "status_rx",
@@ -36,19 +36,19 @@
                 { "type": "null" }
             ]
         },
-        "target_scheme": { "type": ["string", "null"], "minLength": 1 },
-        "target_username": { "type": ["string", "null"] },
-        "target_password": { "type": ["string", "null"] },
-        "target_hostname": { "type": ["string", "null"] },
-        "target_port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
-        "target_pathname": { "type": ["string", "null"] },
-        "target_params": {
+        "scheme": { "type": ["string", "null"], "minLength": 1 },
+        "username": { "type": ["string", "null"] },
+        "password": { "type": ["string", "null"] },
+        "hostname": { "type": ["string", "null"] },
+        "port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "pathname": { "type": ["string", "null"] },
+        "params": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
                 { "type": "null" }
             ]
         },
-        "target_fragment": {
+        "fragment": {
             "type": ["string", "null"],
             "description": "Channel selector at request time. Names the channel the op targeted; null when the op used the scheme's default channel."
         },
