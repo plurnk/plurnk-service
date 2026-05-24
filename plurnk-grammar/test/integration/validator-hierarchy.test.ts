@@ -42,7 +42,7 @@ const entry = () => ({
 
 const logEntry = () => ({
     id: 1, version: 0,
-    run_id: 1, loop_id: 1, turn_id: 1, action_index: 0,
+    run_id: 1, loop_id: 1, turn_id: 1, sequence: 1,
     at: "2026-05-16T12:00:00Z",
     origin: "model" as const,
     op: "EDIT" as const,
