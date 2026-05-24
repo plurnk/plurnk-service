@@ -27,6 +27,12 @@ SELECT action_index, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
 ORDER BY action_index;
 
+-- PREP: test_get_log_indexed
+SELECT le.indexed FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.action_index = $action_index;
+
 -- PREP: test_get_loop_status
 SELECT status FROM loops WHERE id = $id;
 

@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
@@ -447,31 +447,31 @@ export default class Engine {
         if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
         const turnId = openRow.id;
 
-        // Pre-model writes. For the loop's first turn (DB sequence 1,
-        // not the caller-supplied turnNumber — direct runTurn callers
-        // may default-1 across multiple calls), the user's prompt logs
-        // as a client-origin SEND[200] entry at action_index=0. Reuses
-        // the grammar's SEND op vocabulary (SPEC §0.5: "one assembled
-        // prompt sent") — no enum churn. Model ops dispatch from
-        // action_index=1 onward on the first turn; 0 onward thereafter.
-        let nextActionIndex = 0;
+        // Pre-model writes. For the loop's first turn (DB sequence 1),
+        // the user's prompt becomes the first action: a system-origin
+        // EDIT against `plurnk://prompt/<loop_id>` (loop-scoped indexed
+        // entry, body=prompt text). The log row records the EDIT;
+        // content lives at the plurnk:// entry. Model ops dispatch from
+        // action_index=2 onward on the first turn; 1 onward thereafter.
+        // 1-based throughout (migration 019).
+        let nextActionIndex = 1;
         if (seq === 1) {
             const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
-                await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                    run_id: runId, loop_id: loopId, turn_id: turnId,
-                    action_index: nextActionIndex,
-                    origin: "client",
-                    op: "SEND", suffix: "",
-                    signal: JSON.stringify(200),
-                    scheme: null, username: null, password: null,
+                const promptPath: UrlPath = {
+                    kind: "url", raw: `plurnk://prompt/${loopId}`,
+                    scheme: "plurnk", username: null, password: null,
                     hostname: null, port: null,
-                    pathname: null, params: null, fragment: null,
-                    lineMarker: null,
-                    tx: promptRow.prompt, mimetype_tx: "text/plain",
-                    rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
-                    status_rx: 200,
-                    state: "resolved", outcome: null, attrs: "{}",
+                    pathname: `prompt/${loopId}`, params: {}, fragment: null,
+                };
+                const promptStmt: EditStatement = {
+                    op: "EDIT", suffix: "", signal: null,
+                    path: promptPath, lineMarker: null,
+                    body: promptRow.prompt, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({
+                    statement: promptStmt, sessionId, runId, loopId, turnId,
+                    actionIndex: nextActionIndex, origin: "system",
                 });
                 nextActionIndex++;
             }
@@ -616,7 +616,7 @@ export default class Engine {
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
-        const index = await this.#buildIndex(runId);
+        const index = await this.#buildIndex(runId, loopId);
         const log = await this.#buildLog(runId);
         const telemetryErrors = await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Rummy AgentLoop.js #buildContinuationPrompt: literally
@@ -781,9 +781,14 @@ export default class Engine {
         }));
     }
 
-    async #buildIndex(runId: number): Promise<object[]> {
+    async #buildIndex(runId: number, currentLoopId: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_index as PrepMethod).all<IndexedRow>({ run_id: runId });
         const tagsStmt = this.#db.engine_entry_tags as PrepMethod;
+        // Foist the CURRENT loop's prompt entry out of the index render —
+        // it's materialized in packet.user.prompt instead. Previous loops'
+        // prompt entries stay in the index, addressable for the model to
+        // HIDE if it wants.
+        const foistedPathname = `prompt/${currentLoopId}`;
 
         const entries = new Map<number, {
             id: number; version: number; scope: "agent" | "session"; session_id: number | null;
@@ -797,6 +802,7 @@ export default class Engine {
         }>();
 
         for (const row of rows) {
+            if (row.scheme === "plurnk" && row.pathname === foistedPathname) continue;
             let entry = entries.get(row.entry_id);
             if (entry === undefined) {
                 const tagRows = await tagsStmt.all<{ tag: string }>({ entry_id: row.entry_id });

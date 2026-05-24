@@ -99,10 +99,11 @@ test("Engine.runTurn: packet stores system + user content from messages", async 
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-op turn — prompt at 0, model ops at 1..N", async () => {
-    // Turn-as-container model. Turn 1 opens with action_index=0 reserved
-    // for the prompt (client-origin SEND[200]). The 4 model ops dispatch
-    // at 1, 2, 3, 4 — continuing the turn's running counter.
+test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
+    // Turn-as-container model, 1-based. Turn 1 opens with action_index=1
+    // reserved for the prompt (system-origin EDIT against
+    // plurnk://prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
+    // continuing the turn's running counter.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -118,11 +119,11 @@ test("Engine.runTurn: multi-op turn — prompt at 0, model ops at 1..N", async (
         assert.deepEqual(
             indices.map((r) => ({ idx: r.action_index, op: r.op })),
             [
-                { idx: 0, op: "SEND" }, // the prompt
-                { idx: 1, op: "EDIT" },
+                { idx: 1, op: "EDIT" }, // the prompt (plurnk://prompt/<loop_id>)
                 { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
-                { idx: 4, op: "SEND" },
+                { idx: 4, op: "EDIT" },
+                { idx: 5, op: "SEND" },
             ],
         );
     } finally { await db.close(); }
@@ -574,11 +575,11 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as a real
-    // log_entries row (origin=client, op=SEND, action_index=0). When
-    // #buildLog snapshots the log for THIS turn's packet, the prompt is
-    // already there. The 2 model ops dispatch AFTER the packet builds,
-    // so they don't appear in this turn's snapshot — they'll surface
-    // in turn 2's snapshot.
+    // system-origin EDIT against plurnk://prompt/<loop_id> at
+    // action_index=1 (1-based). When #buildLog snapshots the log for
+    // THIS turn's packet, the prompt is already there. The 2 model ops
+    // dispatch AFTER the packet builds, so they don't appear in this
+    // turn's snapshot — they'll surface in turn 2's snapshot.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -587,11 +588,13 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ coordinate: string; op: string; origin: string }> } };
+        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ coordinate: string; op: string; origin: string; target?: { scheme: string | null; pathname: string | null } }> } };
         assert.equal(packet.system.log.length, 1);
-        assert.equal(packet.system.log[0].coordinate, "1/1/0");
-        assert.equal(packet.system.log[0].op, "SEND");
-        assert.equal(packet.system.log[0].origin, "client");
+        assert.equal(packet.system.log[0].coordinate, "1/1/1");
+        assert.equal(packet.system.log[0].op, "EDIT");
+        assert.equal(packet.system.log[0].origin, "system");
+        assert.equal(packet.system.log[0].target?.scheme, "plurnk");
+        assert.equal(packet.system.log[0].target?.pathname, `prompt/${loopId}`);
     } finally { await db.close(); }
 });
 
@@ -611,17 +614,18 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const packet = JSON.parse(row?.packet ?? "{}") as {
             system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null }; origin: string }> };
         };
-        // Turn 2 packet sees: prompt at 1/1/0 + 2 model ops at 1/1/1 + 1/1/2
+        // Turn 2 packet sees: prompt at 1/1/1 (plurnk://) + 2 model ops at 1/1/2 + 1/1/3
         assert.equal(packet.system.log.length, 3);
-        assert.equal(packet.system.log[0].coordinate, "1/1/0");
-        assert.equal(packet.system.log[0].op, "SEND");
-        assert.equal(packet.system.log[0].origin, "client");
-        assert.equal(packet.system.log[1].coordinate, "1/1/1");
+        assert.equal(packet.system.log[0].coordinate, "1/1/1");
+        assert.equal(packet.system.log[0].op, "EDIT");
+        assert.equal(packet.system.log[0].origin, "system");
+        assert.equal(packet.system.log[0].target.scheme, "plurnk");
+        assert.equal(packet.system.log[1].coordinate, "1/1/2");
         assert.equal(packet.system.log[1].op, "EDIT");
         assert.equal(packet.system.log[1].status, 201);
         assert.equal(packet.system.log[1].target.scheme, "known");
         assert.equal(packet.system.log[1].target.pathname, "/a");
-        assert.equal(packet.system.log[2].coordinate, "1/1/2");
+        assert.equal(packet.system.log[2].coordinate, "1/1/3");
         assert.equal(packet.system.log[2].op, "SEND");
         assert.equal(packet.system.log[2].status, 102);
     } finally { await db.close(); }
@@ -641,7 +645,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; rx: { status?: number; entryId?: number } | string }> } };
-        // index 0 = synthetic PROMPT (text/plain rx); index 1 = first real EDIT
+        // index 0 = prompt EDIT (plurnk://); index 1 = first model EDIT
         const firstEdit = packet.system.log[1];
         assert.equal(firstEdit.op, "EDIT");
         const rx = firstEdit.rx as { status: number; entryId?: number };
@@ -692,8 +696,8 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(packet.user.telemetry.errors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.user.telemetry.errors;
         assert.equal(err.kind, "action_failure");
-        // Turn-as-container: prompt at 1/1/0; model's EDIT shifts to 1/1/1.
-        assert.equal(err.coordinate, "1/1/1");
+        // Turn-as-container, 1-based: prompt at 1/1/1; model's EDIT shifts to 1/1/2.
+        assert.equal(err.coordinate, "1/1/2");
         assert.equal(err.op, "EDIT");
         assert.equal(err.target, "log:///illegal");
         assert.equal(err.status, 403);

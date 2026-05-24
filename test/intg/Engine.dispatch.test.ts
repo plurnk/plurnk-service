@@ -224,15 +224,27 @@ test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['sys
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: client EDIT plurnk:// rejected with 403 (Plurnk.writableBy=['system','plugin'])", async () => {
+test("Engine.dispatch: model EDIT plurnk://prompt/* rejected with 403 (engine/client own prompts)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("plurnk", "/cfg"), body: "y" }),
+            statement: editStmt({ path: urlPath("plurnk", "prompt/1"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "client",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model EDIT plurnk:// non-prompt path is allowed", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ path: urlPath("plurnk", "scratch"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            actionIndex: 1, origin: "model",
+        });
+        assert.equal(result.status, 201);
     } finally { await db.close(); }
 });
 

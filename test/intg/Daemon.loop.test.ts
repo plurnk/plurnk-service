@@ -19,7 +19,8 @@ test("loop.run with mock provider runs a model turn and persists entries", async
             assert.equal(result.turnIds.length, 1);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-            assert.equal(entryCount, 1);
+            // 2 entries: known://france/capital + plurnk://prompt/<loop_id>
+            assert.equal(entryCount, 2);
         } finally { ws.close(); }
     });
 });

@@ -643,8 +643,8 @@ All real providers are siblings, registered via plugin discovery.
 **Mimetypes in-tree:** none. The framework (`@plurnk/plurnk-mimetypes`) and every handler are siblings.
 
 **Schemes in-tree (`src/schemes/`):**
-- `plurnk` — meta-scheme for scheme registration ops (manifest only; ops not implemented yet).
-- `log` — coordinate-addressed run/turn/action log reads.
+- `plurnk` — indexable scheme for internal model-interactions. Current use: `plurnk://prompt/<loop_id>` carries each loop's prompt as a body-channel entry written on loop start. Manifest-level writability is open (any origin); model-origin writes to `plurnk://prompt/*` are rejected in-handler (engine + client own those paths).
+- `log` — coordinate-addressed log entries. Read returns a summary of the action at `log://<loop_seq>/<turn_seq>/<sequence>`; SHOW/HIDE toggle the row's `indexed` flag (log entries are not entries-table entries, but participate in the model's curation surface via URI dispatch). Wire URI carries an optional `/<op>` suffix for self-documentation (`log://1/1/1/EDIT`).
 - `known` — primary narrative entries.
 - `unknown` — decomposition / open questions.
 - `skill` — sibling of known/unknown; semantics provisional.
@@ -996,6 +996,8 @@ type Packet = {
     assistantRaw: unknown;
 };
 ```
+
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable entry, body channel, text/markdown). The corresponding log row appears at `log://<loop_id_seq>/1/1/EDIT` with target = the plurnk URI. At render time, the *current* loop's `plurnk://prompt/<loop_id>` entry is foisted out of `packet.system.index` and materialized in `packet.user.prompt` — one section, one mechanism, no duplicate content rendering. Previous loops' prompt entries remain in the index and are addressable for the model to READ or HIDE. {§15-current-prompt-foist}
 
 ### §15.1 user.telemetry — model-facing runtime telemetry
 

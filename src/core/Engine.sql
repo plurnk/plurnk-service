@@ -102,11 +102,12 @@ WHERE le.loop_id = $loop_id
 ORDER BY le.action_index;
 
 -- PREP: engine_render_log
--- Render-time log assembly (SPEC §15 packet.system.log, task #44).
+-- Render-time log assembly (SPEC §15 packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working
 -- memory carries across loops within a session's run, not just the
--- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<action_index>.
+-- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
+-- `indexed = 0` rows are hidden (model curated them out via HIDE).
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
@@ -123,6 +124,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.run_id = $run_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
+  AND le.indexed = 1
 ORDER BY l.sequence, t.sequence, le.action_index;
 
 -- PREP: engine_insert_log_entry

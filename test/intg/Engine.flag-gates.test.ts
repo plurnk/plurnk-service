@@ -82,7 +82,7 @@ test("flag gate active: noProposals=true rejects proposing scheme with 403", asy
         const stmt = editStmt(urlPath("proposing-test", "x"), "body");
         const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, actionIndex: 0, origin: "client" });
         assert.equal(r.status, 403);
-        assert.match(r.error ?? "", /inactive under current loop flags/);
+        assert.match(String(r.error ?? ""), /inactive under current loop flags/);
     } finally { await db.close(); }
 });
 
