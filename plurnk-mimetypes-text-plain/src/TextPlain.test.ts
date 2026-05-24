@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TextPlain from "./TextPlain.ts";
+import type { SymbolPreview } from "@plurnk/plurnk-mimetypes";
 
 const metadata = {
     mimetype: "text/plain",
@@ -31,13 +32,10 @@ describe("TextPlain", () => {
         assert.doesNotThrow(() => handler.validate("anything"));
     });
 
-    it("preview returns a head-oriented text Preview carrying the content", async () => {
+    it("preview returns an empty SymbolPreview — no body leak into the radar", async () => {
         const handler = new TextPlain(metadata);
-        const preview = await handler.preview("hello world");
-        assert.deepEqual(preview, {
-            kind: "text",
-            text: "hello world",
-            orientation: "head",
-        });
+        const preview = (await handler.preview("hello world")) as SymbolPreview;
+        assert.equal(preview.kind, "symbols");
+        assert.deepEqual([...preview.symbols], []);
     });
 });

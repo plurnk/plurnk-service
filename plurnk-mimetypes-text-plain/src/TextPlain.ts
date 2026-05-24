@@ -1,12 +1,7 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { Preview } from "@plurnk/plurnk-mimetypes";
 
-// text/plain: the entire content is the preview material, head-oriented.
-// No extractable structure, so symbols/extractRaw stay at BaseHandler's
-// empty defaults — only `preview` is overridden to return a TextPreview.
-export default class TextPlain extends BaseHandler {
-    override preview(content: string | Uint8Array): Preview {
-        const text = typeof content === "string" ? content : "";
-        return { kind: "text", text, orientation: "head" };
-    }
-}
+// text/plain has no structural extraction path. Inherits BaseHandler unchanged
+// — the default preview returns an empty SymbolPreview, which fits to "". The
+// radar shows nothing for text/plain channels by design: a body slice would
+// teach LLM consumers to read the preview as content and skip the fetch.
+export default class TextPlain extends BaseHandler {}
