@@ -91,7 +91,7 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 -- when this query fires, so we explicitly look one back).
 SELECT
     le.op, le.action_index, le.status_rx, le.rx, le.mimetype_rx,
-    le.target_scheme, le.target_pathname,
+    le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
@@ -113,9 +113,9 @@ SELECT
     le.action_index,
     le.origin,
     le.op, le.suffix, le.signal,
-    le.target_scheme, le.target_username, le.target_password,
-    le.target_hostname, le.target_port, le.target_pathname,
-    le.target_params, le.target_fragment,
+    le.scheme, le.username, le.password,
+    le.hostname, le.port, le.pathname,
+    le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.state, le.outcome
 FROM log_entries le
@@ -133,15 +133,15 @@ ORDER BY l.sequence, t.sequence, le.action_index;
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, action_index, origin,
     op, suffix, signal,
-    target_scheme, target_username, target_password, target_hostname, target_port,
-    target_pathname, target_params, target_fragment, lineMarker,
+    scheme, username, password, hostname, port,
+    pathname, params, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx,
     state, outcome, attrs
 ) VALUES (
     $run_id, $loop_id, $turn_id, $action_index, $origin,
     $op, $suffix, $signal,
-    $target_scheme, $target_username, $target_password, $target_hostname, $target_port,
-    $target_pathname, $target_params, $target_fragment, $lineMarker,
+    $scheme, $username, $password, $hostname, $port,
+    $pathname, $params, $fragment, $lineMarker,
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx,
     $state, $outcome, $attrs
 )

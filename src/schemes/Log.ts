@@ -34,8 +34,8 @@ export default class Log {
 
         const row = await (db.log_read_by_coordinate as PrepMethod).get<{
             op: string;
-            target_scheme: string | null;
-            target_pathname: string | null;
+            scheme: string | null;
+            pathname: string | null;
             status_rx: number;
             rx: string;
             mimetype_rx: string;
@@ -43,7 +43,7 @@ export default class Log {
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 
-        const target = row.target_scheme !== null ? `${row.target_scheme}://${row.target_pathname ?? ""}` : (row.target_pathname ?? "(no path)");
+        const target = row.scheme !== null ? `${row.scheme}://${row.pathname ?? ""}` : (row.pathname ?? "(no path)");
         const summary = `${row.op} ${target}\nstatus: ${row.status_rx}\nresponse: ${row.rx}`;
         return { status: 200, content: summary, mimetype: "text/plain" };
     }
