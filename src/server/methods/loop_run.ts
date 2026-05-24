@@ -11,11 +11,19 @@ import { parseAliasesFromEnv, instantiateProvider } from "../../core/ProviderReg
 import type { Provider } from "../../core/ProviderRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "../../core/scheme-types.ts";
 
-// Per-call flags shape on loop.run. Only documented working flags are
-// accepted today; LoopFlags.noProposals / noWeb / noInteraction are inert
-// pending an askUser-style primitive (see plurnk:// pondering notes).
+// Per-call flags shape on loop.run. Each flag persists to loops.flags;
+// Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate
+// schemes whose manifest affinity matches (proposes / excludedInAsk /
+// requiresWeb / requiresInteraction). noWeb/noInteraction are accepted
+// for wire uniformity but have no current consumers (http and ask-user
+// primitives haven't shipped); they activate the moment a scheme opts
+// into the affinity.
 interface LoopRunFlags {
     yolo?: boolean;
+    noProposals?: boolean;
+    noWeb?: boolean;
+    noInteraction?: boolean;
+    mode?: "ask" | "act";
 }
 
 interface Params {
@@ -40,8 +48,13 @@ export const register = (registry: MethodRegistry): void => {
                 if (typeof p.flags !== "object" || p.flags === null || Array.isArray(p.flags)) {
                     throw new Error("loop.run: flags must be an object");
                 }
-                if (p.flags.yolo !== undefined && typeof p.flags.yolo !== "boolean") {
-                    throw new Error("loop.run: flags.yolo must be a boolean");
+                for (const bool of ["yolo", "noProposals", "noWeb", "noInteraction"] as const) {
+                    if (p.flags[bool] !== undefined && typeof p.flags[bool] !== "boolean") {
+                        throw new Error(`loop.run: flags.${bool} must be a boolean`);
+                    }
+                }
+                if (p.flags.mode !== undefined && p.flags.mode !== "ask" && p.flags.mode !== "act") {
+                    throw new Error("loop.run: flags.mode must be 'ask' or 'act'");
                 }
             }
             const loopPersona = p.persona ?? null;

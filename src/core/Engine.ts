@@ -853,7 +853,8 @@ export default class Engine {
             signal: undefined,
         };
         let result: DispatchResult;
-        const denial = this.#checkWritable(statement, origin);
+        let denial = this.#checkWritable(statement, origin);
+        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;
         } else {
@@ -1099,6 +1100,33 @@ export default class Engine {
         if (manifest === undefined) return null;
         if (manifest.writableBy.includes(origin as WriterTier)) return null;
         return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` };
+    }
+
+    // Per-loop flag gating. Schemes self-declare their flag affinity in
+    // their manifest (proposes / excludedInAsk / requiresWeb /
+    // requiresInteraction); SchemeRegistry.resolveForLoop returns the
+    // active set under the loop's persisted flags. Anything outside the
+    // set returns 403 — action-entry-as-outcome carries the rejection.
+    async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
+        // Broadcast SEND has no scheme to gate.
+        if (statement.op === "SEND" && statement.path === null) return null;
+
+        const flags = await this.#loadLoopFlags(loopId);
+        // Fast path: default flags gate nothing. (yolo never gates.)
+        if (!flags.noProposals && !flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
+
+        const active = this.#schemes.resolveForLoop(flags);
+        const check = (path: PlurnkStatement["path"]): DispatchResult | null => {
+            const scheme = this.#schemeNameOf(path);
+            if (scheme === null) return null;
+            if (active.has(scheme)) return null;
+            return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
+        };
+
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            return check(statement.path) ?? check(statement.body);
+        }
+        return check(statement.path);
     }
 
     async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
