@@ -81,11 +81,14 @@ const canonicalJson = (obj) => {
     return JSON.stringify(sorted);
 };
 
-// Heredoc block for one channel of one entry. The fence is `URI#channel`
+// Heredoc block for one channel of one entry. Fence is `URI#channel`
 // (plurnk-grammar-native form) so model emissions and entry projections
-// share one syntax. Body is line-numbered.
+// share one syntax. When `channel` is null/empty the fence is path-only —
+// this is the default-channel convention: the absence of `#channel` is
+// the addressing of the scheme's default channel, not a missing field.
+// Body is line-numbered.
 const renderHeredoc = (uri, channel, body) => {
-    const fence = `${uri}#${channel}`;
+    const fence = channel ? `${uri}#${channel}` : uri;
     const numbered = numberLines(body);
     return `<<${fence}:\n${numbered}\n:${fence}`;
 };
@@ -99,6 +102,7 @@ const renderIndexEntries = (entries) =>
         const scheme = e.scheme ?? "?";
         const path = e.pathname ?? "";
         const uri = `${scheme}://${path}`;
+        const defaultChannel = e.defaultChannel ?? "";
         const meta = { path: uri };
         if (Array.isArray(e.tags) && e.tags.length > 0) meta.tags = e.tags;
         const channelsMeta = {};
@@ -110,7 +114,8 @@ const renderIndexEntries = (entries) =>
             if (typeof ch.mimetype === "string") channelInfo.mimetype = ch.mimetype;
             if (typeof ch.tokens === "number") channelInfo.tokens = ch.tokens;
             channelsMeta[channelName] = channelInfo;
-            blocks.push(renderHeredoc(uri, channelName, content));
+            const fenceChannel = channelName === defaultChannel ? null : channelName;
+            blocks.push(renderHeredoc(uri, fenceChannel, content));
         }
         if (Object.keys(channelsMeta).length > 0) meta.channels = channelsMeta;
         return blocks.length > 0
@@ -118,9 +123,11 @@ const renderIndexEntries = (entries) =>
             : `* ${canonicalJson(meta)}`;
     }).join("\n");
 
-// Render one Log entry → `* {meta}` line followed by an `rx` heredoc.
-// URI is `log://<coordinate>`; rx is what the action returned, which is
-// what the model actually wants to read (status, body, etc.).
+// Render one Log entry → `* {meta}` line followed by the response body.
+// URI is `log://<coordinate>`; the body carries what the action returned
+// (status meta, body, etc.). Log entries are single-payload by nature —
+// fence is path-only (no `#channel`), matching the default-channel
+// convention for single-channel addressing.
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const coordinate = e.coordinate ?? "?";
@@ -132,7 +139,7 @@ const renderLogEntries = (entries) =>
         const target = renderLogTarget(e.target);
         if (target !== null) meta.target = target;
         const rxBody = typeof e.rx === "string" ? e.rx : JSON.stringify(e.rx);
-        return `* ${canonicalJson(meta)}\n${renderHeredoc(uri, "rx", rxBody)}`;
+        return `* ${canonicalJson(meta)}\n${renderHeredoc(uri, null, rxBody)}`;
     }).join("\n");
 
 const renderLogTarget = (target) => {
