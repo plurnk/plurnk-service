@@ -39,7 +39,11 @@ export interface ProviderResponse {
 }
 export interface Provider {
     generate(args: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;
-    readonly contextSize: number;
+    // null = provider doesn't know the model's context window (endpoint
+    // doesn't report n_ctx and no operator override is set). Engine treats
+    // null as "no budget info" — Percent column is omitted rather than
+    // guessed. Providers that always know contextSize never return null.
+    readonly contextSize: number | null;
     readonly model: string;
     // Provider-owned tokenizer. Engine calls this during packet assembly to
     // populate per-section subtotals (packet.system.tokens, packet.user.tokens,

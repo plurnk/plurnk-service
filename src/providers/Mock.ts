@@ -27,15 +27,15 @@ export type MockReturnedAssistant = ProviderAssistant & { ops?: PlurnkStatement[
 const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, cached: 0, total: 0 };
 
 export default class Mock implements Provider {
-    #contextSize: number;
+    #contextSize: number | null;
     #queue: MockResponse[];
 
-    constructor({ contextSize, responses }: { contextSize: number; responses: MockResponse[] }) {
+    constructor({ contextSize, responses }: { contextSize: number | null; responses: MockResponse[] }) {
         this.#contextSize = contextSize;
         this.#queue = [...responses];
     }
 
-    get contextSize(): number { return this.#contextSize; }
+    get contextSize(): number | null { return this.#contextSize; }
     get model(): string { return "mock"; }
 
     // Heuristic tokenizer. Mock is test-only; real provider siblings ship

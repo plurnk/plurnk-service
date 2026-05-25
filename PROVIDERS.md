@@ -58,7 +58,7 @@ type ProviderResponse = {
 };
 
 interface Provider {
-    readonly contextSize: number;
+    readonly contextSize: number | null;
     readonly model: string;
     generate(args: {
         messages: ChatMessage[];
@@ -73,7 +73,7 @@ Duck-typed contract. The interface declaration is in `src/core/ProviderRegistry.
 
 | Getter | Constraint |
 |---|---|
-| `contextSize` | Total context window in tokens for the configured model. |
+| `contextSize` | Total context window in tokens for the configured model, or `null` if the provider can't resolve it (endpoint doesn't report `n_ctx` and no override env is set). Engine treats `null` as "no budget info available" — Percent column omitted rather than guessed. |
 | `model` | Model identifier (`gpt-5`, `claude-opus-4-7`, `gemini-2.5-pro`, etc.). |
 
 Both are read-only. Engine reads them for accounting (`<turn>` token table) and for forensic logging. They do NOT change across the provider's lifetime; the provider is single-model.
@@ -149,9 +149,10 @@ Each provider package's default export MUST have a static `fromEnv(env, model)` 
 ```ts
 class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI {
-        // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY,
-        // OPENAI_CONTEXT_SIZE, ...) plus the universal operator knobs
-        // PLURNK_REASON (§3.8) and PLURNK_PROVIDER_FETCH_TIMEOUT (§3.9).
+        // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
+        // plus the universal operator knobs PLURNK_REASON (§3.8),
+        // PLURNK_FETCH_TIMEOUT (§3.9), and PLURNK_PROVIDER_CONTEXT_SIZE
+        // (override for the model's reported context window).
         // Translate PLURNK_REASON to the provider-native reasoning config.
         return new OpenAI({ /* ... */ });
     }
@@ -163,30 +164,25 @@ class OpenAI {
 
 Promises:
 - `fromEnv` MAY be sync or async; return type is `Provider | Promise<Provider>`.
-- `fromEnv` reads provider-specific env vars (`OPENAI_*` / `ANTHROPIC_*` / etc.) and the universal operator knobs `PLURNK_REASON` (§3.8) and `PLURNK_PROVIDER_FETCH_TIMEOUT` (§3.9).
+- `fromEnv` reads provider-specific env vars (`OPENAI_*` / `ANTHROPIC_*` / etc.) and the universal operator knobs `PLURNK_REASON` (§3.8) and `PLURNK_FETCH_TIMEOUT` (§3.9). `PLURNK_PROVIDER_CONTEXT_SIZE` is the optional service-wide override for the model's reported context window when set.
 - `fromEnv` MUST fail fast with a clear error if required env is missing — name the env var the operator needs to set.
 - `model` is the second positional arg because `PLURNK_MODEL_<alias>=<provider>/<model>` is parsed by service; service passes the resolved model id through.
 
 ### §3.8 `PLURNK_REASON` — universal reasoning-token budget
 
-`PLURNK_REASON` is the engine-level reasoning-token budget. Numeric:
+`PLURNK_REASON` is the engine-level reasoning-token budget. Required; resolved through the standard env cascade (`.env.example` ships a sane default; `.env` / `.env.<profile>` / shell / CLI flag override in order). Numeric, non-negative integer — the budget in tokens.
 
-| Value | Meaning |
-|---|---|
-| `0` | Reasoning disabled. Default. |
-| `n > 0` | Request approximately `n` reasoning tokens. |
-
-The integer is the budget in tokens. Provider modules own translating to their wire format — OpenAI o-series picks a tier from `reasoning_effort: low|medium|high|disabled` based on the value; llama-server / Ollama with OpenAI-compat translate to their `think: true|false` field at any nonzero value; Anthropic uses `thinking: { type: "enabled", budget_tokens: n }` passing through near-verbatim. Service stays out of the per-model-family complexity.
+Provider modules own translating to their wire format: OpenAI o-series picks a tier from `reasoning_effort: low|medium|high|disabled`; llama-server / Ollama OpenAI-compat translate to `think: true|false`; Anthropic uses `thinking: { type: "enabled", budget_tokens: n }`. Service stays out of per-model-family complexity.
 
 Providers MAY publish documentation about how they translate `PLURNK_REASON` budgets to their model family's tier breakpoints. Service does not validate the value beyond "non-negative integer."
 
-### §3.9 `PLURNK_PROVIDER_FETCH_TIMEOUT` — universal fetch timeout
+### §3.9 `PLURNK_FETCH_TIMEOUT` — universal fetch timeout
 
-`PLURNK_PROVIDER_FETCH_TIMEOUT` is the engine-level fetch timeout, in milliseconds, applied to any single provider request. Default `600000` (10 minutes) when unset. Each provider's `fromEnv` reads it and passes it through as the `AbortSignal.timeout` bound on `fetch`. A streaming completion that emits no bytes for longer than this window is aborted.
+`PLURNK_FETCH_TIMEOUT` is the service-wide fetch timeout, in milliseconds, applied to any single outbound request — provider calls and any future http-like scheme. Each provider's `fromEnv` reads it and passes it through as the `AbortSignal.timeout` bound on `fetch`. A streaming completion that emits no bytes for longer than this window is aborted.
 
-Rationale: every provider in the registry is a streaming HTTP client, so they all share the same hang-tolerance question. Operators get one knob; per-provider override env (`OPENAI_FETCH_TIMEOUT_MS`, `OPENROUTER_FETCH_TIMEOUT_MS`, etc.) is not part of the contract — if a single provider's endpoint genuinely needs different timing, that is a code-default decision inside the provider, not an operator concern.
+Rationale: every provider in the registry is a streaming HTTP client, so they share the same hang-tolerance question. Operators get one ceiling. Per-provider override envs (`OPENAI_FETCH_TIMEOUT_MS`, etc.) are not part of the contract — if a single provider's endpoint genuinely needs different timing, that's a code-default decision inside the provider, not an operator concern.
 
-Providers MAY apply a lower in-code default than `600000` when their endpoint is known-fast (e.g. a local Ollama box would reasonably default to 30s), but they MUST honor `PLURNK_PROVIDER_FETCH_TIMEOUT` as the operator-set upper bound.
+Providers MAY apply a lower in-code default when their endpoint is known-fast (a local Ollama box would reasonably default to 30s), but they MUST honor `PLURNK_FETCH_TIMEOUT` as the operator-set upper bound.
 
 ### §3.6 Model alias system
 
