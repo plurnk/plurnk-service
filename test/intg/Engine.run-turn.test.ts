@@ -67,9 +67,9 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.usage_completion, 42);
 
         // 3 log_entries: 1 client-origin SEND[200] for the prompt at
-        // action_index=0 (written when the turn opens) + 2 model ops
+        // sequence=0 (written when the turn opens) + 2 model ops
         // (EDIT at 1, SEND at 2). Turn-as-container model — pre-model
-        // writes share the turn's action_index counter.
+        // writes share the turn's sequence counter.
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
         assert.equal(logCount, 3);
 
@@ -100,7 +100,7 @@ test("Engine.runTurn: packet stores system + user content from messages", async 
 });
 
 test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
-    // Turn-as-container model, 1-based. Turn 1 opens with action_index=1
+    // Turn-as-container model, 1-based. Turn 1 opens with sequence=1
     // reserved for the prompt (system-origin EDIT against
     // plurnk://prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
     // continuing the turn's running counter.
@@ -115,9 +115,9 @@ test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async (
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         assert.deepEqual(result.statuses, [201, 201, 201, 200]);
-        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; op: string }>({ turn_id: result.turnId });
+        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; op: string }>({ turn_id: result.turnId });
         assert.deepEqual(
-            indices.map((r) => ({ idx: r.action_index, op: r.op })),
+            indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
                 { idx: 1, op: "EDIT" }, // the prompt (plurnk://prompt/<loop_id>)
                 { idx: 2, op: "EDIT" },
@@ -576,7 +576,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as a real
     // system-origin EDIT against plurnk://prompt/<loop_id> at
-    // action_index=1 (1-based). When #buildLog snapshots the log for
+    // sequence=1 (1-based). When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
     // dispatch AFTER the packet builds, so they don't appear in this
     // turn's snapshot — they'll surface in turn 2's snapshot.

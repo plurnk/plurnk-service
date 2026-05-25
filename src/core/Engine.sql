@@ -26,7 +26,7 @@ WHERE l.id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to write a
--- client-origin SEND[200] log entry for the prompt at action_index=0.
+-- client-origin SEND[200] log entry for the prompt at sequence=0.
 -- Prompts are first-class log entries (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
@@ -90,7 +90,7 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 -- (turn-as-container model: the current turn exists with status=102
 -- when this query fires, so we explicitly look one back).
 SELECT
-    le.op, le.action_index, le.status_rx, le.rx, le.mimetype_rx,
+    le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
 FROM log_entries le
@@ -99,7 +99,7 @@ JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
   AND t.sequence = $current_turn_seq - 1
-ORDER BY le.action_index;
+ORDER BY le.sequence;
 
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §15 packet.system.log).
@@ -111,7 +111,7 @@ ORDER BY le.action_index;
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
-    le.action_index,
+    le.sequence,
     le.origin,
     le.op, le.suffix, le.signal,
     le.scheme, le.username, le.password,
@@ -125,7 +125,7 @@ JOIN loops l ON l.id = le.loop_id
 WHERE le.run_id = $run_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND le.indexed = 1
-ORDER BY l.sequence, t.sequence, le.action_index;
+ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry
 -- Default state='resolved' covers the common path (non-proposing schemes
@@ -133,14 +133,14 @@ ORDER BY l.sequence, t.sequence, le.action_index;
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via loop/resolve RPC; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, action_index, origin,
+    run_id, loop_id, turn_id, sequence, origin,
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, params, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx,
     state, outcome, attrs
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $action_index, $origin,
+    $run_id, $loop_id, $turn_id, $sequence, $origin,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $params, $fragment, $lineMarker,

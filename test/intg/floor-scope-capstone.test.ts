@@ -22,8 +22,8 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
     const env = await seedEnvelope(db, "capstone-ws");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-    const dispatch = async (statement: PlurnkStatement, actionIndex: number) =>
-        engine.dispatch({ statement, ...env, actionIndex, origin: "client" });
+    const dispatch = async (statement: PlurnkStatement, sequence: number) =>
+        engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
     try {
         const [editUnknown] = parse("<<EDIT[geography,question](unknown://france/capital):what is the capital of france?:EDIT");

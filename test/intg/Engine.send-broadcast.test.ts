@@ -38,7 +38,7 @@ test("SEND[200]:done:SEND (null path, terminal success) → loop.status = 200", 
         const result = await engine.dispatch({
             statement: sendStmt(200, "done"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
         assert.equal(await loopStatus(db, env.loopId), 200);
@@ -53,7 +53,7 @@ test("SEND[499]:cancelled:SEND → loop.status = 499", async () => {
         const result = await engine.dispatch({
             statement: sendStmt(499, "cancelled"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 499);
         assert.equal(await loopStatus(db, env.loopId), 499);
@@ -66,7 +66,7 @@ test("SEND[102]:continuing:SEND → loop.status unchanged (still 102, non-termin
         const result = await engine.dispatch({
             statement: sendStmt(102, "continuing"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 102);
         assert.equal(await loopStatus(db, env.loopId), 102, "non-terminal status leaves loop continuing");
@@ -81,7 +81,7 @@ test("SEND[404]:not found:SEND (non-terminal client error) → loop.status uncha
         const result = await engine.dispatch({
             statement: sendStmt(404, "not found"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404);
         assert.equal(await loopStatus(db, env.loopId), 102, "404 isn't terminal; loop stays continuing");
@@ -94,7 +94,7 @@ test("SEND[200](recipient-path) → still routes to scheme handler (preserves re
         const result = await engine.dispatch({
             statement: sendStmt(200, "message", urlPath("wss", "feed/x")),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501, "wss scheme not registered; falls through to scheme dispatch");
         assert.equal(await loopStatus(db, env.loopId), 102, "directed SEND doesn't update loop.status");
@@ -107,7 +107,7 @@ test("SEND with null signal → 400 (no status to apply)", async () => {
         const result = await engine.dispatch({
             statement: sendStmt(null, "no status"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
         assert.equal(await loopStatus(db, env.loopId), 102, "no status to bubble; loop unchanged");
@@ -120,13 +120,13 @@ test("Multiple SENDs in one turn: last terminal status wins", async () => {
         await engine.dispatch({
             statement: sendStmt(102, "first"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 102);
         await engine.dispatch({
             statement: sendStmt(200, "second-terminal"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 2, origin: "model",
+            sequence: 2, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 200, "second SEND was terminal; loop now 200");
     } finally { await db.close(); }
@@ -138,13 +138,13 @@ test("Successive terminal SENDs: later wins (UPDATE overwrites)", async () => {
         await engine.dispatch({
             statement: sendStmt(200, "done"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 200);
         await engine.dispatch({
             statement: sendStmt(499, "actually cancel"),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 2, origin: "model",
+            sequence: 2, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 499, "later 499 overrides earlier 200");
     } finally { await db.close(); }

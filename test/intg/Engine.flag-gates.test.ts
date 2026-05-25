@@ -80,7 +80,7 @@ test("flag gate active: noProposals=true rejects proposing scheme with 403", asy
     try {
         await setLoopFlags(db, loopId, { noProposals: true });
         const stmt = editStmt(urlPath("proposing-test", "x"), "body");
-        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, actionIndex: 1, origin: "client" });
+        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 403);
         assert.match(String(r.error ?? ""), /inactive under current loop flags/);
     } finally { await db.close(); }
@@ -91,7 +91,7 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
     try {
         await setLoopFlags(db, loopId, { mode: "ask" });
         const stmt = editStmt(urlPath("sideeffect-test", "x"), "body");
-        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, actionIndex: 1, origin: "client" });
+        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 403);
     } finally { await db.close(); }
 });
@@ -101,7 +101,7 @@ test("flag gate active: noProposals does NOT affect non-proposing schemes (known
     try {
         await setLoopFlags(db, loopId, { noProposals: true });
         const stmt = editStmt(urlPath("known", "x"), "body");
-        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, actionIndex: 1, origin: "client" });
+        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 201);
     } finally { await db.close(); }
 });
@@ -111,7 +111,7 @@ test("flag gate active: broadcast SEND is never gated (no scheme to check)", asy
     try {
         await setLoopFlags(db, loopId, { noProposals: true, mode: "ask" });
         const stmt = sendStmt(200, null);
-        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, actionIndex: 1, origin: "client" });
+        const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 200);
     } finally { await db.close(); }
 });

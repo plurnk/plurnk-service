@@ -9,7 +9,7 @@ export interface LogEntryWire {
     run_id: number;
     loop_id: number;
     turn_id: number;
-    action_index: number;
+    sequence: number;
     at: string;
     origin: string;
     op: string;
@@ -46,7 +46,7 @@ export const fetchLogEntry = async (db: Db, id: number): Promise<LogEntryWire> =
         run_id: row.run_id as number,
         loop_id: row.loop_id as number,
         turn_id: row.turn_id as number,
-        action_index: row.action_index as number,
+        sequence: row.sequence as number,
         at: row.at as string,
         origin: row.origin as string,
         op: row.op as string,

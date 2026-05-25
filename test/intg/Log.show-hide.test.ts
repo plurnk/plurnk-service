@@ -17,10 +17,10 @@ const setup = async () => {
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1);
     const turnId = await insertTurn(db, loopId, 1);
-    // Seed a log entry at coordinate (loop=1, turn=1, action_index=1).
+    // Seed a log entry at coordinate (loop=1, turn=1, sequence=1).
     await (db.engine_insert_log_entry as PrepMethod).get({
         run_id: runId, loop_id: loopId, turn_id: turnId,
-        action_index: 1,
+        sequence: 1,
         origin: "system",
         op: "EDIT", suffix: "",
         signal: null,
@@ -38,7 +38,7 @@ const setup = async () => {
 
 const getIndexed = async (db: Awaited<ReturnType<typeof openMigrated>>, runId: number): Promise<number> => {
     const row = await (db.test_get_log_indexed as PrepMethod).get<{ indexed: number }>({
-        run_id: runId, loop_seq: 1, turn_seq: 1, action_index: 1,
+        run_id: runId, loop_seq: 1, turn_seq: 1, sequence: 1,
     });
     return row?.indexed ?? -1;
 };

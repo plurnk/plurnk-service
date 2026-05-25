@@ -11,7 +11,7 @@ SELECT tag FROM entry_tags ORDER BY tag;
 SELECT pathname FROM entries ORDER BY pathname;
 
 -- PREP: test_parser_log_indices
-SELECT action_index, pathname FROM log_entries ORDER BY action_index;
+SELECT sequence, pathname FROM log_entries ORDER BY sequence;
 
 -- PREP: test_parser_log_first
 SELECT scheme, hostname, pathname, params, fragment FROM log_entries LIMIT 1;

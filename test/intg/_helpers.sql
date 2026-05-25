@@ -22,16 +22,16 @@ INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequenc
 -- PREP: test_count_log_entries_by_turn
 SELECT COUNT(*) AS n FROM log_entries WHERE turn_id = $turn_id;
 
--- PREP: test_log_action_indexes_by_turn
-SELECT action_index, status_rx, pathname, op FROM log_entries
+-- PREP: test_log_sequencees_by_turn
+SELECT sequence, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
-ORDER BY action_index;
+ORDER BY sequence;
 
 -- PREP: test_get_log_indexed
 SELECT le.indexed FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.action_index = $action_index;
+WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: test_get_loop_status
 SELECT status FROM loops WHERE id = $id;
@@ -115,11 +115,11 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT action_index, status_rx, pathname, scheme, fragment, op, origin, signal, status_rx
-FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index;
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, status_rx
+FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_run
-SELECT id, op, pathname, scheme, action_index, turn_id, loop_id, status_rx
+SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
 -- PREP: test_count_log_entries
@@ -144,7 +144,7 @@ SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id;
 SELECT pathname FROM entries WHERE id = $id;
 
 -- PREP: test_first_log_entry_for_turn
-SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY action_index LIMIT 1;
+SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_set_loop_status
 UPDATE loops SET status = $status WHERE id = $id;

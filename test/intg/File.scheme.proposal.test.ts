@@ -77,7 +77,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -108,7 +108,7 @@ test("file.edit: rejection leaves file untouched", async () => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -129,7 +129,7 @@ test("file.edit: creates a new file on accept (target doesn't exist)", async () 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -146,7 +146,7 @@ test("file.edit: refuses traversal escape", async () => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");
         const result = await ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
     });
@@ -162,7 +162,7 @@ test("bare path: EDIT(relative/path) routes to file scheme (no scheme prefix)", 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -189,7 +189,7 @@ test("file.read: still works alongside the new edit path", async () => {
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({
             statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: 1, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
     });
@@ -210,7 +210,7 @@ test("file.edit: headless session (no project_root) → 400", async () => {
         const stmt = bareEditStmt("any.txt", "content\n");
         const result = await engine.dispatch({
             statement: stmt, sessionId, runId, loopId, turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
     } finally { await db.close(); }

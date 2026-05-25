@@ -76,7 +76,7 @@ const MAPPING: Record<string, SchemaMapping> = {
         kind: "table", table: "log_entries", fields: {
             id: direct("id"), version: direct("version"),
             run_id: direct("run_id"), loop_id: direct("loop_id"), turn_id: direct("turn_id"),
-            action_index: direct("action_index"), at: direct("at"), origin: direct("origin"),
+            sequence: direct("sequence"), at: direct("at"), origin: direct("origin"),
             op: direct("op"), suffix: direct("suffix"), signal: json("signal"),
             scheme: direct("scheme"), username: direct("username"),
             password: direct("password"), hostname: direct("hostname"),

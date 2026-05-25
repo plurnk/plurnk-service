@@ -42,7 +42,7 @@ test("Log.read: coordinate lookup retrieves the right log entry", async () => {
         await engine.dispatch({
             statement: editStmt("/france", "Paris"),
             sessionId, runId, loopId, turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
         const result = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         assert.equal(result.status, 200);
@@ -54,13 +54,13 @@ test("Log.read: coordinate lookup retrieves the right log entry", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: coordinates resolve through (loop_seq, turn_seq, action_index) within a run", async () => {
+test("Log.read: coordinates resolve through (loop_seq, turn_seq, sequence) within a run", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         // multiple ops in turn 1 of loop 1
-        await engine.dispatch({ statement: editStmt("/a", "1"), sessionId, runId, loopId, turnId, actionIndex: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/b", "2"), sessionId, runId, loopId, turnId, actionIndex: 2, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/c", "3"), sessionId, runId, loopId, turnId, actionIndex: 3, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/a", "1"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/b", "2"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/c", "3"), sessionId, runId, loopId, turnId, sequence: 3, origin: "model" });
 
         const r1 = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "1/1/2")), makeSchemeCtx({ db, runId }));
@@ -75,12 +75,12 @@ test("Log.read: cross-loop coordinates within a run resolve correctly", async ()
     const { db, engine, sessionId, runId, loopId: loop1, turnId: turn1 } = await setup();
     try {
         // loop1/turn1 already exists from setup(); dispatch a log there
-        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), sessionId, runId, loopId: loop1, turnId: turn1, actionIndex: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), sessionId, runId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
 
         // Add a second loop with its own turn 1, dispatch a different log there
         const loop2 = await insertLoop(db, runId, 2, "second");
         const turn2 = await insertTurn(db, loop2, 1, 200);
-        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, actionIndex: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
 
         const r1 = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "2/1/1")), makeSchemeCtx({ db, runId }));
@@ -136,14 +136,14 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
         await engine.dispatch({
             statement: editStmt("/known-fact", "knowledge"),
             sessionId, runId, loopId, turnId,
-            actionIndex: 1, origin: "model",
+            sequence: 1, origin: "model",
         });
 
         // Now dispatch a READ on log://1/1/1 — engine routes to Log.read
         const result = await engine.dispatch({
             statement: readStmt(urlPath("log", "1/1/1")),
             sessionId, runId, loopId, turnId,
-            actionIndex: 2, origin: "model",
+            sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
         assert.match((result as unknown as { content: string }).content, /EDIT/);

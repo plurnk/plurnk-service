@@ -106,7 +106,7 @@ type DispatchContext = {
     runId: number;
     loopId: number;
     turnId: number;
-    actionIndex: number;
+    sequence: number;
     origin: Origin;
     onDispatch?: (logEntryId: number) => void;
 };
@@ -437,7 +437,7 @@ export default class Engine {
         // injected telemetry events on any turn. The turn is CLOSED at
         // the end with the final packet + status + usage stats.
         //
-        // action_index is "ordinal of stuff in this turn." Pre-model
+        // sequence is "ordinal of stuff in this turn." Pre-model
         // writes consume low indices; model ops continue from there.
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
@@ -452,7 +452,7 @@ export default class Engine {
         // EDIT against `plurnk://prompt/<loop_id>` (loop-scoped indexed
         // entry, body=prompt text). The log row records the EDIT;
         // content lives at the plurnk:// entry. Model ops dispatch from
-        // action_index=2 onward on the first turn; 1 onward thereafter.
+        // sequence=2 onward on the first turn; 1 onward thereafter.
         // 1-based throughout (migration 019).
         let nextActionIndex = 1;
         if (seq === 1) {
@@ -471,7 +471,7 @@ export default class Engine {
                 };
                 await this.dispatch({
                     statement: promptStmt, sessionId, runId, loopId, turnId,
-                    actionIndex: nextActionIndex, origin: "system",
+                    sequence: nextActionIndex, origin: "system",
                 });
                 nextActionIndex++;
             }
@@ -525,7 +525,7 @@ export default class Engine {
         for (const [i, statement] of packetAssistant.ops.entries()) {
             const result = await this.dispatch({
                 statement, sessionId, runId, loopId, turnId,
-                actionIndex: nextActionIndex + i,
+                sequence: nextActionIndex + i,
                 origin, onDispatch,
             });
             statuses.push(result.status);
@@ -716,7 +716,7 @@ export default class Engine {
     // Buffer drains on read — each error appears in exactly one packet.
     async #buildTelemetryErrors(loopId: number, currentTurnSeq: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
-            op: string; action_index: number; status_rx: number;
+            op: string; sequence: number; status_rx: number;
             rx: string; mimetype_rx: string;
             scheme: string | null; pathname: string | null;
             turn_seq: number; loop_seq: number;
@@ -728,7 +728,7 @@ export default class Engine {
             const parsedRx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
             return {
                 kind: "action_failure",
-                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 op: r.op,
                 target,
                 status: r.status_rx,
@@ -743,18 +743,18 @@ export default class Engine {
     // SPEC §15 packet.system.log — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
-    // log://<loop_seq>/<turn_seq>/<action_index> coordinate the model can READ.
+    // log://<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(runId: number): Promise<object[]> {
         // SPEC §0.6: runs own log entries — log is the run's history,
         // not the loop's. Span all loops in the run so the model sees
         // earlier loops' work as conversational memory.
         //
         // User prompts are first-class log entries: runTurn writes a
-        // client-origin SEND[200] row at action_index=0 of each new
+        // client-origin SEND[200] row at sequence=0 of each new
         // turn-1. Prompts thus surface naturally in this query — no
         // synthetic / shim layer.
         const rows = await (this.#db.engine_render_log as PrepMethod).all<{
-            loop_seq: number; turn_seq: number; action_index: number;
+            loop_seq: number; turn_seq: number; sequence: number;
             origin: string; op: string; suffix: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
@@ -762,7 +762,7 @@ export default class Engine {
             status_rx: number; rx: string; mimetype_rx: string;
         }>({ run_id: runId });
         return rows.map((r) => ({
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.action_index}`,
+            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
             origin: r.origin,
             op: r.op,
             suffix: r.suffix,
@@ -851,7 +851,7 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, actionIndex, origin, onDispatch } = context;
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch } = context;
         const schemeCtx: PlurnkSchemeContext = {
             db: this.#db,
             sessionId, runId, loopId, turnId,
@@ -886,7 +886,7 @@ export default class Engine {
                 };
             }
         }
-        const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, actionIndex, origin });
+        const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (task #42, AGENTS.md §Phase E). When a scheme
         // returns status 202, the entry is written as state='proposed';
@@ -1252,10 +1252,10 @@ export default class Engine {
     }
 
     async #writeLog({
-        statement, result, runId, loopId, turnId, actionIndex, origin,
+        statement, result, runId, loopId, turnId, sequence, origin,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        runId: number; loopId: number; turnId: number; actionIndex: number; origin: Origin;
+        runId: number; loopId: number; turnId: number; sequence: number; origin: Origin;
     }): Promise<number> {
         const target = this.#extractTarget(statement.path);
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
@@ -1275,7 +1275,7 @@ export default class Engine {
             run_id: runId,
             loop_id: loopId,
             turn_id: turnId,
-            action_index: actionIndex,
+            sequence: sequence,
             origin,
             op: statement.op,
             suffix: statement.suffix,

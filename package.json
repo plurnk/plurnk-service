@@ -42,11 +42,17 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-grammar": "^0.8.0",
+        "@plurnk/plurnk-grammar": "^0.9.0",
         "@plurnk/plurnk-mimetypes": "^0.3.1",
         "@plurnk/plurnk-mimetypes-application-json": "^0.2.0",
+        "@plurnk/plurnk-mimetypes-application-pdf": "^0.3.0",
+        "@plurnk/plurnk-mimetypes-application-toml": "^0.1.0",
+        "@plurnk/plurnk-mimetypes-application-yaml": "^0.1.0",
+        "@plurnk/plurnk-mimetypes-text-csv": "^0.1.0",
+        "@plurnk/plurnk-mimetypes-text-html": "^0.1.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "^0.2.0",
         "@plurnk/plurnk-mimetypes-text-plain": "^0.2.0",
+        "@plurnk/plurnk-mimetypes-text-typescript": "^0.1.0",
         "@plurnk/plurnk-providers-cloudflare": "github:plurnk/plurnk-providers-cloudflare",
         "@plurnk/plurnk-providers-google": "github:plurnk/plurnk-providers-google",
         "@plurnk/plurnk-providers-ollama": "github:plurnk/plurnk-providers-ollama",

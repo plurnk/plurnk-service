@@ -129,8 +129,8 @@ CREATE TABLE IF NOT EXISTS entry_tags (
 CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 
 -- INIT: log_entries
--- Chronological event store. action_index is 1-based (sequence within a
--- turn). URI-bit columns are unprefixed per grammar 0.8.0 (scheme,
+-- Chronological event store. sequence is 1-based, scoped to the turn —
+-- resets at each new turn. URI-bit columns are unprefixed (scheme,
 -- pathname, …). state/outcome/attrs carry the proposal lifecycle —
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     run_id          INTEGER NOT NULL,
     loop_id         INTEGER NOT NULL,
     turn_id         INTEGER NOT NULL,
-    action_index    INTEGER NOT NULL           CHECK (action_index >= 1),
+    sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'system', 'plugin')),
 
@@ -183,17 +183,17 @@ CREATE TABLE IF NOT EXISTS log_entries (
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_action_index ON log_entries (turn_id, action_index);
-CREATE        INDEX IF NOT EXISTS log_entries_run_id               ON log_entries (run_id);
-CREATE        INDEX IF NOT EXISTS log_entries_loop_id              ON log_entries (loop_id);
-CREATE        INDEX IF NOT EXISTS log_entries_at                   ON log_entries (at);
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (turn_id, sequence);
+CREATE        INDEX IF NOT EXISTS log_entries_run_id           ON log_entries (run_id);
+CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
+CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 
 -- Column-scoped immutability: the original action's identity and target
 -- never change; the proposal lifecycle is allowed to mutate state,
 -- outcome, status_rx, rx, indexed.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    run_id, loop_id, turn_id, action_index, at, origin,
+    run_id, loop_id, turn_id, sequence, at, origin,
     op, suffix, signal,
     scheme, username, password, hostname,
     port, pathname, params, fragment,

@@ -10,13 +10,13 @@ type ShowHideResult = { status: number };
 // parsing accepts it (or omits it) and identifies the row by coordinate.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Z]+))?$/;
 
-const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; actionIndex: number } | null => {
+const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; sequence: number } | null => {
     const match = COORDINATE.exec(pathname);
     if (match === null) return null;
     return {
         loopSeq: Number(match[1]),
         turnSeq: Number(match[2]),
-        actionIndex: Number(match[3]),
+        sequence: Number(match[3]),
     };
 };
 
@@ -50,7 +50,7 @@ export default class Log {
             status_rx: number;
             rx: string;
             mimetype_rx: string;
-        }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, action_index: coord.actionIndex });
+        }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 
@@ -78,7 +78,7 @@ export default class Log {
 
         const updated = await (db.log_set_indexed as PrepMethod).get<{ id: number }>({
             run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq,
-            action_index: coord.actionIndex, indexed,
+            sequence: coord.sequence, indexed,
         });
         return { status: updated === undefined ? 404 : 200 };
     }
