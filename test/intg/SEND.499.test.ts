@@ -36,7 +36,7 @@ const setup = async () => {
 };
 
 const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopId: number; turnId: number }, statement: SendStatement) =>
-    engine.dispatch({ statement, ...env, actionIndex: 0, origin: "client" });
+    engine.dispatch({ statement, ...env, actionIndex: 1, origin: "client" });
 
 test("SEND[499] on entry without subscription returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
@@ -117,7 +117,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const result = await engine.dispatch({
             statement: sendStmt(499, url("fakestream", "feed/x")),
             sessionId, runId, loopId, turnId,
-            actionIndex: 0, origin: "client",
+            actionIndex: 1, origin: "client",
         });
 
         assert.equal(result.status, 200, "scheme accepts cancel");

@@ -1302,6 +1302,10 @@ export default class Engine {
         return row.id;
     }
 
+    // Normalize a parsed path for storage. The `file` scheme is a routing
+    // internal — never stored, never rendered to the model. Both bare paths
+    // and `file://...` inputs collapse to scheme=null at this boundary, so
+    // entries.scheme / log_entries.scheme never carry the string "file".
     #extractTarget(path: ParsedPath | null): {
         scheme: string | null; username: string | null; password: string | null;
         hostname: string | null; port: number | null; pathname: string | null;
@@ -1309,8 +1313,9 @@ export default class Engine {
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null };
+        const scheme = path.scheme === "file" ? null : path.scheme;
         return {
-            scheme: path.scheme, username: path.username, password: path.password,
+            scheme, username: path.username, password: path.password,
             hostname: path.hostname, port: path.port, pathname: path.pathname,
             params: JSON.stringify(path.params), fragment: path.fragment,
         };

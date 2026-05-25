@@ -22,10 +22,10 @@ const parseAll = (input: string): PlurnkStatement[] => {
 
 const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvelope>>, statements: PlurnkStatement[]): Promise<number[]> => {
     const statuses: number[] = [];
-    for (const [actionIndex, statement] of statements.entries()) {
+    for (const [i, statement] of statements.entries()) {
         const result = await engine.dispatch({
             statement, sessionId: ctx.sessionId, runId: ctx.runId,
-            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex, origin: "model",
+            loopId: ctx.loopId, turnId: ctx.turnId, actionIndex: i + 1, origin: "model",
         });
         statuses.push(result.status);
     }
@@ -41,7 +41,7 @@ test("parser roundtrip: <<EDIT[france,europe](known://countries/france/capital):
         const result = await engine.dispatch({
             statement: stmt,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 201);
         const entry = await (db.test_parser_entries_first as PrepMethod).get<{ scope: string; scheme: string; pathname: string; hostname: string | null }>();
@@ -71,7 +71,7 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
         const pathnames = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
         assert.deepEqual(pathnames.map((p) => p.pathname), ["a", "b", "c"]);
         const logIndices = await (db.test_parser_log_indices as PrepMethod).all<{ action_index: number; pathname: string }>();
-        assert.deepEqual(logIndices.map((r) => r.action_index), [0, 1, 2]);
+        assert.deepEqual(logIndices.map((r) => r.action_index), [1, 2, 3]);
         assert.deepEqual(logIndices.map((r) => r.pathname), ["a", "b", "c"]);
     } finally { await db.close(); }
 });
@@ -85,13 +85,13 @@ test("parser roundtrip: <<EDIT…>> followed by <<READ…>> reads back what was 
         await engine.dispatch({
             statement: parseOne("<<EDIT(known://france):The capital is Paris.:EDIT") as EditStatement,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
             statement: parseOne("<<READ(known://france)::READ") as ReadStatement,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            actionIndex: 2, origin: "model",
         });
         assert.equal(readResult.status, 200);
         assert.equal((readResult as unknown as { content: string }).content, "The capital is Paris.");
@@ -108,7 +108,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
         await engine.dispatch({
             statement: stmt,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string }>();
         assert.equal(log?.scheme, "https");
@@ -127,7 +127,7 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
         await engine.dispatch({
             statement: stmt,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();
         assert.equal(log?.scheme, "known");

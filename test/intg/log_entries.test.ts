@@ -8,7 +8,7 @@ type SqlValue = string | number | bigint | null;
 const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
         run_id: ctx.runId, loop_id: ctx.loopId, turn_id: ctx.turnId,
-        action_index: 0, origin: "model", op: "EDIT", suffix: "",
+        action_index: 1, origin: "model", op: "EDIT", suffix: "",
         signal: JSON.stringify(["philosophy"]),
         scheme: "known", pathname: "/meaning", port: null, params: null,
         lineMarker: null,
@@ -49,20 +49,20 @@ test("log_entries: action_index UNIQUE within turn", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionuniq");
-        await minimalLog(db, ctx, { action_index: 0 });
+        await minimalLog(db, ctx, { action_index: 1 });
         await assert.rejects(
-            () => minimalLog(db, ctx, { action_index: 0 }),
+            () => minimalLog(db, ctx, { action_index: 1 }),
             /UNIQUE constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("log_entries: action_index >= 0 enforced", async () => {
+test("log_entries: action_index >= 1 enforced", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionneg");
         await assert.rejects(
-            () => minimalLog(db, ctx, { action_index: -1 }),
+            () => minimalLog(db, ctx, { action_index: 0 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -73,7 +73,7 @@ test("log_entries: origin enum", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
         for (const [i, origin] of ["model", "client", "system", "plugin"].entries()) {
-            await minimalLog(db, ctx, { action_index: i, origin });
+            await minimalLog(db, ctx, { action_index: i + 1, origin });
         }
         await assert.rejects(
             () => minimalLog(db, ctx, { action_index: 4, origin: "admin" }),
@@ -88,10 +88,10 @@ test("log_entries: op enum", async () => {
         const ctx = await seedEnvelope(db, "ws-log-op");
         const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
         for (const [i, op] of ops.entries()) {
-            await minimalLog(db, ctx, { action_index: i, op });
+            await minimalLog(db, ctx, { action_index: i + 1, op });
         }
         await assert.rejects(
-            () => minimalLog(db, ctx, { action_index: ops.length, op: "DROP" }),
+            () => minimalLog(db, ctx, { action_index: ops.length + 1, op: "DROP" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -102,7 +102,7 @@ test("log_entries: status_rx range 100..599", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-statusrx");
         for (const [i, s] of [100, 200, 499, 599].entries()) {
-            await minimalLog(db, ctx, { action_index: i, status_rx: s });
+            await minimalLog(db, ctx, { action_index: i + 1, status_rx: s });
         }
         for (const bad of [99, 600, 0, -1]) {
             await assert.rejects(
@@ -126,9 +126,9 @@ test("log_entries: scheme nullable; non-empty CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tscheme");
-        await minimalLog(db, ctx, { action_index: 0, scheme: null });
+        await minimalLog(db, ctx, { action_index: 1, scheme: null });
         await assert.rejects(
-            () => minimalLog(db, ctx, { action_index: 1, scheme: "" }),
+            () => minimalLog(db, ctx, { action_index: 2, scheme: "" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -138,12 +138,12 @@ test("log_entries: port range", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tport");
-        await minimalLog(db, ctx, { action_index: 0, port: 443 });
-        await minimalLog(db, ctx, { action_index: 1, port: 0 });
-        await minimalLog(db, ctx, { action_index: 2, port: 65535 });
-        await minimalLog(db, ctx, { action_index: 3, port: null });
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, port: 65536 }), /CHECK constraint failed/);
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 5, port: -1 }), /CHECK constraint failed/);
+        await minimalLog(db, ctx, { action_index: 1, port: 443 });
+        await minimalLog(db, ctx, { action_index: 2, port: 0 });
+        await minimalLog(db, ctx, { action_index: 3, port: 65535 });
+        await minimalLog(db, ctx, { action_index: 4, port: null });
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 5, port: 65536 }), /CHECK constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 6, port: -1 }), /CHECK constraint failed/);
     } finally { await db.close(); }
 });
 
@@ -151,11 +151,11 @@ test("log_entries: params + signal + lineMarker JSON validation", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
-        await minimalLog(db, ctx, { action_index: 0, params: null, signal: null, lineMarker: null });
-        await minimalLog(db, ctx, { action_index: 1, params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 2, params: "{not json" }), /CHECK constraint failed/);
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 3, signal: "{bad" }), /CHECK constraint failed/);
-        await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, lineMarker: "broken" }), /CHECK constraint failed/);
+        await minimalLog(db, ctx, { action_index: 1, params: null, signal: null, lineMarker: null });
+        await minimalLog(db, ctx, { action_index: 2, params: '{"q":["x"]}', signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 3, params: "{not json" }), /CHECK constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 4, signal: "{bad" }), /CHECK constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { action_index: 5, lineMarker: "broken" }), /CHECK constraint failed/);
     } finally { await db.close(); }
 });
 
@@ -163,10 +163,10 @@ test("log_entries: signal polymorphism", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-sigpoly");
-        await minimalLog(db, ctx, { action_index: 0, op: "EDIT",  signal: JSON.stringify(["philosophy"]) });
-        await minimalLog(db, ctx, { action_index: 1, op: "SEND",  signal: JSON.stringify(200) });
-        await minimalLog(db, ctx, { action_index: 2, op: "EXEC",  signal: JSON.stringify("node") });
-        await minimalLog(db, ctx, { action_index: 3, op: "READ",  signal: null });
+        await minimalLog(db, ctx, { action_index: 1, op: "EDIT",  signal: JSON.stringify(["philosophy"]) });
+        await minimalLog(db, ctx, { action_index: 2, op: "SEND",  signal: JSON.stringify(200) });
+        await minimalLog(db, ctx, { action_index: 3, op: "EXEC",  signal: JSON.stringify("node") });
+        await minimalLog(db, ctx, { action_index: 4, op: "READ",  signal: null });
         const rows = await (db.test_log_entries_signals_by_turn as PrepMethod).all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
         assert.deepEqual(rows.map((r) => r.signal), ['["philosophy"]', '200', '"node"', null]);
     } finally { await db.close(); }
@@ -197,8 +197,8 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
-        await minimalLog(db, ctx, { action_index: 0 });
         await minimalLog(db, ctx, { action_index: 1 });
+        await minimalLog(db, ctx, { action_index: 2 });
         await (db.test_log_entries_delete_turns as PrepMethod).run({ id: ctx.turnId });
         const remaining = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
@@ -277,12 +277,12 @@ test("log_entries: query log://<L>/<T>/<A> address pattern", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-address");
-        await minimalLog(db, ctx, { action_index: 0 });
-        await minimalLog(db, ctx, { action_index: 1, op: "SEND" });
-        const row = await (db.test_log_entries_address_join as PrepMethod).get<{ op: string; loop_seq: number; turn_seq: number; action_index: number }>({ loop_seq: 1, turn_seq: 1, action_index: 1 });
+        await minimalLog(db, ctx, { action_index: 1 });
+        await minimalLog(db, ctx, { action_index: 2, op: "SEND" });
+        const row = await (db.test_log_entries_address_join as PrepMethod).get<{ op: string; loop_seq: number; turn_seq: number; action_index: number }>({ loop_seq: 1, turn_seq: 1, action_index: 2 });
         assert.equal(row?.op, "SEND");
         assert.equal(row?.loop_seq, 1);
         assert.equal(row?.turn_seq, 1);
-        assert.equal(row?.action_index, 1);
+        assert.equal(row?.action_index, 2);
     } finally { await db.close(); }
 });

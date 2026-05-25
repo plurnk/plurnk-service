@@ -31,7 +31,7 @@ export const dispatchAsClient = async (ctx: HandlerContext, statement: PlurnkSta
         runId,
         loopId: clientLoopId,
         turnId,
-        actionIndex: 0,
+        actionIndex: 1,
         origin: "client",
         onDispatch: (logEntryId) => {
             void (async () => {

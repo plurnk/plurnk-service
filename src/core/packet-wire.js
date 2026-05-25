@@ -94,12 +94,12 @@ const renderHeredoc = (uri, channel, body) => {
 };
 
 // Render a (scheme, pathname) tuple as the URI the model should SEE.
-// `file://` is internal-only: model is never trained on it and never
-// shown it, so file-scheme paths render bare. Other schemes render
-// scheme://pathname. Null scheme → bare pathname.
+// Null scheme → bare pathname. The `file` scheme never reaches this
+// function because Engine.#extractTarget normalizes it to null at the
+// storage boundary; storage and wire output are uniform on this.
 const renderModelUri = (scheme, pathname) => {
     const path = pathname ?? "";
-    if (scheme === null || scheme === undefined || scheme === "file") return path;
+    if (scheme === null || scheme === undefined) return path;
     return `${scheme}://${path}`;
 };
 

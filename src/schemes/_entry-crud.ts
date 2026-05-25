@@ -25,7 +25,7 @@ export interface DeleteEntryResult {
     status: number;
 }
 
-export const readEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string): Promise<ReadEntryResult> => {
+export const readEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<ReadEntryResult> => {
     const { db, sessionId } = ctx;
     const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (entry === undefined) return { status: 404, entry: null };
@@ -42,7 +42,7 @@ export const readEntry = async (pathname: string, ctx: PlurnkSchemeContext, sche
     return { status: 200, entry: { channels, tags } };
 };
 
-export const writeEntry = async (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string): Promise<WriteEntryResult> => {
+export const writeEntry = async (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null): Promise<WriteEntryResult> => {
     const { db, sessionId, runId } = ctx;
     const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
@@ -73,7 +73,7 @@ export const writeEntry = async (pathname: string, entry: EntryData, ctx: Plurnk
     return { status: created ? 201 : 200, created, entryId };
 };
 
-export const deleteEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string): Promise<DeleteEntryResult> => {
+export const deleteEntry = async (pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<DeleteEntryResult> => {
     const { db, sessionId } = ctx;
     const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (existing === undefined) return { status: 404 };

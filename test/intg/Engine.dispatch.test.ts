@@ -43,7 +43,7 @@ test("Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, 
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/france/capital"), body: "Paris", tags: ["france"] }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 201);
         const entryId = (result as unknown as { entryId: number }).entryId;
@@ -59,7 +59,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{
             run_id: number; loop_id: number; turn_id: number; action_index: number;
@@ -71,7 +71,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(log.run_id, env.runId);
         assert.equal(log.loop_id, env.loopId);
         assert.equal(log.turn_id, env.turnId);
-        assert.equal(log.action_index, 0);
+        assert.equal(log.action_index, 1);
         assert.equal(log.origin, "model");
         assert.equal(log.op, "EDIT");
         assert.equal(log.suffix, "");
@@ -94,12 +94,12 @@ test("Engine.dispatch: READ against known:// routes to Known.read", async () => 
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/r"), body: "value" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         const result = await engine.dispatch({
             statement: readStmt({ path: urlPath("known", "/r") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            actionIndex: 2, origin: "model",
         });
         assert.equal(result.status, 200);
         assert.equal((result as unknown as { content: string }).content, "value");
@@ -112,7 +112,7 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("wiki", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 501);
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
@@ -128,7 +128,7 @@ test("Engine.dispatch: scheme without matching op method returns 501", async () 
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("exec", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 501, "exec scheme exists but has no edit() method yet");
     } finally { await db.close(); }
@@ -144,7 +144,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
         const result = await engine.dispatch({
             statement: stmt,
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 400);
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string | null; pathname: string | null }>({ turn_id: env.turnId });
@@ -160,18 +160,18 @@ test("Engine.dispatch: multiple actions in one turn — log_entries action_index
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/a"), body: "1" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/b"), body: "2" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            actionIndex: 2, origin: "model",
         });
         const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; pathname: string }>({ turn_id: env.turnId });
         assert.equal(rows.length, 2);
-        assert.equal(rows[0]?.action_index, 0);
+        assert.equal(rows[0]?.action_index, 1);
         assert.equal(rows[0]?.pathname, "/a");
-        assert.equal(rows[1]?.action_index, 1);
+        assert.equal(rows[1]?.action_index, 2);
         assert.equal(rows[1]?.pathname, "/b");
     } finally { await db.close(); }
 });
@@ -182,7 +182,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ signal: string }>({ turn_id: env.turnId });
         assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["france", "europe"]);
@@ -196,7 +196,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
             await engine.dispatch({
                 statement: editStmt({ path: urlPath("known", `/o${i}`), body: "x" }),
                 sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-                actionIndex: i, origin,
+                actionIndex: i + 1, origin,
             });
         }
         const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ origin: string; action_index: number }>({ turn_id: env.turnId });
@@ -213,7 +213,7 @@ test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['sys
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 403);
         assert.match((result as unknown as { error: string }).error, /writer 'model'.*'log'/);
@@ -256,7 +256,7 @@ test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side o
         const result = await engine.dispatch({
             statement: readStmt({ path: urlPath("log", "/x") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.notEqual(result.status, 403);
     } finally { await db.close(); }
@@ -269,7 +269,7 @@ test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () =>
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "system",
+            actionIndex: 1, origin: "system",
         });
         assert.notEqual(result.status, 403);
     } finally { await db.close(); }
@@ -281,7 +281,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
         const result = await engine.dispatch({
             statement: { op: "SEND", suffix: "", signal: 200, path: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 200);
     } finally { await db.close(); }
@@ -308,7 +308,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("boom", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 500);
         assert.match((result as unknown as { error: string }).error, /scheme handler deliberately threw/);
@@ -340,7 +340,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
         const result = await engine.dispatch({
             statement: editStmt({ path: urlPath("boomstr", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         assert.equal(result.status, 500);
         assert.equal((result as unknown as { error: string }).error, "raw string thrown");
@@ -354,7 +354,7 @@ test("Engine.dispatch: model COPY into log:// destination rejected with 403", as
         await engine.dispatch({
             statement: editStmt({ path: urlPath("known", "/src"), body: "v" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
         });
         // Attempt copy known://src → log://dst — destination scheme rejects.
         const result = await engine.dispatch({
@@ -366,7 +366,7 @@ test("Engine.dispatch: model COPY into log:// destination rejected with 403", as
                 position: { line: 1, column: 1 },
             },
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            actionIndex: 1, origin: "model",
+            actionIndex: 2, origin: "model",
         });
         assert.equal(result.status, 403);
     } finally { await db.close(); }

@@ -49,10 +49,10 @@ const dispatchTurn = async (
     const turnStatus = sendOp?.signal ?? 200;
     const turnId = await insertTurn(db, ctx.loopId, seqRow.next, turnStatus);
     const statuses: number[] = [];
-    for (const [actionIndex, statement] of ops.entries()) {
+    for (const [i, statement] of ops.entries()) {
         const result = await engine.dispatch({
             statement, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
-            turnId, actionIndex, origin: "model",
+            turnId, actionIndex: i + 1, origin: "model",
         });
         statuses.push(result.status);
     }
@@ -79,17 +79,17 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const logRows = await (db.test_log_entries_by_turn as PrepMethod).all<{ op: string; action_index: number; status_rx: number; pathname: string | null }>({ turn_id: result.turnId });
         assert.equal(logRows.length, 2);
         assert.equal(logRows[0]?.op, "EDIT");
-        assert.equal(logRows[0]?.action_index, 0);
+        assert.equal(logRows[0]?.action_index, 1);
         assert.equal(logRows[0]?.status_rx, 201);
         assert.equal(logRows[0]?.pathname, "/france/capital");
         assert.equal(logRows[1]?.op, "SEND");
-        assert.equal(logRows[1]?.action_index, 1);
+        assert.equal(logRows[1]?.action_index, 2);
         assert.equal(logRows[1]?.status_rx, 200);
         assert.equal(logRows[1]?.pathname, null);
     } finally { await db.close(); }
 });
 
-test("e2e: three EDITs in one turn — action_index 0/1/2, three entries written", async () => {
+test("e2e: three EDITs in one turn — action_index 1/2/3, three entries written", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-three");
@@ -108,7 +108,7 @@ test("e2e: three EDITs in one turn — action_index 0/1/2, three entries written
         assert.equal(count, 3);
 
         const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number }>({ turn_id: result.turnId });
-        assert.deepEqual(indices.map((r) => r.action_index), [0, 1, 2, 3]);
+        assert.deepEqual(indices.map((r) => r.action_index), [1, 2, 3, 4]);
     } finally { await db.close(); }
 });
 
@@ -139,7 +139,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         const turn2Reads = (await (db.test_log_entries_by_turn as PrepMethod).all<{ action_index: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
             .filter((r) => r.op === "READ");
         assert.equal(turn2Reads.length, 1);
-        assert.equal(turn2Reads[0]?.action_index, 0, "action_index resets per turn");
+        assert.equal(turn2Reads[0]?.action_index, 1, "action_index resets per turn (1-based)");
         assert.equal(turn2Reads[0]?.status_rx, 200);
         assert.equal(turn2Reads[0]?.pathname, "/state");
     } finally { await db.close(); }

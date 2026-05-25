@@ -2,8 +2,11 @@
 -- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
 
 -- PREP: crud_find_session_entry
+-- Null-aware scheme comparison: the file scheme is the routing internal
+-- for bare/absolute paths; storage normalizes its rows to scheme=NULL
+-- (Engine.#extractTarget). SQL's `=` doesn't match NULL, so use `IS`.
 SELECT id FROM entries
-WHERE scope = 'session' AND session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
+WHERE scope = 'session' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;

@@ -6,12 +6,16 @@ import { renderSystemContent } from "../../src/core/packet-wire.js";
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("index entry: file scheme renders bare path (no file:// leak to model)", () => {
+test("index entry: null scheme renders bare path (file scheme normalized to null at storage)", () => {
+    // file-scheme rows store scheme=NULL per Engine.#extractTarget; the
+    // renderer's only job here is to honor null → bare pathname. The
+    // literal "file" string never reaches packet-wire — that's the
+    // architectural guarantee (entries.scheme never holds "file").
     const system = {
         system_definition: "SD",
         persona: "",
         index: [{
-            scheme: "file",
+            scheme: null,
             pathname: "notes.md",
             defaultChannel: "body",
             channels: { body: { content: "hello", mimetype: "text/markdown", tokens: 1 } },

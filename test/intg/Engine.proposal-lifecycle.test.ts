@@ -72,7 +72,7 @@ const dispatchAndResolve = async (engine: Engine, ctx: {
     const dispatchPromise = engine.dispatch({
         statement: editStmt("/x", "y"),
         sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-        actionIndex: 0, origin: "model",
+        actionIndex: 1, origin: "model",
         onDispatch: (id) => idDeferred.resolve(id),
     });
     const logEntryId = await idDeferred.promise;
@@ -154,7 +154,7 @@ test("proposal: status=202 + state='proposed' rows hidden from packet.system.log
         const pending = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -195,7 +195,7 @@ test("proposal: pendingProposalIds reports waiting entries", async () => {
         const pending = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -242,7 +242,7 @@ test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -272,7 +272,7 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -300,7 +300,7 @@ test("proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
-            actionIndex: 0, origin: "model",
+            actionIndex: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;

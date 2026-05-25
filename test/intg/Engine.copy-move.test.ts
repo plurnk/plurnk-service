@@ -19,7 +19,7 @@ const setup = async () => {
 
 const dispatch = async (engine: Engine, env: { sessionId: number; runId: number; loopId: number; turnId: number }, statement: CopyStatement | MoveStatement) => {
     return await engine.dispatch({
-        statement, ...env, actionIndex: 0, origin: "client",
+        statement, ...env, actionIndex: 1, origin: "client",
     });
 };
 

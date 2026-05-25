@@ -165,10 +165,13 @@ export default class File {
         // extension; .md → text/markdown, anything else → text/plain.
         const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
         try {
+            // scheme=null: the "file" scheme is a routing internal only;
+            // never stored. Entries.scheme stays NULL for filesystem rows
+            // so render-time bare-path output requires no special case.
             await writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
-            }, ctx, "file");
+            }, ctx, null);
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
             // the write as 200 (file is on disk) but log the failure —
