@@ -93,15 +93,23 @@ const renderHeredoc = (uri, channel, body) => {
     return `<<${fence}:\n${numbered}\n:${fence}`;
 };
 
+// Render a (scheme, pathname) tuple as the URI the model should SEE.
+// `file://` is internal-only: model is never trained on it and never
+// shown it, so file-scheme paths render bare. Other schemes render
+// scheme://pathname. Null scheme → bare pathname.
+const renderModelUri = (scheme, pathname) => {
+    const path = pathname ?? "";
+    if (scheme === null || scheme === undefined || scheme === "file") return path;
+    return `${scheme}://${path}`;
+};
+
 // Render one Index entry → `* {meta}` line followed by per-channel
 // heredoc blocks. meta describes the entry; nested `channels` carries
 // per-channel mimetype/tokens so the model doesn't have to READ to
 // learn the shape of a channel's content.
 const renderIndexEntries = (entries) =>
     entries.map((e) => {
-        const scheme = e.scheme ?? "?";
-        const path = e.pathname ?? "";
-        const uri = `${scheme}://${path}`;
+        const uri = renderModelUri(e.scheme, e.pathname);
         const defaultChannel = e.defaultChannel ?? "";
         const meta = { path: uri };
         if (Array.isArray(e.tags) && e.tags.length > 0) meta.tags = e.tags;
@@ -121,7 +129,7 @@ const renderIndexEntries = (entries) =>
         return blocks.length > 0
             ? `* ${canonicalJson(meta)}\n${blocks.join("\n")}`
             : `* ${canonicalJson(meta)}`;
-    }).join("\n");
+    }).join("\n\n");
 
 // Render one Log entry → `* {meta}` line followed by the response body.
 // URI is `log://<coordinate>/<op>` per SPEC §10 — the trailing /op is
@@ -138,18 +146,16 @@ const renderLogEntries = (entries) =>
         if (typeof e.origin === "string") meta.origin = e.origin;
         if (typeof e.op === "string") meta.op = e.op;
         if (typeof e.status === "number") meta.status = e.status;
-        const target = renderLogTarget(e.target);
-        if (target !== null) meta.target = target;
+        const path = renderLogPath(e.target);
+        if (path !== null) meta.path = path;
         const rxBody = typeof e.rx === "string" ? e.rx : JSON.stringify(e.rx);
         return `* ${canonicalJson(meta)}\n${renderHeredoc(uri, null, rxBody)}`;
-    }).join("\n");
+    }).join("\n\n");
 
-const renderLogTarget = (target) => {
+const renderLogPath = (target) => {
     if (target === null || target === undefined) return null;
-    const scheme = target.scheme;
-    const pathname = target.pathname ?? "";
-    if (scheme !== null && scheme !== undefined) return `${scheme}://${pathname}`;
-    return pathname.length > 0 ? pathname : null;
+    const path = renderModelUri(target.scheme, target.pathname);
+    return path.length > 0 ? path : null;
 };
 
 // Render TelemetryError[] → bullet list. v0 schema is open per Packet.json

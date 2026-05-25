@@ -81,7 +81,12 @@ export default class ClientConnection {
 
     close(): void {
         if (this.#session !== null) {
-            void closeClientLoop(this.#db, this.#session.clientLoopId, 200);
+            // Only close the loop if one was actually allocated. A
+            // connection that only ran loop.run never spawned a client
+            // loop and has nothing to clean up here.
+            if (this.#session.clientLoopId !== null) {
+                void closeClientLoop(this.#db, this.#session.clientLoopId, 200);
+            }
             this.#session = null;
         }
         if (this.#ws.readyState === 1) this.#ws.terminate();

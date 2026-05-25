@@ -24,6 +24,10 @@ export interface RunRow {
     cost_pico: number;
 }
 
+// Per-connection envelope. clientLoopId starts null and is lazily
+// allocated on the first client-origin op (op.edit, op.read, etc.) — a
+// connection that only calls loop.run never spends a loop sequence on
+// an empty client envelope, so the model's first run is loop 1, not 2.
 export interface ClientEnvelope {
     sessionId: number;
     sessionName: string;
@@ -32,7 +36,7 @@ export interface ClientEnvelope {
     runId: number;
     runName: string;
     runPersona: string | null;
-    clientLoopId: number;
+    clientLoopId: number | null;
 }
 
 // Grammar 0.5.0 (#10): Session and Run carry user-renameable string names.
@@ -56,13 +60,11 @@ export const createClientEnvelope = async (db: Db, opts: { name?: string; prefix
     const runName = generateRunName();
     const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: session.id, name: runName, persona: null });
     if (run === undefined) throw new Error("createClientEnvelope: run insert returned no row");
-    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
-    if (loop === undefined) throw new Error("createClientEnvelope: loop insert returned no row");
     return {
         sessionId: session.id, sessionName: session.name,
         projectRoot: session.project_root, sessionPersona: session.persona,
         runId: run.id, runName: run.name, runPersona: run.persona,
-        clientLoopId: loop.id,
+        clientLoopId: null,
     };
 };
 
@@ -100,14 +102,21 @@ export const attachToSession = async (db: Db, sessionId: number, opts: { runId?:
     const session = await (db.envelope_get_session as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ id: sessionId });
     if (session === undefined) throw new Error(`session ${sessionId} not found`);
     const run = await resolveRun(db, session.id, opts);
-    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
-    if (loop === undefined) throw new Error("attachToSession: loop insert returned no row");
     return {
         sessionId: session.id, sessionName: session.name,
         projectRoot: session.project_root, sessionPersona: session.persona,
         runId: run.id, runName: run.name, runPersona: run.persona,
-        clientLoopId: loop.id,
+        clientLoopId: null,
     };
+};
+
+// Lazy client-loop allocator. Called from dispatchAsClient on the first
+// client-origin op for this connection; subsequent ops reuse the same
+// loop until the connection closes.
+export const ensureClientLoop = async (db: Db, runId: number): Promise<number> => {
+    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
+    if (loop === undefined) throw new Error("ensureClientLoop: loop insert returned no row");
+    return loop.id;
 };
 
 export const listRunsForSession = async (db: Db, sessionId: number): Promise<RunRow[]> => {

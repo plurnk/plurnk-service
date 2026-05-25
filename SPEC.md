@@ -404,7 +404,7 @@ The clean-shape RPC params (§13.5) carry the fragment naturally inside the `pat
 
 **Wire-rendering inverse: default channel is path-only.** When the engine projects entries to the model's view, the heredoc fence omits `#channel` whenever the channel name matches the scheme's `defaultChannel`. Single-channel entries (the channel IS the default) render path-only; multi-channel entries render the default channel path-only and only non-default channels carry `#name` in the fence. {§5.5-wire-omits-suffix-on-default-channel} Examples:
 
-- `<<file://notes.md:...:file://notes.md` — file's default (`body`)
+- `<<notes.md:...:notes.md` — file scheme renders bare (see §10 file note)
 - `<<exec://run:...:exec://run` — exec's default (`stdout`)
 - `<<exec://run#stderr:...:exec://run#stderr` — explicit non-default
 - `<<log://1/1/0:...:log://1/1/0` — log responses (single-payload; no channel concept)
@@ -649,7 +649,7 @@ All real providers are siblings, registered via plugin discovery.
 - `unknown` — decomposition / open questions.
 - `skill` — sibling of known/unknown; semantics provisional.
 - `exec` — manifest only; subprocess invocation not yet implemented.
-- `file` — in-tree; extraction to a sibling repo is planned once the workspace + exec/streams work shapes the scheme's full surface.
+- `file` — in-tree; extraction to a sibling repo is planned once the workspace + exec/streams work shapes the scheme's full surface. **The model is never trained on `file://` and never sees it in any rendered output.** Bare paths (`README.md`, `/abs/path.txt`) are the model-facing form; `file://` is accepted as an explicit input for absolute root paths but renders bare in the index, log, and every other model-facing surface.
 
 In-tree schemes will move to siblings as their surfaces stabilize.
 

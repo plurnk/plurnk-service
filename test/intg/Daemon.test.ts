@@ -93,9 +93,12 @@ test("session.create returns id+name and emits notification", async () => {
             assert.ok(sessionList.some((s) => s.name === "alpha"));
             const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: result.id });
             assert.ok((run?.id ?? 0) > 0);
+            // No client loop yet — allocation is lazy (deferred until the
+            // first client-origin op). A connection that only ran session.*
+            // RPCs has nothing to spend a loop sequence on, so loop.run
+            // gets sequence=1 instead of 2.
             const loop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
-            const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop?.id }))?.status;
-            assert.equal(loopStatus, 102);
+            assert.equal(loop, undefined);
         } finally { ws.close(); }
     });
 });
@@ -153,9 +156,10 @@ test("session.attach binds to existing session", async () => {
 
             const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: existing?.id });
             assert.ok(run !== undefined);
+            // Client loop allocation is lazy. session.attach alone doesn't
+            // spend a loop sequence; the first op.* would.
             const loop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
-            const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop?.id }))?.status;
-            assert.equal(loopStatus, 102);
+            assert.equal(loop, undefined);
         } finally { ws.close(); }
     });
 });
@@ -352,12 +356,18 @@ test("session/created notification broadcasts to other connected clients", async
     });
 });
 
-test("client loop status transitions to 200 on clean disconnect", async () => {
+test("client loop status transitions to 200 on clean disconnect (after a client op spawns the loop)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         const response = await rpcCall(ws, 1, "session.create", { name: "lifecycle" });
         const result = response.result as { id: number };
         const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: result.id });
+
+        // No loop yet — allocation is lazy.
+        assert.equal(await (db.test_get_loop_by_run as PrepMethod).get({ run_id: run?.id }), undefined);
+
+        // First op lazily creates the client loop.
+        await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "y" });
         const loop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
         const loopId = loop!.id;
 

@@ -6,7 +6,7 @@ import { renderSystemContent } from "../../src/core/packet-wire.js";
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("index entry: single body channel → fence is path-only", () => {
+test("index entry: file scheme renders bare path (no file:// leak to model)", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -19,8 +19,9 @@ test("index entry: single body channel → fence is path-only", () => {
         log: [],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<file:\/\/notes\.md:\n/, "default-channel fence has no #suffix");
-    assert.match(out, /:file:\/\/notes\.md$/m, "closing fence matches opening");
+    assert.doesNotMatch(out, /file:\/\//, "file:// must never appear in model-facing output");
+    assert.match(out, /<<notes\.md:\n/, "fence carries bare pathname");
+    assert.match(out, /:notes\.md$/m, "closing fence matches opening");
     assert.doesNotMatch(out, /#body/, "no #body anywhere — it is the default channel");
 });
 

@@ -8,6 +8,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { HandlerContext } from "../MethodRegistry.ts";
 import { insertClientTurn } from "../clientTurn.ts";
 import { fetchLogEntry } from "../logEntry.ts";
+import { ensureClientLoop } from "../envelope.ts";
 
 export interface DispatchAsClientResult {
     status: number;
@@ -18,7 +19,11 @@ export const dispatchAsClient = async (ctx: HandlerContext, statement: PlurnkSta
     if (ctx.session === null) {
         throw new Error("dispatchAsClient requires an attached session");
     }
-    const { sessionId, runId, clientLoopId } = ctx.session;
+    const { sessionId, runId } = ctx.session;
+    if (ctx.session.clientLoopId === null) {
+        ctx.session.clientLoopId = await ensureClientLoop(ctx.db, runId);
+    }
+    const clientLoopId = ctx.session.clientLoopId;
     const turnId = await insertClientTurn(ctx.db, clientLoopId);
     const result = await ctx.engine.dispatch({
         statement,
