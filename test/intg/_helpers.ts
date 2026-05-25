@@ -1,6 +1,7 @@
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { mkdir, rm } from "node:fs/promises";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
@@ -21,16 +22,34 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
+const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 
+// File-backed per-test DB so on-disk consumers (digest tool, future
+// forensics) exercise the same artifacts the suite produces. `:memory:`
+// hid a column-rename regression in bin/digest.js for an unknown number
+// of PRs. Per-test UUID filenames eliminate parallel collisions; close()
+// is hooked to unlink the file and its WAL sidecars on teardown so the
+// .tmp/ dir stays clean across runs.
 export const openMigrated = async (): Promise<Db> => {
+    await mkdir(TMP_DIR, { recursive: true });
+    const dbPath = join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
     const db = (await SqlRite.open({
-        path: ":memory:",
+        path: dbPath,
         dir: [
             MIGRATIONS_DIR,
             resolve(PROJECT_ROOT, "src"),
             resolve(PROJECT_ROOT, "test/intg"),
         ],
     })) as unknown as Db;
+    const originalClose = db.close.bind(db);
+    db.close = async () => {
+        await originalClose();
+        await Promise.all([
+            rm(dbPath, { force: true }),
+            rm(`${dbPath}-wal`, { force: true }),
+            rm(`${dbPath}-shm`, { force: true }),
+        ]);
+    };
     return db;
 };
 
