@@ -1,11 +1,6 @@
 import llamaTokenizer from "llama-tokenizer-js";
 import { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
 
-// PROVIDERS.md §3.9 default — Ollama serves local models; local can mean
-// anything from sub-second to minutes per turn depending on parameter size
-// and hardware. 10m default matches the universal knob.
-const DEFAULT_FETCH_TIMEOUT_MS = 600000;
-
 // Tokenizer dispatch. Ollama exposes the model family via /api/show
 // `details.family`. Llama-family tokenization is accurate enough for these;
 // everything else falls back to the chars/4 heuristic until handler-specific
@@ -80,9 +75,8 @@ export default class Ollama {
         if (baseUrl === undefined || baseUrl.length === 0) {
             throw new Error("ollama provider: OLLAMA_BASE_URL must be set");
         }
-        const fetchTimeoutMs = env.PLURNK_PROVIDER_FETCH_TIMEOUT !== undefined && env.PLURNK_PROVIDER_FETCH_TIMEOUT.length > 0
-            ? Number(env.PLURNK_PROVIDER_FETCH_TIMEOUT)
-            : DEFAULT_FETCH_TIMEOUT_MS;
+        const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT");
+        const reasonBudget = parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON");
         const normalizedBase = baseUrl.replace(/\/$/, "");
         const info = await fetchModelInfo({
             baseUrl: normalizedBase,
@@ -94,7 +88,7 @@ export default class Ollama {
             model,
             contextSize: info.contextSize,
             fetchTimeoutMs,
-            reasonBudget: Number(env.PLURNK_REASON ?? "0"),
+            reasonBudget,
             tokenizer: tokenizerForFamily(info.family),
         });
     }
@@ -155,6 +149,17 @@ export default class Ollama {
         };
     }
 }
+
+const parseRequiredInt = (raw: string | undefined, name: string): number => {
+    if (raw === undefined || raw.length === 0) {
+        throw new Error(`ollama provider: ${name} must be set`);
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+        throw new Error(`ollama provider: ${name} must be a number (got "${raw}")`);
+    }
+    return n;
+};
 
 // Ollama's /api/show returns model_info (per-family-prefixed metadata) and
 // details (family/quantization/etc.). Two pieces of data we need:

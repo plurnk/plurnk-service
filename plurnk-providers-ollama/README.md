@@ -29,11 +29,13 @@ const result = await provider.generate({
 
 ## env
 
+No fallback defaults — required vars throw at `fromEnv` if missing or unparseable. Defaults belong in `plurnk-service`'s `.env.example` cascade, not in library code.
+
 | Variable | Required | Notes |
 |---|---|---|
 | `OLLAMA_BASE_URL` | yes | Ollama server URL (e.g. `http://localhost:11434`) |
-| `PLURNK_REASON` | no | Universal reasoning budget; any positive value toggles `think: true` on the request body |
-| `PLURNK_PROVIDER_FETCH_TIMEOUT` | no | Universal fetch timeout in ms; default `600000` (10m) |
+| `PLURNK_REASON` | yes | Universal reasoning budget (PROVIDERS.md §3.8); `0` disables, `> 0` toggles `think: true` on the request body |
+| `PLURNK_FETCH_TIMEOUT` | yes | Universal fetch timeout in ms (PROVIDERS.md §3.9) |
 
 ## context size
 

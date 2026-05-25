@@ -2,10 +2,46 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Ollama from "./Ollama.ts";
 
+// Minimum env that satisfies all required guards in fromEnv. Tests that need
+// to exercise one specific knob override its key on top of this.
+const baseEnv = Object.freeze({
+    OLLAMA_BASE_URL: "http://x",
+    PLURNK_FETCH_TIMEOUT: "600000",
+    PLURNK_REASON: "0",
+});
+
 test("fromEnv: throws when OLLAMA_BASE_URL is unset", async () => {
     await assert.rejects(
         () => Ollama.fromEnv({}, "qwenzel:latest"),
         /OLLAMA_BASE_URL must be set/,
+    );
+});
+
+test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
+    await assert.rejects(
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_REASON: "0" }, "m"),
+        /PLURNK_FETCH_TIMEOUT must be set/,
+    );
+});
+
+test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is non-numeric", async () => {
+    await assert.rejects(
+        () => Ollama.fromEnv({ ...baseEnv, PLURNK_FETCH_TIMEOUT: "abc" }, "m"),
+        /PLURNK_FETCH_TIMEOUT must be a number/,
+    );
+});
+
+test("fromEnv: throws when PLURNK_REASON is unset", async () => {
+    await assert.rejects(
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_FETCH_TIMEOUT: "600000" }, "m"),
+        /PLURNK_REASON must be set/,
+    );
+});
+
+test("fromEnv: throws when PLURNK_REASON is non-numeric", async () => {
+    await assert.rejects(
+        () => Ollama.fromEnv({ ...baseEnv, PLURNK_REASON: "lots" }, "m"),
+        /PLURNK_REASON must be a number/,
     );
 });
 
@@ -17,7 +53,7 @@ test("fromEnv: resolves contextSize from /api/show model_info", async (t) => {
         json: async () => ({ model_info: { "qwen35.context_length": 262144 } }),
     })) as unknown as typeof fetch;
 
-    const p = await Ollama.fromEnv({ OLLAMA_BASE_URL: "http://192.168.1.17:11434" }, "qwenzel:latest");
+    const p = await Ollama.fromEnv({ ...baseEnv, OLLAMA_BASE_URL: "http://192.168.1.17:11434" }, "qwenzel:latest");
     assert.equal(p.contextSize, 262144);
     assert.equal(p.model, "qwenzel:latest");
 });
@@ -30,7 +66,7 @@ test("fromEnv: scans any family prefix for *.context_length", async (t) => {
         json: async () => ({ model_info: { "llama.context_length": 131072, "other.field": "ignored" } }),
     })) as unknown as typeof fetch;
 
-    const p = await Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "llama3:latest");
+    const p = await Ollama.fromEnv({ ...baseEnv }, "llama3:latest");
     assert.equal(p.contextSize, 131072);
 });
 
@@ -43,7 +79,7 @@ test("fromEnv: throws when /api/show has no context_length", async (t) => {
     })) as unknown as typeof fetch;
 
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "unknown:latest"),
+        () => Ollama.fromEnv({ ...baseEnv }, "unknown:latest"),
         /no \*\.context_length key for "unknown:latest"/,
     );
 });
@@ -58,7 +94,7 @@ test("fromEnv: throws when /api/show returns non-2xx", async (t) => {
     })) as unknown as typeof fetch;
 
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "missing:latest"),
+        () => Ollama.fromEnv({ ...baseEnv }, "missing:latest"),
         /\/api\/show returned 404/,
     );
 });
@@ -122,7 +158,7 @@ test("fromEnv: dispatches to llama tokenizer when details.family is llama", asyn
         }),
     })) as unknown as typeof fetch;
 
-    const p = await Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "llama3:latest");
+    const p = await Ollama.fromEnv({ ...baseEnv }, "llama3:latest");
     assert.equal(p.tokenizer, "llama");
     assert.equal(p.countTokens("hello world"), 3);
 });
@@ -138,7 +174,7 @@ test("fromEnv: falls back to heuristic when family is unknown", async (t) => {
         }),
     })) as unknown as typeof fetch;
 
-    const p = await Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "qwenzel:latest");
+    const p = await Ollama.fromEnv({ ...baseEnv }, "qwenzel:latest");
     assert.equal(p.tokenizer, "heuristic");
     // 8-char text under heuristic: ceil(8/4) = 2
     assert.equal(p.countTokens("12345678"), 2);
@@ -152,6 +188,6 @@ test("fromEnv: heuristic when details block is absent", async (t) => {
         json: async () => ({ model_info: { "phi.context_length": 8192 } }),
     })) as unknown as typeof fetch;
 
-    const p = await Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x" }, "phi:latest");
+    const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
     assert.equal(p.tokenizer, "heuristic");
 });
