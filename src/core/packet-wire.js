@@ -124,14 +124,16 @@ const renderIndexEntries = (entries) =>
     }).join("\n");
 
 // Render one Log entry → `* {meta}` line followed by the response body.
-// URI is `log://<coordinate>`; the body carries what the action returned
-// (status meta, body, etc.). Log entries are single-payload by nature —
-// fence is path-only (no `#channel`), matching the default-channel
-// convention for single-channel addressing.
+// URI is `log://<coordinate>/<op>` per SPEC §10 — the trailing /op is
+// wire-rendering self-documentation derived from the row's `op` field
+// (parsing the URI accepts it or omits it; identification is by
+// coordinate). Log entries are single-payload by nature — fence carries
+// no `#channel` (matches the default-channel convention).
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const coordinate = e.coordinate ?? "?";
-        const uri = `log://${coordinate}`;
+        const opSuffix = typeof e.op === "string" && e.op.length > 0 ? `/${e.op}` : "";
+        const uri = `log://${coordinate}${opSuffix}`;
         const meta = {};
         if (typeof e.origin === "string") meta.origin = e.origin;
         if (typeof e.op === "string") meta.op = e.op;

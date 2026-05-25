@@ -86,7 +86,7 @@ const turns = db.prepare(
 const logEntries = db.prepare(
     `SELECT id, run_id, loop_id, turn_id, action_index, at, origin,
             op, suffix, signal,
-            target_scheme, target_pathname,
+            scheme, pathname,
             tx, rx, status_rx, mimetype_rx,
             state, outcome, attrs
      FROM log_entries ORDER BY loop_id, turn_id, action_index`,
@@ -134,9 +134,9 @@ for (const c of entryChannels) {
 // --- Rendering -------------------------------------------------------------
 
 const renderOpLine = (le) => {
-    const target = le.target_scheme !== null && le.target_pathname !== null
-        ? `${le.target_scheme}://${le.target_pathname}`
-        : le.target_pathname ?? "—";
+    const target = le.scheme !== null && le.pathname !== null
+        ? `${le.scheme}://${le.pathname}`
+        : le.pathname ?? "—";
     const state = le.state !== "resolved" ? ` state=${le.state}` : "";
     const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
     const fail = le.status_rx >= 400 ? " ✗" : "";
@@ -317,7 +317,7 @@ const renderJson = () => {
         })),
         log_entries: logEntries.map((le) => ({
             id: le.id, turn_id: le.turn_id, action_index: le.action_index,
-            op: le.op, target: `${le.target_scheme ?? ""}://${le.target_pathname ?? ""}`,
+            op: le.op, target: `${le.scheme ?? ""}://${le.pathname ?? ""}`,
             status_rx: le.status_rx, state: le.state, outcome: le.outcome,
         })),
     }, null, 2);

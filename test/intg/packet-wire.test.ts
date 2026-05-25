@@ -60,13 +60,13 @@ test("index entry: multi-channel entry omits suffix on default, keeps it on othe
     assert.match(out, /<<exec:\/\/run#stderr:\n1:\twarn\n:exec:\/\/run#stderr/, "stderr fence keeps #stderr");
 });
 
-test("log entry: response fence is always path-only (logs are single-payload)", () => {
+test("log entry: response fence carries /op suffix for wire self-documentation, no #channel", () => {
     const system = {
         system_definition: "SD",
         persona: "",
         index: [],
         log: [{
-            coordinate: "1/1/0",
+            coordinate: "1/1/1",
             origin: "model",
             op: "EDIT",
             status: 200,
@@ -75,7 +75,7 @@ test("log entry: response fence is always path-only (logs are single-payload)", 
         }],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<log:\/\/1\/1\/0:\n/, "log fence is path-only");
-    assert.match(out, /:log:\/\/1\/1\/0$/m, "closing matches");
-    assert.doesNotMatch(out, /log:\/\/[^\n]*#/, "no #suffix anywhere on log fences");
+    assert.match(out, /<<log:\/\/1\/1\/1\/EDIT:\n/, "log fence carries /EDIT suffix");
+    assert.match(out, /:log:\/\/1\/1\/1\/EDIT$/m, "closing fence matches with suffix");
+    assert.doesNotMatch(out, /log:\/\/[^\n]*#/, "no #channel on log fences (logs are single-payload)");
 });
