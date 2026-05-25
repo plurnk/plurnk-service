@@ -24,6 +24,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | SEND | status code | recipient | —                | message body             |
 | EXEC | runtime tag | cwd       | —                | command or code          |
 
+READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
 SEND broadcasts to uri when a path is included and messages the user when no path is included.
 EXEC may include an optional runtime tag (`"sh"`, `"node"`, etc.).
 
@@ -54,11 +55,12 @@ URI-shaped: `[scheme://]rest`.
 
 Internal schemes:
 
-- `unknown://` — pending / open questions.
+- `unknown://` — open question entries.
 - `known://` — knowledgebase entries.
 - `skill://` — available skill entries.
 - `exec://` — actions.
-- `log://` — internal record of commands performed.
+- `log://` — record of operations performed.
+- `plurnk://` — internal agent entries.
 
 ## Context
 
@@ -110,7 +112,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<HIDE(log://**/get)<101-200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 
-<<EXEC[node](./):
+<<EXEC[node]:
 const sum = [1, 2, 3].reduce((a, b) => a + b, 0);
 console.log(sum);
 :EXEC
