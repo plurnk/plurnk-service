@@ -32,7 +32,7 @@
 // npm hook:
 //   npm run test:digest [-- path/to/plurnk.db]
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,10 @@ if (!existsSync(dbPath)) {
     process.exit(1);
 }
 
+// Wipe-then-recreate the digest dir so each run is a clean snapshot —
+// orphaned packet*.* files from a prior run (different DB, fewer turns,
+// etc.) don't linger and pollute forensics.
+rmSync(DIGEST_DIR, { recursive: true, force: true });
 mkdirSync(DIGEST_DIR, { recursive: true });
 
 const summarize = (text, n = 80) => {
