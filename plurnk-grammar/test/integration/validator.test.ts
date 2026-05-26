@@ -202,20 +202,20 @@ test("Validator: ParsedPath accepts multi-value params (array)", () => {
     assert.equal(valid, true);
 });
 
-test("Round-trip: AST.path (local) validates", () => {
+test("Round-trip: AST.target (local) validates", () => {
     const result = PlurnkParser.parse("<<EDIT(config/foo.xml):body:EDIT");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    assert.ok(item.statement.path);
-    const { valid, errors } = Validator.validateParsedPath(item.statement.path);
+    assert.ok(item.statement.target);
+    const { valid, errors } = Validator.validateParsedPath(item.statement.target);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.path (url) validates after JSON round-trip", () => {
+test("Round-trip: AST.target (url) validates after JSON round-trip", () => {
     const result = PlurnkParser.parse("<<EDIT(https://example.com:8080/p?q=1&q=2#frag):body:EDIT");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const reloaded = JSON.parse(JSON.stringify(item.statement.path));
+    const reloaded = JSON.parse(JSON.stringify(item.statement.target));
     const { valid, errors } = Validator.validateParsedPath(reloaded);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });

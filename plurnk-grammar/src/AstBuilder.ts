@@ -38,7 +38,7 @@ import {
     IdentSignalContext,
     IntSignalContext,
     LineMarkerContext,
-    PathContext,
+    TargetContext,
     TagSignalContext,
 } from "./generated/plurnkParser.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
@@ -50,9 +50,9 @@ declare module "xpath" {
 
 type Ctor<T> = new (...args: any[]) => T;
 
-type TagSlots = { signal: string[] | null; path: ParsedPath | null; lineMarker: LineMarker | null };
-type SendSlots = { signal: number | null; path: ParsedPath | null };
-type ExecSlots = { signal: string | null; path: ParsedPath | null };
+type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type SendSlots = { signal: number | null; target: ParsedPath | null };
+type ExecSlots = { signal: string | null; target: ParsedPath | null };
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -200,7 +200,7 @@ export default class AstBuilder {
     static #extractTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): TagSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
-            path: AstBuilder.#pathFromCtx(AstBuilder.#findFirst(modCtx, PathContext), pos),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
@@ -210,7 +210,7 @@ export default class AstBuilder {
         const intNode = intCtx?.INT() ?? null;
         return {
             signal: intNode !== null ? Number.parseInt(intNode.getText(), 10) : null,
-            path: AstBuilder.#pathFromCtx(AstBuilder.#findFirst(modCtx, PathContext), pos),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
         };
     }
 
@@ -219,7 +219,7 @@ export default class AstBuilder {
         const identNode = identCtx?.IDENT() ?? null;
         return {
             signal: identNode !== null ? identNode.getText() : null,
-            path: AstBuilder.#pathFromCtx(AstBuilder.#findFirst(modCtx, PathContext), pos),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
         };
     }
 
@@ -246,9 +246,9 @@ export default class AstBuilder {
         return Array.isArray(tags) ? tags.map((t) => t.getText()) : [];
     }
 
-    static #pathFromCtx(ctx: PathContext | null, pos: Position): ParsedPath | null {
+    static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {
         if (ctx === null) return null;
-        const text = ctx.PATH_TEXT()?.getText() ?? "";
+        const text = ctx.TARGET_TEXT()?.getText() ?? "";
         return AstBuilder.parsePath(text, pos);
     }
 
