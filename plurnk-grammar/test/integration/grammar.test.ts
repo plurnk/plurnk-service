@@ -154,8 +154,8 @@ test("AST: minimal EDIT extracts op, suffix, body", () => {
     const s = item.statement;
     assert.equal(s.op, "EDIT");
     assert.equal(s.suffix, "");
-    assert.equal(s.path?.kind, "local");
-    assert.equal(s.path?.raw, "p");
+    assert.equal(s.target?.kind, "local");
+    assert.equal(s.target?.raw, "p");
     assert.equal(s.body, "hello");
     assert.equal(s.signal, null);
     assert.equal(s.lineMarker, null);
@@ -457,7 +457,7 @@ test("AST: missing path is null", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.equal(item.statement.path, null);
+    assert.equal(item.statement.target, null);
 });
 
 // -------------------------------------------------------------------------
@@ -468,7 +468,7 @@ test("ParsedPath: bare path is kind=local", () => {
     const result = PlurnkParser.parse("<<READ(./README.md)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     assert.equal(p.kind, "local");
     assert.equal(p.raw, "./README.md");
@@ -478,7 +478,7 @@ test("ParsedPath: glob path is kind=local", () => {
     const result = PlurnkParser.parse("<<FIND(config/**/*.xml)::FIND");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     assert.equal(p.kind, "local");
     assert.equal(p.raw, "config/**/*.xml");
@@ -488,7 +488,7 @@ test("ParsedPath: https URL decomposed fully", () => {
     const result = PlurnkParser.parse("<<READ(https://user:pass@sub.example.com:8080/foo/bar?q=1&q=2#frag)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "https");
@@ -505,7 +505,7 @@ test("ParsedPath: known:// is opaque — hostname null, pathname is full segment
     const result = PlurnkParser.parse("<<READ(known://entries/foo/bar)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "known");
@@ -517,7 +517,7 @@ test("ParsedPath: log:// is opaque — pathname carries the full address", () =>
     const result = PlurnkParser.parse("<<READ(log://1/turn/2/action/3/get)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "log");
@@ -529,7 +529,7 @@ test("ParsedPath: file:///… scheme parses, empty hostname", () => {
     const result = PlurnkParser.parse("<<READ(file:///tmp/foo.txt)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.equal(p.scheme, "file");
@@ -541,7 +541,7 @@ test("ParsedPath: empty query and fragment are null/empty", () => {
     const result = PlurnkParser.parse("<<READ(https://example.com/foo)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
-    const p = item.statement.path;
+    const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
     assert.deepEqual(p.params, {});
@@ -556,7 +556,7 @@ test("ParsedPath cleavage: HTTPS retains authority decomposition", () => {
     const result = PlurnkParser.parse("<<READ(https://user:pw@example.com:8080/api/data?q=1#frag)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "https");
     assert.equal(p.username, "user");
@@ -572,7 +572,7 @@ test("ParsedPath cleavage: exec:// is opaque — no host, raw pathname", () => {
     const result = PlurnkParser.parse("<<READ(exec://run-tests)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "exec");
     assert.equal(p.username, null);
@@ -586,7 +586,7 @@ test("ParsedPath cleavage: wiki:// is opaque — single-segment pathname survive
     const result = PlurnkParser.parse("<<READ(wiki://Paris)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "wiki");
     assert.equal(p.hostname, null);
@@ -597,7 +597,7 @@ test("ParsedPath cleavage: opaque scheme preserves params and fragment", () => {
     const result = PlurnkParser.parse("<<READ(wiki://Paris?lang=fr#History)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "wiki");
     assert.equal(p.hostname, null);
@@ -610,7 +610,7 @@ test("ParsedPath cleavage: known:// nested path stays whole", () => {
     const result = PlurnkParser.parse("<<READ(known://philosophy/existentialism/meaning)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "known");
     assert.equal(p.hostname, null);
@@ -621,7 +621,7 @@ test("ParsedPath cleavage: file:// stays authority-bearing", () => {
     const result = PlurnkParser.parse("<<READ(file:///tmp/foo.txt)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
-    const p = item.statement.path;
+    const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "file");
     assert.equal(p.hostname, null);
@@ -762,9 +762,9 @@ test("error message: missing close tag uses 'close tag' wording", () => {
     assert.doesNotMatch(e.message, /CLOSE_TAG|EOF|<EOF>|RPAREN|LBRACKET/);
 });
 
-test("error message: << inside path says 'in path'", () => {
+test("error message: << inside target says 'in target'", () => {
     const e = firstError("<<EDIT(<<broken):body:EDIT");
-    assert.match(e.message, /unrecognized character '<<' in path/);
+    assert.match(e.message, /unrecognized character '<<' in target/);
 });
 
 test("error message: << inside signal says 'in tag signal'", () => {
@@ -775,7 +775,7 @@ test("error message: << inside signal says 'in tag signal'", () => {
 test("error message: stray char in slot region names what's allowed", () => {
     const e = firstError("<<EDIT(p)X:body:EDIT");
     assert.match(e.message, /unrecognized character 'X' in slot region/);
-    assert.match(e.message, /\[signal\].*\(path\).*<L>.*:body:/);
+    assert.match(e.message, /\[signal\].*\(target\).*<L>.*:body:/);
 });
 
 test("error message: no ANTLR-y terminology leaks through", () => {
@@ -827,10 +827,10 @@ test("unparsedTail: unclosed signal slot names what's missing", () => {
     assert.match(result.unparsedTail!.reason, /add `]`/);
 });
 
-test("unparsedTail: unclosed path slot names what's missing", () => {
+test("unparsedTail: unclosed target slot names what's missing", () => {
     const result = PlurnkParser.parse("<<EDIT(path");
     assert.ok(result.unparsedTail);
-    assert.match(result.unparsedTail!.reason, /path slot of `<<EDIT`/);
+    assert.match(result.unparsedTail!.reason, /target slot of `<<EDIT`/);
     assert.match(result.unparsedTail!.reason, /add `\)`/);
 });
 
@@ -845,7 +845,7 @@ test("slot order: canonical [signal](path)<L> parses", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
-    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.target?.kind, "local");
     assert.equal(item.statement.lineMarker?.first, 1);
 });
 
@@ -855,7 +855,7 @@ test("slot order: (path)[signal]<L> accepted (reordered)", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
-    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.target?.kind, "local");
     assert.equal(item.statement.lineMarker?.first, 1);
 });
 
@@ -865,7 +865,7 @@ test("slot order: <L>(path)[signal] accepted (reordered)", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
-    assert.equal(item.statement.path?.kind, "local");
+    assert.equal(item.statement.target?.kind, "local");
     assert.equal(item.statement.lineMarker?.first, 1);
 });
 
@@ -884,7 +884,7 @@ test("slot order: all 6 permutations of 3-slot FIND yield equivalent ASTs", () =
         const item = result.items[0];
         if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail(`not FIND for: ${input}`); return; }
         assert.deepEqual(item.statement.signal, ["t"], `signal mismatch for: ${input}`);
-        assert.equal(item.statement.path?.kind, "local", `path mismatch for: ${input}`);
+        assert.equal(item.statement.target?.kind, "local", `path mismatch for: ${input}`);
         assert.equal(item.statement.lineMarker?.first, 2, `L mismatch for: ${input}`);
     }
 });
@@ -895,7 +895,7 @@ test("slot order: SEND with (path)[signal] reversed", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("not SEND"); return; }
     assert.equal(item.statement.signal, 200);
-    assert.equal(item.statement.path?.kind, "url");
+    assert.equal(item.statement.target?.kind, "url");
 });
 
 test("slot order: duplicate signal slots rejected", () => {

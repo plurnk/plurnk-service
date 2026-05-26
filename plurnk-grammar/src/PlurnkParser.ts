@@ -70,8 +70,8 @@ export default class PlurnkParser {
                 ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`:${openTag}\` to terminate`
                 : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
                     ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`]\` to terminate the signal`
-                    : modeName === "PATH"
-                        ? `path slot of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`)\` to terminate the path`
+                    : modeName === "TARGET"
+                        ? `target slot of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`)\` to terminate the target`
                         : `statement \`<<${openTag}\` opened at line ${from.line} but never reached its close tag — add \`:${openTag}\` to terminate`;
             unparsedTail = { from, reason };
         }

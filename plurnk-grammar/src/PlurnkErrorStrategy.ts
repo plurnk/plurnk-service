@@ -14,11 +14,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "between statements",
-        SLOTS: "in slot region — expected `[signal]`, `(path)`, `<L>`, or `:body:` (any order)",
+        SLOTS: "in slot region — expected `[signal]`, `(target)`, `<L>`, or `:body:` (any order)",
         SIGNAL_TAGS: "in tag signal — expected tag, `,`, or `]`",
         SIGNAL_INT: "in signal — expected integer for SEND, then `]`",
         SIGNAL_IDENT: "in signal — expected Runtime Tag for EXEC, then `]`",
-        PATH: "in path slot — expected path characters or `)`",
+        TARGET: "in target slot — expected URI characters or `)`",
         BODY: "in body",
     };
 
@@ -34,15 +34,15 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_EXEC]: "open tag `<<OPsuffix`",
         [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
-        [plurnkParser.LPAREN]: "`(` (path slot opener)",
-        [plurnkParser.RPAREN]: "`)` (path slot closer)",
+        [plurnkParser.LPAREN]: "`(` (target slot opener)",
+        [plurnkParser.RPAREN]: "`)` (target slot closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.COLON]: "`:` (body fence)",
         [plurnkParser.COMMA]: "`,`",
         [plurnkParser.INT]: "integer (SEND signal)",
         [plurnkParser.IDENT]: "Runtime Tag (EXEC signal)",
         [plurnkParser.TAG]: "tag",
-        [plurnkParser.PATH_TEXT]: "path content",
+        [plurnkParser.TARGET_TEXT]: "target content",
         [plurnkParser.BODY_TEXT]: "body content",
         [plurnkParser.CLOSE_TAG]: "close tag `:OPsuffix`",
         [plurnkParser.TEXT]: "text between statements",

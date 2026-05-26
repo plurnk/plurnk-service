@@ -74,7 +74,7 @@ const baseFields = (op: string) => ({
     op,
     suffix: "",
     signal: null,
-    path: null,
+    target: null,
     lineMarker: null,
     body: null,
     position: { line: 1, column: 0 },

@@ -3,7 +3,7 @@ lexer grammar plurnkLexer;
 tokens {
     LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, COMMA,
     INT, IDENT, TAG,
-    PATH_TEXT, BODY_TEXT, CLOSE_TAG, TEXT
+    TARGET_TEXT, BODY_TEXT, CLOSE_TAG, TEXT
 }
 
 // ============================================================================
@@ -108,7 +108,7 @@ SLOTS_WS       : [ \t\r\n]+ -> skip ;
 SLOTS_LB_TAGS  : '[' { !this.isSendOp() && !this.isExecOp() }? -> type(LBRACKET), mode(SIGNAL_TAGS) ;
 SLOTS_LB_INT   : '[' { this.isSendOp() }?                       -> type(LBRACKET), mode(SIGNAL_INT) ;
 SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
-SLOTS_LPAREN   : '(' -> type(LPAREN), mode(PATH) ;
+SLOTS_LPAREN   : '(' -> type(LPAREN), mode(TARGET) ;
 SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
 SLOTS_COLON    : ':' -> type(COLON), mode(BODY) ;
 
@@ -145,13 +145,13 @@ SD_IDENT : [a-zA-Z_] [a-zA-Z0-9_.\-+]* -> type(IDENT) ;
 SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// PATH — inside `(...)`. Content kept as opaque PATH_TEXT; WHATWG URL parsing
+// TARGET — inside `(...)`. Content kept as opaque TARGET_TEXT; WHATWG URL parsing
 // and local-vs-URL discrimination happen in the visitor (runtime library job).
 // ============================================================================
 
-mode PATH;
-PATH_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(PATH_TEXT) ;
-PATH_END   : ')' -> type(RPAREN), mode(SLOTS) ;
+mode TARGET;
+TARGET_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(TARGET_TEXT) ;
+TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 
 // ============================================================================
 // BODY — opaque body content. Close-tag detection via predicate matching the
