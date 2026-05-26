@@ -25,7 +25,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | EXEC | runtime tag | cwd       | —                | command or code          |
 
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
-SEND broadcasts to uri when a target is included and messages the user when no target is included.
+SEND broadcasts to uri when a path is included and messages the user when no path is included.
 EXEC may include an optional runtime tag (`"sh"`, `"node"`, etc.).
 
 ## `<L>`
@@ -46,7 +46,7 @@ Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (ap
 
 Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
 
-## Targets
+## Paths
 
 URI-shaped: `[scheme://]rest`.
 
