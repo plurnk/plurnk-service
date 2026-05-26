@@ -133,26 +133,24 @@ const renderIndexEntries = (entries) =>
             : `* ${canonicalJson(meta)}`;
     }).join("\n\n");
 
-// Render one Log entry → `* {meta}` line followed by the response body.
-// URI is `log://<coordinate>/<op>` per SPEC §10 — the trailing /op is
-// wire-rendering self-documentation derived from the row's `op` field
-// (parsing the URI accepts it or omits it; identification is by
-// coordinate). Log entries are single-payload by nature — fence carries
-// no `#channel` (matches the default-channel convention).
+// Render one Log entry → a single bullet line carrying the meta JSON.
+// No body, no fence — every meaningful field is in the JSON. The full
+// log URI is reconstructable as `log://${coord}/${op}`. On error,
+// status >= 400 signals the failure; the message lives in the next
+// packet's user.telemetry.errors[] per SPEC §15.1. (Forward: coord
+// will gain tokensBefore/After + linesBefore/After to convey change
+// scope without carrying the body content.)
 const renderLogEntries = (entries) =>
     entries.map((e) => {
-        const coordinate = e.coordinate ?? "?";
-        const opSuffix = typeof e.op === "string" && e.op.length > 0 ? `/${e.op}` : "";
-        const uri = `log://${coordinate}${opSuffix}`;
         const meta = {};
+        if (typeof e.coordinate === "string") meta.coord = e.coordinate;
         if (typeof e.origin === "string") meta.origin = e.origin;
         if (typeof e.op === "string") meta.op = e.op;
         if (typeof e.status === "number") meta.status = e.status;
         const path = renderLogPath(e.target);
         if (path !== null) meta.path = path;
-        const rxBody = typeof e.rx === "string" ? e.rx : JSON.stringify(e.rx);
-        return `* ${canonicalJson(meta)}\n${renderHeredoc(uri, null, rxBody)}`;
-    }).join("\n\n");
+        return `* ${canonicalJson(meta)}`;
+    }).join("\n");
 
 const renderLogPath = (target) => {
     if (target === null || target === undefined) return null;

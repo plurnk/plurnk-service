@@ -65,7 +65,7 @@ test("index entry: multi-channel entry omits suffix on default, keeps it on othe
     assert.match(out, /<<exec:\/\/run#stderr:\n1:\twarn\n:exec:\/\/run#stderr/, "stderr fence keeps #stderr");
 });
 
-test("log entry: response fence carries /op suffix for wire self-documentation, no #channel", () => {
+test("log entry: renders as a single JSON meta line — no body, no fence", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -75,12 +75,12 @@ test("log entry: response fence carries /op suffix for wire self-documentation, 
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: "file", pathname: "out.txt" },
+            target: { scheme: null, pathname: "out.txt" },
             rx: "{\"status\":200}",
         }],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<log:\/\/1\/1\/1\/EDIT:\n/, "log fence carries /EDIT suffix");
-    assert.match(out, /:log:\/\/1\/1\/1\/EDIT$/m, "closing fence matches with suffix");
-    assert.doesNotMatch(out, /log:\/\/[^\n]*#/, "no #channel on log fences (logs are single-payload)");
+    assert.doesNotMatch(out, /<<log:\/\//, "no fence — log entries are meta-line only");
+    assert.doesNotMatch(out, /:log:\/\//, "no closing fence either");
+    assert.match(out, /\* \{"coord":"1\/1\/1","op":"EDIT","origin":"model","path":"out\.txt","status":200\}/, "meta line carries coord + everything the model needs");
 });
