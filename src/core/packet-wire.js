@@ -39,7 +39,9 @@ export const renderSystemContent = (system) => {
 //   # Plurnk System Requirements   (per-turn rules incl. Turn N/M marker)
 export const renderUserContent = (user) => {
     const parts = [];
-    parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
+    if (typeof user.prompt === "string" && user.prompt.length > 0) {
+        parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
+    }
     const telemetry = user.telemetry ?? { budget: "", errors: [] };
     if (typeof telemetry.budget === "string" && telemetry.budget.length > 0) {
         parts.push(`# Plurnk System Budget\n\n${telemetry.budget}`);
