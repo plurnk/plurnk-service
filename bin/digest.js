@@ -88,12 +88,12 @@ const turns = db.prepare(
      FROM turns ORDER BY loop_id, sequence`,
 ).all();
 const logEntries = db.prepare(
-    `SELECT id, run_id, loop_id, turn_id, action_index, at, origin,
+    `SELECT id, run_id, loop_id, turn_id, sequence, at, origin,
             op, suffix, signal,
             scheme, pathname,
             tx, rx, status_rx, mimetype_rx,
             state, outcome, attrs
-     FROM log_entries ORDER BY loop_id, turn_id, action_index`,
+     FROM log_entries ORDER BY loop_id, turn_id, sequence`,
 ).all();
 const entryChannels = db.prepare(
     `SELECT ec.entry_id, ec.name AS channel, ec.mimetype, ec.tokens, ec.state, ec.content,
@@ -320,7 +320,7 @@ const renderJson = () => {
             finish_reason: t.finish_reason, model: t.model,
         })),
         log_entries: logEntries.map((le) => ({
-            id: le.id, turn_id: le.turn_id, action_index: le.action_index,
+            id: le.id, turn_id: le.turn_id, sequence: le.sequence,
             op: le.op, target: `${le.scheme ?? ""}://${le.pathname ?? ""}`,
             status_rx: le.status_rx, state: le.state, outcome: le.outcome,
         })),
