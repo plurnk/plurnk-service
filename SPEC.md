@@ -84,7 +84,7 @@ Three independent axes on entries and channels. Confusion across them is a recur
 | Tier | Location | LLM | Substrate |
 |---|---|---|---|
 | **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
-| **intg** | `test/intg/` | No (mock provider) | Real in-memory SqlRite, real engine |
+| **intg** | `test/intg/` | No (mock provider) | Real file-backed SqlRite (per-test DB under `test/intg/.tmp/`), real engine |
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
@@ -400,7 +400,7 @@ Implications for operations:
 - **SHOW / HIDE** flip visibility for the resolved channel only — channel-specific visibility is achievable via fragments. Fragment-less SHOW/HIDE flips ALL channels of the entry per §5.2 (existing behavior).
 - **COPY / MOVE** with a fragment is a per-channel operation; deferred design pass needed before specifying (out of scope for v0).
 
-The clean-shape RPC params (§13.5) carry the fragment naturally inside the `path` string: `{ path: "known://x#stderr" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+The clean-shape RPC params (§13.5) carry the fragment naturally inside the `target` string: `{ target: "known://x#stderr" }` works as expected. No new RPC parameter needed; the URL surface handles it.
 
 **Wire-rendering inverse: default channel is path-only.** When the engine projects entries to the model's view, the heredoc fence omits `#channel` whenever the channel name matches the scheme's `defaultChannel`. Single-channel entries (the channel IS the default) render path-only; multi-channel entries render the default channel path-only and only non-default channels carry `#name` in the fence. {§5.5-wire-omits-suffix-on-default-channel} Examples:
 
@@ -432,7 +432,7 @@ Per-op semantics for `FIND | READ | EDIT | COPY | MOVE | SHOW | HIDE | SEND | EX
 
 ### §6.1 EDIT
 
-AST: `{ op: "EDIT", path: ParsedPath, body: string | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "EDIT", target: ParsedPath, body: string | null, signal: tags | null, lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.edit(statement, ctx)`. Scheme:
 - Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `manifest.defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
@@ -444,7 +444,7 @@ Engine dispatches to `scheme.edit(statement, ctx)`. Scheme:
 
 ### §6.2 READ
 
-AST: `{ op: "READ", path: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "READ", target: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.read(statement, ctx)`. Scheme:
 - Returns the body channel content + mimetype for `path`, or `{ status: 404 }`.
@@ -453,7 +453,7 @@ Engine dispatches to `scheme.read(statement, ctx)`. Scheme:
 
 ### §6.3 SHOW / HIDE
 
-AST: `{ op: "SHOW"|"HIDE", path: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "SHOW"|"HIDE", target: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.show(statement, ctx)` / `scheme.hide(statement, ctx)`. Scheme:
 - Flips `visibility.indexed` for every channel of the targeted entry to 1 (SHOW) or 0 (HIDE).
@@ -462,7 +462,7 @@ Engine dispatches to `scheme.show(statement, ctx)` / `scheme.hide(statement, ctx
 
 ### §6.4 COPY (engine-orchestrated)
 
-AST: `{ op: "COPY", path: ParsedPath (source), body: ParsedPath (destination), signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "COPY", target: ParsedPath (source), body: ParsedPath (destination), signal: tags | null, lineMarker?: LineMarker }`.
 
 Engine orchestrates over CRUD primitives (§3.2, §3.4):
 
@@ -479,7 +479,7 @@ Same- and cross-scheme COPY both go through this orchestrator. {§6.4-cross-sche
 
 ### §6.5 MOVE (engine-orchestrated)
 
-AST: `{ op: "MOVE", path: ParsedPath (source), body: ParsedPath | null (destination), signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "MOVE", target: ParsedPath (source), body: ParsedPath | null (destination), signal: tags | null, lineMarker?: LineMarker }`.
 
 Two modes:
 
@@ -491,7 +491,7 @@ Log history is preserved through MOVE because `log_entries`' URI-bit columns (`s
 
 ### §6.6 FIND
 
-AST: `{ op: "FIND", path: ParsedPath (scope), body: MatcherBody | null (predicate), signal: tags | null (tag filter), lineMarker?: LineMarker }`.
+AST: `{ op: "FIND", target: ParsedPath (scope), body: MatcherBody | null (predicate), signal: tags | null (tag filter), lineMarker?: LineMarker }`.
 
 Engine dispatches to `scheme.find(statement, ctx)`. Scheme:
 - Filters entries within the path's scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
@@ -502,7 +502,7 @@ Engine dispatches to `scheme.find(statement, ctx)`. Scheme:
 
 ### §6.7 SEND
 
-AST: `{ op: "SEND", path: ParsedPath | null, body: SendBody | null, signal: number | null }`.
+AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: number | null }`.
 
 Two modes:
 
@@ -516,7 +516,7 @@ Two modes:
 
 ### §6.8 EXEC
 
-AST: `{ op: "EXEC", path: ParsedPath (cwd), body: string | null (command), signal: string | null (runtime tag) }`.
+AST: `{ op: "EXEC", target: ParsedPath (cwd), body: string | null (command), signal: string | null (runtime tag) }`.
 
 Deferred. The `exec` scheme is in §10's bundled set but lacks a working handler; calls return 501. Sandboxing design and process-lifecycle semantics are the substance to figure out, drawing on rummy's exec plugin as prior art.
 
@@ -644,7 +644,7 @@ All real providers are siblings, registered via plugin discovery.
 
 **Schemes in-tree (`src/schemes/`):**
 - `plurnk` — indexable scheme for internal model-interactions. Current use: `plurnk://prompt/<loop_id>` carries each loop's prompt as a body-channel entry written on loop start. Manifest-level writability is open (any origin); model-origin writes to `plurnk://prompt/*` are rejected in-handler (engine + client own those paths).
-- `log` — coordinate-addressed log entries. Read returns a summary of the action at `log://<loop_seq>/<turn_seq>/<sequence>`; SHOW/HIDE toggle the row's `indexed` flag (log entries are not entries-table entries, but participate in the model's curation surface via URI dispatch). Wire URI carries an optional `/<op>` suffix for self-documentation (`log://1/1/1/EDIT`).
+- `log` — coordinate-addressed log entries. Read returns a summary of the action at `log://<loop_seq>/<turn_seq>/<sequence>`; SHOW/HIDE toggle the row's `indexed` flag (log entries are not entries-table entries, but participate in the model's curation surface via URI dispatch). Each entry renders in the packet as a single JSON meta line — no fence, no body — with `path` = the log entry's own URI (`log://<L>/<T>/<S>/<op>`) and `target` = the URI the action acted on. Errors mirror to `packet.user.telemetry.errors[]` per §15.1; status ≥ 400 in the meta signals "look in telemetry."
 - `known` — primary narrative entries.
 - `unknown` — decomposition / open questions.
 - `skill` — sibling of known/unknown; semantics provisional.
@@ -830,7 +830,7 @@ If a client issues a method requiring init (`requiresInit: true`) without first 
 
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
-| `entry.read`  | `path: string`                      | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given path. |
+| `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. |
 | `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. |
 
 **DSL operations (client-driven, mirror the grammar)**
@@ -839,15 +839,17 @@ Per the **Speak in DSL, not plumbing** rule (AGENTS.md Standing Rules): RPC meth
 
 Each `op.*` call creates a turn in the connection's client loop (§13.7) with the constructed statement as a single action, dispatches it, fires a `log/entry` notification to attached clients of the session, returns the dispatch result.
 
+Naming follows the uniform principle: `target` is the URI the op acts on (the operand); `scope` for FIND (the search root); `source`/`destination` for COPY/MOVE; `recipient` for SEND (or null = broadcast); `cwd` for EXEC. `path` is never an RPC operand here — that word is reserved for *identity* throughout plurnk (the URI of *this thing*).
+
 | Method        | Params                                                  | Notes |
 |---------------|---------------------------------------------------------|-------|
 | `op.find`     | `scope: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FIND>>`. |
-| `op.read`     | `path: string`, `matcher?: string`, `lineRange?: LineMarker`, `tags?: string[]` | Mirrors `<<READ>>`. |
-| `op.edit`     | `path: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
+| `op.read`     | `target: string`, `matcher?: string`, `lineRange?: LineMarker`, `tags?: string[]` | Mirrors `<<READ>>`. |
+| `op.edit`     | `target: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
 | `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<COPY>>`. |
 | `op.move`     | `source: string`, `destination?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<MOVE>>`. Missing `destination` = delete (null-body MOVE). |
-| `op.show`     | `path: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<SHOW>>`. |
-| `op.hide`     | `path: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<HIDE>>`. |
+| `op.show`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<SHOW>>`. |
+| `op.hide`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<HIDE>>`. |
 | `op.send`     | `status: number`, `recipient?: string`, `body?: string` | Mirrors `<<SEND>>`. |
 | `op.exec`     | `cwd?: string`, `runtime?: string`, `command?: string`  | Mirrors `<<EXEC>>`. |
 | `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
@@ -858,7 +860,7 @@ All `op.*` methods return `{ status: number, ...op-specific-extras }`. They are 
 Future-reserved (post-v0):
 
 - `subscription.list` — list active streaming subscriptions (§7).
-- `subscription.cancel` — analog of `SEND[499]` over RPC, though `op.send({status: 499, recipient: path})` does the same thing today.
+- `subscription.cancel` — analog of `SEND[499]` over RPC, though `op.send({status: 499, recipient})` does the same thing today.
 
 ### §13.6 Notifications
 
@@ -872,7 +874,7 @@ Server-initiated events streamed to the client over the same WebSocket. Critical
 | `session/created`  | `{ id, name, projectRoot, persona }` | When a session is created (any client's action; gives multi-client awareness). |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | When a channel's content grows or its state transitions. For clients rendering live; the model only sees state at turn boundaries. {§13.6-stream-event-on-channel-change} |
 
-The `stream/event` payload deliberately carries metadata, NOT content. Clients that want the new content call `entry.read({path})` to fetch — this avoids large notification payloads and gives the client agency over whether to refresh. Sample-driven (notifications include `contentLength` so clients can dedupe / batch).
+The `stream/event` payload deliberately carries metadata, NOT content. Clients that want the new content call `entry.read({target})` to fetch — this avoids large notification payloads and gives the client agency over whether to refresh. Sample-driven (notifications include `contentLength` so clients can dedupe / batch).
 
 Notifications are scoped to the connection's attached session — a client attached to session A does NOT receive `log/entry` notifications for actions on session B. (Cross-session observation is a future feature; v0 keeps the scope tight.)
 
@@ -997,7 +999,7 @@ type Packet = {
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable entry, body channel, text/markdown). The corresponding log row appears at `log://<loop_id_seq>/1/1/EDIT` with target = the plurnk URI. At render time, the *current* loop's `plurnk://prompt/<loop_id>` entry is foisted out of `packet.system.index` and materialized in `packet.user.prompt` — one section, one mechanism, no duplicate content rendering. Previous loops' prompt entries remain in the index and are addressable for the model to READ or HIDE. {§15-current-prompt-foist}
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable entry, body channel, text/markdown). The corresponding log row renders as `* {"op":"EDIT","origin":"system","path":"log://<L>/1/1/EDIT","status":201,"target":"plurnk://prompt/<L>"}` — `path` is the log row's own URI, `target` is the plurnk entry that got written. At render time, the *current* loop's `plurnk://prompt/<loop_id>` entry is foisted out of `packet.system.index` and materialized in `packet.user.prompt` — one section, one mechanism, no duplicate content rendering. Previous loops' prompt entries remain in the index and are addressable for the model to READ or HIDE. {§15-current-prompt-foist}
 
 ### §15.1 user.telemetry — model-facing runtime telemetry
 
