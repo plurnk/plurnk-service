@@ -1,7 +1,7 @@
 // Shared types for the scheme extension surface. See SCHEMES.md.
 
 import type { Db } from "./Db.ts";
-import type { StreamEventNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 
 export type WriterTier = "model" | "client" | "system" | "plugin";
 
@@ -23,6 +23,11 @@ export interface PlurnkSchemeContext {
     // undefined and channel writes happen silently. Schemes pass this
     // straight to appendToChannel / setChannelState.
     readonly streamEventNotify?: StreamEventNotify;
+    // Optional wake-on-completion notifier. Streaming schemes (exec, future
+    // SSE/WS) call this when a subscription closes. Daemon decides whether
+    // to actually open a new loop based on engine state (active-loop check).
+    // intg tests can pass a stub to assert the call payload.
+    readonly wakeRunNotify?: WakeRunNotify;
 }
 
 export interface SchemeFlagAffinity {

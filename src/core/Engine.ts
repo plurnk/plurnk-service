@@ -6,7 +6,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
@@ -275,17 +275,27 @@ export default class Engine {
     // chains come later if a real consumer needs them.
     #proposalPendingListeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    #streamEventNotify: StreamEventNotify | undefined;
+    // Per-loop AbortController for cancellation propagation into scheme
+    // ctx.signal. runLoop creates one at entry, cleans up at end. Engine
+    // cancellation paths (strikes, max_turns, external) abort it.
+    // Streaming schemes (exec) chain their per-spawn controllers off
+    // ctx.signal so cancelled loops tear down their background spawns.
+    #loopAborts = new Map<number, AbortController>();
 
-    constructor({ db, schemes, mimetypes, streamEventNotify }: {
+    #streamEventNotify: StreamEventNotify | undefined;
+    #wakeRunNotify: WakeRunNotify | undefined;
+
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
+        wakeRunNotify?: WakeRunNotify;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
+        this.#wakeRunNotify = wakeRunNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -334,7 +344,28 @@ export default class Engine {
         const turnIds: number[] = [];
         const suddenDeathThreshold = maxTurns - maxStrikes;
 
-        const cleanup = (): void => {
+        // Per-loop AbortController for scheme-side cancellation propagation.
+        // Chained from the caller's `signal` so an external abort cascades.
+        const loopAbort = new AbortController();
+        if (signal !== undefined) {
+            if (signal.aborted) loopAbort.abort(signal.reason);
+            else signal.addEventListener("abort", () => loopAbort.abort(signal.reason), { once: true });
+        }
+        this.#loopAborts.set(loopId, loopAbort);
+
+        // Cleanup splits by termination kind:
+        // - "graceful" (loop emitted SEND[2xx]): in-flight streaming-scheme
+        //   spawns are ALLOWED to outlive the loop. They complete naturally,
+        //   write final channel state, and wake-on-completion (E.4) opens a
+        //   fresh loop in the same run if the model needs to react.
+        // - "forceful" (max_turns, strike_threshold, external cancel,
+        //   non-2xx loop status): fire the loop-level abort so spawns
+        //   tear down immediately.
+        const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
+            if (kind === "forceful" && !loopAbort.signal.aborted) {
+                loopAbort.abort(reason ?? "loop_forceful_termination");
+            }
+            this.#loopAborts.delete(loopId);
             this.#strikeState.delete(loopId);
             this.#telemetryBuffer.delete(loopId);
         };
@@ -345,13 +376,16 @@ export default class Engine {
             const row = await (this.#db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId });
             if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
             if (row.status !== 102) {
-                cleanup();
+                // Status 2xx = graceful (model said done); 4xx/5xx = forceful
+                // (external cancel or upstream failure). The threshold splits
+                // at 400 to match HTTP success/error semantics.
+                cleanup(row.status < 400 ? "graceful" : "forceful", `loop_terminal_${row.status}`);
                 return { turnIds, finalStatus: row.status, hitMaxTurns: false, reason: "external" };
             }
 
             if (turnIds.length >= maxTurns) {
                 await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
-                cleanup();
+                cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
             }
 
@@ -399,7 +433,7 @@ export default class Engine {
                 });
                 if (state.streak >= maxStrikes) {
                     await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
-                    cleanup();
+                    cleanup("forceful", "strike_threshold");
                     return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "strike_threshold" };
                 }
             } else {
@@ -867,8 +901,9 @@ export default class Engine {
             db: this.#db,
             sessionId, runId, loopId, turnId,
             writer: origin as WriterTier,
-            signal: undefined,
+            signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
         };
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -964,8 +999,9 @@ export default class Engine {
             // operation's artifact visible in the next packet's index.
             const applyCtx: PlurnkSchemeContext = {
                 db: this.#db, sessionId, runId, loopId, turnId,
-                writer: "model", signal: undefined,
+                writer: "model", signal: this.#loopAborts.get(loopId)?.signal,
                 streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
             };
             const applyResult = await handler.applyResolution({
                 attrs: (originalResult.attrs ?? {}) as object,
@@ -1016,6 +1052,15 @@ export default class Engine {
     // the log entry IDs currently awaiting resolution.
     pendingProposalIds(): number[] {
         return [...this.#pendingProposals.keys()];
+    }
+
+    // Used by wake-on-completion (daemon side): "is there any loop in this
+    // run still accepting turns?" If yes, skip the wake — the active loop
+    // will pick up the channel transition at its next turn boundary. If no,
+    // the daemon opens a fresh loop with the wake prompt.
+    async hasActiveLoopForRun(runId: number): Promise<boolean> {
+        const row = await (this.#db.engine_count_active_loops_for_run as PrepMethod).get<{ n: number }>({ run_id: runId });
+        return (row?.n ?? 0) > 0;
     }
 
     // Subscribe to proposal-pending events. Daemon registers a listener

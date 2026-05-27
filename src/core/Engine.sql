@@ -3,6 +3,12 @@
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
 
+-- PREP: engine_count_active_loops_for_run
+-- Wake-on-completion uses this to decide whether to open a new loop or
+-- let the existing one pick up the channel transition at the next turn
+-- boundary. Status 102 = "in progress" (any non-terminal state).
+SELECT COUNT(*) AS n FROM loops WHERE run_id = $run_id AND status = 102;
+
 -- PREP: engine_get_loop_flags
 -- Loads the loop's persisted flags (json). Default '{}'; YOLO listener and
 -- SchemeRegistry.resolveForLoop merge over DEFAULT_LOOP_FLAGS for missing

@@ -9,6 +9,8 @@ import type { EditStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
+import Mock from "../../src/providers/Mock.ts";
+import { attachYolo } from "../../src/server/yolo.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
@@ -22,8 +24,10 @@ const execEditStmt = (id: string, command: string): EditStatement => ({
     lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 
-const execSendStmt = (id: string, suffix: string): SendStatement => ({
-    op: "SEND", suffix, signal: null,
+// SEND status lives in the `signal` field (number). `suffix` is empty on
+// plain `<<SEND[499](target)::SEND` emissions.
+const execSendStmt = (id: string, status: number): SendStatement => ({
+    op: "SEND", suffix: "", signal: status,
     target: {
         kind: "url", raw: `exec://${id}`, scheme: "exec",
         username: null, password: null, hostname: null, port: null,
@@ -331,7 +335,7 @@ test("exec.send[499]: cancels an active spawn — channels=errored, subscription
 
         // Cancel.
         const sendResult = await ctx.engine.dispatch({
-            statement: execSendStmt("longjob", "499"),
+            statement: execSendStmt("longjob", 499),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
             turnId: ctx.turnId, sequence: 2, origin: "model",
         });
@@ -374,7 +378,7 @@ test("exec.send[499]: target without an active subscription → 404", async () =
 
         // Cancel: there's no active subscription, so 404.
         const sendResult = await ctx.engine.dispatch({
-            statement: execSendStmt("done", "499"),
+            statement: execSendStmt("done", 499),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
             turnId: ctx.turnId, sequence: 2, origin: "model",
         });
@@ -385,7 +389,7 @@ test("exec.send[499]: target without an active subscription → 404", async () =
 test("exec.send[499]: target entry that doesn't exist → 404", async () => {
     await withSession(async (ctx) => {
         const sendResult = await ctx.engine.dispatch({
-            statement: execSendStmt("nonexistent", "499"),
+            statement: execSendStmt("nonexistent", 499),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
             turnId: ctx.turnId, sequence: 1, origin: "model",
         });
@@ -393,13 +397,355 @@ test("exec.send[499]: target entry that doesn't exist → 404", async () => {
     });
 });
 
-test("exec.send: non-499 suffix → 501", async () => {
+test("exec.send: non-499 signal → 501", async () => {
     await withSession(async (ctx) => {
         const sendResult = await ctx.engine.dispatch({
-            statement: execSendStmt("anything", "200"),
+            statement: execSendStmt("anything", 200),
             sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
             turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(sendResult.status, 501, "exec v0 only handles SEND[499]");
     });
 });
+
+// E.4 wake-on-completion: spawn fires wakeRunNotify with a synthetic
+// summary so the daemon can open a new loop if the run has gone dormant.
+// These tests exercise the scheme-side call; daemon active-loop check is
+// covered separately (Daemon.exec-wake.test.ts).
+
+test("exec wake-on-completion: clean exit fires wakeRunNotify with closeStatus=200 and a stdout-summary string", async () => {
+    type WakePayload = {
+        sessionId: number; runId: number; entryId: number;
+        subscriptionId: number; closeStatus: number; scheme: string; summary: string;
+    };
+    const wakes: WakePayload[] = [];
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({
+            db, schemes,
+            wakeRunNotify: (payload) => wakes.push(payload),
+        });
+        const sessionId = await insertSession(db, `exec-wake-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "wake test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const stmt = execEditStmt("wake-clean", "echo hello");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        engine.resolveProposal(logEntryId, { decision: "accept" });
+        await dispatchPromise;
+        await exec.idle();
+
+        assert.equal(wakes.length, 1, "exactly one wake per spawn completion");
+        const [w] = wakes;
+        assert.equal(w.sessionId, sessionId);
+        assert.equal(w.runId, runId);
+        assert.equal(w.scheme, "exec");
+        assert.equal(w.closeStatus, 200);
+        assert.match(w.summary, /^exec:\/\/wake-clean completed \(exit 0\)/);
+        assert.match(w.summary, /stdout=6 bytes/, '"hello\\n" is 6 bytes');
+        assert.match(w.summary, /stderr=0 bytes/);
+    } finally { await db.close(); }
+});
+
+test("exec wake-on-completion: non-zero exit fires wakeRunNotify with closeStatus=500 and 'exit 7' in summary", async () => {
+    type WakePayload = { closeStatus: number; summary: string };
+    const wakes: WakePayload[] = [];
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({
+            db, schemes,
+            wakeRunNotify: (payload) => wakes.push({ closeStatus: payload.closeStatus, summary: payload.summary }),
+        });
+        const sessionId = await insertSession(db, `exec-wake-err-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "wake error test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const stmt = execEditStmt("wake-err", "exit 7");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
+        await dispatchPromise;
+        await exec.idle();
+
+        assert.equal(wakes.length, 1);
+        assert.equal(wakes[0].closeStatus, 500);
+        assert.match(wakes[0].summary, /exit 7/);
+    } finally { await db.close(); }
+});
+
+test("exec wake-on-completion: SEND[499] cancel fires wakeRunNotify with closeStatus=499 (daemon will skip on this)", async () => {
+    type WakePayload = { closeStatus: number };
+    const wakes: WakePayload[] = [];
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({
+            db, schemes,
+            wakeRunNotify: (payload) => wakes.push({ closeStatus: payload.closeStatus }),
+        });
+        const sessionId = await insertSession(db, `exec-wake-cancel-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "wake cancel test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const stmt = execEditStmt("wake-cancel", "sleep 30");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
+        await dispatchPromise;
+
+        await engine.dispatch({
+            statement: execSendStmt("wake-cancel", 499),
+            sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        await exec.idle();
+
+        assert.equal(wakes.length, 1);
+        assert.equal(wakes[0].closeStatus, 499,
+            "wake notify carries the abort status; daemon's wake handler is what skips this case");
+    } finally { await db.close(); }
+});
+
+// Case C from the lifecycle question: loop forcefully cancelled
+// mid-spawn → loop-level AbortController aborts the spawn → channels
+// land at errored, subscription closes at 499. Drives this through a
+// real runLoop with maxTurns=3 (smaller than the sleep 30 duration) so
+// the loop hits max_turns while the spawn is still active.
+
+test("exec lifecycle C: runLoop max_turns force-cancel aborts in-flight spawn", async () => {
+    type WakePayload = { closeStatus: number };
+    const wakes: WakePayload[] = [];
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({
+            db, schemes,
+            wakeRunNotify: (payload) => wakes.push({ closeStatus: payload.closeStatus }),
+        });
+        attachYolo(engine, db);
+        const sessionId = await insertSession(db, `exec-cancel-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "force-cancel test");
+        // Persist yolo flag so the proposal auto-accepts in-process.
+        await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
+
+        // Mock: turn 1 starts a long exec + continues; turn 2-3 just continue;
+        // loop hits max_turns=3 → forceful cleanup → loopAbort fires.
+        const execEditOp = {
+            op: "EDIT" as const, suffix: "", signal: null,
+            target: {
+                kind: "url" as const, raw: "exec://longjob", scheme: "exec",
+                username: null, password: null, hostname: null, port: null,
+                pathname: "longjob", params: {}, fragment: null,
+            },
+            lineMarker: null, body: "sleep 30", position: { line: 1, column: 1 },
+        };
+        const continueOp = {
+            op: "SEND" as const, suffix: "", signal: 102, target: null,
+            lineMarker: null, body: { raw: "thinking", json: null },
+            position: { line: 1, column: 1 },
+        };
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                { assistant: { content: "", ops: [execEditOp, continueOp], reasoning: null } },
+                { assistant: { content: "", ops: [continueOp], reasoning: null } },
+                { assistant: { content: "", ops: [continueOp], reasoning: null } },
+                { assistant: { content: "", ops: [continueOp], reasoning: null } },
+            ],
+        });
+
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, maxTurns: 3,
+            messages: [{ role: "user", content: "start a slow exec" }],
+        });
+        assert.equal(result.finalStatus, 499);
+        assert.equal(result.hitMaxTurns, true);
+
+        // The forceful cleanup fired loopAbort. The exec spawn's
+        // controller is chained from ctx.signal → AbortError fires →
+        // spawn's close handler closes the subscription at 499.
+        await exec.idle();
+
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            scheme: "exec", pathname: "longjob",
+        });
+        assert.ok(entryRow, "exec entry was created before the cancel");
+        const sub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
+            run_id: runId, entry_id: entryRow.id,
+        });
+        assert.equal(sub?.close_status, 499, "subscription closed at 499 when loop forcefully cancelled");
+
+        const stdout = await (db.test_get_channel as PrepMethod).get<{ state: string }>({
+            entry_id: entryRow.id, name: "stdout",
+        });
+        assert.equal(stdout?.state, "errored");
+
+        // wakeRunNotify fired with closeStatus=499 — daemon-side handler
+        // would skip opening a new loop (don't resurrect a forceful
+        // cancellation), but the notification still flows for client UI.
+        assert.equal(wakes.length, 1);
+        assert.equal(wakes[0].closeStatus, 499);
+    } finally { await db.close(); }
+});
+
+// Case A from the lifecycle question: spawn finishes mid-loop. The
+// channel transition lands during a later turn; model sees state=closed
+// in the next packet's index.
+
+test("exec lifecycle A: spawn finishes mid-loop, the next turn's packet build picks up state=closed", async () => {
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({ db, schemes });
+        attachYolo(engine, db);
+        const sessionId = await insertSession(db, `exec-midloop-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "mid-loop test");
+        await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
+
+        const execEditOp = {
+            op: "EDIT" as const, suffix: "", signal: null,
+            target: {
+                kind: "url" as const, raw: "exec://quick", scheme: "exec",
+                username: null, password: null, hostname: null, port: null,
+                pathname: "quick", params: {}, fragment: null,
+            },
+            lineMarker: null, body: "echo done", position: { line: 1, column: 1 },
+        };
+        const finishOp = {
+            op: "SEND" as const, suffix: "", signal: 200, target: null,
+            lineMarker: null, body: { raw: "ok", json: null },
+            position: { line: 1, column: 1 },
+        };
+        const continueOp = { ...finishOp, signal: 102 };
+        // Two turns: turn 1 kicks off the (fast) exec, turn 2 ends the loop.
+        // The exec should finish in turn 1's window or turn 2's, leaving
+        // channels at state=closed by the time the loop terminates.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                { assistant: { content: "", ops: [execEditOp, continueOp], reasoning: null } },
+                { assistant: { content: "", ops: [finishOp], reasoning: null } },
+            ],
+        });
+
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, maxTurns: 5,
+            messages: [{ role: "user", content: "run quick exec" }],
+        });
+        assert.equal(result.finalStatus, 200);
+        await exec.idle();
+
+        // Channels reached terminal state.
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            scheme: "exec", pathname: "quick",
+        });
+        assert.ok(entryRow);
+        const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+            entry_id: entryRow.id, name: "stdout",
+        });
+        assert.equal(stdout?.content, "done\n");
+        assert.equal(stdout?.state, "closed");
+    } finally { await db.close(); }
+});
+
+// Case B from the lifecycle question: spawn outlives the calling loop.
+// The loop ends gracefully (SEND[200]) while the spawn is still running;
+// after the loop closes, the spawn finishes and wakeRunNotify fires.
+
+test("exec lifecycle B: spawn outlives calling loop — graceful loop exit does NOT abort the spawn; wake fires after loop ends", async () => {
+    type WakePayload = { closeStatus: number; summary: string };
+    const wakes: WakePayload[] = [];
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({
+            db, schemes,
+            wakeRunNotify: (payload) => wakes.push({ closeStatus: payload.closeStatus, summary: payload.summary }),
+        });
+        attachYolo(engine, db);
+        const sessionId = await insertSession(db, `exec-outlive-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "outlive test");
+        await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
+
+        const execEditOp = {
+            op: "EDIT" as const, suffix: "", signal: null,
+            target: {
+                kind: "url" as const, raw: "exec://slow", scheme: "exec",
+                username: null, password: null, hostname: null, port: null,
+                pathname: "slow", params: {}, fragment: null,
+            },
+            lineMarker: null, body: "sleep 0.5; echo finally", position: { line: 1, column: 1 },
+        };
+        const sendDone = {
+            op: "SEND" as const, suffix: "", signal: 200, target: null,
+            lineMarker: null, body: { raw: "ending early", json: null },
+            position: { line: 1, column: 1 },
+        };
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                // Turn 1: kick off slow exec, then immediately SEND[200] to end the loop.
+                { assistant: { content: "", ops: [execEditOp, sendDone], reasoning: null } },
+            ],
+        });
+
+        const startedAt = Date.now();
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, maxTurns: 5,
+            messages: [{ role: "user", content: "fire and forget" }],
+        });
+        const loopDuration = Date.now() - startedAt;
+        assert.equal(result.finalStatus, 200, "loop ended gracefully");
+        // Loop ended fast; the sleep is still running.
+        assert.ok(loopDuration < 400, `loop should NOT block on the spawn — got ${loopDuration}ms`);
+
+        // Spawn is still in-flight at this point. Wait for it.
+        await exec.idle();
+        const afterIdle = Date.now() - startedAt;
+        assert.ok(afterIdle >= 500, `spawn should have lived ~500ms past the loop's exit — got ${afterIdle}ms total`);
+
+        // Spawn completed cleanly post-loop. Channel content + subscription
+        // reflect the truth.
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            scheme: "exec", pathname: "slow",
+        });
+        assert.ok(entryRow);
+        const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+            entry_id: entryRow.id, name: "stdout",
+        });
+        assert.equal(stdout?.content, "finally\n", "spawn ran to completion after the loop ended");
+        assert.equal(stdout?.state, "closed");
+
+        // Wake fired with closeStatus=200; daemon-side would open a new
+        // loop with this summary (covered in Daemon.exec-wake.test.ts).
+        assert.equal(wakes.length, 1);
+        assert.equal(wakes[0].closeStatus, 200);
+        assert.match(wakes[0].summary, /exec:\/\/slow completed \(exit 0\)/);
+    } finally { await db.close(); }
+});
+
+

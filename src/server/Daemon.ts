@@ -4,8 +4,11 @@
 
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import type { Db } from "../core/Db.ts";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { Db, PrepMethod } from "../core/Db.ts";
+import type { WakeRunPayload } from "../core/ChannelWrite.ts";
+import { PATHS } from "../index.ts";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -87,6 +90,7 @@ export default class Daemon {
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
+            wakeRunNotify: (payload) => { void this.#handleWakeRun(payload); },
         });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
@@ -163,6 +167,19 @@ export default class Daemon {
         });
 
         this.#wss = null;
+
+        // Drain streaming-scheme in-flight work before the caller closes
+        // the DB. Without this, background spawns finish their channel
+        // writes against a closed connection and throw. Each streaming
+        // scheme that owns async work exposes its own idle() surface.
+        await this.#drainStreamingSchemes();
+    }
+
+    // Per-scheme idle awaits for clean shutdown. New streaming schemes
+    // (SSE, WS) add themselves here as they land.
+    async #drainStreamingSchemes(): Promise<void> {
+        const exec = this.#schemes.get("exec") as { idle?: () => Promise<void> } | undefined;
+        if (exec?.idle !== undefined) await exec.idle();
     }
 
     #registerBuiltins(): void {
@@ -227,6 +244,18 @@ export default class Daemon {
                 contentLength: "number — current length of the channel's content",
             },
         });
+        this.#registry.registerNotification("stream/concluded", {
+            description: "A streaming-scheme subscription closed (the underlying connection / subprocess finished, errored, or was cancelled). Scoped to the entry's session. wakeAction describes whether the daemon opened a fresh loop to surface the conclusion to the model.",
+            params: {
+                entryId: "number",
+                subscriptionId: "number",
+                scheme: "string — the scheme that owned the subscription (e.g. 'exec')",
+                closeStatus: "number — 200 (clean) / 500 (error) / 499 (aborted)",
+                summary: "string — one-liner the model gets as a wake prompt",
+                wakeAction: "string — 'no-op-active-loop' | 'opened-loop' | 'skipped-aborted' | 'skipped-no-provider'",
+                wakeLoopId: "number? — the loop that was opened (only when wakeAction='opened-loop')",
+            },
+        });
     }
 
     /**
@@ -236,6 +265,90 @@ export default class Daemon {
      */
     notifyStreamEvent(sessionId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
         this.#broadcast({ sessionId }, null, "stream/event", event);
+    }
+
+    /**
+     * Wake-on-completion handler. Streaming schemes call this when a
+     * subscription closes. If the run has an active loop, the channel
+     * transition will surface at that loop's next turn boundary — no new
+     * loop needed. Otherwise we open a fresh loop with the synthetic
+     * summary as the user prompt so the model gets a chance to react.
+     *
+     * Skipped on closeStatus=499 (aborted): the model already knows about
+     * its own SEND[499], and a forcefully-cancelled loop's spawn-abort
+     * shouldn't resurrect into a wake loop (defeats the cancel).
+     *
+     * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
+     */
+    async #handleWakeRun(payload: WakeRunPayload): Promise<void> {
+        // Aborted streams don't wake — the abort was deliberate.
+        if (payload.closeStatus === 499) {
+            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                ...payload, wakeAction: "skipped-aborted",
+            });
+            return;
+        }
+
+        const hasActive = await this.#engine.hasActiveLoopForRun(payload.runId);
+        if (hasActive) {
+            // The active loop will pick up the channel transition at its
+            // next turn boundary. No new loop required.
+            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                ...payload, wakeAction: "no-op-active-loop",
+            });
+            return;
+        }
+
+        if (this.#provider === null) {
+            // No model to drive a wake loop. Forensics-only: broadcast and
+            // bail. Operator should configure PLURNK_MODEL.
+            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                ...payload, wakeAction: "skipped-no-provider",
+            });
+            return;
+        }
+
+        try {
+            const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
+            const personaText = await readFile(PATHS.defaultPersona, "utf8");
+            const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: payload.runId });
+            if (seqRow === undefined) throw new Error("wake: next-sequence query returned no row");
+            const loopRow = await (this.#db.loop_run_insert_loop as PrepMethod).get<{ id: number }>({
+                run_id: payload.runId, sequence: seqRow.next, prompt: payload.summary, persona: null,
+            });
+            if (loopRow === undefined) throw new Error("wake: loop insert returned no row");
+            const wakeLoopId = loopRow.id;
+
+            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                ...payload, wakeAction: "opened-loop", wakeLoopId,
+            });
+
+            // Drive the wake loop in the background. Errors are logged but
+            // don't propagate — the wake is best-effort.
+            const provider = this.#provider;
+            void this.#engine.runLoop({
+                provider,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: payload.summary },
+                ],
+                persona: personaText,
+                sessionId: payload.sessionId,
+                runId: payload.runId,
+                loopId: wakeLoopId,
+                origin: "system",
+            }).then((result) => {
+                this.#broadcast({ sessionId: payload.sessionId }, null, "loop/terminated", {
+                    loopId: wakeLoopId,
+                    finalStatus: result.finalStatus,
+                    hitMaxTurns: result.hitMaxTurns,
+                });
+            }).catch((err) => {
+                console.error("wake-on-completion loop failed:", err instanceof Error ? err.message : String(err));
+            });
+        } catch (err) {
+            console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));
+        }
     }
 
     #onConnection(ws: WebSocket): void {

@@ -172,10 +172,13 @@ export default class Exec {
         this.#activeAborts.set(subscriptionId, controller);
 
         // Background tail: stream, transition state, close subscription,
-        // clean up registry. Awaiting this is the daemon-shutdown + test
-        // path; the dispatch path doesn't.
+        // wake the run, clean up registry. Awaiting this is the daemon-
+        // shutdown + test path; the dispatch path doesn't.
         const tail = this.#runSpawn({
-            command, db: ctx.db, streamEventNotify: ctx.streamEventNotify,
+            command, db: ctx.db,
+            streamEventNotify: ctx.streamEventNotify,
+            wakeRunNotify: ctx.wakeRunNotify,
+            sessionId: ctx.sessionId, runId: ctx.runId, pathname,
             entryId, subscriptionId, signal: controller.signal,
         });
         this.#activeSpawns.set(subscriptionId, tail);
@@ -184,10 +187,18 @@ export default class Exec {
     }
 
     async #runSpawn(opts: {
-        command: string; db: Db; streamEventNotify: PlurnkSchemeContext["streamEventNotify"];
+        command: string; db: Db;
+        streamEventNotify: PlurnkSchemeContext["streamEventNotify"];
+        wakeRunNotify: PlurnkSchemeContext["wakeRunNotify"];
+        sessionId: number; runId: number; pathname: string;
         entryId: number; subscriptionId: number; signal: AbortSignal;
     }): Promise<void> {
-        const { command, db, streamEventNotify, entryId, subscriptionId, signal } = opts;
+        const { command, db, streamEventNotify, wakeRunNotify,
+            sessionId, runId, pathname, entryId, subscriptionId, signal } = opts;
+        let closeStatus = 500;
+        let exitLabel = "spawn_failed";
+        let stdoutLength = 0;
+        let stderrLength = 0;
         try {
             let outcome: SpawnOutcome;
             try {
@@ -196,19 +207,41 @@ export default class Exec {
                 await setChannelState(db, { entryId, channel: "stdout", state: "errored", notify: streamEventNotify });
                 await setChannelState(db, { entryId, channel: "stderr", state: "errored", notify: streamEventNotify });
                 await closeSubscription(db, { subscriptionId, status: 500 });
-                // Swallow — applyResolution already returned; nothing to
-                // raise to. Forensics live in subscription.close_status.
                 console.error("exec spawn_failed:", err instanceof Error ? err.message : String(err));
+                closeStatus = 500;
+                exitLabel = "spawn_failed";
                 return;
             }
-            const closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
+            closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
+            // exitLabel reflects the real subprocess outcome (exit code or
+            // abort), which is what the model wants to see in the wake
+            // summary. closeStatus is the HTTP-style number we surface on
+            // the subscription row for forensics — different concern.
+            exitLabel = outcome.aborted ? "aborted" : `exit ${outcome.exitCode}`;
             const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
             await setChannelState(db, { entryId, channel: "stdout", state: terminalState, notify: streamEventNotify });
             await setChannelState(db, { entryId, channel: "stderr", state: terminalState, notify: streamEventNotify });
             await closeSubscription(db, { subscriptionId, status: closeStatus });
+
+            const stdoutMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
+            const stderrMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
+            stdoutLength = stdoutMeta?.contentLength ?? 0;
+            stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
+
+            // Announce conclusion regardless of outcome. Daemon decides
+            // whether to wake a fresh loop (rummy parallel: stream/completed
+            // wake:true) based on active-loop check. Calling this in
+            // `finally` so transient errors above still surface a wake.
+            if (wakeRunNotify !== undefined) {
+                wakeRunNotify({
+                    sessionId, runId, entryId, subscriptionId, closeStatus,
+                    scheme: "exec",
+                    summary: `exec://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
+                });
+            }
         }
     }
 
@@ -244,10 +277,13 @@ export default class Exec {
     // AbortController. The spawn's close handler does the channel
     // transitions + subscription close idempotently — no double-write
     // because closeSubscription's WHERE clause filters on closed_at IS
-    // NULL. Other SEND suffixes are not defined for exec at v0.
+    // NULL. Other SEND statuses are not defined for exec at v0.
+    //
+    // SEND status lives in statement.signal (a number), not statement.suffix.
+    // suffix carries the bracket-following identifier (rarely used on SEND).
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
-        if (statement.suffix !== "499") {
-            return { status: 501, error: `exec scheme handles SEND[499] only; got SEND[${statement.suffix}]` };
+        if (statement.signal !== 499) {
+            return { status: 501, error: `exec scheme handles SEND[499] only; got SEND[${statement.signal ?? ""}]` };
         }
         const pathname = pathnameOf(statement.target);
         if (pathname === null || pathname.length === 0) {

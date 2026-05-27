@@ -19,6 +19,24 @@ export interface StreamEventPayload {
 
 export type StreamEventNotify = (sessionId: number, event: StreamEventPayload) => void;
 
+// Wake-on-completion (rummy parallel: stream/completed wake:true). When a
+// streaming-scheme subscription closes, schemes call this so the daemon
+// can open a fresh loop in the run if no loop is currently active —
+// otherwise the model would never learn that its long-running command
+// finished after it ended the calling loop. Daemon decides whether to
+// actually wake based on engine state; the scheme just announces.
+export interface WakeRunPayload {
+    sessionId: number;
+    runId: number;
+    entryId: number;
+    subscriptionId: number;
+    closeStatus: number;          // 200 (clean) | 500 (error) | 499 (aborted)
+    scheme: string;                // the scheme that owned the subscription
+    summary: string;               // model-facing one-liner: "exec://x completed (exit 0); stdout=N bytes, stderr=M bytes"
+}
+
+export type WakeRunNotify = (payload: WakeRunPayload) => void;
+
 interface ChannelMetaRow {
     session_id: number;
     state: ChannelState;
