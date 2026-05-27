@@ -58,6 +58,9 @@ SELECT COUNT(*) AS n FROM turns;
 -- PREP: test_count_entries_by_session
 SELECT COUNT(*) AS n FROM entries WHERE session_id = $session_id;
 
+-- PREP: test_count_entries_by_session_scheme
+SELECT COUNT(*) AS n FROM entries WHERE session_id = $session_id AND scheme = $scheme;
+
 -- PREP: test_get_entry_by_path
 SELECT id FROM entries
 WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
