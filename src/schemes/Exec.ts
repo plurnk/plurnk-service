@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -7,7 +8,10 @@ import { readEntry, writeEntry, deleteEntry } from "./_entry-crud.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
-import { appendToChannel, setChannelState, openSubscription, closeSubscription } from "../core/ChannelWrite.ts";
+import {
+    appendToChannel, setChannelState,
+    openSubscription, closeSubscription, findActiveSubscription,
+} from "../core/ChannelWrite.ts";
 
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type SendResult = { status: number; error?: string };
@@ -17,33 +21,30 @@ interface ExecAttrs {
     pathname: string;
 }
 
-const pathnameOf = (target: EditStatement["target"]): string | null => {
-    if (target === null) return null;
-    return target.kind === "url" ? target.pathname : target.raw;
-};
-
 interface SpawnOutcome {
     exitCode: number;     // 0 on clean exit; non-zero on failure; -1 on abort
     aborted: boolean;
 }
 
-// Stream stdout/stderr live: each chunk hits the corresponding channel
-// via appendToChannel (which fires the daemon's stream/event notifier
-// for any WS clients on the session). On close, the channel state
-// flips static → closed/errored. ctx.signal aborts the subprocess; the
-// child_process spawn binding wires this in for us, and the
-// AbortError path ends with the channels at state=errored.
+const pathnameOf = (target: EditStatement["target"] | SendStatement["target"]): string | null => {
+    if (target === null) return null;
+    return target.kind === "url" ? target.pathname : target.raw;
+};
+
+// Stream stdout/stderr live: each chunk lands in entry_channels via
+// appendToChannel (which also fires stream/event for any WS clients on
+// the session). The subprocess's AbortSignal is owned per-spawn by Exec
+// (#activeAborts), so SEND[499] can route a cancel here even though
+// applyResolution already returned.
 const streamShellCommand = async (
     command: string,
-    ctx: PlurnkSchemeContext,
+    db: Db,
+    streamEventNotify: PlurnkSchemeContext["streamEventNotify"],
     entryId: number,
+    signal: AbortSignal,
 ): Promise<SpawnOutcome> => {
-    const { db, streamEventNotify } = ctx;
     return new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn(command, { shell: true, signal: ctx.signal });
-        // Push promise queue so we don't race appends against close. Each
-        // `data` event registers an in-flight append; close awaits the
-        // whole queue before resolving.
+        const child = spawn(command, { shell: true, signal });
         const pending: Promise<void>[] = [];
         child.stdout.on("data", (chunk: Buffer) => {
             pending.push(appendToChannel(db, {
@@ -86,15 +87,31 @@ export default class Exec {
         volatile: true,
         modelVisible: true,
         flags: {
-            excludedInAsk: true,   // exec is side-effecting; ask mode is read-only
-            proposes: true,         // exec runs via proposal lifecycle unless yolo
+            excludedInAsk: true,
+            proposes: true,
         },
     };
 
-    // EDIT proposes a subprocess run. The body is the command; the path
-    // is the entry coordinate the model will READ later to see results.
-    // Engine pauses dispatch on 202; applyResolution actually spawns.
-    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
+    // Per-spawn abort controllers, keyed by subscriptionId. SEND[499]
+    // looks up the subscription for an entry, finds its controller
+    // here, and fires it.
+    #activeAborts = new Map<number, AbortController>();
+
+    // Per-spawn completion promises so the daemon can await all
+    // in-flight execs on shutdown (and tests can await individual
+    // runs without polling DB state).
+    #activeSpawns = new Map<number, Promise<void>>();
+
+    /**
+     * Test helper: resolves when every in-flight spawn finalizes its
+     * state transitions + subscription close. Production daemon shutdown
+     * uses the same surface to drain cleanly.
+     */
+    async idle(): Promise<void> {
+        await Promise.allSettled([...this.#activeSpawns.values()]);
+    }
+
+    async edit(statement: EditStatement, _ctx: PlurnkSchemeContext): Promise<EditResult> {
         const pathname = pathnameOf(statement.target);
         if (pathname === null || pathname.length === 0) {
             return { status: 400, error: "EDIT requires an exec://<id> target" };
@@ -107,25 +124,15 @@ export default class Exec {
             return { status: 400, error: "EDIT exec://<id> requires a command in the body" };
         }
         const attrs: ExecAttrs = { command, pathname };
-        return {
-            status: 202,
-            body: `$ ${command}`,   // preview shown to client during proposal review
-            attrs,
-        };
+        return { status: 202, body: `$ ${command}`, attrs };
     }
 
-    // applyResolution: post-accept. Create the entry with two empty
-    // active channels FIRST, open the subscription row, then spawn —
-    // chunks arriving from stdout/stderr land via appendToChannel
-    // (which also fires stream/event for WS clients). On exit, channels
-    // transition active → closed (clean) or → errored (non-zero / aborted)
-    // and the subscription row closes.
-    //
-    // Always returns status=200 for completed runs. Failure mode lives in
-    // log_entries.outcome (exit_N / aborted) and channel.state — not in
-    // the dispatch status — because the engine's proposal contract treats
-    // applyResolution >=400 as "apply_failed reject" which would lose the
-    // captured output to the model.
+    // applyResolution: seed the entry with active channels, open the
+    // subscription, kick off the spawn IN BACKGROUND, return 200
+    // immediately. SPEC §7.1: streaming scheme "returns immediately and
+    // stays alive." The model gets a fast log entry + sees the channels
+    // grow on subsequent turn boundaries; SEND[499] can route an abort
+    // while applyResolution is long gone.
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: PlurnkSchemeContext,
@@ -150,39 +157,59 @@ export default class Exec {
         const { entryId } = await writeEntry(pathname, seed, ctx, "exec");
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
-        // handle = the command — gives forensics a non-empty string. v0
-        // doesn't reuse the row across cancellation; the subscription
-        // exists for E.3 SEND[499] routing (find_active_subscription).
         const subscriptionId = await openSubscription(ctx.db, {
             runId: ctx.runId, entryId, scheme: "exec", handle: command,
         });
 
-        let outcome: SpawnOutcome;
-        try {
-            outcome = await streamShellCommand(command, ctx, entryId);
-        } catch (err) {
-            // Hard spawn failure: subscription closes at 500, both channels
-            // flip to errored, applyResolution surfaces a stable shape.
-            await setChannelState(ctx.db, { entryId, channel: "stdout", state: "errored", notify: ctx.streamEventNotify });
-            await setChannelState(ctx.db, { entryId, channel: "stderr", state: "errored", notify: ctx.streamEventNotify });
-            await closeSubscription(ctx.db, { subscriptionId, status: 500 });
-            return { status: 500, outcome: "spawn_failed", body: err instanceof Error ? err.message : String(err) };
+        // Spawn's signal is a fresh per-subscription controller, chained
+        // to ctx.signal so a run-level abort cascades. SEND[499] aborts
+        // the same controller via #activeAborts lookup.
+        const controller = new AbortController();
+        if (ctx.signal !== undefined) {
+            if (ctx.signal.aborted) controller.abort(ctx.signal.reason);
+            else ctx.signal.addEventListener("abort", () => controller.abort(ctx.signal!.reason), { once: true });
         }
+        this.#activeAborts.set(subscriptionId, controller);
 
-        const closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
-        const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
-        await setChannelState(ctx.db, { entryId, channel: "stdout", state: terminalState, notify: ctx.streamEventNotify });
-        await setChannelState(ctx.db, { entryId, channel: "stderr", state: terminalState, notify: ctx.streamEventNotify });
-        await closeSubscription(ctx.db, { subscriptionId, status: closeStatus });
+        // Background tail: stream, transition state, close subscription,
+        // clean up registry. Awaiting this is the daemon-shutdown + test
+        // path; the dispatch path doesn't.
+        const tail = this.#runSpawn({
+            command, db: ctx.db, streamEventNotify: ctx.streamEventNotify,
+            entryId, subscriptionId, signal: controller.signal,
+        });
+        this.#activeSpawns.set(subscriptionId, tail);
 
-        return {
-            status: 200,
-            outcome: outcome.aborted
-                ? "aborted"
-                : outcome.exitCode === 0
-                    ? "exit_0"
-                    : `exit_${outcome.exitCode}`,
-        };
+        return { status: 200, outcome: "started" };
+    }
+
+    async #runSpawn(opts: {
+        command: string; db: Db; streamEventNotify: PlurnkSchemeContext["streamEventNotify"];
+        entryId: number; subscriptionId: number; signal: AbortSignal;
+    }): Promise<void> {
+        const { command, db, streamEventNotify, entryId, subscriptionId, signal } = opts;
+        try {
+            let outcome: SpawnOutcome;
+            try {
+                outcome = await streamShellCommand(command, db, streamEventNotify, entryId, signal);
+            } catch (err) {
+                await setChannelState(db, { entryId, channel: "stdout", state: "errored", notify: streamEventNotify });
+                await setChannelState(db, { entryId, channel: "stderr", state: "errored", notify: streamEventNotify });
+                await closeSubscription(db, { subscriptionId, status: 500 });
+                // Swallow — applyResolution already returned; nothing to
+                // raise to. Forensics live in subscription.close_status.
+                console.error("exec spawn_failed:", err instanceof Error ? err.message : String(err));
+                return;
+            }
+            const closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
+            const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
+            await setChannelState(db, { entryId, channel: "stdout", state: terminalState, notify: streamEventNotify });
+            await setChannelState(db, { entryId, channel: "stderr", state: terminalState, notify: streamEventNotify });
+            await closeSubscription(db, { subscriptionId, status: closeStatus });
+        } finally {
+            this.#activeAborts.delete(subscriptionId);
+            this.#activeSpawns.delete(subscriptionId);
+        }
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
@@ -213,11 +240,36 @@ export default class Exec {
         return deleteEntry(pathname, ctx, Exec.manifest.name);
     }
 
-    // SEND[499] cancel routing lands in E.3 — needs the subscription
-    // registry path + AbortController plumbing. Until then, broadcast
-    // SEND ops never target a path (engine routes those separately) and
-    // path-targeted SEND to an exec entry isn't a defined op for v0.
-    async send(_statement: SendStatement, _ctx: PlurnkSchemeContext): Promise<SendResult> {
-        return { status: 501, error: "exec scheme does not yet handle SEND (cancel routing pending E.3)" };
+    // SEND[499]<exec://x> routes to the active subscription's
+    // AbortController. The spawn's close handler does the channel
+    // transitions + subscription close idempotently — no double-write
+    // because closeSubscription's WHERE clause filters on closed_at IS
+    // NULL. Other SEND suffixes are not defined for exec at v0.
+    async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
+        if (statement.suffix !== "499") {
+            return { status: 501, error: `exec scheme handles SEND[499] only; got SEND[${statement.suffix}]` };
+        }
+        const pathname = pathnameOf(statement.target);
+        if (pathname === null || pathname.length === 0) {
+            return { status: 400, error: "SEND[499] requires an exec://<id> target" };
+        }
+        const entryRow = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({
+            session_id: ctx.sessionId, scheme: "exec", pathname,
+        });
+        if (entryRow === undefined) return { status: 404, error: "exec entry not found" };
+        const sub = await findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: entryRow.id });
+        if (sub === null) return { status: 404, error: "no active subscription on exec entry to cancel" };
+        const controller = this.#activeAborts.get(sub.id);
+        if (controller === undefined) {
+            // Subscription is active in the DB but we don't own the
+            // AbortController in-process. This happens after a daemon
+            // restart while a stale subscription row sits open — there's
+            // no live process to abort. Close the row so the model sees
+            // a definite outcome.
+            await closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
+            return { status: 200, error: "subscription was orphaned; closed at 499" };
+        }
+        controller.abort("SEND[499]");
+        return { status: 200 };
     }
 }
