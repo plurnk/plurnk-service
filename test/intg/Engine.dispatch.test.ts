@@ -121,19 +121,6 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: scheme without matching op method returns 501", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        // exec:// has manifest (model is in writableBy) but no edit() handler yet.
-        const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("exec", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "model",
-        });
-        assert.equal(result.status, 501, "exec scheme exists but has no edit() method yet");
-    } finally { await db.close(); }
-});
-
 test("Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
     const { db, engine, env } = await setup();
     try {

@@ -967,6 +967,14 @@ export default class Engine {
                     body: applyResult.body,
                 };
             }
+            // Propagate applyResolution.outcome onto the accepted resolution
+            // so the log entry's outcome column reflects operational metadata
+            // (e.g. exec's "exit_N"). Without this, only failures get an
+            // outcome on the durable record, and "ran cleanly but with a
+            // notable detail" has nowhere to land.
+            if (applyResult.outcome !== undefined && resolution.outcome === undefined) {
+                return { ...resolution, outcome: applyResult.outcome };
+            }
             return resolution;
         } catch (err) {
             return {

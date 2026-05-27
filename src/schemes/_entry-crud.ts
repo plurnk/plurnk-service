@@ -5,8 +5,10 @@
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
+export type ChannelState = "static" | "active" | "closed" | "errored";
+
 export interface EntryData {
-    channels: Record<string, { content: string; mimetype: string }>;
+    channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
     tags: string[];
 }
 
@@ -63,6 +65,7 @@ export const writeEntry = async (pathname: string, entry: EntryData, ctx: Plurnk
     for (const [channelName, channelData] of Object.entries(entry.channels)) {
         await (db.crud_write_channel as PrepMethod).run({
             entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
+            state: channelData.state ?? "static",
         });
         await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: channelName });
     }
