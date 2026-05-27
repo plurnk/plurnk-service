@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
@@ -10,41 +10,64 @@ import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import {
     appendToChannel, setChannelState,
-    openSubscription, closeSubscription, findActiveSubscription,
+    openSubscription, closeSubscription,
 } from "../core/ChannelWrite.ts";
 
-type EditResult = { status: number; body?: string; attrs?: object; error?: string };
-type SendResult = { status: number; error?: string };
+type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
 interface ExecAttrs {
-    command: string;
-    pathname: string;
+    runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
+    cwd: string | null;     // working directory, or null = daemon's cwd
+    command: string;        // body of the EXEC op
+    pathname: string;       // auto-generated: r-<uuid8>; entry lives at exec://<pathname>
 }
 
 interface SpawnOutcome {
-    exitCode: number;     // 0 on clean exit; non-zero on failure; -1 on abort
+    exitCode: number;
     aborted: boolean;
 }
 
-const pathnameOf = (target: EditStatement["target"] | SendStatement["target"]): string | null => {
+// Per plurnk.md, EXEC's target slot is `cwd`. ParsedPath there means a
+// bare local path or file:// URL — both decode to a filesystem directory.
+// Anything else is rejected at proposal time.
+const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
-    return target.kind === "url" ? target.pathname : target.raw;
+    if (target.kind === "local") return target.raw;
+    if (target.kind === "url" && (target.scheme === null || target.scheme === "file")) {
+        return target.pathname;
+    }
+    return null;
 };
 
-// Stream stdout/stderr live: each chunk lands in entry_channels via
-// appendToChannel (which also fires stream/event for any WS clients on
-// the session). The subprocess's AbortSignal is owned per-spawn by Exec
-// (#activeAborts), so SEND[499] can route a cancel here even though
-// applyResolution already returned.
+const runtimeToSpawnArgs = (runtime: string, command: string): { cmd: string; args: string[]; useShell: boolean } => {
+    // plurnk.md: "EXEC may include an optional runtime tag ("sh", "node", etc.)."
+    // Map common runtimes to their invocation. Default = shell.
+    if (runtime === "" || runtime === "sh" || runtime === "bash") {
+        return { cmd: command, args: [], useShell: true };
+    }
+    if (runtime === "node") return { cmd: "node", args: ["-e", command], useShell: false };
+    if (runtime === "python" || runtime === "python3") return { cmd: "python3", args: ["-c", command], useShell: false };
+    // Unknown runtime: fall through to shell with the runtime as the first arg
+    // (treat as `<runtime> -c <command>` style). Conservative.
+    return { cmd: runtime, args: ["-c", command], useShell: false };
+};
+
 const streamShellCommand = async (
+    runtime: string,
     command: string,
+    cwd: string | null,
     db: Db,
     streamEventNotify: PlurnkSchemeContext["streamEventNotify"],
     entryId: number,
     signal: AbortSignal,
 ): Promise<SpawnOutcome> => {
+    const { cmd, args, useShell } = runtimeToSpawnArgs(runtime, command);
     return new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn(command, { shell: true, signal });
+        const child = spawn(cmd, args, {
+            shell: useShell,
+            signal,
+            cwd: cwd ?? undefined,
+        });
         const pending: Promise<void>[] = [];
         child.stdout.on("data", (chunk: Buffer) => {
             pending.push(appendToChannel(db, {
@@ -92,47 +115,44 @@ export default class Exec {
         },
     };
 
-    // Per-spawn abort controllers, keyed by subscriptionId. SEND[499]
-    // looks up the subscription for an entry, finds its controller
-    // here, and fires it.
     #activeAborts = new Map<number, AbortController>();
-
-    // Per-spawn completion promises so the daemon can await all
-    // in-flight execs on shutdown (and tests can await individual
-    // runs without polling DB state).
     #activeSpawns = new Map<number, Promise<void>>();
 
-    /**
-     * Test helper: resolves when every in-flight spawn finalizes its
-     * state transitions + subscription close. Production daemon shutdown
-     * uses the same surface to drain cleanly.
-     */
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
     }
 
-    async edit(statement: EditStatement, _ctx: PlurnkSchemeContext): Promise<EditResult> {
-        const pathname = pathnameOf(statement.target);
-        if (pathname === null || pathname.length === 0) {
-            return { status: 400, error: "EDIT requires an exec://<id> target" };
-        }
-        if (statement.lineMarker !== null) {
-            return { status: 501, error: "lineMarker on exec EDIT not supported" };
-        }
+    // EXEC op handler — the actual model-facing entry point per plurnk.md.
+    // `<<EXEC[runtime](cwd):command:EXEC` →
+    //   signal=runtime, target=cwd (ParsedPath local/file or null), body=command.
+    //
+    // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
+    // applyResolution spawns the subprocess; output streams into the
+    // auto-generated exec://<pathname> entry's stdout/stderr channels.
+    // The model READs that entry on a subsequent turn to see what happened.
+    async exec(statement: ExecStatement, _ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
         if (command.length === 0) {
-            return { status: 400, error: "EDIT exec://<id> requires a command in the body" };
+            return { status: 400, error: "EXEC requires a command body" };
         }
-        const attrs: ExecAttrs = { command, pathname };
-        return { status: 202, body: `$ ${command}`, attrs };
+        if (statement.target !== null) {
+            if (statement.target.kind === "url" && statement.target.scheme !== null && statement.target.scheme !== "file") {
+                return { status: 400, error: `EXEC cwd must be a local path or file:// URL; got ${statement.target.scheme}://` };
+            }
+        }
+
+        const runtime = typeof statement.signal === "string" ? statement.signal : "";
+        const cwd = cwdFromTarget(statement.target);
+        // Auto-generated pathname so the model can READ exec://<pathname> later.
+        // Short random suffix keeps it readable while remaining unique within a session.
+        const pathname = `r-${crypto.randomUUID().slice(0, 8)}`;
+        const attrs: ExecAttrs = { runtime, cwd, command, pathname };
+        // Body shown to client during proposal review — `$ command` is the
+        // most-readable summary regardless of runtime.
+        const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
+        return { status: 202, body: preview, attrs };
     }
 
-    // applyResolution: seed the entry with active channels, open the
-    // subscription, kick off the spawn IN BACKGROUND, return 200
-    // immediately. SPEC §7.1: streaming scheme "returns immediately and
-    // stays alive." The model gets a fast log entry + sees the channels
-    // grow on subsequent turn boundaries; SEND[499] can route an abort
-    // while applyResolution is long gone.
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: PlurnkSchemeContext,
@@ -140,6 +160,8 @@ export default class Exec {
         const attrs = args.attrs as Partial<ExecAttrs>;
         const command = attrs.command;
         const pathname = attrs.pathname;
+        const runtime = typeof attrs.runtime === "string" ? attrs.runtime : "";
+        const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         if (typeof command !== "string" || command.length === 0) {
             return { status: 500, outcome: "missing_command" };
         }
@@ -158,12 +180,10 @@ export default class Exec {
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
         const subscriptionId = await openSubscription(ctx.db, {
-            runId: ctx.runId, entryId, scheme: "exec", handle: command,
+            runId: ctx.runId, entryId, scheme: "exec",
+            handle: runtime !== "" ? `${runtime}: ${command}` : command,
         });
 
-        // Spawn's signal is a fresh per-subscription controller, chained
-        // to ctx.signal so a run-level abort cascades. SEND[499] aborts
-        // the same controller via #activeAborts lookup.
         const controller = new AbortController();
         if (ctx.signal !== undefined) {
             if (ctx.signal.aborted) controller.abort(ctx.signal.reason);
@@ -171,11 +191,8 @@ export default class Exec {
         }
         this.#activeAborts.set(subscriptionId, controller);
 
-        // Background tail: stream, transition state, close subscription,
-        // wake the run, clean up registry. Awaiting this is the daemon-
-        // shutdown + test path; the dispatch path doesn't.
         const tail = this.#runSpawn({
-            command, db: ctx.db,
+            runtime, command, cwd, db: ctx.db,
             streamEventNotify: ctx.streamEventNotify,
             wakeRunNotify: ctx.wakeRunNotify,
             sessionId: ctx.sessionId, runId: ctx.runId, pathname,
@@ -187,13 +204,13 @@ export default class Exec {
     }
 
     async #runSpawn(opts: {
-        command: string; db: Db;
+        runtime: string; command: string; cwd: string | null; db: Db;
         streamEventNotify: PlurnkSchemeContext["streamEventNotify"];
         wakeRunNotify: PlurnkSchemeContext["wakeRunNotify"];
         sessionId: number; runId: number; pathname: string;
         entryId: number; subscriptionId: number; signal: AbortSignal;
     }): Promise<void> {
-        const { command, db, streamEventNotify, wakeRunNotify,
+        const { runtime, command, cwd, db, streamEventNotify, wakeRunNotify,
             sessionId, runId, pathname, entryId, subscriptionId, signal } = opts;
         let closeStatus = 500;
         let exitLabel = "spawn_failed";
@@ -202,7 +219,7 @@ export default class Exec {
         try {
             let outcome: SpawnOutcome;
             try {
-                outcome = await streamShellCommand(command, db, streamEventNotify, entryId, signal);
+                outcome = await streamShellCommand(runtime, command, cwd, db, streamEventNotify, entryId, signal);
             } catch (err) {
                 await setChannelState(db, { entryId, channel: "stdout", state: "errored", notify: streamEventNotify });
                 await setChannelState(db, { entryId, channel: "stderr", state: "errored", notify: streamEventNotify });
@@ -213,10 +230,6 @@ export default class Exec {
                 return;
             }
             closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
-            // exitLabel reflects the real subprocess outcome (exit code or
-            // abort), which is what the model wants to see in the wake
-            // summary. closeStatus is the HTTP-style number we surface on
-            // the subscription row for forensics — different concern.
             exitLabel = outcome.aborted ? "aborted" : `exit ${outcome.exitCode}`;
             const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
             await setChannelState(db, { entryId, channel: "stdout", state: terminalState, notify: streamEventNotify });
@@ -231,10 +244,6 @@ export default class Exec {
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            // Announce conclusion regardless of outcome. Daemon decides
-            // whether to wake a fresh loop (rummy parallel: stream/completed
-            // wake:true) based on active-loop check. Calling this in
-            // `finally` so transient errors above still surface a wake.
             if (wakeRunNotify !== undefined) {
                 wakeRunNotify({
                     sessionId, runId, entryId, subscriptionId, closeStatus,
@@ -271,41 +280,5 @@ export default class Exec {
 
     async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         return deleteEntry(pathname, ctx, Exec.manifest.name);
-    }
-
-    // SEND[499]<exec://x> routes to the active subscription's
-    // AbortController. The spawn's close handler does the channel
-    // transitions + subscription close idempotently — no double-write
-    // because closeSubscription's WHERE clause filters on closed_at IS
-    // NULL. Other SEND statuses are not defined for exec at v0.
-    //
-    // SEND status lives in statement.signal (a number), not statement.suffix.
-    // suffix carries the bracket-following identifier (rarely used on SEND).
-    async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
-        if (statement.signal !== 499) {
-            return { status: 501, error: `exec scheme handles SEND[499] only; got SEND[${statement.signal ?? ""}]` };
-        }
-        const pathname = pathnameOf(statement.target);
-        if (pathname === null || pathname.length === 0) {
-            return { status: 400, error: "SEND[499] requires an exec://<id> target" };
-        }
-        const entryRow = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({
-            session_id: ctx.sessionId, scheme: "exec", pathname,
-        });
-        if (entryRow === undefined) return { status: 404, error: "exec entry not found" };
-        const sub = await findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: entryRow.id });
-        if (sub === null) return { status: 404, error: "no active subscription on exec entry to cancel" };
-        const controller = this.#activeAborts.get(sub.id);
-        if (controller === undefined) {
-            // Subscription is active in the DB but we don't own the
-            // AbortController in-process. This happens after a daemon
-            // restart while a stale subscription row sits open — there's
-            // no live process to abort. Close the row so the model sees
-            // a definite outcome.
-            await closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
-            return { status: 200, error: "subscription was orphaned; closed at 499" };
-        }
-        controller.abort("SEND[499]");
-        return { status: 200 };
     }
 }

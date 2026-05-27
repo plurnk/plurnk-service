@@ -1,7 +1,7 @@
-// Live exec end-to-end against the configured PLURNK_MODEL.
-// Structural prompt — instructs the model exactly which ops to emit so
-// the test exercises plumbing (proposal → applyResolution → spawn →
-// channel growth → wake-on-completion) rather than model reasoning.
+// Live exec — STRUCTURAL prompts allowed here. The model is explicitly
+// told to use the EXEC op shape per plurnk.md; we're testing the
+// machinery (parser → engine → exec scheme → spawn → channels → wake)
+// against a real provider, not the model's tool-discovery ability.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -33,7 +33,7 @@ const buildProvider = async (): Promise<Provider> => {
     return provider;
 };
 
-test("live exec: model emits EDIT(exec://x) and the spawn captures stdout end-to-end", async () => {
+test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdout", async () => {
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
@@ -43,21 +43,21 @@ test("live exec: model emits EDIT(exec://x) and the spawn captures stdout end-to
         attachYolo(engine, db);
 
         const userPrompt = [
-            "Two-step probe. Look at the index BEFORE deciding what to emit.",
+            "Two-turn probe.",
             "",
-            "If exec://probe is NOT in the index yet: emit ONLY",
-            "  <<EDIT(exec://probe):echo plurnk-exec-ok:EDIT",
+            "If you see an `exec://r-...` entry already in the index with stdout containing",
+            "`plurnk-exec-live-ok`, emit:",
+            "  <<SEND[200]:plurnk-exec-live-ok:SEND",
             "",
-            "If exec://probe IS already in the index (look for it under # Plurnk System Index — it will have a stdout channel): emit ONLY",
-            "  <<SEND[200]:saw plurnk-exec-ok:SEND",
+            "Otherwise, emit a single EXEC to run `echo plurnk-exec-live-ok` so that the next turn's",
+            "index will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
+            "  <<EXEC[sh]:echo plurnk-exec-live-ok:EXEC",
             "",
-            "Do NOT emit the EDIT again once exec://probe exists. Check the index each turn.",
+            "Do not repeat the EXEC once you see the exec://r-... entry in the index.",
         ].join("\n");
 
         const sessionId = await insertSession(db, `live-exec-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
-        // loop.prompt is what packet.user.prompt sources from via the
-        // per-turn foist; pass the structural prompt here, not a label.
         const loopId = await insertLoop(db, runId, 1, userPrompt);
         await (db.engine_set_loop_flags as PrepMethod).run({
             loop_id: loopId, flags: JSON.stringify({ yolo: true }),
@@ -72,42 +72,57 @@ test("live exec: model emits EDIT(exec://x) and the spawn captures stdout end-to
         });
         await exec.idle();
 
-        // Diagnostic: dump turn-by-turn assistant content + the rendered
-        // user-section content the model was shown each turn.
-        if (result.finalStatus !== 200) {
+        const dumpTurns = async (): Promise<void> => {
             for (const turnId of result.turnIds) {
                 const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
-                const packet = JSON.parse(row?.packet ?? "{}") as {
-                    assistant?: { content?: string };
-                    system?: { index?: object[]; log?: object[] };
-                };
-                console.error(`--- turn ${turnId} status=${row?.status} ---`);
-                console.error("  index count:", packet.system?.index?.length ?? 0);
-                console.error("  log count:", packet.system?.log?.length ?? 0);
-                console.error("  index:", JSON.stringify(packet.system?.index ?? [], null, 2).slice(0, 600));
-                console.error("  log:", JSON.stringify(packet.system?.log ?? [], null, 2).slice(0, 600));
-                console.error("  assistant:", (packet.assistant?.content ?? "").slice(0, 400));
+                const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
+                console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 400)}`);
+            }
+        };
+        if (result.finalStatus !== 200) await dumpTurns();
+        assert.equal(result.finalStatus, 200);
+        assert.equal(result.hitMaxTurns, false);
+
+        // Verify a real exec entry was created and captured the probe string.
+        const execEntryCount = (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+            session_id: sessionId, scheme: "exec",
+        }))?.n ?? 0;
+        assert.ok(execEntryCount >= 1, "at least one exec://r-<id> entry was created");
+
+        // Find the exec entry and verify its stdout captured the probe.
+        // We don't know the auto-generated id from outside; list session
+        // entries to find any exec://r-<id>.
+        type EntryListRow = { scheme: string; pathname: string };
+        const allEntries = await (db.test_list_entries_by_session_session_pathname as PrepMethod).all<EntryListRow>({ session_id: sessionId });
+        const execEntries = allEntries.filter((e) => e.scheme === "exec");
+        let foundProbe = false;
+        for (const e of execEntries) {
+            const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+                scheme: "exec", pathname: e.pathname,
+            });
+            if (entryRow === undefined) continue;
+            const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+                entry_id: entryRow.id, name: "stdout",
+            });
+            if ((stdout?.content ?? "").includes("plurnk-exec-live-ok")) {
+                foundProbe = true;
+                assert.equal(stdout?.state, "closed");
+                break;
             }
         }
-
-        assert.equal(result.finalStatus, 200, "loop terminated on SEND[200]");
-        assert.equal(result.hitMaxTurns, false, "didn't hit the safety cap");
-
-        // Channel content reflects the captured output.
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname: "probe",
-        });
-        assert.ok(entryRow, "exec://probe entry exists");
-        const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
-            entry_id: entryRow.id, name: "stdout",
-        });
-        assert.equal(stdout?.state, "closed");
-        assert.match(stdout?.content ?? "", /plurnk-exec-ok/, "stdout captured the probe string");
-
-        // Subscription closed cleanly.
-        const sub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
-            run_id: runId, entry_id: entryRow.id,
-        });
-        assert.equal(sub?.close_status, 200);
+        if (!foundProbe) {
+            await dumpTurns();
+            for (const e of execEntries) {
+                const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+                    scheme: "exec", pathname: e.pathname,
+                });
+                if (entryRow === undefined) continue;
+                const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+                    entry_id: entryRow.id, name: "stdout",
+                });
+                console.error(`exec://${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);
+            }
+        }
+        assert.ok(foundProbe, "an exec stdout channel captured the probe string");
     } finally { await db.close(); }
 });

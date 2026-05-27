@@ -34,7 +34,7 @@ test("loop.cancel: aborts an in-flight drain (yolo exec spawn keeps drain alive)
         contextSize: 8192,
         responses: [
             // Turn 1: kick off a slow exec, continue. Drain parks on the spawn.
-            sendOnly("<<EDIT(exec://slow):sleep 30:EDIT\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:never reached:SEND"),
             sendOnly("<<SEND[200]:never reached:SEND"),
         ],
@@ -89,7 +89,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EDIT(exec://slow):sleep 30:EDIT\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -128,7 +128,7 @@ test("loop.run while drain is active: second call injects into the current loop'
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EDIT(exec://slow):sleep 30:EDIT\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:never:SEND"),
         ],
     });

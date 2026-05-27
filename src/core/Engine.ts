@@ -941,6 +941,12 @@ export default class Engine {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#handleMove(statement, schemeCtx);
+                } else if (statement.op === "EXEC") {
+                    // EXEC's target slot is `cwd`, not a scheme address.
+                    // Per plurnk.md the op routes unconditionally to the
+                    // exec scheme; the scheme handler reads runtime
+                    // (signal), cwd (target), and command (body).
+                    result = await this.#run("exec", statement, schemeCtx);
                 } else {
                     result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx);
                 }
@@ -1004,7 +1010,10 @@ export default class Engine {
     ): Promise<ProposalResolution> {
         const { sessionId, runId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return resolution;
-        const schemeName = this.#schemeNameOf(statement.target);
+        // EXEC routes to the exec scheme regardless of target (cwd, not
+        // a scheme address). All other ops resolve their handler from
+        // statement.target's scheme.
+        const schemeName = statement.op === "EXEC" ? "exec" : this.#schemeNameOf(statement.target);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
@@ -1202,6 +1211,12 @@ export default class Engine {
     #checkWritable(statement: PlurnkStatement, origin: Origin): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
+
+        // EXEC's target slot is `cwd`, not a scheme address. The op's
+        // authority always belongs to the exec scheme regardless of cwd.
+        if (statement.op === "EXEC") {
+            return this.#denyIfDisallowed("exec", origin);
+        }
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dstScheme = this.#schemeNameOf(statement.body);
