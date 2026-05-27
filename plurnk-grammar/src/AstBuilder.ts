@@ -283,7 +283,12 @@ export default class AstBuilder {
         while (AstBuilder.#isDigit(inner[i])) i++;
         const first = Number.parseInt(inner.slice(0, i), 10);
         if (i >= inner.length) return { first, last: null };
-        i++;
+        if (inner[i] === ",") {
+            i++;
+            if (inner[i] === " ") i++;
+        } else {
+            i++;
+        }
         const last = Number.parseInt(inner.slice(i), 10);
         return { first, last };
     }

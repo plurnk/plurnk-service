@@ -444,6 +444,38 @@ test("AST: line marker range with negative start <-3--1>", () => {
     assert.deepEqual(item.statement.lineMarker, { first: -3, last: -1 });
 });
 
+test("AST: line marker comma-separated range <4,7>", () => {
+    const result = PlurnkParser.parse("<<EDIT(p)<4,7>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 4, last: 7 });
+});
+
+test("AST: line marker comma-separated with negative end <1,-1>", () => {
+    const result = PlurnkParser.parse("<<EDIT(p)<1,-1>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 1, last: -1 });
+});
+
+test("AST: line marker comma+space tolerance <1, -1>", () => {
+    const result = PlurnkParser.parse("<<EDIT(p)<1, -1>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 1, last: -1 });
+});
+
+test("AST: line marker comma-separated negative-to-negative <-3,-1>", () => {
+    const result = PlurnkParser.parse("<<EDIT(p)<-3,-1>:body:EDIT");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement") return;
+    assert.deepEqual(item.statement.lineMarker, { first: -3, last: -1 });
+});
+
 test("AST: empty body is null, not empty string", () => {
     const result = PlurnkParser.parse("<<EDIT(p)::EDIT");
     const item = result.items[0];

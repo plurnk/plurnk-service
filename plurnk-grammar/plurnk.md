@@ -14,26 +14,28 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 | OP   | `[signal]`  | `(target)`| `<L>`            | body                     |
 |------|-------------|-----------|------------------|--------------------------|
-| FIND | filter tags | required  | results `N-M`    | matcher                  |
-| READ | filter tags | required  | lines `N-M`      | matcher                  |
-| EDIT | tags        | required  | lines `N-M`      | content (empty = clear)  |
-| COPY | apply tags  | required  | lines `N-M`      | destination URI          |
-| MOVE | apply tags  | required  | lines `N-M`      | destination URI          |
-| SHOW | filter tags | required  | results `N-M`    | matcher                  |
-| HIDE | filter tags | required  | results `N-M`    | matcher                  |
+| FIND | filter tags | required  | results `N,M`    | matcher                  |
+| READ | filter tags | required  | lines `N,M`      | matcher                  |
+| EDIT | tags        | required  | lines `N,M`      | content                  |
+| COPY | apply tags  | required  | lines `N,M`      | destination URI          |
+| MOVE | apply tags  | required  | lines `N,M`      | destination URI          |
+| SHOW | filter tags | required  | results `N,M`    | matcher                  |
+| HIDE | filter tags | required  | results `N,M`    | matcher                  |
 | SEND | status code | recipient | —                | message body             |
 | EXEC | runtime tag | cwd       | —                | command or code          |
 
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
 SEND broadcasts to uri when a path is included and messages the user when no path is included.
-EXEC may include an optional runtime tag (`"sh"`, `"node"`, etc.).
+EXEC may include an optional runtime tag (`sh`, `node`, etc.).
 
 ## `<L>`
 
 `<N>` selects position N.
-`<N-M>` selects the inclusive range N-M. N and M are signed integers.
+`<N,M>` selects the inclusive range N through M. N and M are signed integers.
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
+
+Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
@@ -50,8 +52,9 @@ Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
 
 URI-shaped: `[scheme://]rest`.
 
-* Bare paths (no scheme) default to local relative project file paths.
+* Bare paths (no scheme) default to local relative project file paths (leader `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
+* `/dev/null` is the reserved deletion sink: MOVE to `/dev/null` removes the source entry. Recognized on every host regardless of whether the OS provides a `/dev/null` device.
 
 Internal schemes:
 
@@ -93,7 +96,7 @@ Body content is character-perfect, exactly matching whitespace.
 ```
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
-<<READ(https://en.wikipedia.org/wiki/Paris)<426-465>::READ
+<<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
 
@@ -105,16 +108,21 @@ Body content is character-perfect, exactly matching whitespace.
 
 <<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-<<EDIT(known://countries/france/capital)::EDIT
+<<EDIT(known://countries/france/capital)<1,-1>::EDIT
 <<COPY[archive,2026-05-14](known://draft):known://archive/2026-05-14/draft:COPY
-<<MOVE(known://draft):known://final/answer:MOVE
+<<MOVE(known://draft/answer):known://final/answer:MOVE
+<<MOVE(known://obsolete/note):/dev/null:MOVE
 <<SHOW[france](known://countries/**):Paris*:SHOW
-<<HIDE(log://**/get)<101-200>::HIDE
+<<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 
-<<EXEC[node]:
-const sum = [1, 2, 3].reduce((a, b) => a + b, 0);
-console.log(sum);
+<<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
+echo "Hello, world!" > hello.txt
+:EDIT
+
+<<EXEC[sh]:
+chmod +x ./example.sh
+./example.sh
 :EXEC
 
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
