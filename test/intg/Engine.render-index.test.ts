@@ -25,7 +25,7 @@ const makeMimetypes = (): Mimetypes => new Mimetypes({
 });
 
 const sendStmt = (status: number): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path: null,
+    op: "SEND", suffix: "", signal: status, target: null,
     lineMarker: null, body: { raw: "", json: null },
     position: { line: 1, column: 1 },
 });

@@ -17,7 +17,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "
 
 const fileEditStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: { kind: "url", raw: `file://${pathname}`, scheme: "file",
+    target: { kind: "url", raw: `file://${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
@@ -25,7 +25,7 @@ const fileEditStmt = (pathname: string, body: string): EditStatement => ({
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
-    path: { kind: "url", raw: `file://${pathname}`, scheme: "file",
+    target: { kind: "url", raw: `file://${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname, params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
@@ -36,7 +36,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
 const bareEditStmt = (relPath: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: { kind: "local", raw: relPath },
+    target: { kind: "local", raw: relPath },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -152,7 +152,7 @@ test("file.edit: refuses traversal escape", async () => {
     });
 });
 
-test("bare path: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
+test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
         await writeFile(join(root, target), "original\n", "utf8");

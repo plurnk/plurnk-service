@@ -60,7 +60,7 @@ export default class File {
     };
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        if (statement.path === null) return { status: 400, content: null, mimetype: null };
+        if (statement.target === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };
         if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null };
@@ -68,7 +68,7 @@ export default class File {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
         if (root === null) return { status: 400, content: null, mimetype: null };
 
-        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
+        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         const resolved = await resolveContained(pathname, root);
         if ("error" in resolved) {
             if (resolved.error === "not-found") return { status: 404, content: null, mimetype: null };
@@ -83,7 +83,7 @@ export default class File {
     // content. Engine writes the proposed log entry, pauses dispatch, and
     // calls applyResolution() (below) after the proposal accepts.
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        if (statement.path === null) return { status: 400, error: "EDIT requires a path" };
+        if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
         if (statement.lineMarker !== null) return { status: 501, error: "lineMarker-based edits not yet supported" };
 
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
@@ -91,7 +91,7 @@ export default class File {
             return { status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
         }
 
-        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
+        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         // Containment check (canonical path inside workspace). For edits,
         // a not-found target is fine — we're proposing to create or
         // overwrite. Traversal escape is fatal.

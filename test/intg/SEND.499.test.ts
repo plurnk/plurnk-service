@@ -18,13 +18,13 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const sendStmt = (status: number, recipient: UrlPath | null = null, body: string | null = null): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path: recipient, lineMarker: null,
+    op: "SEND", suffix: "", signal: status, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
-const editStmt = (path: UrlPath, body: string | null = null): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, path, lineMarker: null, body,
+const editStmt = (target: UrlPath, body: string | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -94,7 +94,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
             };
             async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
                 if (statement.signal !== 499) return { status: 501 };
-                const path = statement.path;
+                const path = statement.target;
                 if (path === null || path.kind !== "url") return { status: 400 };
                 const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
                     session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,

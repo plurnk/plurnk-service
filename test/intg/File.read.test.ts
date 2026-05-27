@@ -15,9 +15,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 
-const readStmt = (path: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; body?: MatcherBody | null; tags?: string[] | null } = {}): ReadStatement => ({
+const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; body?: MatcherBody | null; tags?: string[] | null } = {}): ReadStatement => ({
     op: "READ", suffix: "",
-    signal: opts.tags ?? null, path,
+    signal: opts.tags ?? null, target,
     lineMarker: opts.lineMarker ?? null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
@@ -133,10 +133,10 @@ test("File.read: lineMarker / body matcher / non-empty tag filter → 501", asyn
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
         const file = new File();
-        const path = urlPath("file", "f.txt");
-        assert.equal((await file.read(readStmt(path, { lineMarker: { first: 1, last: null } }), ctx)).status, 501);
-        assert.equal((await file.read(readStmt(path, { body: { dialect: "glob", raw: "*" } }), ctx)).status, 501);
-        assert.equal((await file.read(readStmt(path, { tags: ["any"] }), ctx)).status, 501);
+        const target = urlPath("file", "f.txt");
+        assert.equal((await file.read(readStmt(target, { lineMarker: { first: 1, last: null } }), ctx)).status, 501);
+        assert.equal((await file.read(readStmt(target, { body: { dialect: "glob", raw: "*" } }), ctx)).status, 501);
+        assert.equal((await file.read(readStmt(target, { tags: ["any"] }), ctx)).status, 501);
     });
 });
 

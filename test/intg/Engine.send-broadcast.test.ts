@@ -6,8 +6,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
-const sendStmt = (status: number | null, body: string, path: ParsedPath | null = null): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path,
+const sendStmt = (status: number | null, body: string, target: ParsedPath | null = null): SendStatement => ({
+    op: "SEND", suffix: "", signal: status, target,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });

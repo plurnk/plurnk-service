@@ -13,15 +13,15 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 
-const readStmt = (path: ParsedPath | null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, path,
+const readStmt = (target: ParsedPath | null): ReadStatement => ({
+    op: "READ", suffix: "", signal: null, target,
     lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: urlPath("known", pathname),
+    target: urlPath("known", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

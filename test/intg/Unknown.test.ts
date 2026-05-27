@@ -6,9 +6,9 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, showStmt, hideStmt } from "./_dsl.ts";
 
-const readStmtPlus = (path: ParsedPath, opts: { tags?: string[] | null; body?: MatcherBody | null; lineMarker?: LineMarker | null } = {}): ReadStatement => ({
+const readStmtPlus = (target: ParsedPath, opts: { tags?: string[] | null; body?: MatcherBody | null; lineMarker?: LineMarker | null } = {}): ReadStatement => ({
     op: "READ", suffix: "",
-    signal: opts.tags ?? null, path,
+    signal: opts.tags ?? null, target,
     lineMarker: opts.lineMarker ?? null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
@@ -72,7 +72,7 @@ test("Unknown.edit: null path → 400; lineMarker → 501", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const u = new Unknown();
-        assert.equal((await u.edit({ ...editStmt(urlPath("unknown", "/x")), path: null }, makeSchemeCtx({ db, sessionId, runId }))).status, 400);
+        assert.equal((await u.edit({ ...editStmt(urlPath("unknown", "/x")), target: null }, makeSchemeCtx({ db, sessionId, runId }))).status, 400);
         assert.equal((await u.edit({ ...editStmt(urlPath("unknown", "/x"), "x"), lineMarker: { first: 5, last: null } }, makeSchemeCtx({ db, sessionId, runId }))).status, 501);
     } finally { await db.close(); }
 });

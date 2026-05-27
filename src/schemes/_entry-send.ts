@@ -14,20 +14,20 @@ export interface SendResult {
 }
 
 const pathnameOf = (statement: SendStatement): string | null => {
-    const path = statement.path;
+    const path = statement.target;
     if (path === null) return null;
     if (path.kind === "url") return path.pathname;
     return path.raw;
 };
 
 const fragmentOf = (statement: SendStatement): string | null => {
-    const path = statement.path;
+    const path = statement.target;
     if (path === null || path.kind !== "url") return null;
     return path.fragment;
 };
 
 export const sendToSessionEntry = async (statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> => {
-    if (statement.path === null) return { status: 400, error: "directed SEND requires a path" };
+    if (statement.target === null) return { status: 400, error: "directed SEND requires a path" };
 
     const status = statement.signal;
     if (status === null) return { status: 400, error: "SEND requires a numeric status code" };

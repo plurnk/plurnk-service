@@ -65,7 +65,7 @@ test("index entry: multi-channel entry omits suffix on default, keeps it on othe
     assert.match(out, /<<exec:\/\/run#stderr:\n1:\twarn\n:exec:\/\/run#stderr/, "stderr fence keeps #stderr");
 });
 
-test("log entry: renders as a single JSON meta line — no body, no fence", () => {
+test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -80,7 +80,5 @@ test("log entry: renders as a single JSON meta line — no body, no fence", () =
         }],
     };
     const out = renderSystemContent(system);
-    assert.doesNotMatch(out, /<<log:\/\//, "no fence — log entries are meta-line only");
-    assert.doesNotMatch(out, /:log:\/\//, "no closing fence either");
-    assert.match(out, /\* \{"coord":"1\/1\/1","op":"EDIT","origin":"model","path":"out\.txt","status":200\}/, "meta line carries coord + everything the model needs");
+    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });

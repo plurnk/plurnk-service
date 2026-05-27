@@ -16,12 +16,12 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: urlPath("known", pathname),
+    target: urlPath("known", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path: null,
+    op: "SEND", suffix: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -228,7 +228,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 499 with strike
         // EDIT log:// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("log", "/x"),
+            target: urlPath("log", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -254,7 +254,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         // (per rummy's same-pattern test).
         const readMissing = (suffix: string): ReadStatement => ({
             op: "READ", suffix: "", signal: null,
-            path: urlPath("unknown", `/not-there-${suffix}`),
+            target: urlPath("unknown", `/not-there-${suffix}`),
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -280,12 +280,12 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
     try {
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("log", "/x"),
+            target: urlPath("log", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("known", p),
+            target: urlPath("known", p),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         // maxStrikes=2. Pattern: hard, clean, hard, hard, done.
@@ -331,7 +331,7 @@ test("Engine.runLoop: strike telemetry surfaces in next packet with streak count
     try {
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("log", "/x"),
+            target: urlPath("log", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -677,7 +677,7 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         // Model attempts to EDIT log:// — denied 403 (Log.writableBy=['system']).
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("log", "/illegal"),
+            target: urlPath("log", "/illegal"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
@@ -710,7 +710,7 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
     try {
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
-            path: urlPath("log", "/a"),
+            target: urlPath("log", "/a"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({

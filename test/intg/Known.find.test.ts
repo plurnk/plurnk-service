@@ -12,13 +12,13 @@ const url = (pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 
-const editStmt = (path: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", suffix: "", signal: tags, path, lineMarker: null, body,
+const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (path: UrlPath, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
-    op: "FIND", suffix: "", signal, path, lineMarker: null, body,
+const findStmt = (target: UrlPath, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
+    op: "FIND", suffix: "", signal, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -152,7 +152,7 @@ test("Known.find is scoped to the scheme (doesn't leak across schemes)", async (
 
         // Seed an unknown entry under the same session
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), path: { ...url("here-unknown"), scheme: "unknown", raw: "unknown://here-unknown" } }, makeSchemeCtx({ db, sessionId, runId }));
+        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), target: { ...url("here-unknown"), scheme: "unknown", raw: "unknown://here-unknown" } }, makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);

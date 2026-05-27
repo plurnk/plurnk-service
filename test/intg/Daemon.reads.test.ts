@@ -151,9 +151,9 @@ test("log.read filters by sinceId for incremental fetch", async () => {
             await rpcCall(ws, 4, "op.edit", { path: "known://b", content: "second" });
 
             const incremental = await rpcCall(ws, 5, "log.read", { sinceId: lastSeenId });
-            const incrementalResult = incremental.result as { entries: Array<{ id: number; tx: { op: string; path: { pathname: string } } }> };
+            const incrementalResult = incremental.result as { entries: Array<{ id: number; tx: { op: string; target: { pathname: string } } }> };
             assert.equal(incrementalResult.entries.length, 1, "only the new entry");
-            assert.equal(incrementalResult.entries[0].tx.path.pathname, "b");
+            assert.equal(incrementalResult.entries[0].tx.target.pathname, "b");
         } finally { ws.close(); }
     });
 });
@@ -191,13 +191,13 @@ test("log.read is session-scoped — doesn't see other sessions' logs", async ()
 
             const rA = await rpcCall(wsA, 3, "log.read");
             const rB = await rpcCall(wsB, 3, "log.read");
-            const aEntries = (rA.result as { entries: Array<{ tx: { path: { pathname: string } } }> }).entries;
-            const bEntries = (rB.result as { entries: Array<{ tx: { path: { pathname: string } } }> }).entries;
+            const aEntries = (rA.result as { entries: Array<{ tx: { target: { pathname: string } } }> }).entries;
+            const bEntries = (rB.result as { entries: Array<{ tx: { target: { pathname: string } } }> }).entries;
 
             assert.equal(aEntries.length, 1);
-            assert.equal(aEntries[0].tx.path.pathname, "a");
+            assert.equal(aEntries[0].tx.target.pathname, "a");
             assert.equal(bEntries.length, 1);
-            assert.equal(bEntries[0].tx.path.pathname, "b");
+            assert.equal(bEntries[0].tx.target.pathname, "b");
         } finally { wsA.close(); wsB.close(); }
     });
 });

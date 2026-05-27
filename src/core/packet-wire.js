@@ -134,28 +134,35 @@ const renderIndexEntries = (entries) =>
     }).join("\n\n");
 
 // Render one Log entry → a single bullet line carrying the meta JSON.
-// No body, no fence — every meaningful field is in the JSON. The full
-// log URI is reconstructable as `log://${coord}/${op}`. On error,
-// status >= 400 signals the failure; the message lives in the next
-// packet's user.telemetry.errors[] per SPEC §15.1. (Forward: coord
-// will gain tokensBefore/After + linesBefore/After to convey change
-// scope without carrying the body content.)
+// No body, no fence — every meaningful field is in the JSON. Naming
+// follows the uniform principle: `path` is identity (this log row's
+// own URI), `target` is the URI the action acted on. COPY/MOVE add
+// `source`; currently the engine emits target only (source plumbing
+// pending the COPY/MOVE-specific log shape pass).
+//
+// On error, status >= 400 signals the failure; the message lives in
+// the next packet's user.telemetry.errors[] per SPEC §15.1. (Forward:
+// meta will gain tokensBefore/After + linesBefore/After to convey
+// change scope without carrying the body content.)
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const meta = {};
-        if (typeof e.coordinate === "string") meta.coord = e.coordinate;
+        const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
+        const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
+        if (coordinate !== null && op !== null) meta.path = `log://${coordinate}/${op}`;
+        else if (coordinate !== null) meta.path = `log://${coordinate}`;
         if (typeof e.origin === "string") meta.origin = e.origin;
-        if (typeof e.op === "string") meta.op = e.op;
+        if (op !== null) meta.op = op;
         if (typeof e.status === "number") meta.status = e.status;
-        const path = renderLogPath(e.target);
-        if (path !== null) meta.path = path;
+        const target = renderActionTarget(e.target);
+        if (target !== null) meta.target = target;
         return `* ${canonicalJson(meta)}`;
     }).join("\n");
 
-const renderLogPath = (target) => {
+const renderActionTarget = (target) => {
     if (target === null || target === undefined) return null;
-    const path = renderModelUri(target.scheme, target.pathname);
-    return path.length > 0 ? path : null;
+    const rendered = renderModelUri(target.scheme, target.pathname);
+    return rendered.length > 0 ? rendered : null;
 };
 
 // Render TelemetryError[] → bullet list. v0 schema is open per Packet.json

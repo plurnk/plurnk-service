@@ -37,7 +37,7 @@ class ProposingTest {
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
+    target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },

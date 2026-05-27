@@ -29,9 +29,9 @@ export default class Plurnk {
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        const pathname = statement.path !== null && statement.path.kind === "url"
-            ? statement.path.pathname
-            : statement.path?.raw ?? "";
+        const pathname = statement.target !== null && statement.target.kind === "url"
+            ? statement.target.pathname
+            : statement.target?.raw ?? "";
         if (ctx.writer === "model" && pathname.startsWith("prompt/")) {
             return { status: 403, entryId: null, channel: null };
         }

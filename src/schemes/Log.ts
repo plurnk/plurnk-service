@@ -34,12 +34,12 @@ export default class Log {
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         const { db, runId } = ctx;
-        if (statement.path === null) return { status: 400, content: null, mimetype: null };
+        if (statement.target === null) return { status: 400, content: null, mimetype: null };
         if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
         if (statement.body !== null) return { status: 501, content: null, mimetype: null };
         if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null };
 
-        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
+        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         const coord = parseCoordinate(pathname);
         if (coord === null) return { status: 400, content: null, mimetype: null };
 
@@ -68,11 +68,11 @@ export default class Log {
     }
 
     async #setIndexed(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<ShowHideResult> {
-        if (statement.path === null) return { status: 400 };
+        if (statement.target === null) return { status: 400 };
         if (statement.lineMarker !== null) return { status: 501 };
 
         const { db, runId } = ctx;
-        const pathname = statement.path.kind === "url" ? statement.path.pathname : statement.path.raw;
+        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         const coord = parseCoordinate(pathname);
         if (coord === null) return { status: 400 };
 

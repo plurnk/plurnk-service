@@ -35,7 +35,7 @@ class ProposingScheme {
         flags: { proposes: true },
     };
     async edit(): Promise<{ status: number; attrs: object; body: string }> {
-        return { status: 202, body: "would-propose", attrs: { path: "/x" } };
+        return { status: 202, body: "would-propose", attrs: { target: "/x" } };
     }
 }
 

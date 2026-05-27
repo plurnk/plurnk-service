@@ -210,7 +210,7 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
 // included as a discriminator (url vs local). Rummy parallel: scheme +
 // sorted attributes joined by '='.
 const fingerprintOp = (stmt: PlurnkStatement): string => {
-    const path = stmt.path;
+    const path = stmt.target;
     if (path === null) return `${stmt.op}|(no-path)`;
     if (path.kind === "url") return `${stmt.op}|${path.scheme}://${path.pathname}`;
     return `${stmt.op}|local:${path.raw}`;
@@ -466,7 +466,7 @@ export default class Engine {
                 };
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
-                    path: promptPath, lineMarker: null,
+                    target: promptPath, lineMarker: null,
                     body: promptRow.prompt, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({
@@ -870,14 +870,14 @@ export default class Engine {
             // skips it. Logging failures (#writeLog throws) are NOT caught —
             // those are system failures.
             try {
-                if (statement.op === "SEND" && statement.path === null) {
+                if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, loopId);
                 } else if (statement.op === "COPY") {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#handleMove(statement, schemeCtx);
                 } else {
-                    result = await this.#run(this.#schemeNameOf(statement.path), statement, schemeCtx);
+                    result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx);
                 }
             } catch (err) {
                 result = {
@@ -905,7 +905,7 @@ export default class Engine {
             // Notify external listeners (Daemon broadcasts loop/proposal;
             // YOLO listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
-            const target = this.#extractTarget(statement.path);
+            const target = this.#extractTarget(statement.target);
             const flags = await this.#loadLoopFlags(loopId);
             const event: ProposalPendingEvent = {
                 logEntryId, sessionId, runId, loopId, turnId,
@@ -939,7 +939,7 @@ export default class Engine {
     ): Promise<ProposalResolution> {
         const { sessionId, runId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return resolution;
-        const schemeName = this.#schemeNameOf(statement.path);
+        const schemeName = this.#schemeNameOf(statement.target);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
@@ -1078,14 +1078,14 @@ export default class Engine {
     // - Schemes without a manifest are not gated (legacy / future allowance).
     #checkWritable(statement: PlurnkStatement, origin: Origin): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
-        if (statement.op === "SEND" && statement.path === null) return null;
+        if (statement.op === "SEND" && statement.target === null) return null;
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dstScheme = this.#schemeNameOf(statement.body);
             const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
-                const srcScheme = this.#schemeNameOf(statement.path);
+                const srcScheme = this.#schemeNameOf(statement.target);
                 if (srcScheme !== dstScheme) {
                     const srcDenial = this.#denyIfDisallowed(srcScheme, origin);
                     if (srcDenial !== null) return srcDenial;
@@ -1094,7 +1094,7 @@ export default class Engine {
             return null;
         }
 
-        const target = this.#schemeNameOf(statement.path);
+        const target = this.#schemeNameOf(statement.target);
         return this.#denyIfDisallowed(target, origin);
     }
 
@@ -1115,29 +1115,29 @@ export default class Engine {
     // set returns 403 — action-entry-as-outcome carries the rejection.
     async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
         // Broadcast SEND has no scheme to gate.
-        if (statement.op === "SEND" && statement.path === null) return null;
+        if (statement.op === "SEND" && statement.target === null) return null;
 
         const flags = await this.#loadLoopFlags(loopId);
         // Fast path: default flags gate nothing. (yolo never gates.)
         if (!flags.noProposals && !flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
         const active = this.#schemes.resolveForLoop(flags);
-        const check = (path: PlurnkStatement["path"]): DispatchResult | null => {
-            const scheme = this.#schemeNameOf(path);
+        const check = (target: PlurnkStatement["target"]): DispatchResult | null => {
+            const scheme = this.#schemeNameOf(target);
             if (scheme === null) return null;
             if (active.has(scheme)) return null;
             return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
         };
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.path) ?? check(statement.body);
+            return check(statement.target) ?? check(statement.body);
         }
-        return check(statement.path);
+        return check(statement.target);
     }
 
     async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "COPY") throw new Error("unreachable");
-        const srcPath = statement.path;
+        const srcPath = statement.target;
         const dstPath = statement.body;
         if (srcPath === null) return { status: 400, error: "COPY requires source path" };
         if (dstPath === null) return { status: 400, error: "COPY requires destination path (in body slot)" };
@@ -1146,7 +1146,7 @@ export default class Engine {
 
     async #handleMove(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "MOVE") throw new Error("unreachable");
-        const srcPath = statement.path;
+        const srcPath = statement.target;
         const dstPath = statement.body;
         if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
 
@@ -1257,7 +1257,7 @@ export default class Engine {
         statement: PlurnkStatement; result: DispatchResult;
         runId: number; loopId: number; turnId: number; sequence: number; origin: Origin;
     }): Promise<number> {
-        const target = this.#extractTarget(statement.path);
+        const target = this.#extractTarget(statement.target);
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
             ? JSON.stringify(statement.lineMarker as LineMarker)
             : null;

@@ -12,19 +12,19 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 
-const editStmt = (opts: { path: ParsedPath; tags?: string[] | null; body?: string | null }): EditStatement => ({
+const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null }): EditStatement => ({
     op: "EDIT", suffix: "",
     signal: opts.tags ?? null,
-    path: opts.path,
+    target: opts.target,
     lineMarker: null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
-const readStmt = (opts: { path: ParsedPath }): ReadStatement => ({
+const readStmt = (opts: { target: ParsedPath }): ReadStatement => ({
     op: "READ", suffix: "",
     signal: null,
-    path: opts.path,
+    target: opts.target,
     lineMarker: null,
     body: null,
     position: { line: 1, column: 1 },
@@ -41,7 +41,7 @@ test("Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, 
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/france/capital"), body: "Paris", tags: ["france"] }),
+            statement: editStmt({ target: urlPath("known", "/france/capital"), body: "Paris", tags: ["france"] }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -57,7 +57,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -92,12 +92,12 @@ test("Engine.dispatch: READ against known:// routes to Known.read", async () => 
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/r"), body: "value" }),
+            statement: editStmt({ target: urlPath("known", "/r"), body: "value" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const result = await engine.dispatch({
-            statement: readStmt({ path: urlPath("known", "/r") }),
+            statement: readStmt({ target: urlPath("known", "/r") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -110,7 +110,7 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("wiki", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("wiki", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -126,7 +126,7 @@ test("Engine.dispatch: scheme without matching op method returns 501", async () 
     try {
         // exec:// has manifest (model is in writableBy) but no edit() handler yet.
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("exec", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("exec", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -138,7 +138,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
-            op: "EDIT", suffix: "", signal: null, path: null, lineMarker: null, body: "y",
+            op: "EDIT", suffix: "", signal: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -158,12 +158,12 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/a"), body: "1" }),
+            statement: editStmt({ target: urlPath("known", "/a"), body: "1" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/b"), body: "2" }),
+            statement: editStmt({ target: urlPath("known", "/b"), body: "2" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -180,7 +180,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
+            statement: editStmt({ target: urlPath("known", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -194,7 +194,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
     try {
         for (const [i, origin] of (["model", "client", "system", "plugin"] as const).entries()) {
             await engine.dispatch({
-                statement: editStmt({ path: urlPath("known", `/o${i}`), body: "x" }),
+                statement: editStmt({ target: urlPath("known", `/o${i}`), body: "x" }),
                 sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
                 sequence: i + 1, origin,
             });
@@ -211,7 +211,7 @@ test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['sys
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -228,7 +228,7 @@ test("Engine.dispatch: model EDIT plurnk://prompt/* rejected with 403 (engine/cl
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("plurnk", "prompt/1"), body: "y" }),
+            statement: editStmt({ target: urlPath("plurnk", "prompt/1"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -240,7 +240,7 @@ test("Engine.dispatch: model EDIT plurnk:// non-prompt path is allowed", async (
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("plurnk", "scratch"), body: "y" }),
+            statement: editStmt({ target: urlPath("plurnk", "scratch"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -254,7 +254,7 @@ test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side o
         // Log scheme has no read() handler yet, so this returns 501 — proves
         // the writableBy gate did NOT intercept (would have returned 403).
         const result = await engine.dispatch({
-            statement: readStmt({ path: urlPath("log", "/x") }),
+            statement: readStmt({ target: urlPath("log", "/x") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -267,7 +267,7 @@ test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () =>
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("log", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "system",
         });
@@ -279,7 +279,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { op: "SEND", suffix: "", signal: 200, path: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -306,7 +306,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
     const engine = new Engine({ db, schemes });
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("boom", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("boom", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -338,7 +338,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
     const engine = new Engine({ db, schemes });
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ path: urlPath("boomstr", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("boomstr", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -352,7 +352,7 @@ test("Engine.dispatch: model COPY into log:// destination rejected with 403", as
     try {
         // Source first: model creates an entry in known://.
         await engine.dispatch({
-            statement: editStmt({ path: urlPath("known", "/src"), body: "v" }),
+            statement: editStmt({ target: urlPath("known", "/src"), body: "v" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -360,7 +360,7 @@ test("Engine.dispatch: model COPY into log:// destination rejected with 403", as
         const result = await engine.dispatch({
             statement: {
                 op: "COPY", suffix: "", signal: null,
-                path: urlPath("known", "/src"),
+                target: urlPath("known", "/src"),
                 lineMarker: null,
                 body: urlPath("log", "/dst"),
                 position: { line: 1, column: 1 },

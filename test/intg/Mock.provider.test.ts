@@ -5,13 +5,13 @@ import Mock from "../../src/providers/Mock.ts";
 import type { MockResponse } from "../../src/providers/Mock.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path: null, lineMarker: null,
+    op: "SEND", suffix: "", signal: status, target: null, lineMarker: null,
     body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
-const editStmt = (path: string, body: string): EditStatement => ({
+const editStmt = (target: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: { kind: "url", raw: `known://${path}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: `/${path}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `known://${target}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

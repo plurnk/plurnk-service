@@ -16,12 +16,12 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    path: urlPath("known", pathname),
+    target: urlPath("known", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, path: null,
+    op: "SEND", suffix: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -124,7 +124,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     try {
         const readStmt = (pathname: string) => ({
             op: "READ" as const, suffix: "", signal: null,
-            path: urlPath("known", pathname),
+            target: urlPath("known", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },
         });

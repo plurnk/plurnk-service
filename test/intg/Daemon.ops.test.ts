@@ -86,7 +86,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                 op: "EDIT" as const,
                 suffix: "",
                 signal: null,
-                path: {
+                target: {
                     kind: "url" as const, raw: "known://hello",
                     scheme: "known", username: null, password: null,
                     hostname: null, port: null, pathname: "hello",

@@ -14,14 +14,14 @@ export interface FindResult {
 }
 
 const scopePathnameOf = (statement: FindStatement): string | null => {
-    const path = statement.path;
+    const path = statement.target;
     if (path === null) return null;
     if (path.kind === "url") return path.pathname;
     return path.raw;
 };
 
 export const findSessionEntries = async (statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> => {
-    if (statement.path === null) return { status: 400, content: null, mimetype: null, results: [] };
+    if (statement.target === null) return { status: 400, content: null, mimetype: null, results: [] };
     if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, results: [] };
 
     let pathnamePattern: string | null = null;

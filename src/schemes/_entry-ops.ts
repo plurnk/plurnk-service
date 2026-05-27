@@ -11,17 +11,17 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null };
 export type ShowHideResult = { status: number };
 
-const pathnameOf = (statement: { path: EditStatement["path"] }): string => {
-    const path = statement.path;
-    if (path === null) throw new Error("unreachable");
-    if (path.kind === "url") return path.pathname;
-    return path.raw;
+const pathnameOf = (statement: { target: EditStatement["target"] }): string => {
+    const t = statement.target;
+    if (t === null) throw new Error("unreachable");
+    if (t.kind === "url") return t.pathname;
+    return t.raw;
 };
 
-const fragmentOf = (statement: { path: EditStatement["path"] }): string | null => {
-    const path = statement.path;
-    if (path === null || path.kind !== "url") return null;
-    return path.fragment;
+const fragmentOf = (statement: { target: EditStatement["target"] }): string | null => {
+    const t = statement.target;
+    if (t === null || t.kind !== "url") return null;
+    return t.fragment;
 };
 
 const resolveChannel = (fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null => {
@@ -31,7 +31,7 @@ const resolveChannel = (fragment: string | null, channels: Record<string, string
 };
 
 export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> => {
-    if (statement.path === null) return { status: 400, entryId: null, channel: null };
+    if (statement.target === null) return { status: 400, entryId: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, entryId: null, channel: null };
 
     const { db, sessionId, runId } = ctx;
@@ -75,7 +75,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
 };
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
-    if (statement.path === null) return { status: 400, content: null, mimetype: null, channel: null };
+    if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
     if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (statement.body !== null) return { status: 501, content: null, mimetype: null, channel: null };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null, channel: null };
@@ -102,7 +102,7 @@ const setSessionEntryVisibility = async (
     manifest: SchemeManifest,
     target: 0 | 1,
 ): Promise<ShowHideResult> => {
-    if (statement.path === null) return { status: 400 };
+    if (statement.target === null) return { status: 400 };
     if (statement.lineMarker !== null) return { status: 501 };
     if (statement.body !== null) return { status: 501 };
     if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501 };

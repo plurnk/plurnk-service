@@ -32,7 +32,7 @@ class ProposingTest {
         return {
             status: 202,
             body: "--- proposed-test\n+++ proposed-test\n@@ +x @@",
-            attrs: { path: "/proposed-test" },
+            attrs: { target: "/proposed-test" },
         };
     }
 }
