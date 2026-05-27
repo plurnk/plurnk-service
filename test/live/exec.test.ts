@@ -42,13 +42,6 @@ test("live exec: model emits EDIT(exec://x) and the spawn captures stdout end-to
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
         attachYolo(engine, db);
 
-        const sessionId = await insertSession(db, `live-exec-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "Run echo and report");
-        await (db.engine_set_loop_flags as PrepMethod).run({
-            loop_id: loopId, flags: JSON.stringify({ yolo: true }),
-        });
-
         const userPrompt = [
             "Two-step probe. Look at the index BEFORE deciding what to emit.",
             "",
@@ -60,6 +53,15 @@ test("live exec: model emits EDIT(exec://x) and the spawn captures stdout end-to
             "",
             "Do NOT emit the EDIT again once exec://probe exists. Check the index each turn.",
         ].join("\n");
+
+        const sessionId = await insertSession(db, `live-exec-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        // loop.prompt is what packet.user.prompt sources from via the
+        // per-turn foist; pass the structural prompt here, not a label.
+        const loopId = await insertLoop(db, runId, 1, userPrompt);
+        await (db.engine_set_loop_flags as PrepMethod).run({
+            loop_id: loopId, flags: JSON.stringify({ yolo: true }),
+        });
 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, maxTurns: 8,

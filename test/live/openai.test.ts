@@ -41,12 +41,14 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
+        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known://city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known://city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
+
         const sessionId = await insertSession(db, `live-loop-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "Build up knowledge across turns then compare");
+        // loop.prompt is what packet.user.prompt sources from via the
+        // per-turn foist (drain+inject paradigm).
+        const loopId = await insertLoop(db, runId, 1, userPrompt);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
-
-        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known://city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known://city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
 
         const start = Date.now();
         const result = await engine.runLoop({
@@ -99,9 +101,10 @@ test("live OpenAI: runTurn single-shot smoke", async () => {
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
+        const userPrompt = "What is the capital of France? Store the answer under known://france/capital and reply with a single SEND[200] message containing the answer.";
         const sessionId = await insertSession(db, `live-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "What is the capital of France?");
+        const loopId = await insertLoop(db, runId, 1, userPrompt);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
 
         const result = await engine.runTurn({
@@ -109,7 +112,7 @@ test("live OpenAI: runTurn single-shot smoke", async () => {
             sessionId, runId, loopId,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: "What is the capital of France? Store the answer under known://france/capital and reply with a single SEND[200] message containing the answer." },
+                { role: "user", content: userPrompt },
             ],
         });
 

@@ -45,13 +45,6 @@ test("demo: 'run a command and tell me the output' — model uses exec, sees std
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
         attachYolo(engine, db);
 
-        const sessionId = await insertSession(db, `demo-exec-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "exec demo");
-        await (db.engine_set_loop_flags as PrepMethod).run({
-            loop_id: loopId, flags: JSON.stringify({ yolo: true }),
-        });
-
         const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
         // Natural-ish: user describes intent, doesn't dictate the ops.
         // Model has to recognize exec:// is the right tool, then read
@@ -62,6 +55,16 @@ test("demo: 'run a command and tell me the output' — model uses exec, sees std
             "The exec scheme captures shell output: write the command in an EDIT to exec://<some-id>,",
             "and the next turn's index will show the entry with stdout content. Look for the marker there.",
         ].join("\n");
+
+        const sessionId = await insertSession(db, `demo-exec-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        // loop.prompt is what packet.user.prompt sources from via the
+        // per-turn foist (drain+inject paradigm); pass the actual prompt
+        // here, not a label.
+        const loopId = await insertLoop(db, runId, 1, userPrompt);
+        await (db.engine_set_loop_flags as PrepMethod).run({
+            loop_id: loopId, flags: JSON.stringify({ yolo: true }),
+        });
 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, maxTurns: 8,
