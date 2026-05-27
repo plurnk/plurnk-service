@@ -380,11 +380,13 @@ export default class Engine {
             const struck = noOps || recordedFailed || state.turnErrors > 0;
             if (struck) {
                 state.streak++;
+                const reason = noOps ? "no_ops" : recordedFailed ? "recorded_failure" : "rail";
                 this.#pushTelemetry(loopId, {
                     kind: "strike",
                     streak: state.streak,
                     maxStrikes,
-                    reason: noOps ? "no_ops" : recordedFailed ? "recorded_failure" : "rail",
+                    reason,
+                    message: `strike ${state.streak}/${maxStrikes} (${reason}); ${maxStrikes - state.streak} before abandonment`,
                 });
                 if (state.streak >= maxStrikes) {
                     await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });

@@ -350,16 +350,17 @@ test("Engine.runLoop: strike telemetry surfaces in next packet with streak count
         // Turn 3's packet should show strike#2 (from turn 2).
         const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
         const t3 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[2] });
-        const t2packet = JSON.parse(t2?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; streak: number }> } };
-        };
-        const t3packet = JSON.parse(t3?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; streak: number }> } };
-        };
+        type StrikeErr = { kind: string; streak: number; maxStrikes: number; reason: string; message: string };
+        const t2packet = JSON.parse(t2?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
+        const t3packet = JSON.parse(t3?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
         const t2strike = t2packet.user.telemetry.errors.find((e) => e.kind === "strike");
         const t3strike = t3packet.user.telemetry.errors.find((e) => e.kind === "strike");
         assert.equal(t2strike?.streak, 1);
         assert.equal(t3strike?.streak, 2);
+        // §15.1 contract: every telemetry kind carries a human-readable
+        // `message` the model can act on without parsing kind-specific fields.
+        assert.match(t2strike?.message ?? "", /strike 1\/5/, "strike message names the streak");
+        assert.match(t2strike?.message ?? "", /before abandonment/i, "strike message names the abandonment threshold");
     } finally { await db.close(); }
 });
 

@@ -1013,12 +1013,19 @@ The slot for telemetry the model MUST react to right now: budget pressure and la
 **Plurnk-service rendering (v0):**
 
 - `budget` is rendered as a short markdown line. Unit follows §14.2 (character count); the exact rendering is engine-internal and may evolve without a schema change.
-- `errors[]` carries one object per actionless failure from the previous turn. Service's working element shape (subject to tightening as needs solidify):
-    ```
-    { kind: "parse" | "dispatch_crash" | "no_send" | "watchdog" | "budget_overflow" | "rail",
-      message: string,
-      detail?: unknown }
-    ```
-- Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as a one-line summary object into `telemetry.errors[]` on the next packet — same forced-confrontation pattern. Full detail stays queryable via `log://`. {§15.1-no-error-scheme}
+- `errors[]` carries telemetry from the previous turn's dispatch + rail evaluation. Each element has a required `kind` discriminator and a required `message` string (human-readable, model-actionable). Additional kind-specific fields are flat on the element — there is NO nested `detail` envelope; canonical-JSON serialization sorts keys for prefix-cache friendliness.
+- Wire format: one `* {canonical-JSON}` line per error under `# Plurnk System Errors`, in push order. Buffer drains on read — each error appears in exactly one packet. {§15.1-drain-on-read}
+
+**Kinds emitted by plurnk-service v0:**
+
+| `kind` | Source | Required fields | Additional fields |
+|---|---|---|---|
+| `action_failure` | Log entry with `status_rx ≥ 400` from previous turn | `kind`, `message`, `coordinate` (`<L>/<T>/<S>`), `op`, `status` | `target` (URI or null) |
+| `no_ops` | Rail #41 — turn ended with zero ops | `kind`, `message` | — |
+| `strike` | Rail #38 — strike streak bumped (no_ops / recorded_failure / rail) | `kind`, `message`, `streak`, `maxStrikes`, `reason` | — |
+| `cycle` | Rail #39 — repeating turn fingerprint pattern detected | `kind`, `message`, `period`, `cycles` | — |
+| `sudden_death` | Rail #40 — entering the last `maxStrikes`-sized window before `maxTurns` | `kind`, `message`, `remaining` | — |
+
+Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as the `action_failure` kind on the next packet — same forced-confrontation pattern. Full detail stays queryable via `log://`. {§15.1-no-error-scheme}
 
 **No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace.
