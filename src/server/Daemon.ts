@@ -84,7 +84,10 @@ export default class Daemon {
             tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
             defaultMimetype: "text/markdown",
         });
-        this.#engine = new Engine({ db, schemes: this.#schemes, mimetypes: this.#mimetypes });
+        this.#engine = new Engine({
+            db, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
+        });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();

@@ -7,6 +7,7 @@ import { readEntry, writeEntry, deleteEntry } from "./_entry-crud.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
+import { appendToChannel, setChannelState, openSubscription, closeSubscription } from "../core/ChannelWrite.ts";
 
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type SendResult = { status: number; error?: string };
@@ -21,47 +22,55 @@ const pathnameOf = (target: EditStatement["target"]): string | null => {
     return target.kind === "url" ? target.pathname : target.raw;
 };
 
-// Spawn the command in a shell and collect stdout/stderr in full. v0
-// captures the complete output then writes channels in one shot — the
-// model only sees turn-boundary state, so incremental writes during the
-// run buy nothing today. E.2 will switch to incremental writes + an
-// active subscription row for SEND[499] cancellation.
 interface SpawnOutcome {
-    stdout: string;
-    stderr: string;
     exitCode: number;     // 0 on clean exit; non-zero on failure; -1 on abort
     aborted: boolean;
 }
 
-const runShellCommand = async (command: string, signal: AbortSignal | undefined): Promise<SpawnOutcome> => {
+// Stream stdout/stderr live: each chunk hits the corresponding channel
+// via appendToChannel (which fires the daemon's stream/event notifier
+// for any WS clients on the session). On close, the channel state
+// flips static → closed/errored. ctx.signal aborts the subprocess; the
+// child_process spawn binding wires this in for us, and the
+// AbortError path ends with the channels at state=errored.
+const streamShellCommand = async (
+    command: string,
+    ctx: PlurnkSchemeContext,
+    entryId: number,
+): Promise<SpawnOutcome> => {
+    const { db, streamEventNotify } = ctx;
     return new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn(command, { shell: true, signal });
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
-        child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+        const child = spawn(command, { shell: true, signal: ctx.signal });
+        // Push promise queue so we don't race appends against close. Each
+        // `data` event registers an in-flight append; close awaits the
+        // whole queue before resolving.
+        const pending: Promise<void>[] = [];
+        child.stdout.on("data", (chunk: Buffer) => {
+            pending.push(appendToChannel(db, {
+                entryId, channel: "stdout", chunk: chunk.toString("utf8"), notify: streamEventNotify,
+            }));
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+            pending.push(appendToChannel(db, {
+                entryId, channel: "stderr", chunk: chunk.toString("utf8"), notify: streamEventNotify,
+            }));
+        });
         child.on("error", (err) => {
-            // AbortError fires when the signal aborts mid-run. Treat as a
-            // clean cancellation outcome rather than a hard reject so the
-            // caller can still record what we captured.
             if ((err as NodeJS.ErrnoException).code === "ABORT_ERR") {
-                resolvePromise({
-                    stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-                    stderr: Buffer.concat(stderrChunks).toString("utf8"),
-                    exitCode: -1,
-                    aborted: true,
-                });
+                Promise.all(pending).then(() => {
+                    resolvePromise({ exitCode: -1, aborted: true });
+                }).catch(rejectPromise);
                 return;
             }
             rejectPromise(err);
         });
         child.on("close", (code, killedBySignal) => {
-            resolvePromise({
-                stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-                stderr: Buffer.concat(stderrChunks).toString("utf8"),
-                exitCode: code ?? -1,
-                aborted: killedBySignal !== null,
-            });
+            Promise.all(pending).then(() => {
+                resolvePromise({
+                    exitCode: code ?? -1,
+                    aborted: killedBySignal !== null,
+                });
+            }).catch(rejectPromise);
         });
     });
 };
@@ -105,14 +114,18 @@ export default class Exec {
         };
     }
 
-    // applyResolution: post-accept. Spawn, capture, write entry. Returns
-    // status=200 whenever the operation completed (clean OR non-zero exit) —
-    // the model's signal for "ran but failed" is channel.state=errored and
-    // log_entries.outcome=exit_N. Status=500 is reserved for engine-fault
-    // errors (missing attrs, write failure). This matches the engine's
-    // proposal contract: a >=400 from applyResolution is treated as
-    // apply_failed and downgrades the resolution to a reject, which is NOT
-    // what "command exited 1" means.
+    // applyResolution: post-accept. Create the entry with two empty
+    // active channels FIRST, open the subscription row, then spawn —
+    // chunks arriving from stdout/stderr land via appendToChannel
+    // (which also fires stream/event for WS clients). On exit, channels
+    // transition active → closed (clean) or → errored (non-zero / aborted)
+    // and the subscription row closes.
+    //
+    // Always returns status=200 for completed runs. Failure mode lives in
+    // log_entries.outcome (exit_N / aborted) and channel.state — not in
+    // the dispatch status — because the engine's proposal contract treats
+    // applyResolution >=400 as "apply_failed reject" which would lose the
+    // captured output to the model.
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: PlurnkSchemeContext,
@@ -127,16 +140,40 @@ export default class Exec {
             return { status: 500, outcome: "missing_pathname" };
         }
 
-        const outcome = await runShellCommand(command, ctx.signal);
-        const terminalState = outcome.exitCode === 0 ? "closed" : "errored";
-        const entryData: EntryData = {
+        const seed: EntryData = {
             channels: {
-                stdout: { content: outcome.stdout, mimetype: "text/plain", state: terminalState },
-                stderr: { content: outcome.stderr, mimetype: "text/plain", state: terminalState },
+                stdout: { content: "", mimetype: "text/plain", state: "active" },
+                stderr: { content: "", mimetype: "text/plain", state: "active" },
             },
             tags: [],
         };
-        await writeEntry(pathname, entryData, ctx, "exec");
+        const { entryId } = await writeEntry(pathname, seed, ctx, "exec");
+        if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
+
+        // handle = the command — gives forensics a non-empty string. v0
+        // doesn't reuse the row across cancellation; the subscription
+        // exists for E.3 SEND[499] routing (find_active_subscription).
+        const subscriptionId = await openSubscription(ctx.db, {
+            runId: ctx.runId, entryId, scheme: "exec", handle: command,
+        });
+
+        let outcome: SpawnOutcome;
+        try {
+            outcome = await streamShellCommand(command, ctx, entryId);
+        } catch (err) {
+            // Hard spawn failure: subscription closes at 500, both channels
+            // flip to errored, applyResolution surfaces a stable shape.
+            await setChannelState(ctx.db, { entryId, channel: "stdout", state: "errored", notify: ctx.streamEventNotify });
+            await setChannelState(ctx.db, { entryId, channel: "stderr", state: "errored", notify: ctx.streamEventNotify });
+            await closeSubscription(ctx.db, { subscriptionId, status: 500 });
+            return { status: 500, outcome: "spawn_failed", body: err instanceof Error ? err.message : String(err) };
+        }
+
+        const closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
+        const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
+        await setChannelState(ctx.db, { entryId, channel: "stdout", state: terminalState, notify: ctx.streamEventNotify });
+        await setChannelState(ctx.db, { entryId, channel: "stderr", state: terminalState, notify: ctx.streamEventNotify });
+        await closeSubscription(ctx.db, { subscriptionId, status: closeStatus });
 
         return {
             status: 200,

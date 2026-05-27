@@ -1,6 +1,7 @@
 // Shared types for the scheme extension surface. See SCHEMES.md.
 
 import type { Db } from "./Db.ts";
+import type { StreamEventNotify } from "./ChannelWrite.ts";
 
 export type WriterTier = "model" | "client" | "system" | "plugin";
 
@@ -17,6 +18,11 @@ export interface PlurnkSchemeContext {
     readonly turnId: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
+    // Optional `stream/event` notifier. Daemon-constructed engines wire
+    // this to broadcast to WS clients; bare engines (intg tests) leave it
+    // undefined and channel writes happen silently. Schemes pass this
+    // straight to appendToChannel / setChannelState.
+    readonly streamEventNotify?: StreamEventNotify;
 }
 
 export interface SchemeFlagAffinity {

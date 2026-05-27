@@ -6,6 +6,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
+import type { StreamEventNotify } from "./ChannelWrite.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
@@ -274,9 +275,17 @@ export default class Engine {
     // chains come later if a real consumer needs them.
     #proposalPendingListeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, mimetypes }: { db: Db; schemes: SchemeRegistry; mimetypes?: Mimetypes }) {
+    #streamEventNotify: StreamEventNotify | undefined;
+
+    constructor({ db, schemes, mimetypes, streamEventNotify }: {
+        db: Db;
+        schemes: SchemeRegistry;
+        mimetypes?: Mimetypes;
+        streamEventNotify?: StreamEventNotify;
+    }) {
         this.#db = db;
         this.#schemes = schemes;
+        this.#streamEventNotify = streamEventNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -859,6 +868,7 @@ export default class Engine {
             sessionId, runId, loopId, turnId,
             writer: origin as WriterTier,
             signal: undefined,
+            streamEventNotify: this.#streamEventNotify,
         };
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -955,6 +965,7 @@ export default class Engine {
             const applyCtx: PlurnkSchemeContext = {
                 db: this.#db, sessionId, runId, loopId, turnId,
                 writer: "model", signal: undefined,
+                streamEventNotify: this.#streamEventNotify,
             };
             const applyResult = await handler.applyResolution({
                 attrs: (originalResult.attrs ?? {}) as object,

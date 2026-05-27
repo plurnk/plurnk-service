@@ -88,6 +88,10 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 SELECT id, run_id, entry_id, scheme, handle, closed_at, close_status
 FROM subscriptions WHERE id = $id;
 
+-- PREP: test_get_subscription_by_entry
+SELECT id, run_id, entry_id, scheme, handle, closed_at, close_status
+FROM subscriptions WHERE run_id = $run_id AND entry_id = $entry_id;
+
 -- PREP: test_count_active_subscriptions
 SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
 

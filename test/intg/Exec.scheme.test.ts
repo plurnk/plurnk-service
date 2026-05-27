@@ -159,6 +159,71 @@ test("exec.edit: empty body → 400", async () => {
     });
 });
 
+test("exec applyResolution: subscription row opens before spawn and closes with terminal status", async () => {
+    await withSession(async (ctx) => {
+        const stmt = execEditStmt("sub", "echo hi");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        await dispatchPromise;
+
+        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            scheme: "exec", pathname: "sub",
+        });
+        assert.ok(entryRow);
+        const sub = await (ctx.db.test_get_subscription_by_entry as PrepMethod).get<{
+            scheme: string; handle: string; closed_at: string | null; close_status: number | null;
+        }>({ run_id: ctx.runId, entry_id: entryRow.id });
+        assert.equal(sub?.scheme, "exec");
+        assert.equal(sub?.handle, "echo hi", "handle records the command for forensics");
+        assert.ok(sub?.closed_at, "subscription closed after spawn exit");
+        assert.equal(sub?.close_status, 200, "clean exit closes the subscription at 200");
+    });
+});
+
+test("exec applyResolution: streamEventNotify fires on chunks AND on terminal state transition", async () => {
+    type Event = { sessionId: number; entryId: number; channel: string; state: string; contentLength: number };
+    const events: Event[] = [];
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(),
+            streamEventNotify: (sessionId, event) => events.push({ sessionId, ...event }),
+        });
+        const sessionId = await insertSession(db, `exec-notify-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "exec notify test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const stmt = execEditStmt("notif", "echo one");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        engine.resolveProposal(logEntryId, { decision: "accept" });
+        await dispatchPromise;
+
+        const sessionEvents = events.filter((e) => e.sessionId === sessionId);
+        // At least one chunk event (stdout), then two state transitions
+        // (stdout → closed, stderr → closed).
+        const chunkEvents = sessionEvents.filter((e) => e.state === "active");
+        const closedEvents = sessionEvents.filter((e) => e.state === "closed");
+        assert.ok(chunkEvents.length >= 1, `expected >=1 chunk event, got ${chunkEvents.length}`);
+        assert.ok(chunkEvents.some((e) => e.channel === "stdout" && e.contentLength === 4),
+            `stdout chunk event reports contentLength=4 (for "one\\n"); got ${JSON.stringify(chunkEvents)}`);
+        assert.equal(closedEvents.length, 2, "both stdout and stderr transition to closed");
+        assert.ok(closedEvents.some((e) => e.channel === "stdout"));
+        assert.ok(closedEvents.some((e) => e.channel === "stderr"));
+    } finally { await db.close(); }
+});
+
 test("exec.read: after applyResolution, READ returns the stdout channel content", async () => {
     await withSession(async (ctx) => {
         const editStmt = execEditStmt("greet2", "echo world");
