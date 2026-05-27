@@ -43,11 +43,24 @@ test("loops: status enum — 102, 200, 499 all accepted", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: status enum rejects other values (e.g. 100, 201, 500)", async () => {
+test("loops: status enum accepts 100 (queued) — drain prerequisite", async () => {
+    // 100 = "enqueued, awaiting drain claim." Drain flips 100 → 102 atomically
+    // when it picks a loop up. Pre-drain enqueueing relies on this state being
+    // legal in the CHECK constraint.
+    const db = await openMigrated();
+    try {
+        const runId = await seedRun(db, "ws-loops-queued");
+        await (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 1, status: 100, prompt: "queued" });
+        const rows = await (db.test_loops_statuses_by_run as PrepMethod).all<{ status: number }>({ run_id: runId });
+        assert.deepEqual(rows.map((r) => r.status), [100]);
+    } finally { await db.close(); }
+});
+
+test("loops: status enum rejects non-enum values (e.g. 201, 500, 0, -1)", async () => {
     const db = await openMigrated();
     try {
         const runId = await seedRun(db, "ws-loops-badenum");
-        for (const bad of [100, 201, 500, 0, -1]) {
+        for (const bad of [201, 500, 0, -1]) {
             await assert.rejects(
                 () => (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 1, status: bad, prompt: "x" }),
                 /CHECK constraint failed/,

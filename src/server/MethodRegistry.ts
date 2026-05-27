@@ -13,11 +13,38 @@ export type NotifyTarget = "this" | "all" | { sessionId: number };
 
 export type MethodHandler = (params: unknown, ctx: HandlerContext) => Promise<unknown>;
 
+// Daemon-facing methods that RPC handlers reach for. Keeps HandlerContext
+// from importing Daemon directly (cycle: Daemon → MethodRegistry →
+// HandlerContext → Daemon). The drain + inject surface lives here.
+
+export interface DrainLoopResult {
+    loopId: number;
+    turnIds: number[];
+    finalStatus: number;
+    hitMaxTurns: boolean;
+}
+
+export interface DaemonSurface {
+    inject(args: {
+        sessionId: number; runId: number; prompt: string;
+        provider: Provider; persona: string; systemPrompt: string;
+        maxTurns?: number; flags?: { yolo?: boolean }; personaOverride?: string | null;
+    }): Promise<{
+        action: "injected_next_turn" | "enqueued_new_loop";
+        loopId: number;
+        turnSeq?: number;
+        firstLoopPromise?: Promise<DrainLoopResult>;
+        drainPromise?: Promise<unknown>;
+    }>;
+    cancelDrain(runId: number, reason?: string): boolean;
+}
+
 export interface HandlerContext {
     registry: MethodRegistry;
     db: Db;
     engine: Engine;
     provider: Provider | null;
+    daemon: DaemonSurface;
     session: ClientEnvelope | null;
     attachSession: (envelope: ClientEnvelope) => void;
     notify: (target: NotifyTarget, method: string, params?: unknown) => void;

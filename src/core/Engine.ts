@@ -4,6 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
+import { writeEntry } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
@@ -492,22 +493,26 @@ export default class Engine {
         if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
         const turnId = openRow.id;
 
-        // Pre-model writes. For the loop's first turn (DB sequence 1),
-        // the user's prompt becomes the first action: a system-origin
-        // EDIT against `plurnk://prompt/<loop_id>` (loop-scoped indexed
-        // entry, body=prompt text). The log row records the EDIT;
-        // content lives at the plurnk:// entry. Model ops dispatch from
-        // sequence=2 onward on the first turn; 1 onward thereafter.
-        // 1-based throughout (migration 019).
+        // Pre-model writes. Each turn opens with a system-origin EDIT
+        // against `plurnk://prompt/<loop_id>/<seq>` IF there's a prompt
+        // for THIS turn the model hasn't seen yet:
+        //   - Turn 1: loop.prompt is the initial user prompt.
+        //   - Turn N>1: only if Engine.inject (or wake-on-completion via
+        //     daemon.inject) wrote a prompt entry for this turn slot
+        //     between turn N-1 and N. Inject writes directly to entries;
+        //     we DON'T re-foist here for N>1.
+        // The log records the EDIT for forensics. Model ops dispatch
+        // from sequence=2 onward on prompt-foisted turns; 1 onward
+        // otherwise.
         let nextActionIndex = 1;
         if (seq === 1) {
             const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptPath: UrlPath = {
-                    kind: "url", raw: `plurnk://prompt/${loopId}`,
+                    kind: "url", raw: `plurnk://prompt/${loopId}/${seq}`,
                     scheme: "plurnk", username: null, password: null,
                     hostname: null, port: null,
-                    pathname: `prompt/${loopId}`, params: {}, fragment: null,
+                    pathname: `prompt/${loopId}/${seq}`, params: {}, fragment: null,
                 };
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
@@ -655,7 +660,15 @@ export default class Engine {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         const system_definition = byRole("system");
-        const prompt = byRole("user");
+        // user.prompt sources from the loop's most recent prompt entry first
+        // (plurnk://prompt/<loop_id>/<N> for the highest N written to date).
+        // This is what inject + the turn-1 foist write into. Falls back to
+        // the runLoop caller's messages.user for tests that bypass the
+        // foist mechanism entirely.
+        const latestPromptRow = await (this.#db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({ pattern: `prompt/${loopId}/%` });
+        const prompt = (latestPromptRow !== undefined && typeof latestPromptRow.content === "string" && latestPromptRow.content.length > 0)
+            ? latestPromptRow.content
+            : byRole("user");
         // Resolve persona cascade: loops.persona > runs.persona >
         // sessions.persona > caller-supplied default. SQL coalesces in one
         // query; null result means no DB override exists, use the default.
@@ -829,11 +842,15 @@ export default class Engine {
     async #buildIndex(runId: number, currentLoopId: number): Promise<object[]> {
         const rows = await (this.#db.engine_render_index as PrepMethod).all<IndexedRow>({ run_id: runId });
         const tagsStmt = this.#db.engine_entry_tags as PrepMethod;
-        // Foist the CURRENT loop's prompt entry out of the index render —
-        // it's materialized in packet.user.prompt instead. Previous loops'
-        // prompt entries stay in the index, addressable for the model to
-        // HIDE if it wants.
-        const foistedPathname = `prompt/${currentLoopId}`;
+        // Foist the CURRENT loop's prompt entries out of the index render —
+        // their bodies are materialized in packet.user.prompt instead. With
+        // multi-turn injection, a loop can have multiple prompt entries at
+        // plurnk://prompt/<loop_id>/<N>; all of them get foisted, leaving
+        // only previous loops' prompts (still addressable for HIDE).
+        const foistedPrefix = `prompt/${currentLoopId}/`;
+        // Backward compat: legacy single-slot path. Tests / older runs may
+        // still have a `prompt/<loop_id>` entry (no trailing /N); foist it too.
+        const foistedExact = `prompt/${currentLoopId}`;
 
         const entries = new Map<number, {
             id: number; version: number; scope: "agent" | "session"; session_id: number | null;
@@ -847,7 +864,8 @@ export default class Engine {
         }>();
 
         for (const row of rows) {
-            if (row.scheme === "plurnk" && row.pathname === foistedPathname) continue;
+            if (row.scheme === "plurnk"
+                && (row.pathname === foistedExact || row.pathname.startsWith(foistedPrefix))) continue;
             let entry = entries.get(row.entry_id);
             if (entry === undefined) {
                 const tagRows = await tagsStmt.all<{ tag: string }>({ entry_id: row.entry_id });
@@ -1061,6 +1079,45 @@ export default class Engine {
     async hasActiveLoopForRun(runId: number): Promise<boolean> {
         const row = await (this.#db.engine_count_active_loops_for_run as PrepMethod).get<{ n: number }>({ run_id: runId });
         return (row?.n ?? 0) > 0;
+    }
+
+    // Inject a prompt into the run's currently-executing loop. Writes a
+    // plurnk://prompt/<loop_id>/<next-turn> entry whose body becomes
+    // packet.user.prompt at the next turn boundary. Last-wins: if two
+    // injects target the same next-turn slot, the second overwrites the
+    // first.
+    //
+    // Returns null when no loop in the run is currently active (status=102).
+    // The daemon-side inject path then enqueues a fresh loop with this
+    // prompt; engine doesn't open loops itself.
+    //
+    // Rummy parallel: AgentLoop.inject(). The "active drain → write
+    // prompt entry, return immediately" branch.
+    async inject(runId: number, prompt: string): Promise<
+        { loopId: number; turnSeq: number } | null
+    > {
+        const loopRow = await (this.#db.drain_current_loop_for_run as PrepMethod).get<{ id: number; sequence: number }>({ run_id: runId });
+        if (loopRow === undefined) return null;
+        const loopId = loopRow.id;
+        const turnRow = await (this.#db.drain_next_turn_seq_for_loop as PrepMethod).get<{ next: number }>({ loop_id: loopId });
+        const turnSeq = turnRow?.next ?? 1;
+        const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
+        if (sessionRow === undefined) throw new Error(`Engine.inject: run ${runId} not found`);
+        const pathname = `prompt/${loopId}/${turnSeq}`;
+        const ctx: PlurnkSchemeContext = {
+            db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
+            turnId: 0,                   // no turn open at inject time; entries don't pin turnId
+            writer: "system",
+            signal: this.#loopAborts.get(loopId)?.signal,
+            streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
+        };
+        const entry: EntryData = {
+            channels: { body: { content: prompt, mimetype: "text/markdown" } },
+            tags: [],
+        };
+        await writeEntry(pathname, entry, ctx, "plurnk");
+        return { loopId, turnSeq };
     }
 
     // Subscribe to proposal-pending events. Daemon registers a listener

@@ -1,15 +1,12 @@
-// loop.run — model-driven loop. Reads sysprompt, creates a new model loop
-// in the connection's run, calls Engine.runLoop with onDispatch firing
-// log/entry notifications, fires loop/terminated on completion.
+// loop.run — model-driven loop. Validates params, resolves provider,
+// delegates to daemon.inject. inject decides: active drain → write prompt
+// entry for next turn; idle → enqueue + start drain.
 
 import { readFile } from "node:fs/promises";
 import type MethodRegistry from "../MethodRegistry.ts";
-import type { PrepMethod } from "../../core/Db.ts";
-import { fetchLogEntry } from "../logEntry.ts";
 import { PATHS } from "../../index.ts";
 import { parseAliasesFromEnv, instantiateProvider } from "../../core/ProviderRegistry.ts";
 import type { Provider } from "../../core/ProviderRegistry.ts";
-import { DEFAULT_LOOP_FLAGS } from "../../core/scheme-types.ts";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
 // Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate
@@ -84,56 +81,56 @@ export const register = (registry: MethodRegistry): void => {
 
             const { sessionId, runId } = ctx.session;
             const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
-            // packet.system.persona — default from persona.md. issue #150 will
-            // add loop.run({persona}) and session.attach({persona}) overrides;
-            // until then every loop carries the default.
             const persona = await readFile(PATHS.defaultPersona, "utf8");
 
-            const seqRow = await (ctx.db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
-            if (seqRow === undefined) throw new Error("loop.run: next-sequence query returned no row");
-            const loop = await (ctx.db.loop_run_insert_loop as PrepMethod).get<{ id: number }>({
-                run_id: runId, sequence: seqRow.next, prompt: p.prompt, persona: loopPersona,
+            // Delegate to the daemon's unified inject surface. Active-drain
+            // → write prompt entry for next turn (returns immediately).
+            // Idle run → enqueue + start drain (await drain to completion).
+            const injected = await ctx.daemon.inject({
+                sessionId, runId, prompt: p.prompt,
+                provider, persona, systemPrompt,
+                maxTurns, flags: p.flags, personaOverride: loopPersona,
             });
-            if (loop === undefined) throw new Error("loop.run: loop insert returned no row");
-            const loopId = loop.id;
 
-            // Persist per-loop flags if supplied. Merge over DEFAULT_LOOP_FLAGS
-            // so the JSON column always has a complete shape — yolo listener
-            // and scheme dispatch read with the same merge convention.
-            // (Param validation happened up-front; this branch only persists.)
-            if (p.flags !== undefined) {
-                const merged = { ...DEFAULT_LOOP_FLAGS, ...p.flags };
-                await (ctx.db.engine_set_loop_flags as PrepMethod).run({
-                    loop_id: loopId, flags: JSON.stringify(merged),
-                });
+            if (injected.action === "injected_next_turn") {
+                // Active drain — prompt landed in the current loop's
+                // next-turn slot. Return immediately; the existing
+                // drain's notifications surface progress.
+                return {
+                    loopId: injected.loopId,
+                    turnSeq: injected.turnSeq,
+                    action: "injected_next_turn",
+                    finalStatus: 100,
+                    hitMaxTurns: false,
+                    turnIds: [],
+                };
             }
 
-            const onDispatch = (logEntryId: number): void => {
-                void (async () => {
-                    const entry = await fetchLogEntry(ctx.db, logEntryId);
-                    ctx.notify({ sessionId }, "log/entry", { entry });
-                })();
+            // enqueued_new_loop:
+            //   - Drain started by THIS call: firstLoopPromise is the
+            //     promise for the loop just enqueued; await it.
+            //   - Drain was already active (concurrent loop.run race
+            //     where engine.inject returned null): the loop is in
+            //     the queue, the existing drain will claim it. No
+            //     firstLoopPromise — return immediately with status=100
+            //     and let the client subscribe to loop/terminated.
+            if (injected.firstLoopPromise === undefined) {
+                return {
+                    loopId: injected.loopId,
+                    action: "enqueued_new_loop",
+                    finalStatus: 100,
+                    hitMaxTurns: false,
+                    turnIds: [],
+                };
+            }
+            const first = await injected.firstLoopPromise;
+            return {
+                loopId: first.loopId,
+                turnIds: first.turnIds,
+                finalStatus: first.finalStatus,
+                hitMaxTurns: first.hitMaxTurns,
+                action: "enqueued_new_loop",
             };
-
-            const result = await ctx.engine.runLoop({
-                provider,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: p.prompt },
-                ],
-                persona,
-                sessionId, runId, loopId, maxTurns,
-                origin: "model",
-                onDispatch,
-            });
-
-            ctx.notify({ sessionId }, "loop/terminated", {
-                loopId,
-                finalStatus: result.finalStatus,
-                hitMaxTurns: result.hitMaxTurns,
-            });
-
-            return { loopId, ...result };
         },
         description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
         params: {

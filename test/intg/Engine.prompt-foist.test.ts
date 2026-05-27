@@ -39,7 +39,7 @@ test("loop start creates plurnk://prompt/<loop_id> entry as a system-origin EDIT
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "plurnk", pathname: `prompt/${loopId}`,
+            session_id: sessionId, scheme: "plurnk", pathname: `prompt/${loopId}/1`,
         });
         assert.ok(entry !== undefined, "plurnk://prompt/<loop_id> entry exists");
         const body = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry.id, name: "body" }))?.content;
@@ -91,8 +91,10 @@ test("previous loops' prompt entries stay in packet.system.index", async () => {
         const packet = JSON.parse(row?.packet ?? "{}") as {
             system: { index: Array<{ scheme: string | null; pathname: string }> };
         };
-        const loop1InIndex = packet.system.index.find((e) => e.scheme === "plurnk" && e.pathname === `prompt/${loop1Id}`);
-        const loop2InIndex = packet.system.index.find((e) => e.scheme === "plurnk" && e.pathname === `prompt/${loop2Id}`);
+        // Loop1's prompt entries (any turn slot) should remain in the index
+        // when loop2 renders; loop2's own prompt entries are foisted out.
+        const loop1InIndex = packet.system.index.find((e) => e.scheme === "plurnk" && e.pathname.startsWith(`prompt/${loop1Id}/`));
+        const loop2InIndex = packet.system.index.find((e) => e.scheme === "plurnk" && e.pathname.startsWith(`prompt/${loop2Id}/`));
         assert.ok(loop1InIndex !== undefined, "loop1's prompt is visible to loop2");
         assert.equal(loop2InIndex, undefined, "loop2's own prompt is foisted out");
     } finally { await db.close(); }

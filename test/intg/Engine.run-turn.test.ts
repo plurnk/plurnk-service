@@ -78,9 +78,16 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: packet stores system + user content from messages", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+test("Engine.runTurn: packet stores system + user content from messages (no loop-prompt foist)", async () => {
+    // packet.user.prompt sources first from the loop's prompt foist
+    // entry; falls back to messages.user when no foist exists. Test the
+    // fallback explicitly by using a loop with an empty prompt.
+    const db = await openMigrated();
     try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "");  // empty prompt = no foist
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextSize: 100000, responses: [response([sendStmt(102, "ok")])] });
         const result = await engine.runTurn({
             provider, sessionId, runId, loopId,
@@ -595,7 +602,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         assert.equal(packet.system.log[0].op, "EDIT");
         assert.equal(packet.system.log[0].origin, "system");
         assert.equal(packet.system.log[0].target?.scheme, "plurnk");
-        assert.equal(packet.system.log[0].target?.pathname, `prompt/${loopId}`);
+        assert.equal(packet.system.log[0].target?.pathname, `prompt/${loopId}/1`);
     } finally { await db.close(); }
 });
 

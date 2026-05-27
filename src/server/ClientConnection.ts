@@ -7,7 +7,7 @@
 import type { WebSocket } from "ws";
 import type Engine from "../core/Engine.ts";
 import type MethodRegistry from "./MethodRegistry.ts";
-import type { HandlerContext, NotifyTarget, Provider } from "./MethodRegistry.ts";
+import type { DaemonSurface, HandlerContext, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import type { Db } from "../core/Db.ts";
 import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
@@ -47,6 +47,7 @@ export interface ClientConnectionOptions {
     db: Db;
     engine: Engine;
     provider: Provider | null;
+    daemon: DaemonSurface;
     broadcast: (target: NotifyTarget, from: ClientConnection, method: string, params?: unknown) => void;
 }
 
@@ -56,15 +57,17 @@ export default class ClientConnection {
     #db: Db;
     #engine: Engine;
     #provider: Provider | null;
+    #daemon: DaemonSurface;
     #broadcast: ClientConnectionOptions["broadcast"];
     #session: ClientEnvelope | null = null;
 
-    constructor({ ws, registry, db, engine, provider, broadcast }: ClientConnectionOptions) {
+    constructor({ ws, registry, db, engine, provider, daemon, broadcast }: ClientConnectionOptions) {
         this.#ws = ws;
         this.#registry = registry;
         this.#db = db;
         this.#engine = engine;
         this.#provider = provider;
+        this.#daemon = daemon;
         this.#broadcast = broadcast;
         this.#ws.on("message", (data) => this.#handleMessage(data));
     }
@@ -139,6 +142,7 @@ export default class ClientConnection {
             db: this.#db,
             engine: this.#engine,
             provider: this.#provider,
+            daemon: this.#daemon,
             session: this.#session,
             attachSession: (envelope) => {
                 if (this.#session !== null) {
