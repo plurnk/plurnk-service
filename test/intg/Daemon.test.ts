@@ -367,7 +367,7 @@ test("client loop status transitions to 200 on clean disconnect (after a client 
         assert.equal(await (db.test_get_loop_by_run as PrepMethod).get({ run_id: run?.id }), undefined);
 
         // First op lazily creates the client loop.
-        await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "y" });
+        await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "y" });
         const loop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
         const loopId = loop!.id;
 

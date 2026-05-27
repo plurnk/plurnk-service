@@ -46,9 +46,9 @@ test("entry.read returns full entry shape (channels + tags + metadata)", async (
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "entry-read-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://france/capital", content: "Paris", tags: ["france", "europe"] });
+            await rpcCall(ws, 2, "op.edit", { target: "known://france/capital", content: "Paris", tags: ["france", "europe"] });
 
-            const r = await rpcCall(ws, 3, "entry.read", { path: "known://france/capital" });
+            const r = await rpcCall(ws, 3, "entry.read", { target: "known://france/capital" });
             const result = r.result as { status: number; entry: { scheme: string; pathname: string; channels: Record<string, { content: string; mimetype: string }>; tags: string[] } };
             assert.equal(result.status, 200);
             assert.equal(result.entry.scheme, "known");
@@ -65,7 +65,7 @@ test("entry.read returns 404 for missing entry", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "404-test" });
-            const r = await rpcCall(ws, 2, "entry.read", { path: "known://does-not-exist" });
+            const r = await rpcCall(ws, 2, "entry.read", { target: "known://does-not-exist" });
             const result = r.result as { status: number; entry: null };
             assert.equal(result.status, 404);
             assert.equal(result.entry, null);
@@ -78,7 +78,7 @@ test("entry.read requires URL-shaped path", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "shape-test" });
-            const r = await rpcCall(ws, 2, "entry.read", { path: "not-a-url" });
+            const r = await rpcCall(ws, 2, "entry.read", { target: "not-a-url" });
             assert.equal(r.error?.code, -32603);
             assert.match(r.error?.message ?? "", /URL-shaped/);
         } finally { ws.close(); }
@@ -93,8 +93,8 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "fragment-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "body content" });
-            const r = await rpcCall(ws, 3, "entry.read", { path: "known://x#anything" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "body content" });
+            const r = await rpcCall(ws, 3, "entry.read", { target: "known://x#anything" });
             if (r.result === undefined) {
                 throw new Error(`entry.read failed: ${JSON.stringify(r)}`);
             }
@@ -110,8 +110,8 @@ test("log.read returns recent entries from the attached session", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "log-read-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://a", content: "alpha" });
-            await rpcCall(ws, 3, "op.edit", { path: "known://b", content: "beta" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://a", content: "alpha" });
+            await rpcCall(ws, 3, "op.edit", { target: "known://b", content: "beta" });
 
             const r = await rpcCall(ws, 4, "log.read");
             const result = r.result as { status: number; entries: Array<{ op: string; origin: string }> };
@@ -129,7 +129,7 @@ test("log.read respects limit", async () => {
         try {
             await rpcCall(ws, 1, "session.create", { name: "limit-test" });
             for (let i = 0; i < 5; i++) {
-                await rpcCall(ws, 10 + i, "op.edit", { path: `known://e${i}`, content: `v${i}` });
+                await rpcCall(ws, 10 + i, "op.edit", { target: `known://e${i}`, content: `v${i}` });
             }
             const r = await rpcCall(ws, 20, "log.read", { limit: 3 });
             const result = r.result as { entries: Array<unknown> };
@@ -143,12 +143,12 @@ test("log.read filters by sinceId for incremental fetch", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "since-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://a", content: "first" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://a", content: "first" });
             const firstFetch = await rpcCall(ws, 3, "log.read");
             const firstResult = firstFetch.result as { entries: Array<{ id: number }> };
             const lastSeenId = firstResult.entries[0].id;
 
-            await rpcCall(ws, 4, "op.edit", { path: "known://b", content: "second" });
+            await rpcCall(ws, 4, "op.edit", { target: "known://b", content: "second" });
 
             const incremental = await rpcCall(ws, 5, "log.read", { sinceId: lastSeenId });
             const incrementalResult = incremental.result as { entries: Array<{ id: number; tx: { op: string; target: { pathname: string } } }> };
@@ -163,7 +163,7 @@ test("log.read entries have hydrated JSON columns", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "hydration-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "body", tags: ["a", "b"] });
+            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "body", tags: ["a", "b"] });
 
             const r = await rpcCall(ws, 3, "log.read");
             const result = r.result as { entries: Array<{ tx: unknown; signal: unknown; status_rx: number }> };
@@ -186,8 +186,8 @@ test("log.read is session-scoped — doesn't see other sessions' logs", async ()
             await rpcCall(wsA, 1, "session.create", { name: "session-A" });
             await rpcCall(wsB, 1, "session.create", { name: "session-B" });
 
-            await rpcCall(wsA, 2, "op.edit", { path: "known://a", content: "from A" });
-            await rpcCall(wsB, 2, "op.edit", { path: "known://b", content: "from B" });
+            await rpcCall(wsA, 2, "op.edit", { target: "known://a", content: "from A" });
+            await rpcCall(wsB, 2, "op.edit", { target: "known://b", content: "from B" });
 
             const rA = await rpcCall(wsA, 3, "log.read");
             const rB = await rpcCall(wsB, 3, "log.read");

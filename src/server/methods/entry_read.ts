@@ -5,7 +5,7 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import type { Db, PrepMethod } from "../../core/Db.ts";
 
 interface Params {
-    path: string;
+    target: string;
     sessionId?: number;
 }
 
@@ -54,9 +54,9 @@ export const register = (registry: MethodRegistry): void => {
     registry.registerMethod("entry.read", {
         handler: async (params, ctx) => {
             const p = (params ?? {}) as Params;
-            if (typeof p.path !== "string" || p.path.length === 0) throw new Error("entry.read requires params.path: string");
-            const parsed = parsePath(p.path);
-            if (parsed === null) throw new Error(`entry.read: path must be URL-shaped (scheme://pathname); got: ${p.path}`);
+            if (typeof p.target !== "string" || p.target.length === 0) throw new Error("entry.read requires params.target: string");
+            const parsed = parsePath(p.target);
+            if (parsed === null) throw new Error(`entry.read: path must be URL-shaped (scheme://pathname); got: ${p.target}`);
 
             const sessionId = p.sessionId ?? ctx.session?.sessionId;
             if (sessionId === undefined) throw new Error("entry.read requires a sessionId (either via params or session attach)");
@@ -67,7 +67,7 @@ export const register = (registry: MethodRegistry): void => {
         },
         description: "Read the full entry shape (channels + tags + metadata) at the given path.",
         params: {
-            path: "string — entry path (URL-shaped: scheme://pathname)",
+            target: "string — entry path (URL-shaped: scheme://pathname)",
             sessionId: "number? — defaults to the connection's attached session",
         },
         requiresInit: true,

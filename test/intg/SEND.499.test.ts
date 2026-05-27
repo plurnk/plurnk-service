@@ -157,7 +157,7 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
 
     try {
         await rpcCall(1, "session.create", { name: "test-499" });
-        await rpcCall(2, "op.edit", { path: "known://x", content: "hi" });
+        await rpcCall(2, "op.edit", { target: "known://x", content: "hi" });
         const r = await rpcCall(3, "op.send", { status: 499, recipient: "known://x" });
         assert.equal(r.result?.status, 404, "SEND[499] on entry with no subscription is 404");
     } finally {

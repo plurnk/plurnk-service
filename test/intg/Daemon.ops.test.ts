@@ -9,7 +9,7 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
         try {
             await rpcCall(ws, 1, "session.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                path: "known://france/capital", content: "Paris", tags: ["france", "geography"],
+                target: "known://france/capital", content: "Paris", tags: ["france", "geography"],
             });
             assert.equal((response.result as { status: number }).status, 201);
 
@@ -32,8 +32,8 @@ test("op.read fetches an entry's body", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "read-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "hello" });
-            const response = await rpcCall(ws, 3, "op.read", { path: "known://x" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "hello" });
+            const response = await rpcCall(ws, 3, "op.read", { target: "known://x" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "hello");
@@ -46,7 +46,7 @@ test("op.read on nonexistent entry returns 404", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "404-test" });
-            const response = await rpcCall(ws, 2, "op.read", { path: "known://nope" });
+            const response = await rpcCall(ws, 2, "op.read", { target: "known://nope" });
             assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
     });
@@ -57,9 +57,9 @@ test("op.show / op.hide toggle visibility", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "vis-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "body" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "body" });
 
-            const hideRes = await rpcCall(ws, 3, "op.hide", { path: "known://x" });
+            const hideRes = await rpcCall(ws, 3, "op.hide", { target: "known://x" });
             assert.equal((hideRes.result as { status: number }).status, 200);
 
             const visAfterHide = (await (db.test_get_visibility_no_channel as PrepMethod).get<{ indexed: number }>({ run_id: 1, entry_id: 1 }))?.indexed;
@@ -67,7 +67,7 @@ test("op.show / op.hide toggle visibility", async () => {
             const visRows = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
             assert.ok(visRows.some((r) => r.indexed === 0));
 
-            const showRes = await rpcCall(ws, 4, "op.show", { path: "known://x" });
+            const showRes = await rpcCall(ws, 4, "op.show", { target: "known://x" });
             assert.equal((showRes.result as { status: number }).status, 200);
 
             const visAfterShow = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
@@ -130,7 +130,7 @@ test("op.* fires log/entry notification with the entry shape", async () => {
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "session.create", { name: "notif-test" });
-            await rpcCall(ws, 2, "op.edit", { path: "known://x", content: "test" });
+            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "test" });
             await flush();
 
             const captured = notifications();
@@ -156,7 +156,7 @@ test("log/entry notification is scoped to session", async () => {
             await flush();
             aNotifs(); bNotifs();
 
-            await rpcCall(wsA, 2, "op.edit", { path: "known://x", content: "from A" });
+            await rpcCall(wsA, 2, "op.edit", { target: "known://x", content: "from A" });
             await flush();
 
             assert.equal(aNotifs().length, 1);
@@ -169,7 +169,7 @@ test("op.* methods require init: Auto-create kicks in", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const response = await rpcCall(ws, 1, "op.edit", { path: "known://x", content: "auto" });
+            const response = await rpcCall(ws, 1, "op.edit", { target: "known://x", content: "auto" });
             assert.equal((response.result as { status: number }).status, 201);
 
             const sessions = await (db.test_list_sessions as PrepMethod).all<{ name: string }>();
