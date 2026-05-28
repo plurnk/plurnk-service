@@ -37,6 +37,8 @@ Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (ap
 
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
+On structured entries, `<L>` addresses item index, not line number.
+
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
 | leading prefix | dialect  | form                  |
@@ -110,6 +112,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known://countries/france/capital)<1,-1>::EDIT
+<<EDIT(known://users)<-1>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known://draft):known://archive/2026-05-14/draft:COPY
 <<MOVE(known://draft/answer):known://final/answer:MOVE
 <<MOVE(known://obsolete/note):/dev/null:MOVE
