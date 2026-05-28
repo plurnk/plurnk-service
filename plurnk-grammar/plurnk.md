@@ -12,21 +12,21 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 ## Operations
 
-| OP   | `[signal]`  | `(target)`| `<L>`            | body                     |
-|------|-------------|-----------|------------------|--------------------------|
-| FIND | filter tags | required  | results `N,M`    | matcher                  |
-| READ | filter tags | required  | lines `N,M`      | matcher                  |
-| EDIT | tags        | required  | lines `N,M`      | content                  |
-| COPY | apply tags  | required  | lines `N,M`      | destination URI          |
-| MOVE | apply tags  | required  | lines `N,M`      | destination URI          |
-| SHOW | filter tags | required  | results `N,M`    | matcher                  |
-| HIDE | filter tags | required  | results `N,M`    | matcher                  |
-| SEND | status code | recipient | —                | message body             |
-| EXEC | runtime tag | cwd       | —                | command or code          |
+| OP   | `[signal]`  | `(target)`| `<L>`         | body            |
+|------|-------------|-----------|---------------|-----------------|
+| FIND | filter tags | required  | results `N,M` | matcher         |
+| READ | filter tags | required  | lines `N,M`   | matcher         |
+| EDIT | tags        | required  | lines `N,M`   | content         |
+| COPY | apply tags  | required  | lines `N,M`   | destination URI |
+| MOVE | apply tags  | required  | lines `N,M`   | destination URI |
+| SHOW | filter tags | required  | results `N,M` | matcher         |
+| HIDE | filter tags | required  | results `N,M` | matcher         |
+| SEND | status code | recipient | —             | message body    |
+| EXEC | executor    | cwd       | —             | command or code |
 
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
 SEND broadcasts to uri when a path is included and messages the user when no path is included.
-EXEC may include an optional runtime tag (`sh`, `node`, etc.).
+EXEC defaults to `sh`; override with an optional executor (`node`, `python`, `search`, etc.).
 
 ## `<L>`
 
@@ -54,7 +54,6 @@ URI-shaped: `[scheme://]rest`.
 
 * Bare paths (no scheme) default to local relative project file paths (leader `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
-* `/dev/null` is the reserved deletion sink: MOVE to `/dev/null` removes the source entry. Recognized on every host regardless of whether the OS provides a `/dev/null` device.
 
 Internal schemes:
 
@@ -76,6 +75,7 @@ The agent maintains two contexts for budgeting tokens for working memory and ava
 `HIDE` demotes matching entries to archive and saves tokens.
 
 YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
+YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
 
 ## Suffix
 
@@ -120,10 +120,12 @@ Body content is character-perfect, exactly matching whitespace.
 echo "Hello, world!" > hello.txt
 :EDIT
 
-<<EXEC[sh]:
+<<EXEC:
 chmod +x ./example.sh
 ./example.sh
 :EXEC
+
+<<EXEC[search]:france government capital:EXEC
 
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
 <<SEND[200]:Paris:SEND

@@ -135,7 +135,7 @@ SI_INT : '-'? [0-9]+ -> type(INT) ;
 SI_END : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// SIGNAL_IDENT — inside `[...]` for EXEC. Single runtime tag identifier only.
+// SIGNAL_IDENT — inside `[...]` for EXEC. Single executor identifier only.
 // `<<EXEC[1,2]` fails here.
 // ============================================================================
 

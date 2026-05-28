@@ -55,7 +55,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | SHOW | tag filter       | matcher               | result-set range   |
 | HIDE | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
-| EXEC | runtime tag      | command or code       | n/a                |
+| EXEC | executor         | command or code       | n/a                |
 
 Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · else glob.
 

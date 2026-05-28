@@ -249,7 +249,7 @@ test("lexer error: EXEC with multiple signal values", () => {
     assert.ok(errors.length >= 1);
     if (errors[0].kind !== "error") return;
     assert.equal(errors[0].error.source, "lexer");
-    assert.match(errors[0].error.message, /expected Runtime Tag for EXEC/);
+    assert.match(errors[0].error.message, /expected executor for EXEC/);
 });
 
 test("permissive: SEND with empty signal [] yields signal=null", () => {

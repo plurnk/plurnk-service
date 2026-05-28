@@ -121,7 +121,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | SHOW   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | HIDE   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | HTTP status code (single integer) | optional | message payload (JSON by convention for structured responses) | not applicable |
-| EXEC   | runtime tag (single string; `sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
+| EXEC   | executor (single string; `sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
 
 The `<L>` slot is optional. Its referent shifts by OP (per the column
 above) but the syntax is uniform: a single integer denotes one

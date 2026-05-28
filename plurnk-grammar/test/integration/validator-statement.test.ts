@@ -61,7 +61,7 @@ test("PlurnkStatement: SEND with plain text body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: EXEC with runtime tag and code body", () => {
+test("PlurnkStatement: EXEC with executor and code body", () => {
     const r = validateRoundTrip("<<EXEC[node](./):console.log(1):EXEC");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
