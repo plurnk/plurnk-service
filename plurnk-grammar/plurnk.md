@@ -56,6 +56,7 @@ URI-shaped: `[scheme://]rest`.
 
 * Bare paths (no scheme) default to local relative project file paths (leader `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
+* Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
 
 Internal schemes:
 
@@ -112,7 +113,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known://countries/france/capital)<1,-1>::EDIT
-<<EDIT(known://users)<-1>:{"name":"Eve"}:EDIT
+<<EDIT(known://users.json)<-1>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known://draft):known://archive/2026-05-14/draft:COPY
 <<MOVE(known://draft/answer):known://final/answer:MOVE
 <<MOVE(known://obsolete/note):/dev/null:MOVE
