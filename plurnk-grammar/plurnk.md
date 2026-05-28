@@ -96,6 +96,7 @@ Body content is character-perfect, exactly matching whitespace.
 ```
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
+<<READ(log://1/2/3):$[*].matched.name:READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
