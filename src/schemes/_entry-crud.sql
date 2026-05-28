@@ -22,6 +22,10 @@ RETURNING id;
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;
 
+-- PREP: crud_delete_channel
+DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = $name
+RETURNING name;
+
 -- PREP: crud_delete_tags
 DELETE FROM entry_tags WHERE entry_id = $entry_id;
 

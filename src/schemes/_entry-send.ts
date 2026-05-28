@@ -32,13 +32,19 @@ export const sendToSessionEntry = async (statement: SendStatement, ctx: PlurnkSc
     const status = statement.signal;
     if (status === null) return { status: 400, error: "SEND requires a numeric status code" };
 
-    // SEND[410] Gone — delete the targeted resource (SPEC §3.5).
+    // SEND[410] Gone — delete the targeted resource (SPEC §3.5). With a
+    // #fragment, deletes just that channel; without, deletes the whole entry.
     if (status === 410) {
-        if (fragmentOf(statement) !== null) {
-            return { status: 400, error: "channel-level deletion (SEND[410] with #fragment) not yet supported" };
-        }
         const pathname = pathnameOf(statement);
         if (pathname === null) return { status: 400 };
+        const fragment = fragmentOf(statement);
+        if (fragment !== null) {
+            const { db, sessionId } = ctx;
+            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+            if (entry === undefined) return { status: 404 };
+            const deleted = await (db.crud_delete_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: fragment });
+            return { status: deleted === undefined ? 404 : 200 };
+        }
         const result = await deleteEntry(pathname, ctx, scheme);
         return { status: result.status };
     }

@@ -43,15 +43,26 @@ test("SEND[410] on missing entry returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("[§3.5-410-fragment-400] SEND[410] with #fragment returns 400 (channel-level delete not supported)", async () => {
+test("SEND[410] with #fragment deletes that channel only; entry remains", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("known", "x", "anything")));
-        assert.equal(r.status, 400);
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("known", "x", "body")));
+        assert.equal(r.status, 200);
 
         const stillThere = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "x" });
-        assert.ok(stillThere !== undefined);
+        assert.ok(stillThere !== undefined, "entry row still present");
+        const channel = await (db.test_get_channel as PrepMethod).get<{ name: string }>({ entry_id: stillThere?.id, name: "body" });
+        assert.equal(channel, undefined, "body channel was removed");
+    } finally { await db.close(); }
+});
+
+test("SEND[410] with #fragment on missing channel returns 404", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await new Known().edit(editStmt(urlPath("known", "y"), "body"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("known", "y", "nonexistent")));
+        assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
