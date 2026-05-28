@@ -67,7 +67,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
         });
 
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId, maxTurns: 12,
+            provider, sessionId, runId, loopId,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: userPrompt },

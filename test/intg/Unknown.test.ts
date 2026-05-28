@@ -136,7 +136,8 @@ test("Unknown.read: lineMarker, body matcher, tag filter — positive coverage",
         await u.edit(editStmt(urlPath("unknown", "/m"), "match these alpha words"), makeSchemeCtx({ db, sessionId, runId }));
         const matched = await u.read(readStmtPlus(urlPath("unknown", "/m"), { body: { dialect: "regex", raw: "/alpha/", pattern: "alpha", flags: "" } }), makeSchemeCtx({ db, sessionId }));
         assert.equal(matched.status, 200);
-        assert.equal(matched.content, "alpha");
+        const rows = JSON.parse(matched.content ?? "") as { line: number; matched: string }[];
+        assert.deepEqual(rows, [{ line: 1, matched: "alpha" }]);
 
         await u.edit(editStmt(urlPath("unknown", "/t"), "tagged", ["france"]), makeSchemeCtx({ db, sessionId, runId }));
         const hit = await u.read(readStmtPlus(urlPath("unknown", "/t"), { tags: ["france"] }), makeSchemeCtx({ db, sessionId }));

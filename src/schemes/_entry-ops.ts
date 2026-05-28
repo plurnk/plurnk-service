@@ -1,7 +1,7 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { isBinaryMimetype } from "../core/mimetype-binary.ts";
+import { isBinaryMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
 import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 
@@ -15,7 +15,10 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
 // (matcher results, errors).
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null };
+// matches = count of matcher hits when body matcher was used; null when
+// no matcher in the statement. Surfaced in the log meta so the model
+// distinguishes "0 matches" from "empty content."
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null };
 export type ShowHideResult = { status: number };
 
 const pathnameOf = (statement: { target: EditStatement["target"] }): string => {
@@ -148,26 +151,41 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     // `<L>` scopes; body matches within the scope. Slot order in plurnk.md
     // is `<L>?:body?`, so the natural composition is slice-then-match.
     let workingContent = row.content;
-    let workingStart = 1;
+    let workingStart: number | null = 1;
     if (statement.lineMarker !== null) {
         const sliced = sliceLines(row.content, statement.lineMarker);
         if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
         workingContent = sliced.text ?? "";
-        workingStart = sliced.startLine ?? 1;
+        // Sentinel slices (<0>, <-1>) have undefined startLine — 204 case.
+        workingStart = sliced.startLine ?? null;
     }
 
     if (statement.body !== null) {
-        const matched = matchAgainstContent(statement.body, workingContent, row.mimetype);
+        const matched = matchAgainstContent(statement.body, workingContent, row.mimetype, workingStart ?? 1);
+        if (matched.status === 204) {
+            return { status: 204, content: "", mimetype: "application/json", channel: targetChannel, startLine: null, matches: 0 };
+        }
         if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        // Matches aren't continuous lines from the source; startLine=null
-        // so the render numbers them as positions in the match list (1, 2, …).
-        return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: row.mimetype, channel: targetChannel, startLine: null };
+        // Matcher result body is a pretty-printed JSON array of per-match
+        // rows {line, matched, matching?}; mimetype is JSON regardless of
+        // source. startLine=null because line info is denormalized into
+        // each row (no parallel array needed).
+        return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", channel: targetChannel, startLine: null, matches: matched.matches };
     }
 
     if (statement.lineMarker !== null) {
-        return { status: 200, content: workingContent, mimetype: row.mimetype, channel: targetChannel, startLine: workingStart };
+        // `<L>` slice always returns text/markdown — the slice is a text
+        // view selected by line, regardless of source mimetype. Markdown
+        // is plurnk-service's text primitive.
+        if (workingContent === "") {
+            return { status: 204, content: "", mimetype: TEXT_PRIMITIVE_MIMETYPE, channel: targetChannel, startLine: null };
+        }
+        return { status: 200, content: workingContent, mimetype: TEXT_PRIMITIVE_MIMETYPE, channel: targetChannel, startLine: workingStart };
     }
 
+    if (row.content === "") {
+        return { status: 204, content: "", mimetype: row.mimetype, channel: targetChannel, startLine: null };
+    }
     return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel, startLine: 1 };
 };
 

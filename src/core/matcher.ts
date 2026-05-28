@@ -8,15 +8,28 @@
 //   { dialect: "glob",     raw }
 //
 // Regex + glob are universal text matching. xpath + jsonpath are
-// inherently mimetype-bound (xpath: XML/HTML parse; jsonpath: JSON
-// walk) and belong in @plurnk/plurnk-mimetypes per-mimetype handlers
-// (filed: plurnk-mimetypes#3). Until that lands, xpath/jsonpath return
-// 501 with a pointer to the issue.
+// inherently mimetype-bound and belong on per-mimetype handlers in
+// @plurnk/plurnk-mimetypes (plurnk-mimetypes#3). 501 with sibling-issue
+// pointer until landed.
 //
-// Mimetype-mismatch rule (AGENTS.md "Resolved ambiguities" §1):
-// dialect on a wrong mimetype family returns 415. xpath on text/plain
-// → 415; jsonpath on text/html → 415. Binary entries are 415 across
+// Mimetype-mismatch rule (AGENTS.md "Resolved ambiguities" §1): dialect
+// on a wrong mimetype family returns 415. Binary entries are 415 across
 // the board (§2).
+//
+// Result shape (AGENTS.md "Matcher return semantics rework"):
+//   Body is a JSON array of per-match objects `{line, matched, matching?}`.
+//   `line`: 1-indexed source line of the match.
+//   `matched`: extracted value, polymorphic by extractor:
+//     bare regex → string (full match)
+//     anon captures → array of capture strings
+//     named captures → object {name: value, …}; mixed anon mixes in "1"/"2"
+//     jsonpath → JSON value at the path
+//     xpath text/attr → string
+//     xpath node → serialized XML string
+//   `matching`: per-instance discriminator when matcher targets multiple
+//     instances (jsonpath wildcards, xpath multi-match). Omitted otherwise.
+//   Empty matches → status 204, no body.
+//   Result mimetype is always "application/json" for matcher results.
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
 import { isBinaryMimetype } from "./mimetype-binary.ts";
@@ -27,15 +40,78 @@ const isXmlFamily = (mimetype: string): boolean =>
 const isJsonFamily = (mimetype: string): boolean =>
     mimetype === "application/json" || mimetype.endsWith("+json");
 
-export interface MatchResult {
-    status: number;
-    matches?: string[];
-    error?: string;
+export interface MatchRow {
+    line: number;
+    matched: unknown;
+    matching?: string | number;
 }
 
-// Apply a matcher against text content. READ semantics: returns matched
-// substrings.
-export const matchAgainstContent = (body: MatcherBody, content: string, mimetype: string): MatchResult => {
+export interface MatchResult {
+    status: number;
+    body?: string;        // JSON-array pretty-print (status 200 only)
+    matches?: number;     // count of matches (status 200 or 204)
+    error?: string;       // status >= 400 paths
+}
+
+// Count newlines in content[0..offset) to compute 1-indexed source line.
+const lineOfOffset = (content: string, offset: number, baseLine: number): number => {
+    let line = baseLine;
+    for (let i = 0; i < offset && i < content.length; i++) {
+        if (content.charCodeAt(i) === 0x0a) line++;
+    }
+    return line;
+};
+
+// Extract `matched` shape from a RegExp match result.
+// - No captures: string (full match)
+// - Anon only: array of capture strings
+// - Named (any): object with name keys; anon captures merged in as "1", "2", …
+const matchedFromRegex = (m: RegExpMatchArray | RegExpExecArray): unknown => {
+    const anonCount = m.length - 1;  // m[0] is full match
+    const groups = (m as RegExpMatchArray & { groups?: Record<string, string | undefined> }).groups;
+    const hasNamed = groups !== undefined && Object.keys(groups).length > 0;
+
+    if (anonCount === 0 && !hasNamed) return m[0];  // bare match
+
+    if (hasNamed) {
+        // Object form: named captures by name, anon captures by positional key.
+        const obj: Record<string, string | undefined> = { ...groups };
+        // Identify which capture indices are named (so we don't double-count).
+        // RegExp doesn't expose this directly; collect named values and check
+        // each anon position for presence in groups.
+        const namedValues = new Set(Object.values(groups));
+        for (let i = 1; i <= anonCount; i++) {
+            const v = m[i];
+            // Heuristic: include anon-indexed capture if it's not the same
+            // reference as a named one. Imperfect when values collide; the
+            // common case (truly distinct anon + named) works.
+            if (!namedValues.has(v)) obj[String(i)] = v;
+        }
+        return obj;
+    }
+
+    // Anonymous-only: array of captures.
+    const arr: (string | undefined)[] = [];
+    for (let i = 1; i <= anonCount; i++) arr.push(m[i]);
+    return arr;
+};
+
+const prettyJson = (value: unknown): string => JSON.stringify(value, null, 2);
+
+// Apply a matcher against text content. Returns a JSON-array body of
+// per-match objects on success, or status 204 with no body when there
+// are zero matches.
+//
+// `baseLine` is the 1-indexed line of `content[0]` in the original
+// source. When the matcher runs against the full content, baseLine=1;
+// when called from inside a `<L>` slice path, baseLine = slice startLine
+// so per-match line numbers are reported in original-source coordinates.
+export const matchAgainstContent = (
+    body: MatcherBody,
+    content: string,
+    mimetype: string,
+    baseLine: number = 1,
+): MatchResult => {
     if (isBinaryMimetype(mimetype)) {
         return { status: 415, error: `cannot match against binary mimetype \`${mimetype}\`` };
     }
@@ -43,11 +119,22 @@ export const matchAgainstContent = (body: MatcherBody, content: string, mimetype
         let re: RegExp;
         try { re = new RegExp(body.pattern, body.flags); }
         catch (err) { return { status: 400, error: err instanceof Error ? err.message : String(err) }; }
+
+        const rows: MatchRow[] = [];
         if (body.flags.includes("g")) {
-            return { status: 200, matches: content.match(re) ?? [] };
+            for (const m of content.matchAll(re)) {
+                const line = lineOfOffset(content, m.index ?? 0, baseLine);
+                rows.push({ line, matched: matchedFromRegex(m) });
+            }
+        } else {
+            const m = re.exec(content);
+            if (m !== null) {
+                const line = lineOfOffset(content, m.index, baseLine);
+                rows.push({ line, matched: matchedFromRegex(m) });
+            }
         }
-        const m = content.match(re);
-        return { status: 200, matches: m === null ? [] : [m[0]] };
+        if (rows.length === 0) return { status: 204, matches: 0 };
+        return { status: 200, body: prettyJson(rows), matches: rows.length };
     }
     if (body.dialect === "xpath") {
         if (!isXmlFamily(mimetype)) return { status: 415, error: `xpath requires xml/html mimetype; got \`${mimetype}\`` };

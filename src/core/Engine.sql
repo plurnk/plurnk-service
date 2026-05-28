@@ -124,6 +124,7 @@ SELECT
     le.hostname, le.port, le.pathname,
     le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
+    le.tx, le.mimetype_tx,
     le.state, le.outcome
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id

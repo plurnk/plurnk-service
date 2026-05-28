@@ -36,7 +36,7 @@ const setup = async () => {
     return { db, engine, sessionId, runId, loopId, turnId };
 };
 
-test("Log.read: coordinate lookup retrieves the right log entry", async () => {
+test("Log.read: EDIT op log entry returns rx JSON (entryId, channel, status)", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -46,18 +46,16 @@ test("Log.read: coordinate lookup retrieves the right log entry", async () => {
         });
         const result = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         assert.equal(result.status, 200);
-        assert.ok(result.content !== null);
-        assert.match(result.content, /EDIT/);
-        assert.match(result.content, /known:\/\/\/france/);
-        assert.match(result.content, /status: 201/);
-        assert.equal(result.mimetype, "text/plain");
+        assert.equal(result.mimetype, "application/json");
+        const rx = JSON.parse(result.content ?? "") as { status: number; channel: string };
+        assert.equal(rx.status, 201);
+        assert.equal(rx.channel, "body");
     } finally { db.close(); }
 });
 
-test("Log.read: coordinates resolve through (loop_seq, turn_seq, sequence) within a run", async () => {
+test("Log.read: each coordinate addresses its own entry's rx", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
-        // multiple ops in turn 1 of loop 1
         await engine.dispatch({ statement: editStmt("/a", "1"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt("/b", "2"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
         await engine.dispatch({ statement: editStmt("/c", "3"), sessionId, runId, loopId, turnId, sequence: 3, origin: "model" });
@@ -65,27 +63,28 @@ test("Log.read: coordinates resolve through (loop_seq, turn_seq, sequence) withi
         const r1 = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "1/1/2")), makeSchemeCtx({ db, runId }));
         const r3 = await new Log().read(readStmt(urlPath("log", "1/1/3")), makeSchemeCtx({ db, runId }));
-        assert.match(r1.content ?? "", /known:\/\/\/a/);
-        assert.match(r2.content ?? "", /known:\/\/\/b/);
-        assert.match(r3.content ?? "", /known:\/\/\/c/);
+        // Each EDIT created a distinct entry; entryId rises monotonically.
+        const id1 = JSON.parse(r1.content ?? "").entryId as number;
+        const id2 = JSON.parse(r2.content ?? "").entryId as number;
+        const id3 = JSON.parse(r3.content ?? "").entryId as number;
+        assert.ok(id1 < id2 && id2 < id3);
     } finally { db.close(); }
 });
 
 test("Log.read: cross-loop coordinates within a run resolve correctly", async () => {
     const { db, engine, sessionId, runId, loopId: loop1, turnId: turn1 } = await setup();
     try {
-        // loop1/turn1 already exists from setup(); dispatch a log there
         await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), sessionId, runId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
 
-        // Add a second loop with its own turn 1, dispatch a different log there
         const loop2 = await insertLoop(db, runId, 2, "second");
         const turn2 = await insertTurn(db, loop2, 1, 200);
         await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
 
         const r1 = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId }));
         const r2 = await new Log().read(readStmt(urlPath("log", "2/1/1")), makeSchemeCtx({ db, runId }));
-        assert.match(r1.content ?? "", /from-loop-1/);
-        assert.match(r2.content ?? "", /from-loop-2/);
+        const id1 = JSON.parse(r1.content ?? "").entryId as number;
+        const id2 = JSON.parse(r2.content ?? "").entryId as number;
+        assert.ok(id1 !== id2);
     } finally { db.close(); }
 });
 
@@ -116,7 +115,7 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <N> slices the log summary with startLine", async () => {
+test("Log.read: lineMarker <N> slices the unwrapped rx body with startLine", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
@@ -124,22 +123,27 @@ test("Log.read: lineMarker <N> slices the log summary with startLine", async () 
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal((r as { startLine?: number }).startLine, 1);
-        // First line of the summary mentions the op (EDIT on /x).
-        assert.match(r.content ?? "", /EDIT/);
+        // First line of the unwrapped pretty-printed rx is "{".
+        assert.match(r.content ?? "", /^\{/);
     } finally { db.close(); }
 });
 
-test("Log.read: regex body matcher returns matches from summary", async () => {
+test("Log.read: regex body matcher on rx returns JSON array of match rows", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/y", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        // EDIT rx is JSON like {"status":201,"entryId":N,"channel":"body"}.
+        // Match the "status" field key in that JSON.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "1/1/1")),
-            body: { dialect: "regex", raw: "/EDIT/", pattern: "EDIT", flags: "" },
+            body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.equal(r.content, "EDIT");
+        assert.equal(r.mimetype, "application/json");
+        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].matched, "\"status\"");
     } finally { db.close(); }
 });
 
@@ -157,36 +161,37 @@ test("Log.read: <L> + body matcher composes — slice first, match within", asyn
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-        // The Log summary is multi-line ("EDIT known:///x\nstatus: 201\nresponse: {...}");
-        // slice line 1 (the "OP target" header) and match the op name within it.
+        // Slice line 1 of the unwrapped rx (just `{`); match the `{` character.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "1/1/1")),
             lineMarker: { first: 1, last: 1 },
-            body: { dialect: "regex", raw: "/EDIT/", pattern: "EDIT", flags: "" },
+            body: { dialect: "regex", raw: "/\\{/", pattern: "\\{", flags: "" },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.equal(r.content, "EDIT");
+        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].matched, "{");
     } finally { db.close(); }
 });
 
 test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
-        // Write a log entry
         await engine.dispatch({
             statement: editStmt("/known-fact", "knowledge"),
             sessionId, runId, loopId, turnId,
             sequence: 1, origin: "model",
         });
 
-        // Now dispatch a READ on log://1/1/1 — engine routes to Log.read
         const result = await engine.dispatch({
             statement: readStmt(urlPath("log", "1/1/1")),
             sessionId, runId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
-        assert.match((result as unknown as { content: string }).content, /EDIT/);
+        // Log unwrap returns the EDIT rx as JSON; check for status field.
+        const rx = JSON.parse((result as unknown as { content: string }).content) as { status: number };
+        assert.equal(rx.status, 201);
     } finally { db.close(); }
 });

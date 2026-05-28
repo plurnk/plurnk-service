@@ -63,13 +63,16 @@ const withHeadlessSession = async (fn: (ctx: PlurnkSchemeContext, db: Db) => Pro
     } finally { await db.close(); }
 };
 
-test("File.read: read existing file inside workspace → 200 + content + mimetype", async () => {
+test("File.read: read existing file inside workspace → 200 + content + text/markdown", async () => {
+    // plurnk-service's text primitive is text/markdown — File.read of a
+    // .txt with no specific handler falls back to it (any plain text is
+    // valid markdown; auto-derived text mimetype is never text/plain).
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "hello.txt"), "Paris is the capital of France.\n");
         const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris is the capital of France.\n");
-        assert.equal(result.mimetype, "text/plain");
+        assert.equal(result.mimetype, "text/markdown");
     });
 });
 
@@ -157,19 +160,24 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("File.read: regex body matcher returns matches", async () => {
+test("File.read: regex body matcher returns JSON array of match rows", async () => {
     await withSessionWorkspace(async (root, ctx) => {
-        await writeFile(join(root, "f.txt"), "foo bar foo baz");
+        await writeFile(join(root, "f.txt"), "foo\nbar foo");
         const r = await new File().read(
             readStmt(urlPath("file", "f.txt"), { body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" } }),
             ctx,
         );
         assert.equal(r.status, 200);
-        assert.equal(r.content, "foo\nfoo");
+        assert.equal(r.mimetype, "application/json");
+        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
+        assert.deepEqual(rows, [
+            { line: 1, matched: "foo" },
+            { line: 2, matched: "foo" },
+        ]);
     });
 });
 
-test("File.read: <L> + body matcher composes — slice first, match within", async () => {
+test("File.read: <L> + body matcher composes — slice first, match within, source lines preserved", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nfoo bar foo\ngamma\n");
         const r = await new File().read(
@@ -180,7 +188,10 @@ test("File.read: <L> + body matcher composes — slice first, match within", asy
             ctx,
         );
         assert.equal(r.status, 200);
-        assert.equal(r.content, "foo\nfoo");
+        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
+        // Both matches were on source line 2 (after slice); baseLine=2 preserved.
+        assert.deepEqual(rows.map((r) => r.line), [2, 2]);
+        assert.deepEqual(rows.map((r) => r.matched), ["foo", "foo"]);
     });
 });
 

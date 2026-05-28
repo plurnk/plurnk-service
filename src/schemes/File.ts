@@ -5,11 +5,11 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
-import { isBinaryMimetype } from "../core/mimetype-binary.ts";
+import { isBinaryMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
 import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
@@ -32,14 +32,16 @@ type ContainmentResult =
 // Resolve + workspace-root containment check. Returns the canonical
 // path on success; classified error on absence/traversal. Used by read.
 // Detect mimetype from a file's path. Routes through the Mimetypes service
-// when available; falls back to "text/plain" so naked extensions (no
-// handler registered) still read as text.
+// when available; falls back to the text primitive (text/markdown). The
+// `normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
+// service is normalized to text/markdown — plurnk-service never auto-
+// derives text/plain (see mimetype-binary.ts TEXT_PRIMITIVE_MIMETYPE).
 const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): Promise<string> => {
     if (ctx.mimetypes !== undefined) {
         const detected = await ctx.mimetypes.detect({ path: canonical });
-        if (detected !== null) return detected;
+        return normalizeAutoTextMimetype(detected);
     }
-    return "text/plain";
+    return TEXT_PRIMITIVE_MIMETYPE;
 };
 
 const resolveContained = async (pathname: string, root: string): Promise<ContainmentResult> => {
@@ -99,21 +101,27 @@ export default class File {
 
         // `<L>` scopes; body matches within the scope (slice-then-match).
         let workingContent = content;
-        let workingStart = 1;
+        let workingStart: number | null = 1;
         if (statement.lineMarker !== null) {
             const sliced = sliceLines(content, statement.lineMarker);
             if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
             workingContent = sliced.text ?? "";
-            workingStart = sliced.startLine ?? 1;
+            workingStart = sliced.startLine ?? null;
         }
         if (statement.body !== null) {
-            const matched = matchAgainstContent(statement.body, workingContent, mimetype);
+            const matched = matchAgainstContent(statement.body, workingContent, mimetype, workingStart ?? 1);
+            if (matched.status === 204) {
+                return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+            }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
-            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype, startLine: null };
+            return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
         }
         if (statement.lineMarker !== null) {
-            return { status: 200, content: workingContent, mimetype, startLine: workingStart };
+            // `<L>` slice always returns text/markdown — text primitive.
+            if (workingContent === "") return { status: 204, content: "", mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: null };
+            return { status: 200, content: workingContent, mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: workingStart };
         }
+        if (content === "") return { status: 204, content: "", mimetype, startLine: null };
         return { status: 200, content, mimetype, startLine: 1 };
     }
 

@@ -71,7 +71,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker <N> returns raw line + startLine", async () => {
+test("Known.read: lineMarker <N> returns raw line + startLine + text/markdown mimetype", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -80,10 +80,12 @@ test("Known.read: lineMarker <N> returns raw line + startLine", async () => {
         assert.equal(result.status, 200);
         assert.equal(result.content, "second");
         assert.equal((result as { startLine?: number }).startLine, 2);
+        // <L> slice always emits text/markdown (the text primitive).
+        assert.equal(result.mimetype, "text/markdown");
     } finally { db.close(); }
 });
 
-test("Known.read: regex body matcher returns matches", async () => {
+test("Known.read: regex body matcher returns JSON array of match rows", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -91,7 +93,12 @@ test("Known.read: regex body matcher returns matches", async () => {
         const matcher: MatcherBody = { dialect: "regex", raw: "/alpha/g", pattern: "alpha", flags: "g" };
         const result = await k.read(readStatement({ target: urlPath("known", "/match"), body: matcher }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        assert.equal(result.content, "alpha\nalpha");
+        assert.equal(result.mimetype, "application/json");
+        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
+        assert.deepEqual(rows, [
+            { line: 1, matched: "alpha" },
+            { line: 1, matched: "alpha" },
+        ]);
     } finally { db.close(); }
 });
 
@@ -127,7 +134,7 @@ test("Known.read: tag filter — entry missing requested tag → 404", async () 
     } finally { db.close(); }
 });
 
-test("Known.read: <L> + body matcher composes — slice first, match within", async () => {
+test("Known.read: <L> + body matcher composes — slice first, match within, source lines preserved", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -138,7 +145,9 @@ test("Known.read: <L> + body matcher composes — slice first, match within", as
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        assert.equal(result.content, "foo");
+        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
+        // Match was on source line 2 (after slice); baseLine preserved.
+        assert.deepEqual(rows, [{ line: 2, matched: "foo" }]);
     } finally { db.close(); }
 });
 

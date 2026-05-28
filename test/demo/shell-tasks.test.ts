@@ -49,10 +49,9 @@ interface DemoOpts {
     label: string;
     prompt: string;       // NATURAL prompt — no tool hints
     expected: RegExp;     // final reply must match
-    maxTurns?: number;
 }
 
-const runShellDemo = async ({ label, prompt, expected, maxTurns = 8 }: DemoOpts): Promise<void> => {
+const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void> => {
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
@@ -68,7 +67,7 @@ const runShellDemo = async ({ label, prompt, expected, maxTurns = 8 }: DemoOpts)
         });
 
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId, maxTurns,
+            provider, sessionId, runId, loopId,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: prompt },
@@ -128,6 +127,5 @@ test("demo: 'what's the current kernel release?' — model uses EXEC to run unam
         label: "kernel",
         prompt: "What kernel version is this machine running?",
         expected: new RegExp(`\\b${maj}\\.${min}\\b`),
-        maxTurns: 8,
     });
 });

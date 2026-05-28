@@ -82,3 +82,61 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     const out = renderSystemContent(system);
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
+
+test("log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/2",
+            origin: "model",
+            op: "READ",
+            status: 200,
+            target: { scheme: null, pathname: "notes.md" },
+            rx: { content: "hello\nworld", mimetype: "text/markdown", startLine: 1 },
+        }],
+    };
+    const out = renderSystemContent(system);
+    // Line-navigable mimetype → `N:\t` prefix per line.
+    assert.match(out, /<<notes\.md:\n1:\thello\n2:\tworld\n:notes\.md/);
+});
+
+test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/2",
+            origin: "model",
+            op: "READ",
+            status: 200,
+            target: { scheme: null, pathname: "notes.md" },
+            rx: { content: '[\n  {"line":1,"matched":"hello"}\n]', mimetype: "application/json" },
+        }],
+    };
+    const out = renderSystemContent(system);
+    // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
+    assert.match(out, /<<notes\.md:\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:notes\.md/);
+    assert.doesNotMatch(out, /<<notes\.md:\n1:\t/);
+});
+
+test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/2",
+            origin: "model",
+            op: "READ",
+            status: 200,
+            target: { scheme: null, pathname: "page.html" },
+            rx: { content: "<h1>Hi</h1>", mimetype: "text/html" },
+        }],
+    };
+    const out = renderSystemContent(system);
+    assert.match(out, /<<page\.html:\n<h1>Hi<\/h1>\n:page\.html/);
+    assert.doesNotMatch(out, /1:\t/);
+});

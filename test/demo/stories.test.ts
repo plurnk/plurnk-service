@@ -89,7 +89,8 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     });
 
     const result = await engine.runLoop({
-        provider, sessionId, runId, loopId, maxTurns: opts.maxTurns ?? 12,
+        provider, sessionId, runId, loopId,
+        ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
         messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: opts.prompt },
@@ -167,6 +168,14 @@ test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () 
     } finally { await story.cleanup(); }
 });
 
+// NOTE — natural-prompt matcher / <L> demos here exercise model
+// COMPREHENSION of the matcher return contract (grouped JSON rows,
+// source-line semantics, etc.). The contract isn't documented in
+// plurnk.md yet (filed plurnk-grammar#17). Until that lands and a new
+// grammar release is adopted, the model is reading these prompts
+// without a contract — failures should be read as "model hasn't been
+// taught the contract yet", not as engine regressions. Engine-side
+// correctness is covered at the intg + live structural-prompt layer.
 test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () => {
     // Natural prompt that benefits from READ <L>. The model may also read
     // the whole file and report the line; either way, the holistic outcome
@@ -186,12 +195,12 @@ test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () =
 
 test("story: locate a pattern in a file by regex", { timeout: TIMEOUT }, async () => {
     // Natural prompt that benefits from READ regex matcher. notes.md
-    // contains "Project codename: phoenix.". The model may extract via a
-    // regex-style matcher or by reading and reasoning; either way, the
-    // outcome is reporting "phoenix" back.
+    // contains "The project codename is: phoenix\n". The model may extract
+    // via a regex-style matcher or by reading and reasoning; either way,
+    // the outcome is reporting "phoenix" back.
     const story = await runStory({
         label: "regex-find",
-        prompt: "Find the word that follows 'codename:' in notes.md. Report only that word.",
+        prompt: "In notes.md, find the project codename. Just report the codename, nothing else.",
     });
     try {
         if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
@@ -201,16 +210,28 @@ test("story: locate a pattern in a file by regex", { timeout: TIMEOUT }, async (
     } finally { await story.cleanup(); }
 });
 
+test("story: extract one specific value from a structured config", { timeout: TIMEOUT }, async () => {
+    // Natural prompt that should benefit from matcher composition:
+    // model can READ the config, get a regex match, then jsonpath against
+    // the log entry to extract the value. Or it can do the whole thing in
+    // one matcher. Either path is fine; the outcome is mentioning "5".
+    const story = await runStory({
+        label: "extract-pool",
+        prompt: "What's the pool size in src/config.json? Just the number.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/\b5\b/.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /\b5\b/,
+            `final reply contains the pool size (5); got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
 test("story: report the number of files in a directory", { timeout: TIMEOUT }, async () => {
-    // src/ has 2 files: app.js, config.json. Scoped: just the count.
-    // Generous maxTurns: gemma explores several commands (find/ls/wc)
-    // before committing to an answer. Solo runs typically converge at
-    // 8-12 turns; suite runs (parallel-overloaded gemma) need more
-    // headroom before SEND[200] lands.
+    // src/ has 2 files: app.js, config.json.
     const story = await runStory({
         label: "count-files",
         prompt: "How many files are in the src/ directory of this project? Reply with just the number.",
-        maxTurns: 20,
     });
     try {
         if (story.finalStatus !== 200 || !/\b2\b/.test(story.lastContent)) await story.dump();

@@ -3,8 +3,9 @@ import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { sliceLines } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
+import { TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null };
 type ShowHideResult = { status: number };
 
 // log://<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
@@ -57,27 +58,57 @@ export default class Log {
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 
-        const target = row.scheme !== null ? `${row.scheme}://${row.pathname ?? ""}` : (row.pathname ?? "(no path)");
-        const summary = `${row.op} ${target}\nstatus: ${row.status_rx}\nresponse: ${row.rx}`;
+        // Unwrap the stored rx (JSON-serialized DispatchResult). The original
+        // op's body is at rx.content with its own mimetype at rx.mimetype.
+        // Returning rx.content directly (NOT a "EDIT target\nstatus: N\n
+        // response: …" summary wrap) is what makes matcher chaining work:
+        // `<<READ(log://N/M/K):$[0].matched:READ` then sees the prior op's
+        // actual result body and can jsonpath / xpath it cleanly.
+        //
+        // For ops that don't produce a content body (EDIT/COPY/MOVE/SEND
+        // return status+metadata), surface the rx itself as a JSON document
+        // so the model can still inspect what happened.
+        let underlyingContent: string;
+        let underlyingMimetype: string;
+        try {
+            const rx = JSON.parse(row.rx) as { content?: unknown; mimetype?: unknown };
+            if (typeof rx.content === "string") {
+                underlyingContent = rx.content;
+                underlyingMimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
+            } else {
+                // Non-content op (EDIT/SEND/etc.) — render the whole rx as JSON.
+                underlyingContent = JSON.stringify(rx, null, 2);
+                underlyingMimetype = "application/json";
+            }
+        } catch {
+            underlyingContent = row.rx;
+            underlyingMimetype = "text/plain";
+        }
 
         // `<L>` scopes; body matches within the scope (slice-then-match).
-        let workingContent = summary;
-        let workingStart = 1;
+        let workingContent = underlyingContent;
+        let workingStart: number | null = 1;
         if (statement.lineMarker !== null) {
-            const sliced = sliceLines(summary, statement.lineMarker);
-            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: "text/plain" };
+            const sliced = sliceLines(underlyingContent, statement.lineMarker);
+            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
             workingContent = sliced.text ?? "";
-            workingStart = sliced.startLine ?? 1;
+            workingStart = sliced.startLine ?? null;
         }
         if (statement.body !== null) {
-            const matched = matchAgainstContent(statement.body, workingContent, "text/plain");
-            if (matched.status !== 200) return { status: matched.status, content: null, mimetype: "text/plain" };
-            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: "text/plain", startLine: null };
+            const matched = matchAgainstContent(statement.body, workingContent, underlyingMimetype, workingStart ?? 1);
+            if (matched.status === 204) {
+                return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+            }
+            if (matched.status !== 200) return { status: matched.status, content: null, mimetype: underlyingMimetype };
+            return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
         }
         if (statement.lineMarker !== null) {
-            return { status: 200, content: workingContent, mimetype: "text/plain", startLine: workingStart };
+            // `<L>` slice always returns text/markdown — text primitive.
+            if (workingContent === "") return { status: 204, content: "", mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: null };
+            return { status: 200, content: workingContent, mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: workingStart };
         }
-        return { status: 200, content: summary, mimetype: "text/plain", startLine: 1 };
+        if (underlyingContent === "") return { status: 204, content: "", mimetype: underlyingMimetype, startLine: null };
+        return { status: 200, content: underlyingContent, mimetype: underlyingMimetype, startLine: 1 };
     }
 
     async show(statement: ShowStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {

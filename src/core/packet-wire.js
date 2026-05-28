@@ -13,6 +13,8 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
+import { isLineNavigableMimetype } from "./mimetype-binary.ts";
+
 // Render packet.system → system message content (markdown string).
 //   {system_definition verbatim}
 //   # Plurnk System Instructions   (persona)
@@ -71,6 +73,13 @@ const numberLines = (body, start = 1) => {
     const source = trailingNewline ? body.slice(0, -1) : body;
     const numbered = source.split("\n").map((line, i) => `${start + i}:\t${line}`).join("\n");
     return trailingNewline ? `${numbered}\n` : numbered;
+};
+
+// Tolerant JSON parser for log entries' rx/tx fields. The engine
+// pre-parses application/json mimetypes, but render may also receive
+// strings (legacy paths, manual tests). Returns null on parse failure.
+const safeParse = (s) => {
+    try { return JSON.parse(s); } catch { return null; }
 };
 
 // Stable JSON: keys sorted alphabetically so the same meta produces the
@@ -162,27 +171,45 @@ const renderLogEntries = (entries) =>
         if (typeof e.status === "number") meta.status = e.status;
         const target = renderActionTarget(e.target);
         if (target !== null) meta.target = target;
+
+        // Op-specific meta enrichment for READ: surface the matcher body
+        // and match count when a body matcher was used. Without these, the
+        // model can't distinguish "0 matches" from "empty content" — both
+        // would render as a status-204 line. The matcher comes from the
+        // stored statement (tx); the count from the result (rx).
+        if (op === "READ") {
+            const tx = e.tx;
+            if (tx !== null && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
+                if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
+            }
+            const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
+            if (rx !== null && typeof rx === "object" && typeof rx.matches === "number") {
+                meta.matches = rx.matches;
+            }
+        }
+
         const metaLine = `* ${canonicalJson(meta)}`;
 
-        // READ@200: expose the response body so the model sees what it
-        // just read. Without this, the model has no way to know what's
-        // in the file/entry it asked about and tends to re-READ with
-        // different syntaxes hoping one will surface content. Engine's
-        // #buildLog may pre-parse rx (mimetype_rx === application/json)
-        // or leave it as a string; handle both.
+        // READ@200: expose the response body. READ@204 (successfully empty —
+        // 0 matcher hits, sentinel slice, or empty source) has no body to
+        // render; the meta line carries the signal via `matches` / status code.
         if (op === "READ" && e.status === 200) {
-            let rx = e.rx;
-            if (typeof rx === "string") {
-                try { rx = JSON.parse(rx); } catch { rx = null; }
-            }
+            const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
             if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                 const fence = target ?? `log://${coordinate}`;
-                // rx.startLine: 1-indexed position the slice starts at, plumbed by
-                // the READ scheme handler. Full reads start=1; <L> slices start=N;
-                // matcher results have startLine=null (no line correspondence).
-                // The render owns N:\t prefixing; sliceLines returns raw content.
-                const start = typeof rx.startLine === "number" ? rx.startLine : 1;
-                return `${metaLine}\n<<${fence}:\n${numberLines(rx.content, start)}\n:${fence}`;
+                // Line-navigable mimetypes (text/markdown, text/plain,
+                // source code, etc.) get N:\t prefix per plurnk.md. Tree-
+                // navigable (JSON, XML, HTML) render verbatim — line
+                // numbers in the wrapper would collide with structural
+                // navigation (jsonpath/xpath) used on these formats.
+                // Classifier is consumer-side in this repo (see AGENTS.md
+                // "Matcher return semantics rework" / plurnk-grammar#17).
+                const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
+                if (isLineNavigableMimetype(mimetype)) {
+                    const start = typeof rx.startLine === "number" ? rx.startLine : 1;
+                    return `${metaLine}\n<<${fence}:\n${numberLines(rx.content, start)}\n:${fence}`;
+                }
+                return `${metaLine}\n<<${fence}:\n${rx.content}\n:${fence}`;
             }
         }
         return metaLine;

@@ -209,12 +209,28 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
     return n;
 };
 
-// Per-op fingerprint: op verb + target URI. Body deliberately excluded so the
-// model writing varied content to the same target still trips. Path kind is
-// included as a discriminator (url vs local). Rummy parallel: scheme +
-// sorted attributes joined by '='.
+// Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
+// where the activity isn't fully captured by target alone:
+//   - EDIT/COPY/MOVE: body excluded — re-writing the same target with varied
+//     content IS cycling (the model is producing different versions of the
+//     same artifact instead of progressing).
+//   - FIND/READ/SHOW/HIDE: body IS the search/selection pattern; varied
+//     matchers on the same target ARE different activities (the model is
+//     exploring different queries, not repeating one).
 const fingerprintOp = (stmt: PlurnkStatement): string => {
     const path = stmt.target;
+    const matcherDiscriminator = (): string => {
+        // For matcher-bearing ops, the body's `raw` (matcher source) plus
+        // any lineMarker forms the activity discriminator.
+        const parts: string[] = [];
+        const body = (stmt as { body?: { raw?: unknown } | string | null }).body;
+        if (body !== null && typeof body === "object" && typeof body.raw === "string") {
+            parts.push(`body:${body.raw.slice(0, 64)}`);
+        }
+        const lm = (stmt as { lineMarker?: { first: number; last: number | null } | null }).lineMarker;
+        if (lm !== null && lm !== undefined) parts.push(`L:${lm.first},${lm.last ?? ""}`);
+        return parts.length > 0 ? `|${parts.join("|")}` : "";
+    };
     if (path === null) {
         // Path-less ops need an activity-defining discriminator other
         // than `target`. Picked per op so the cycle detector reflects
@@ -236,8 +252,13 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         }
         return `${stmt.op}|(no-path)`;
     }
-    if (path.kind === "url") return `${stmt.op}|${path.scheme}://${path.pathname}`;
-    return `${stmt.op}|local:${path.raw}`;
+    const base = path.kind === "url"
+        ? `${stmt.op}|${path.scheme}://${path.pathname}`
+        : `${stmt.op}|local:${path.raw}`;
+    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "SHOW" || stmt.op === "HIDE") {
+        return `${base}${matcherDiscriminator()}`;
+    }
+    return base;
 };
 
 // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
@@ -430,7 +451,7 @@ export default class Engine {
                     kind: "cycle",
                     period: cycle.period,
                     cycles: cycle.cycles,
-                    message: `repeating pattern detected: ${cycle.cycles}× period-${cycle.period}; vary your approach`,
+                    message: "Loop detected",
                 });
             }
             this.#strikeState.set(loopId, state);
@@ -472,7 +493,7 @@ export default class Engine {
             if (turnIds.length >= suddenDeathThreshold && turnIds.length < maxTurns) {
                 this.#pushTelemetry(loopId, {
                     kind: "sudden_death",
-                    message: `approaching max turns: ${turnIds.length} of ${maxTurns}; emit SEND[200] to complete`,
+                    message: `${turnIds.length} of ${maxTurns}`,
                     remaining: maxTurns - turnIds.length,
                 });
             }
@@ -855,6 +876,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string | null;
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
+            tx: string; mimetype_tx: string;
         }>({ run_id: runId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -873,6 +895,8 @@ export default class Engine {
             status: r.status_rx,
             rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
             mimetype_rx: r.mimetype_rx,
+            tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
+            mimetype_tx: r.mimetype_tx,
         }));
     }
 
