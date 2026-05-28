@@ -76,32 +76,56 @@ const parseJson = (s, fallback = null) => {
 // This script never writes — discipline is in our hands, not the flag.
 const db = new DatabaseSync(dbPath);
 
-const sessions = db.prepare("SELECT * FROM sessions ORDER BY id").all();
-const runs = db.prepare("SELECT * FROM runs ORDER BY id").all();
-const loops = db.prepare(
-    `SELECT id, run_id, sequence, status, prompt, flags FROM loops ORDER BY run_id, sequence`,
-).all();
-const turns = db.prepare(
-    `SELECT id, loop_id, sequence, status, packet,
-            usage_prompt, usage_completion, usage_cached, usage_cost_pico,
-            finish_reason, model, timestamp
-     FROM turns ORDER BY loop_id, sequence`,
-).all();
-const logEntries = db.prepare(
-    `SELECT id, run_id, loop_id, turn_id, sequence, at, origin,
-            op, suffix, signal,
-            scheme, pathname,
-            tx, rx, status_rx, mimetype_rx,
-            state, outcome, attrs
-     FROM log_entries ORDER BY loop_id, turn_id, sequence`,
-).all();
-const entryChannels = db.prepare(
-    `SELECT ec.entry_id, ec.name AS channel, ec.mimetype, ec.tokens, ec.state, ec.content,
-            e.scheme, e.pathname, e.session_id
-     FROM entry_channels ec
-     JOIN entries e ON e.id = ec.entry_id
-     ORDER BY ec.entry_id, ec.name`,
-).all();
+// Snapshot consistency: wrap every read in a single deferred transaction
+// so all queries see the same committed-state. Without this, the daemon
+// committing rows while digest is iterating produces inconsistent counts
+// (e.g., turns query sees N rows, log_entries query a millisecond later
+// sees rows that reference turn N+1 which the earlier query didn't
+// include). BEGIN DEFERRED takes a read lock on first query; reads stay
+// consistent until COMMIT.
+db.exec("BEGIN DEFERRED");
+let sessions, runs, loops, turns, logEntries, entryChannels;
+try {
+    sessions = db.prepare("SELECT * FROM sessions ORDER BY id").all();
+    runs = db.prepare("SELECT * FROM runs ORDER BY id").all();
+    loops = db.prepare(
+        `SELECT id, run_id, sequence, status, prompt, flags FROM loops ORDER BY run_id, sequence`,
+    ).all();
+    turns = db.prepare(
+        `SELECT id, loop_id, sequence, status, packet,
+                usage_prompt, usage_completion, usage_cached, usage_cost_pico,
+                finish_reason, model, timestamp
+         FROM turns ORDER BY loop_id, sequence`,
+    ).all();
+    logEntries = db.prepare(
+        `SELECT id, run_id, loop_id, turn_id, sequence, at, origin,
+                op, suffix, signal,
+                scheme, pathname,
+                tx, rx, status_rx, mimetype_rx,
+                state, outcome, attrs
+         FROM log_entries ORDER BY loop_id, turn_id, sequence`,
+    ).all();
+    entryChannels = db.prepare(
+        `SELECT ec.entry_id, ec.name AS channel, ec.mimetype, ec.tokens, ec.state, ec.content,
+                e.scheme, e.pathname, e.session_id
+         FROM entry_channels ec
+         JOIN entries e ON e.id = ec.entry_id
+         ORDER BY ec.entry_id, ec.name`,
+    ).all();
+    // Sanity recount of counts that go into the digest header. If these
+    // diverge from the data we already loaded, something is wrong with the
+    // snapshot (would be a bug). Hard-fail rather than report stale numbers.
+    const turnsRecount = db.prepare("SELECT COUNT(*) AS n FROM turns").get().n;
+    const logsRecount = db.prepare("SELECT COUNT(*) AS n FROM log_entries").get().n;
+    if (turnsRecount !== turns.length) {
+        throw new Error(`digest: snapshot inconsistency — turns rows ${turns.length} vs recount ${turnsRecount}`);
+    }
+    if (logsRecount !== logEntries.length) {
+        throw new Error(`digest: snapshot inconsistency — log_entries rows ${logEntries.length} vs recount ${logsRecount}`);
+    }
+} finally {
+    db.exec("COMMIT");
+}
 
 db.close();
 

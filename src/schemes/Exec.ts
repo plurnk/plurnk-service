@@ -130,7 +130,7 @@ export default class Exec {
     // applyResolution spawns the subprocess; output streams into the
     // auto-generated exec://<pathname> entry's stdout/stderr channels.
     // The model READs that entry on a subsequent turn to see what happened.
-    async exec(statement: ExecStatement, _ctx: PlurnkSchemeContext): Promise<ExecResult> {
+    async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
         if (command.length === 0) {
             return { status: 400, error: "EXEC requires a command body" };
@@ -142,7 +142,17 @@ export default class Exec {
         }
 
         const runtime = typeof statement.signal === "string" ? statement.signal : "";
-        const cwd = cwdFromTarget(statement.target);
+        const cwdFromOp = cwdFromTarget(statement.target);
+        // Default cwd to the session's project_root so EXEC runs in the
+        // same directory File scheme writes to. Without this default, the
+        // model creates a file via EDIT (lands in project_root) and then
+        // EXECs (runs in daemon cwd) and can't find what it just wrote.
+        // Explicit (cwd) in the EXEC statement still wins.
+        let cwd: string | null = cwdFromOp;
+        if (cwd === null) {
+            const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
+            cwd = sessionRow?.project_root ?? null;
+        }
         // Auto-generated pathname so the model can READ exec://<pathname> later.
         // Short random suffix keeps it readable while remaining unique within a session.
         const pathname = `r-${crypto.randomUUID().slice(0, 8)}`;

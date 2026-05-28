@@ -156,6 +156,40 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
     });
 });
 
+test("EXEC: cwd defaults to session.project_root when statement target is null", async () => {
+    // Writes a file via shell into "$PWD/<marker>", then asserts the file
+    // exists at <project_root>/<marker> — proves cwd really was project_root.
+    const { mkdtemp, rm, readFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const workspace = await mkdtemp(join(tmpdir(), "plurnk-cwd-default-"));
+    const marker = `cwd-default-${crypto.randomUUID().slice(0, 6)}.txt`;
+    try {
+        await withSession(async (ctx) => {
+            await (ctx.db.test_set_session_project_root as PrepMethod).run({
+                id: ctx.sessionId, project_root: workspace,
+            });
+            const idDeferred = deferred<number>();
+            const dispatchPromise = ctx.engine.dispatch({
+                statement: execStmt("sh", null, `echo here > ${marker}`),
+                sessionId: ctx.sessionId, runId: ctx.runId,
+                loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            ctx.engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
+            await dispatchPromise;
+            await ctx.exec.idle();
+
+            // The file landed in the project_root, not in plurnk-service's cwd.
+            const written = await readFile(join(workspace, marker), "utf8").catch(() => null);
+            assert.equal(written, "here\n",
+                `EXEC's cwd should have defaulted to session.project_root (${workspace}); file ${marker} should exist there`);
+        });
+    } finally {
+        await rm(workspace, { recursive: true, force: true });
+    }
+});
+
 test("EXEC[node]: runs node code via -e and captures stdout", async () => {
     await withSession(async (ctx) => {
         const idDeferred = deferred<number>();
