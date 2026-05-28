@@ -4,6 +4,7 @@ import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.t
 import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
 import { sliceLines, sliceJsonItems, applyLineMarkerEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
+import { resolveEntryMimetype } from "../core/path-mimetype.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -58,10 +59,14 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         return { status: 404, entryId: null, channel: targetChannel };
     }
 
-    // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2). Only
-    // applies when entry exists with a known mimetype; new entries use the
-    // manifest's channel mimetype, which we control.
-    const channelMimetype = channels[targetChannel];
+    // Effective mimetype for this entry. Per plurnk-grammar 0.14.0:
+    // "Path suffix declares mimetype; absent suffix defers to scheme default."
+    // `known://users.json` → application/json (extension wins).
+    // `known://users`      → text/markdown (scheme manifest default).
+    const channelManifestDefault = channels[targetChannel];
+    const effectiveMimetype = await resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
+
+    // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2).
     if (existing !== undefined) {
         const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
             session_id: sessionId, scheme, pathname, channel: targetChannel,
@@ -70,7 +75,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
             return { status: 415, entryId: existing.id, channel: targetChannel };
         }
     }
-    if (isBinaryMimetype(channelMimetype)) {
+    if (isBinaryMimetype(effectiveMimetype)) {
         return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
     }
 
@@ -104,7 +109,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         createdNow = false;
     }
 
-    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: channelMimetype });
+    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype });
     await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: targetChannel });
 
     if (Array.isArray(statement.signal)) {

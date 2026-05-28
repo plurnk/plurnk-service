@@ -43,7 +43,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-grammar": "^0.13.0",
+        "@plurnk/plurnk-grammar": "^0.14.0",
         "@plurnk/plurnk-mimetypes": "^0.3.1",
         "@plurnk/plurnk-mimetypes-application-json": "^0.2.0",
         "@plurnk/plurnk-mimetypes-application-pdf": "^0.3.0",

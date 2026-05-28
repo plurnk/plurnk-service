@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -222,5 +223,71 @@ test("Known.read: read against session A doesn't surface session B's entry", asy
         const result = await k.read(readStatement({ target: urlPath("known", "/only-b") }), makeSchemeCtx({ db, sessionId: sessionA }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
+    } finally { db.close(); }
+});
+
+// --- Extension-based mimetype (plurnk-grammar 0.14.0) ---------------
+
+test("Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"}]' }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        const result = await k.read(
+            readStatement({ target: urlPath("known", "/users.json") }),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.mimetype, "application/json");
+        assert.equal(result.content, '[{"name":"Alice"}]');
+    } finally { db.close(); }
+});
+
+test("Known: extension `.json` enables structural <L> dispatch on READ", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]' }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        // <L><2> on JSON source picks the 2nd item (Bob), wrapped in array.
+        const result = await k.read(
+            readStatement({ target: urlPath("known", "/users.json"), lineMarker: { first: 2, last: null } }),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.mimetype, "application/json");
+        const items = JSON.parse(result.content ?? "") as object[];
+        assert.deepEqual(items, [{ name: "Bob" }]);
+    } finally { db.close(); }
+});
+
+test("Known: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users"), body: "alpha\nbeta\ngamma" }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        // Without `.json` suffix, mimetype falls back to manifest default
+        // (text/markdown). <L><2> is line-based.
+        const result = await k.read(
+            readStatement({ target: urlPath("known", "/users"), lineMarker: { first: 2, last: null } }),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.mimetype, "text/markdown");
+        assert.equal(result.content, "beta");
     } finally { db.close(); }
 });
