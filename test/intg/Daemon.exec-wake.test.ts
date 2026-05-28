@@ -107,6 +107,57 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     });
 });
 
+test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async () => {
+    // A countdown emits 5 lines over ~2.5s. The model SEND[200]s
+    // immediately, so the loop closes well before the spawn finishes.
+    // When the spawn DOES finish, wake fires with closeStatus=200 and
+    // a summary that reflects the COMPLETE stdout (10 bytes for
+    // "5\n4\n3\n2\n1\n") — proving the streaming continued past the
+    // loop's terminal status and the conclusion is the final state,
+    // not a partial snapshot.
+    const mock = new Mock({
+        contextSize: 8192,
+        responses: [
+            mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[200]:fire and forget:SEND`),
+            // Wake-opened loop just terminates so the test completes:
+            mockResponse("<<SEND[200]:saw the wake:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "exec-wake-streaming" });
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+
+            const startedAt = Date.now();
+            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", flags: { yolo: true } });
+            const firstResult = firstResp.result as { finalStatus: number };
+            const firstElapsed = Date.now() - startedAt;
+            assert.equal(firstResult.finalStatus, 200, "first loop terminates cleanly on SEND[200]");
+            // The loop's RPC should return well before the spawn's ~2.5s
+            // — the wake-on-completion path is what handles the spawn's
+            // late conclusion, not the original loop.
+            assert.ok(firstElapsed < 1500,
+                `first loop returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
+
+            // Now wait for the spawn to conclude + wake to fire + wake loop to terminate.
+            await new Promise((r) => setTimeout(r, 3500));
+
+            const concluded = concludedEvents() as Array<{
+                scheme: string; closeStatus: number; summary: string; wakeAction: string;
+            }>;
+            const wake = concluded.find((c) => c.scheme === "exec" && c.closeStatus === 200);
+            assert.ok(wake, "exec stream concluded");
+            // The KEY assertion: summary has the FULL byte count, not
+            // whatever happened to be in the channel when loop ended.
+            assert.match(wake.summary, /stdout=10 bytes/,
+                `summary should report the full final stdout=10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${wake.summary}`);
+            assert.equal(wake.wakeAction, "opened-loop");
+        } finally { ws.close(); }
+    });
+});
+
 test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with closeStatus=499; daemon's handler skips opening a wake loop.
