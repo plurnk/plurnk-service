@@ -61,6 +61,21 @@ export const sliceLines = (content: string, marker: LineMarker): SliceResult => 
     return { status: 200, text: numbered };
 };
 
+// COPY-style raw line slice. Returns the selected lines verbatim (no line-
+// number prefix), trailing newline appended if any lines were selected.
+// Used for COPY/MOVE `<L>` per AGENTS.md "Resolved ambiguities" §4
+// (source range, symmetric with READ but without the READ-output prefix
+// that's a render concern, not a data concern).
+export const sliceLinesRaw = (content: string, marker: LineMarker): SliceResult => {
+    const { lines } = splitLines(content);
+    const norm = normalize(marker, lines.length);
+    if ("error" in norm) return { status: 416, error: norm.error };
+    if (norm.kind !== "range") return { status: 200, text: "" };
+    const selected = lines.slice(norm.start - 1, norm.end);
+    const result = selected.length > 0 ? `${selected.join("\n")}\n` : "";
+    return { status: 200, text: result };
+};
+
 export interface EditResult { status: number; result?: string; error?: string }
 
 // EDIT applies body at the marker position:

@@ -107,12 +107,33 @@ test("Known.find combining glob + tag filter", async () => {
     } finally { db.close(); }
 });
 
-test("[§6.6-non-glob-dialects-501] Known.find with regex matcher returns 501 (deferred)", async () => {
+test("Known.find with regex matcher filters by pathname", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seedEntries(db, sessionId, runId, [["alpha", "x"], ["beta", "y"], ["aardvark", "z"]]);
+        const r = await new Known().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results.toSorted(), ["known://aardvark", "known://alpha"]);
+    } finally { db.close(); }
+});
+
+test("Known.find with xpath matcher returns 501 (pending plurnk-mimetypes#3)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [["a", "x"]]);
-        const r = await new Known().find(findStmt(url(""), regex("a")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 501);
+    } finally { db.close(); }
+});
+
+test("Known.find with <L> paginates results", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seedEntries(db, sessionId, runId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
+        const stmt = { ...findStmt(url(""), null), lineMarker: { first: 2, last: 3 } };
+        const r = await new Known().find(stmt, makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://b", "known://c"]);
     } finally { db.close(); }
 });
 

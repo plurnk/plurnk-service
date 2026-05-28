@@ -8,6 +8,8 @@ import { writeEntry } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
+import { sliceLinesRaw } from "./line-marker.ts";
+import { isBinaryMimetype } from "./mimetype-binary.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
@@ -1383,12 +1385,31 @@ export default class Engine {
             }
         }
 
+        // `<L>` source range slicing per AGENTS.md "Resolved ambiguities" §4
+        // (symmetric with READ `<L>` — source range, no line-number prefix).
+        // Applied to every channel of the source entry. Binary channels return
+        // 415 since line semantics don't apply.
+        const lineMarker = (statement as { lineMarker?: { first: number; last: number | null } | null }).lineMarker ?? null;
+        let channels = entry.channels;
+        if (lineMarker !== null) {
+            const sliced: typeof entry.channels = {};
+            for (const [channelName, channelData] of Object.entries(entry.channels)) {
+                if (isBinaryMimetype(channelData.mimetype)) {
+                    return { status: 415, error: `cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype})` };
+                }
+                const r = sliceLinesRaw(channelData.content ?? "", lineMarker);
+                if (r.status !== 200) return { status: r.status, error: r.error };
+                sliced[channelName] = { ...channelData, content: r.text ?? "" };
+            }
+            channels = sliced;
+        }
+
         // Tag resolution: signal = replace; absent/empty = carry from source
         const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
             ? statement.signal
             : entry.tags;
 
-        const writeResult = await dstHandler.writeEntry(dstPathname, { channels: entry.channels, tags }, ctx);
+        const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 

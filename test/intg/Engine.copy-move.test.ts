@@ -157,3 +157,41 @@ test("[§6.5-cross-scheme-move] Engine.move cross-scheme (unknown → known) del
         assert.equal(dst?.scheme, "known");
     } finally { await db.close(); }
 });
+
+test("Engine.copy with <L> source range slices content", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await new Known().edit(editStmt(urlPath("known", "long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "long"), urlPath("known", "sliced")), lineMarker: { first: 2, last: 3 } };
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
+        assert.equal(r.status, 201);
+        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "sliced" });
+        const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
+        assert.equal(dstChannel?.content, "beta\ngamma\n");
+    } finally { await db.close(); }
+});
+
+test("Engine.copy with <L> out of range returns 416", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await new Known().edit(editStmt(urlPath("known", "src"), "only one line"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "src"), urlPath("known", "dst")), lineMarker: { first: 99, last: null } };
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
+        assert.equal(r.status, 416);
+    } finally { await db.close(); }
+});
+
+test("Engine.move with <L> source range slices then deletes source", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await new Known().edit(editStmt(urlPath("known", "orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: MoveStatement = { ...moveStmt(urlPath("known", "orig"), urlPath("known", "moved")), lineMarker: { first: 1, last: 2 } };
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
+        assert.equal(r.status, 201);
+        const srcRemaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "orig" });
+        assert.equal(srcRemaining, undefined);
+        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "moved" });
+        const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
+        assert.equal(dstChannel?.content, "first\nsecond\n");
+    } finally { await db.close(); }
+});

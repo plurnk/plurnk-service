@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { sliceLines, applyLineMarkerEdit } from "./line-marker.ts";
+import { sliceLines, sliceLinesRaw, applyLineMarkerEdit } from "./line-marker.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 
@@ -42,6 +42,24 @@ test("sliceLines: out-of-range returns 416", () => {
 test("sliceLines: range start > end returns 416", () => {
     const r = sliceLines(TEXT, { first: 3, last: 2 });
     assert.equal(r.status, 416);
+});
+
+test("sliceLinesRaw: range without prefix", () => {
+    const r = sliceLinesRaw(TEXT, { first: 2, last: 3 });
+    assert.equal(r.status, 200);
+    assert.equal(r.text, "beta\ngamma\n");
+});
+
+test("sliceLinesRaw: single line without prefix, trailing newline appended", () => {
+    const r = sliceLinesRaw(TEXT, { first: 2, last: null });
+    assert.equal(r.status, 200);
+    assert.equal(r.text, "beta\n");
+});
+
+test("sliceLinesRaw: <1,-1> = whole content with original trailing newline", () => {
+    const r = sliceLinesRaw(TEXT, { first: 1, last: -1 });
+    assert.equal(r.status, 200);
+    assert.equal(r.text, TEXT);
 });
 
 test("applyLineMarkerEdit: replace single line", () => {

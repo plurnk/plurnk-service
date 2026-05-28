@@ -162,6 +162,26 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel };
 };
 
+// Paginate a list of items per a `<L>` results marker. Sentinels <0> and
+// <-1> select empty (insertion points have no result content).
+const paginateResults = <T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } => {
+    const total = items.length;
+    const { first, last } = marker;
+    if (last === null) {
+        if (first === 0 || first === -1) return { status: 200, items: [] };
+        if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
+        return { status: 416 };
+    }
+    let n = first;
+    let m = last;
+    if (n === 0) n = 1;
+    if (m === -1) m = total;
+    if (n < 1 || n > total) return { status: 416 };
+    if (m < 1 || m > total) return { status: 416 };
+    if (n > m) return { status: 416 };
+    return { status: 200, items: items.slice(n - 1, m) };
+};
+
 const setSessionEntryVisibility = async (
     statement: ShowStatement | HideStatement,
     ctx: PlurnkSchemeContext,
@@ -169,47 +189,104 @@ const setSessionEntryVisibility = async (
     target: 0 | 1,
 ): Promise<ShowHideResult> => {
     if (statement.target === null) return { status: 400 };
-    if (statement.lineMarker !== null) return { status: 501 };
-    if (statement.body !== null) return { status: 501 };
-    if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501 };
 
     const { db, sessionId, runId } = ctx;
     const { name: scheme, channels, defaultChannel } = manifest;
 
     const fragment = fragmentOf(statement);
-    const pathname = pathnameOf(statement);
-    const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-    if (entry === undefined) return { status: 404 };
+    const isMultiEntry = statement.body !== null
+        || (Array.isArray(statement.signal) && statement.signal.length > 0)
+        || statement.lineMarker !== null;
 
-    const upsertVis = db.ops_upsert_visibility as PrepMethod;
+    if (!isMultiEntry) {
+        // Single-entry path: exact pathname lookup.
+        const pathname = pathnameOf(statement);
+        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        if (entry === undefined) return { status: 404 };
 
-    if (fragment === null) {
-        // Fragment-less SHOW/HIDE — flip every channel of the entry.
-        const existing = await (db.ops_list_visibility_for_entry as PrepMethod).all<{ channel: string; indexed: number }>({
-            run_id: runId, entry_id: entry.id,
-        });
-        const existingByName = new Map(existing.map((r) => [r.channel, r.indexed]));
-
-        let changed = 0;
-        for (const channelName of Object.keys(channels)) {
-            if (existingByName.get(channelName) === target) continue;
-            await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: channelName, indexed: target });
-            changed += 1;
+        const upsertVis = db.ops_upsert_visibility as PrepMethod;
+        if (fragment === null) {
+            const existing = await (db.ops_list_visibility_for_entry as PrepMethod).all<{ channel: string; indexed: number }>({
+                run_id: runId, entry_id: entry.id,
+            });
+            const existingByName = new Map(existing.map((r) => [r.channel, r.indexed]));
+            let changed = 0;
+            for (const channelName of Object.keys(channels)) {
+                if (existingByName.get(channelName) === target) continue;
+                await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: channelName, indexed: target });
+                changed += 1;
+            }
+            return { status: changed === 0 ? 304 : 200 };
         }
-        return { status: changed === 0 ? 304 : 200 };
+        const targetChannel = resolveChannel(fragment, channels, defaultChannel);
+        if (targetChannel === null) return { status: 400 };
+        const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
+            run_id: runId, entry_id: entry.id, channel: targetChannel,
+        });
+        if (current?.indexed === target) return { status: 304 };
+        await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: targetChannel, indexed: target });
+        return { status: 200 };
     }
 
-    // Fragment-targeted SHOW/HIDE — flip only that channel.
-    const targetChannel = resolveChannel(fragment, channels, defaultChannel);
-    if (targetChannel === null) return { status: 400 };
+    // Multi-entry path: target is treated as a pathname GLOB scope. Body
+    // matcher (glob/regex) further filters by pathname; xpath/jsonpath
+    // would filter by content (501 pending plurnk-mimetypes#3). Tag
+    // signal filters by tag. <L> paginates the matched results.
+    let regexFilter: RegExp | null = null;
+    let pathnameGlob: string | null = null;
+    if (statement.body !== null) {
+        if (statement.body.dialect === "glob") {
+            pathnameGlob = statement.body.raw;
+        } else if (statement.body.dialect === "regex") {
+            try { regexFilter = new RegExp(statement.body.pattern, statement.body.flags); }
+            catch { return { status: 400 }; }
+        } else {
+            return { status: 501 };
+        }
+    }
+    const scopePathname = pathnameOf(statement);
+    const scopeGlob = scopePathname.length > 0 ? `${scopePathname}*` : null;
+    const tags = Array.isArray(statement.signal) ? statement.signal : [];
+    const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
-    const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
-        run_id: runId, entry_id: entry.id, channel: targetChannel,
+    const rows = await (db.find_session_entries as PrepMethod).all<{ pathname: string }>({
+        session_id: sessionId, scheme,
+        scope_pathname: scopeGlob,
+        pathname_pattern: pathnameGlob,
+        tags: tagsParam,
     });
-    if (current?.indexed === target) return { status: 304 };
+    let pathnames = rows.map((r) => r.pathname);
+    if (regexFilter !== null) pathnames = pathnames.filter((p) => regexFilter.test(p));
 
-    await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: targetChannel, indexed: target });
-    return { status: 200 };
+    if (statement.lineMarker !== null) {
+        const page = paginateResults(pathnames, statement.lineMarker);
+        if (page.status !== 200) return { status: page.status };
+        pathnames = page.items ?? [];
+    }
+    if (pathnames.length === 0) return { status: 304 };
+
+    // Resolve fragment to a target channel (applies uniformly across matches).
+    let scopeChannel: string | null = null;
+    if (fragment !== null) {
+        scopeChannel = resolveChannel(fragment, channels, defaultChannel);
+        if (scopeChannel === null) return { status: 400 };
+    }
+    const upsertVis = db.ops_upsert_visibility as PrepMethod;
+    let changed = 0;
+    for (const p of pathnames) {
+        const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname: p });
+        if (e === undefined) continue;
+        const channelsToFlip = scopeChannel !== null ? [scopeChannel] : Object.keys(channels);
+        for (const channelName of channelsToFlip) {
+            const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
+                run_id: runId, entry_id: e.id, channel: channelName,
+            });
+            if (current?.indexed === target) continue;
+            await upsertVis.run({ run_id: runId, entry_id: e.id, channel: channelName, indexed: target });
+            changed += 1;
+        }
+    }
+    return { status: changed === 0 ? 304 : 200 };
 };
 
 export const showSessionEntry = async (statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> =>
