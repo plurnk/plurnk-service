@@ -167,6 +167,39 @@ test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () 
     } finally { await story.cleanup(); }
 });
 
+test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () => {
+    // Natural prompt that benefits from READ <L>. The model may also read
+    // the whole file and report the line; either way, the holistic outcome
+    // (mentioning the line content) is what we assert.
+    const story = await runStory({
+        label: "one-line",
+        prompt: "What's on line 2 of src/app.js? Tell me what the line says.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/TODO/.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /TODO/,
+            `final reply references the TODO line; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
+test("story: locate a pattern in a file by regex", { timeout: TIMEOUT }, async () => {
+    // Natural prompt that benefits from READ regex matcher. notes.md
+    // contains "Project codename: phoenix.". The model may extract via a
+    // regex-style matcher or by reading and reasoning; either way, the
+    // outcome is reporting "phoenix" back.
+    const story = await runStory({
+        label: "regex-find",
+        prompt: "Find the word that follows 'codename:' in notes.md. Report only that word.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /phoenix/i,
+            `final reply contains the codename; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
 test("story: report the number of files in a directory", { timeout: TIMEOUT }, async () => {
     // src/ has 2 files: app.js, config.json. Scoped: just the count.
     // Generous maxTurns: gemma explores several commands (find/ls/wc)
