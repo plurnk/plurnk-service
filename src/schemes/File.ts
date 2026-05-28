@@ -6,7 +6,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
@@ -60,13 +60,24 @@ export default class File {
     };
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        if (statement.target === null) return { status: 400, content: null, mimetype: null };
-        if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
-        if (statement.body !== null) return { status: 501, content: null, mimetype: null };
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null };
+        if (statement.target === null) return { status: 400, content: null, mimetype: null, error: "READ requires a target path" };
+        // Error messages on the 501 paths are LOAD-BEARING: they surface
+        // through the engine's telemetry.errors[] to the model's next
+        // packet, telling it to retry with a different shape. Without
+        // these, the model sees status=501 in the log with no
+        // remediation hint and burns turns guessing.
+        if (statement.lineMarker !== null) {
+            return { status: 501, content: null, mimetype: null, error: "READ with <line-marker> not yet supported on file://; emit READ without <line-marker> to read the entire file" };
+        }
+        if (statement.body !== null) {
+            return { status: 501, content: null, mimetype: null, error: "READ with a matcher body not yet supported on file://; emit `<<READ(path)::READ` (empty body) to read the entire file" };
+        }
+        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
+            return { status: 501, content: null, mimetype: null, error: "READ with [tag] filters not yet supported on file://; emit `<<READ(path)::READ` without the [tag] prefix" };
+        }
 
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) return { status: 400, content: null, mimetype: null };
+        if (root === null) return { status: 400, content: null, mimetype: null, error: "session has no project_root; cannot READ files" };
 
         const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         const resolved = await resolveContained(pathname, root);

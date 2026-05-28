@@ -144,6 +144,12 @@ const renderIndexEntries = (entries) =>
 // the next packet's user.telemetry.errors[] per SPEC §15.1. (Forward:
 // meta will gain tokensBefore/After + linesBefore/After to convey
 // change scope without carrying the body content.)
+// Per-entry render: one meta JSON line + optionally a body block for
+// ops whose response IS the content the model needs to see. READ is
+// the canonical case — its rx carries the file/entry content the
+// model asked for, and the model can't act on what it can't see. The
+// body block uses the heredoc fence form so it parses the same as
+// index entries (model already knows the shape).
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const meta = {};
@@ -156,7 +162,25 @@ const renderLogEntries = (entries) =>
         if (typeof e.status === "number") meta.status = e.status;
         const target = renderActionTarget(e.target);
         if (target !== null) meta.target = target;
-        return `* ${canonicalJson(meta)}`;
+        const metaLine = `* ${canonicalJson(meta)}`;
+
+        // READ@200: expose the response body so the model sees what it
+        // just read. Without this, the model has no way to know what's
+        // in the file/entry it asked about and tends to re-READ with
+        // different syntaxes hoping one will surface content. Engine's
+        // #buildLog may pre-parse rx (mimetype_rx === application/json)
+        // or leave it as a string; handle both.
+        if (op === "READ" && e.status === 200) {
+            let rx = e.rx;
+            if (typeof rx === "string") {
+                try { rx = JSON.parse(rx); } catch { rx = null; }
+            }
+            if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
+                const fence = target ?? `log://${coordinate}`;
+                return `${metaLine}\n<<${fence}:\n${numberLines(rx.content)}\n:${fence}`;
+            }
+        }
+        return metaLine;
     }).join("\n");
 
 const renderActionTarget = (target) => {

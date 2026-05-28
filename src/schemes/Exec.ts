@@ -142,6 +142,21 @@ export default class Exec {
         }
 
         const runtime = typeof statement.signal === "string" ? statement.signal : "";
+        // Validate the runtime up-front so the model gets a clean
+        // telemetry message instead of an opaque ENOENT-after-spawn. The
+        // sysprompt's EXEC[search] example refers to a future search
+        // runtime that isn't configured on this service; without this
+        // check, gemma emits EXEC[search] for shell tasks, the spawn
+        // ENOENTs silently, and the model has no way to recover.
+        const KNOWN_RUNTIMES = new Set(["", "sh", "bash", "node", "python", "python3"]);
+        if (!KNOWN_RUNTIMES.has(runtime)) {
+            return {
+                status: 501,
+                error: `EXEC runtime '${runtime}' is not configured on this service; ` +
+                    "for shell commands omit the runtime or use [sh] / [bash]; " +
+                    "for code use [node] / [python].",
+            };
+        }
         const cwdFromOp = cwdFromTarget(statement.target);
         // Default cwd to the session's project_root so EXEC runs in the
         // same directory File scheme writes to. Without this default, the

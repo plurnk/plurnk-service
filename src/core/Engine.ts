@@ -213,7 +213,27 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
 // sorted attributes joined by '='.
 const fingerprintOp = (stmt: PlurnkStatement): string => {
     const path = stmt.target;
-    if (path === null) return `${stmt.op}|(no-path)`;
+    if (path === null) {
+        // Path-less ops need an activity-defining discriminator other
+        // than `target`. Picked per op so the cycle detector reflects
+        // intent rather than syntax:
+        //   - EXEC: the command body IS the activity. Without a body
+        //     digest, varied shell commands (find / ls / wc) collapse to
+        //     one fingerprint and the detector mislabels exploration
+        //     as a loop.
+        //   - SEND: the status code (signal) IS the activity. Different
+        //     SEND[X] are different intentions; same SEND[X] with
+        //     different message bodies is the same termination signal.
+        if (stmt.op === "EXEC") {
+            const body = typeof stmt.body === "string" ? stmt.body : "";
+            return `EXEC|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+        }
+        if (stmt.op === "SEND") {
+            const signal = typeof stmt.signal === "number" ? stmt.signal : "";
+            return `SEND|(no-path)|signal:${signal}`;
+        }
+        return `${stmt.op}|(no-path)`;
+    }
     if (path.kind === "url") return `${stmt.op}|${path.scheme}://${path.pathname}`;
     return `${stmt.op}|local:${path.raw}`;
 };
