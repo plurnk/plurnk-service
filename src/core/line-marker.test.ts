@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { sliceLines, sliceLinesRaw, sliceJsonItems, applyLineMarkerEdit } from "./line-marker.ts";
+import { sliceLines, sliceLinesRaw, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "./line-marker.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 
@@ -211,4 +211,156 @@ test("sliceJsonItems: object insertion order preserved", () => {
     assert.equal(r.status, 200);
     const items = JSON.parse(r.body ?? "") as object[];
     assert.deepEqual(items, [{ first: 1 }, { second: 2 }, { third: 3 }]);
+});
+
+// --- applyJsonItemEdit: structural <L> EDIT on JSON (M.8) ---
+
+// Array source
+test("applyJsonItemEdit: array <-1>:item:EDIT appends a single item", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: -1, last: null }, '"d"');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "b", "c", "d"]);
+});
+
+test("applyJsonItemEdit: array <-1>:[items]:EDIT appends multiple items", () => {
+    const r = applyJsonItemEdit('["a","b"]', { first: -1, last: null }, '["x","y"]');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "b", "x", "y"]);
+});
+
+test("applyJsonItemEdit: array <-1>:[[1,2]]:EDIT appends inner array as single element", () => {
+    // Wrap-workaround: outer array is the "items" list (length 1);
+    // inner array becomes the single appended element.
+    const r = applyJsonItemEdit('["a","b"]', { first: -1, last: null }, '[[1,2]]');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "b", [1, 2]]);
+});
+
+test("applyJsonItemEdit: array <0>:item:EDIT prepends", () => {
+    const r = applyJsonItemEdit('["b","c"]', { first: 0, last: null }, '"a"');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "b", "c"]);
+});
+
+test("applyJsonItemEdit: array <N>:item:EDIT replaces position N", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: 2, last: null }, '"B"');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "B", "c"]);
+});
+
+test("applyJsonItemEdit: array <N>:[multi]:EDIT replaces position N with multiple items", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: 2, last: null }, '["X","Y"]');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "X", "Y", "c"]);
+});
+
+test("applyJsonItemEdit: array <N,M>:item:EDIT range collapses to single item", () => {
+    const r = applyJsonItemEdit('["a","b","c","d"]', { first: 2, last: 3 }, '"X"');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "X", "d"]);
+});
+
+test("applyJsonItemEdit: array <N,M>:[multi]:EDIT range expands to multiple", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: 2, last: 3 }, '["X","Y","Z"]');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "X", "Y", "Z"]);
+});
+
+test("applyJsonItemEdit: array <N>::EDIT (empty body) deletes position N", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: 2, last: null }, "");
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "c"]);
+});
+
+test("applyJsonItemEdit: array <1,-1>::EDIT (empty body) clears to []", () => {
+    const r = applyJsonItemEdit('["a","b","c"]', { first: 1, last: -1 }, "");
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), []);
+});
+
+test("applyJsonItemEdit: array <-1>::EDIT (empty body on sentinel) is no-op", () => {
+    const r = applyJsonItemEdit('["a","b"]', { first: -1, last: null }, "");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, '["a","b"]');
+});
+
+// Object source
+test("applyJsonItemEdit: object <-1>:{kv}:EDIT appends kv-pair", () => {
+    const r = applyJsonItemEdit('{"k1":1,"k2":2}', { first: -1, last: null }, '{"k3":3}');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), { k1: 1, k2: 2, k3: 3 });
+});
+
+test("applyJsonItemEdit: object <-1>:{multi-key}:EDIT appends multiple kv-pairs", () => {
+    const r = applyJsonItemEdit('{"k1":1}', { first: -1, last: null }, '{"k2":2,"k3":3}');
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), { k1: 1, k2: 2, k3: 3 });
+});
+
+test("applyJsonItemEdit: object <N>:{kv}:EDIT replaces position N kv", () => {
+    const r = applyJsonItemEdit('{"k1":1,"k2":2,"k3":3}', { first: 1, last: null }, '{"newK":"newV"}');
+    assert.equal(r.status, 200);
+    const result = JSON.parse(r.result ?? "");
+    assert.deepEqual(Object.entries(result), [["newK", "newV"], ["k2", 2], ["k3", 3]]);
+});
+
+test("applyJsonItemEdit: object <N>::EDIT deletes kv at position N", () => {
+    const r = applyJsonItemEdit('{"k1":1,"k2":2,"k3":3}', { first: 2, last: null }, "");
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), { k1: 1, k3: 3 });
+});
+
+test("applyJsonItemEdit: object <1,-1>::EDIT clears to {}", () => {
+    const r = applyJsonItemEdit('{"k1":1}', { first: 1, last: -1 }, "");
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), {});
+});
+
+test("applyJsonItemEdit: object source with array body item → 400", () => {
+    const r = applyJsonItemEdit('{"k1":1}', { first: -1, last: null }, "[1,2,3]");
+    assert.equal(r.status, 400);
+});
+
+// Scalar source
+test("applyJsonItemEdit: scalar <1>:newScalar:EDIT replaces", () => {
+    const r = applyJsonItemEdit('"hello"', { first: 1, last: null }, '"world"');
+    assert.equal(r.status, 200);
+    assert.equal(r.result, '"world"');
+});
+
+test("applyJsonItemEdit: scalar <1>:[ ]:EDIT (empty array body) deletes → null", () => {
+    const r = applyJsonItemEdit('"hello"', { first: 1, last: null }, "[]");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "null");
+});
+
+test("applyJsonItemEdit: scalar <-1> (grow) returns 400", () => {
+    const r = applyJsonItemEdit('"hello"', { first: -1, last: null }, '"world"');
+    assert.equal(r.status, 400);
+});
+
+test("applyJsonItemEdit: scalar <0> (grow) returns 400", () => {
+    const r = applyJsonItemEdit('"hello"', { first: 0, last: null }, '"world"');
+    assert.equal(r.status, 400);
+});
+
+test("applyJsonItemEdit: scalar <1>:[a,b]:EDIT (multi-item body) → 400 (no implicit promotion)", () => {
+    const r = applyJsonItemEdit('"hello"', { first: 1, last: null }, '["a","b"]');
+    assert.equal(r.status, 400);
+});
+
+// Errors
+test("applyJsonItemEdit: malformed JSON source → 400", () => {
+    const r = applyJsonItemEdit("{not json", { first: 1, last: null }, '"x"');
+    assert.equal(r.status, 400);
+});
+
+test("applyJsonItemEdit: malformed JSON body → 400", () => {
+    const r = applyJsonItemEdit('["a"]', { first: 1, last: null }, "{not json");
+    assert.equal(r.status, 400);
+});
+
+test("applyJsonItemEdit: out-of-range position → 416", () => {
+    const r = applyJsonItemEdit('["a","b"]', { first: 99, last: null }, '"x"');
+    assert.equal(r.status, 416);
 });

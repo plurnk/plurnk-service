@@ -2,7 +2,7 @@ import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from 
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit } from "../core/line-marker.ts";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 import { resolveEntryMimetype } from "../core/path-mimetype.ts";
 
@@ -81,16 +81,21 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
 
     const body = statement.body ?? "";
 
-    // `<L>` line marker EDIT semantics (plurnk.md §`<L>`). On a non-existent
-    // entry, body becomes the content regardless of marker (per "Resolved
-    // ambiguities" §3 — sentinels/positions only apply to existing content).
+    // `<L>` line marker EDIT semantics. Dispatch on effective mimetype:
+    // JSON → applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
+    // otherwise → applyLineMarkerEdit (line edit, original semantics).
+    // On a non-existent entry, body becomes the content regardless of marker
+    // (per "Resolved ambiguities" §3 — sentinels/positions only apply to
+    // existing content).
     let newContent: string;
     if (statement.lineMarker !== null && existing !== undefined) {
         const channel = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
             session_id: sessionId, scheme, pathname, channel: targetChannel,
         });
         const currentContent = channel?.content ?? "";
-        const result = applyLineMarkerEdit(currentContent, statement.lineMarker, body);
+        const result = isJsonMimetype(effectiveMimetype)
+            ? applyJsonItemEdit(currentContent, statement.lineMarker, body)
+            : applyLineMarkerEdit(currentContent, statement.lineMarker, body);
         if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel };
         newContent = result.result ?? "";
     } else {

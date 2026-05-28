@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-grammar";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
@@ -230,5 +231,98 @@ test("Known.edit: bare local path is treated as the raw pathname", async () => {
         assert.equal(result.status, 201);
         const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: result.entryId });
         assert.equal(entry?.pathname, "config/foo.json");
+    } finally { await db.close(); }
+});
+
+// --- Structural <L> EDIT on JSON (M.8 / grammar 0.13.0 + 0.14.0) ---
+
+test("Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"}]' }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        // The grammar example: <<EDIT(known://users.json)<-1>:{"name":"Eve"}:EDIT
+        const r = await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '{"name":"Eve"}', lineMarker: { first: -1, last: null } }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        assert.equal(r.status, 200);
+        const read = await k.read(
+            readStatement({ target: urlPath("known", "/users.json") }),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.deepEqual(JSON.parse(read.content ?? ""), [
+            { name: "Alice" },
+            { name: "Eve" },
+        ]);
+    } finally { await db.close(); }
+});
+
+test("Known.edit: <N> on `.json` replaces position N; <1,-1>:[]:EDIT clears", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]' }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        // Replace position 2 (Bob) with a new item.
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '{"name":"Beth"}', lineMarker: { first: 2, last: null } }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        const read1 = await k.read(readStatement({ target: urlPath("known", "/users.json") }), makeSchemeCtx({ db, sessionId, mimetypes }));
+        assert.deepEqual(JSON.parse(read1.content ?? ""), [
+            { name: "Alice" },
+            { name: "Beth" },
+            { name: "Carol" },
+        ]);
+
+        // <1,-1>:[]:EDIT clears the array.
+        await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: "[]", lineMarker: { first: 1, last: -1 } }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        const read2 = await k.read(readStatement({ target: urlPath("known", "/users.json") }), makeSchemeCtx({ db, sessionId, mimetypes }));
+        assert.deepEqual(JSON.parse(read2.content ?? ""), []);
+    } finally { await db.close(); }
+});
+
+test("Known.edit: <L> on no-suffix path is line-based; .json siblings get structural", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        // No suffix → text/markdown → line EDIT.
+        await k.edit(editStatement({ target: urlPath("known", "/notes"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, sessionId, runId, mimetypes }));
+        await k.edit(editStatement({ target: urlPath("known", "/notes"), body: "BETA", lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId, runId, mimetypes }));
+        const noSuffixRead = await k.read(readStatement({ target: urlPath("known", "/notes") }), makeSchemeCtx({ db, sessionId, mimetypes }));
+        assert.equal(noSuffixRead.content, "alpha\nBETA\ngamma");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/users.json"), body: '[1,2,3]' }), makeSchemeCtx({ db, sessionId, runId, mimetypes }));
+        const r = await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: "{not valid json", lineMarker: { first: -1, last: null } }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        assert.equal(r.status, 400);
+        // Original content unchanged.
+        const read = await k.read(readStatement({ target: urlPath("known", "/users.json") }), makeSchemeCtx({ db, sessionId, mimetypes }));
+        assert.deepEqual(JSON.parse(read.content ?? ""), [1, 2, 3]);
     } finally { await db.close(); }
 });

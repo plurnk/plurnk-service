@@ -6,7 +6,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
 import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit } from "../core/line-marker.ts";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null };
@@ -180,13 +180,17 @@ export default class File {
         const mimetype = await detectFileMimetype(canonical, ctx);
         if (isBinaryMimetype(mimetype)) return { status: 415, error: `cannot EDIT binary mimetype \`${mimetype}\`` };
 
-        // `<L>` line marker (plurnk.md §`<L>`). On a non-existent file,
+        // `<L>` line marker dispatches on file mimetype: JSON →
+        // applyJsonItemEdit (structural item edit); otherwise →
+        // applyLineMarkerEdit (line edit). On a non-existent file,
         // body becomes content regardless of marker (per "Resolved
         // ambiguities" §3).
         const body = statement.body ?? "";
         let patched: string;
         if (statement.lineMarker !== null && fileExists) {
-            const result = applyLineMarkerEdit(original, statement.lineMarker, body);
+            const result = isJsonMimetype(mimetype)
+                ? applyJsonItemEdit(original, statement.lineMarker, body)
+                : applyLineMarkerEdit(original, statement.lineMarker, body);
             if (result.status !== 200) return { status: result.status, error: result.error };
             patched = result.result ?? "";
         } else {

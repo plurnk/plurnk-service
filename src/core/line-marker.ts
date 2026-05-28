@@ -112,6 +112,130 @@ export const sliceJsonItems = (content: string, marker: LineMarker): JsonSliceRe
     return { status: 200, body: JSON.stringify(items.slice(n - 1, m), null, 2) };
 };
 
+// Structural `<L>` EDIT for JSON sources (plurnk-grammar 0.13.0/0.14.0).
+// Source-shape rules (matches sliceJsonItems' item definition):
+//   array  → items are elements
+//   object → items are key-value pairs (single-key fragments)
+//   scalar → length-1 list of itself; grow markers (<0>,<-1>) reject
+//
+// Body shape (Resolution B):
+//   body parses as JSON array → those are the items to splice in
+//   body parses as non-array JSON → single item to splice in
+//   empty body → delete the selection
+//   body fails JSON parse → 400 (path-extension declares intent; honor it)
+//
+// Marker semantics (parallel to line-EDIT):
+//   <N>    replace item N with body item(s)
+//   <N,M>  replace items N..M with body item(s)
+//   <0>    prepend body item(s)
+//   <-1>   append body item(s)
+//   <1,-1> replace whole top-level with body item(s); empty body clears
+//   Empty body on a sentinel insertion (<0> or <-1>) → no-op.
+
+const itemsFromBody = (body: string): { items: unknown[] } | { error: string } => {
+    if (body === "") return { items: [] };  // empty body = delete
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); }
+    catch (err) { return { error: `malformed JSON body: ${err instanceof Error ? err.message : String(err)}` }; }
+    if (Array.isArray(parsed)) return { items: parsed };
+    return { items: [parsed] };
+};
+
+const applyJsonArrayEdit = (source: unknown[], marker: LineMarker, items: unknown[]): EditResult => {
+    const total = source.length;
+    const { first, last } = marker;
+    let result: unknown[];
+    if (last === null) {
+        if (first === 0) result = [...items, ...source];
+        else if (first === -1) result = [...source, ...items];
+        else if (first > 0 && first <= total) result = [...source.slice(0, first - 1), ...items, ...source.slice(first)];
+        else return { status: 416, error: `position ${first} out of range (1..${total})` };
+    } else {
+        let n = first;
+        let m = last;
+        if (n === 0) n = 1;
+        if (m === -1) m = total;
+        if (total === 0 && (first !== 1 || last !== -1)) return { status: 416, error: `range on empty array` };
+        if (n < 1 || (total > 0 && n > total)) return { status: 416, error: `range start ${first} out of range (1..${total})` };
+        if (m < 1 || (total > 0 && m > total)) return { status: 416, error: `range end ${last} out of range (1..${total})` };
+        if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+        result = [...source.slice(0, n - 1), ...items, ...source.slice(m)];
+    }
+    return { status: 200, result: JSON.stringify(result, null, 2) };
+};
+
+const applyJsonObjectEdit = (source: Record<string, unknown>, marker: LineMarker, items: unknown[]): EditResult => {
+    // Object items are key-value pairs. Body items must be objects;
+    // each object's entries become kv-pairs to splice in. Items that
+    // aren't single objects → 400 (model used wrong body shape for an
+    // object source).
+    const bodyEntries: [string, unknown][] = [];
+    for (const item of items) {
+        if (item === null || typeof item !== "object" || Array.isArray(item)) {
+            return { status: 400, error: "object source requires body items to be JSON objects (key-value pairs)" };
+        }
+        bodyEntries.push(...Object.entries(item as Record<string, unknown>));
+    }
+    const entries = Object.entries(source);
+    const total = entries.length;
+    const { first, last } = marker;
+    let result: [string, unknown][];
+    if (last === null) {
+        if (first === 0) result = [...bodyEntries, ...entries];
+        else if (first === -1) result = [...entries, ...bodyEntries];
+        else if (first > 0 && first <= total) result = [...entries.slice(0, first - 1), ...bodyEntries, ...entries.slice(first)];
+        else return { status: 416, error: `position ${first} out of range (1..${total})` };
+    } else {
+        let n = first;
+        let m = last;
+        if (n === 0) n = 1;
+        if (m === -1) m = total;
+        if (total === 0 && (first !== 1 || last !== -1)) return { status: 416, error: `range on empty object` };
+        if (n < 1 || (total > 0 && n > total)) return { status: 416, error: `range start ${first} out of range (1..${total})` };
+        if (m < 1 || (total > 0 && m > total)) return { status: 416, error: `range end ${last} out of range (1..${total})` };
+        if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+        result = [...entries.slice(0, n - 1), ...bodyEntries, ...entries.slice(m)];
+    }
+    return { status: 200, result: JSON.stringify(Object.fromEntries(result), null, 2) };
+};
+
+const applyJsonScalarEdit = (source: unknown, marker: LineMarker, items: unknown[]): EditResult => {
+    // Scalar source is a length-1 list of itself. Only `<1>` replace
+    // works cleanly; grow markers (<0>,<-1>) and ranges that imply
+    // growth/delete would require type promotion (scalar → array),
+    // which is the kind of implicit magic that bites later. Reject.
+    const { first, last } = marker;
+    if (last === null && first === 1) {
+        if (items.length === 0) return { status: 200, result: "null" };  // delete the scalar
+        if (items.length === 1) return { status: 200, result: JSON.stringify(items[0], null, 2) };
+        return { status: 400, error: "scalar source: <1> body must produce 0 or 1 items (no implicit promotion to array)" };
+    }
+    if (last === -1 && first === 1) {
+        // <1,-1> = whole content. Same constraints as <1> for scalars.
+        if (items.length === 0) return { status: 200, result: "null" };
+        if (items.length === 1) return { status: 200, result: JSON.stringify(items[0], null, 2) };
+        return { status: 400, error: "scalar source: <1,-1> body must produce 0 or 1 items (no implicit promotion to array)" };
+    }
+    return { status: 400, error: "scalar JSON source: only <1> or <1,-1> markers supported (no implicit promotion to array via grow markers)" };
+};
+
+export const applyJsonItemEdit = (content: string, marker: LineMarker, body: string): EditResult => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(content); }
+    catch (err) { return { status: 400, error: `malformed JSON source: ${err instanceof Error ? err.message : String(err)}` }; }
+    const bodyResult = itemsFromBody(body);
+    if ("error" in bodyResult) return { status: 400, error: bodyResult.error };
+    const items = bodyResult.items;
+    // Empty-body sentinel insertion is a no-op (model accidentally
+    // emitted no items at an insertion point).
+    if (items.length === 0 && marker.last === null && (marker.first === 0 || marker.first === -1)) {
+        return { status: 200, result: content };
+    }
+    if (Array.isArray(parsed)) return applyJsonArrayEdit(parsed, marker, items);
+    if (parsed !== null && typeof parsed === "object") return applyJsonObjectEdit(parsed as Record<string, unknown>, marker, items);
+    return applyJsonScalarEdit(parsed, marker, items);
+};
+
 // COPY-style raw line slice. Returns the selected lines verbatim (no line-
 // number prefix), trailing newline appended if any lines were selected.
 // Used for COPY/MOVE `<L>` per AGENTS.md "Resolved ambiguities" §4
