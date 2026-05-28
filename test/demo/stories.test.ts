@@ -170,16 +170,17 @@ test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () 
 test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () => {
     // Natural prompt that benefits from READ <L>. The model may also read
     // the whole file and report the line; either way, the holistic outcome
-    // (mentioning the line content) is what we assert.
+    // (mentioning the line content) is what we assert. Line 2 of the
+    // fixture's src/app.js is `const app = express();`.
     const story = await runStory({
         label: "one-line",
         prompt: "What's on line 2 of src/app.js? Tell me what the line says.",
     });
     try {
-        if (story.finalStatus !== 200 || !/TODO/.test(story.lastContent)) await story.dump();
+        if (story.finalStatus !== 200 || !/express/.test(story.lastContent)) await story.dump();
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /TODO/,
-            `final reply references the TODO line; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /express/,
+            `final reply contains the line 2 content; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 

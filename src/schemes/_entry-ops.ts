@@ -11,7 +11,11 @@ import { matchAgainstContent } from "../core/matcher.ts";
 // follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
 export type EditResult = { status: number; entryId: number | null; channel: string | null };
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null };
+// startLine = 1-indexed position the content starts at in the original
+// source. Lets the render layer prefix N:\t correctly for both full
+// reads (start=1) and <L> slices (start=N). Null when not line-relevant
+// (matcher results, errors).
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null };
 export type ShowHideResult = { status: number };
 
 const pathnameOf = (statement: { target: EditStatement["target"] }): string => {
@@ -111,12 +115,6 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
     if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
-    // <L> and body matcher are orthogonal selectors; combining them is
-    // semantically ambiguous (slice-then-match vs match-then-slice not
-    // resolved by plurnk.md). Reject.
-    if (statement.lineMarker !== null && statement.body !== null) {
-        return { status: 400, content: null, mimetype: null, channel: null };
-    }
 
     const { db, sessionId } = ctx;
     const { name: scheme, channels, defaultChannel } = manifest;
@@ -147,19 +145,30 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
         }
     }
 
+    // `<L>` scopes; body matches within the scope. Slot order in plurnk.md
+    // is `<L>?:body?`, so the natural composition is slice-then-match.
+    let workingContent = row.content;
+    let workingStart = 1;
     if (statement.lineMarker !== null) {
         const sliced = sliceLines(row.content, statement.lineMarker);
         if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        return { status: 200, content: sliced.text ?? "", mimetype: row.mimetype, channel: targetChannel };
+        workingContent = sliced.text ?? "";
+        workingStart = sliced.startLine ?? 1;
     }
 
     if (statement.body !== null) {
-        const matched = matchAgainstContent(statement.body, row.content, row.mimetype);
+        const matched = matchAgainstContent(statement.body, workingContent, row.mimetype);
         if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: row.mimetype, channel: targetChannel };
+        // Matches aren't continuous lines from the source; startLine=null
+        // so the render numbers them as positions in the match list (1, 2, …).
+        return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: row.mimetype, channel: targetChannel, startLine: null };
     }
 
-    return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel };
+    if (statement.lineMarker !== null) {
+        return { status: 200, content: workingContent, mimetype: row.mimetype, channel: targetChannel, startLine: workingStart };
+    }
+
+    return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel, startLine: 1 };
 };
 
 // Paginate a list of items per a `<L>` results marker. Sentinels <0> and

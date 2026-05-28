@@ -177,7 +177,12 @@ const renderLogEntries = (entries) =>
             }
             if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                 const fence = target ?? `log://${coordinate}`;
-                return `${metaLine}\n<<${fence}:\n${numberLines(rx.content)}\n:${fence}`;
+                // rx.startLine: 1-indexed position the slice starts at, plumbed by
+                // the READ scheme handler. Full reads start=1; <L> slices start=N;
+                // matcher results have startLine=null (no line correspondence).
+                // The render owns N:\t prefixing; sliceLines returns raw content.
+                const start = typeof rx.startLine === "number" ? rx.startLine : 1;
+                return `${metaLine}\n<<${fence}:\n${numberLines(rx.content, start)}\n:${fence}`;
             }
         }
         return metaLine;

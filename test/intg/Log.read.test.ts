@@ -116,14 +116,16 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <N> slices the log summary", async () => {
+test("Log.read: lineMarker <N> slices the log summary with startLine", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 1, last: null } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /^1:\t/);
+        assert.equal((r as { startLine?: number }).startLine, 1);
+        // First line of the summary mentions the op (EDIT on /x).
+        assert.match(r.content ?? "", /EDIT/);
     } finally { db.close(); }
 });
 
@@ -151,16 +153,20 @@ test("Log.read: non-empty tag filter → 404 (log has no tag concept)", async ()
     } finally { db.close(); }
 });
 
-test("Log.read: <L> + body matcher together → 400", async () => {
-    const { db } = await setup();
+test("Log.read: <L> + body matcher composes — slice first, match within", async () => {
+    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
+        await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        // The Log summary is multi-line ("EDIT known:///x\nstatus: 201\nresponse: {...}");
+        // slice line 1 (the "OP target" header) and match the op name within it.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "1/1/1")),
-            lineMarker: { first: 1, last: null },
-            body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+            lineMarker: { first: 1, last: 1 },
+            body: { dialect: "regex", raw: "/EDIT/", pattern: "EDIT", flags: "" },
         };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId: 1 }));
-        assert.equal(r.status, 400);
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "EDIT");
     } finally { db.close(); }
 });
 

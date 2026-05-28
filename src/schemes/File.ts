@@ -9,7 +9,7 @@ import { isBinaryMimetype } from "../core/mimetype-binary.ts";
 import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
@@ -75,9 +75,6 @@ export default class File {
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, error: "READ requires a target path" };
-        if (statement.lineMarker !== null && statement.body !== null) {
-            return { status: 400, content: null, mimetype: null, error: "<L> and body matcher cannot combine on one READ" };
-        }
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             // file:// entries don't carry tag metadata (tags belong to canonical
             // entries; file entries are disk-truth). A tag-filtered READ on a
@@ -100,17 +97,24 @@ export default class File {
 
         const content = await readFile(resolved.canonical, "utf8");
 
+        // `<L>` scopes; body matches within the scope (slice-then-match).
+        let workingContent = content;
+        let workingStart = 1;
         if (statement.lineMarker !== null) {
             const sliced = sliceLines(content, statement.lineMarker);
             if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
-            return { status: 200, content: sliced.text ?? "", mimetype };
+            workingContent = sliced.text ?? "";
+            workingStart = sliced.startLine ?? 1;
         }
         if (statement.body !== null) {
-            const matched = matchAgainstContent(statement.body, content, mimetype);
+            const matched = matchAgainstContent(statement.body, workingContent, mimetype);
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
-            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype };
+            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype, startLine: null };
         }
-        return { status: 200, content, mimetype };
+        if (statement.lineMarker !== null) {
+            return { status: 200, content: workingContent, mimetype, startLine: workingStart };
+        }
+        return { status: 200, content, mimetype, startLine: 1 };
     }
 
     // Edit op (task #42 canonical proposal consumer). Returns status=202

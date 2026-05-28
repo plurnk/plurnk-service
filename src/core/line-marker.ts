@@ -45,20 +45,24 @@ const normalize = (marker: LineMarker, totalLines: number): NormalizedMarker | {
     return { kind: "range", start: n, end: m };
 };
 
-export interface SliceResult { status: number; text?: string; error?: string }
+export interface SliceResult { status: number; text?: string; startLine?: number; error?: string }
 
-// READ a line range. Returns selected lines with `N:\t` prefix per
-// plurnk.md ("READ output prefixes every line with line numbers, N:\t").
+// READ a line range. Returns the raw selected lines (no `N:\t` prefix)
+// plus the 1-indexed position of the first selected line. The render
+// layer adds `N:\t` per plurnk.md ("READ output prefixes every line with
+// line numbers, N:\t") starting from `startLine` — keeps numbering as a
+// presentation concern, prevents double-prefixing when the same content
+// passes through the log render.
+//
 // Sentinel positions <0> and <-1> select no content (they're insertion
 // points, not lines) → status 200 with empty text.
 export const sliceLines = (content: string, marker: LineMarker): SliceResult => {
     const { lines } = splitLines(content);
     const norm = normalize(marker, lines.length);
     if ("error" in norm) return { status: 416, error: norm.error };
-    if (norm.kind !== "range") return { status: 200, text: "" };
+    if (norm.kind !== "range") return { status: 200, text: "", startLine: undefined };
     const selected = lines.slice(norm.start - 1, norm.end);
-    const numbered = selected.map((line, i) => `${norm.start + i}:\t${line}`).join("\n");
-    return { status: 200, text: numbered };
+    return { status: 200, text: selected.join("\n"), startLine: norm.start };
 };
 
 // COPY-style raw line slice. Returns the selected lines verbatim (no line-

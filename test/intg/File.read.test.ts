@@ -129,21 +129,23 @@ test("File.read: null path → 400", async () => {
     });
 });
 
-test("File.read: lineMarker <N> selects line N with line-number prefix", async () => {
+test("File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
         assert.equal(r.status, 200);
-        assert.equal(r.content, "2:\tbeta");
+        assert.equal(r.content, "beta");
+        assert.equal((r as { startLine?: number }).startLine, 2);
     });
 });
 
-test("File.read: lineMarker <N,M> selects inclusive range", async () => {
+test("File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
         assert.equal(r.status, 200);
-        assert.equal(r.content, "2:\tb\n3:\tc");
+        assert.equal(r.content, "b\nc");
+        assert.equal((r as { startLine?: number }).startLine, 2);
     });
 });
 
@@ -167,17 +169,18 @@ test("File.read: regex body matcher returns matches", async () => {
     });
 });
 
-test("File.read: <L> + body matcher together → 400", async () => {
+test("File.read: <L> + body matcher composes — slice first, match within", async () => {
     await withSessionWorkspace(async (root, ctx) => {
-        await writeFile(join(root, "f.txt"), "x");
+        await writeFile(join(root, "f.txt"), "alpha\nfoo bar foo\ngamma\n");
         const r = await new File().read(
             readStmt(urlPath("file", "f.txt"), {
-                lineMarker: { first: 1, last: null },
-                body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+                lineMarker: { first: 2, last: 2 },
+                body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" },
             }),
             ctx,
         );
-        assert.equal(r.status, 400);
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "foo\nfoo");
     });
 });
 

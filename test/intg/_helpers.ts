@@ -1,7 +1,7 @@
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
@@ -27,9 +27,13 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // File-backed per-test DB so on-disk consumers (digest tool, future
 // forensics) exercise the same artifacts the suite produces. `:memory:`
 // hid a column-rename regression in bin/digest.js for an unknown number
-// of PRs. Per-test UUID filenames eliminate parallel collisions; close()
-// is hooked to unlink the file and its WAL sidecars on teardown so the
-// .tmp/ dir stays clean across runs.
+// of PRs. Per-test UUID filenames eliminate parallel collisions.
+//
+// DBs are KEPT on close — any test that surfaces something worth review
+// can be tossed straight at `npm run test:digest -- test/intg/.tmp/db-<id>.db`
+// without rebuilding plumbing. The path is logged on close so a failed
+// test's forensic db is one grep away. `npm run test:clean-tmp` purges
+// .tmp/ when accumulation gets in the way.
 export const openMigrated = async (): Promise<Db> => {
     await mkdir(TMP_DIR, { recursive: true });
     const dbPath = join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
@@ -44,11 +48,7 @@ export const openMigrated = async (): Promise<Db> => {
     const originalClose = db.close.bind(db);
     db.close = async () => {
         await originalClose();
-        await Promise.all([
-            rm(dbPath, { force: true }),
-            rm(`${dbPath}-wal`, { force: true }),
-            rm(`${dbPath}-shm`, { force: true }),
-        ]);
+        console.error(`[openMigrated] db kept: ${dbPath}`);
     };
     return db;
 };

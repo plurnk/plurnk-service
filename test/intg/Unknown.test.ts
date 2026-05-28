@@ -130,7 +130,8 @@ test("Unknown.read: lineMarker, body matcher, tag filter — positive coverage",
         await u.edit(editStmt(urlPath("unknown", "/lined"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, sessionId, runId }));
         const sliced = await u.read(readStmtPlus(urlPath("unknown", "/lined"), { lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
         assert.equal(sliced.status, 200);
-        assert.equal(sliced.content, "2:\tbeta");
+        assert.equal(sliced.content, "beta");
+        assert.equal((sliced as { startLine?: number }).startLine, 2);
 
         await u.edit(editStmt(urlPath("unknown", "/m"), "match these alpha words"), makeSchemeCtx({ db, sessionId, runId }));
         const matched = await u.read(readStmtPlus(urlPath("unknown", "/m"), { body: { dialect: "regex", raw: "/alpha/", pattern: "alpha", flags: "" } }), makeSchemeCtx({ db, sessionId }));

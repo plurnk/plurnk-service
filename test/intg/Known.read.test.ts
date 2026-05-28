@@ -71,14 +71,15 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker <N> selects line N with prefix", async () => {
+test("Known.read: lineMarker <N> returns raw line + startLine", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
         await k.edit(editStatement({ target: urlPath("known", "/lined"), body: "first\nsecond\nthird" }), makeSchemeCtx({ db, sessionId, runId }));
         const result = await k.read(readStatement({ target: urlPath("known", "/lined"), lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        assert.equal(result.content, "2:\tsecond");
+        assert.equal(result.content, "second");
+        assert.equal((result as { startLine?: number }).startLine, 2);
     } finally { db.close(); }
 });
 
@@ -126,17 +127,18 @@ test("Known.read: tag filter — entry missing requested tag → 404", async () 
     } finally { db.close(); }
 });
 
-test("Known.read: <L> + body matcher together → 400", async () => {
+test("Known.read: <L> + body matcher composes — slice first, match within", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        await k.edit(editStatement({ target: urlPath("known", "/both"), body: "x" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ target: urlPath("known", "/c"), body: "one\nfoo and bar\nthree" }), makeSchemeCtx({ db, sessionId, runId }));
         const result = await k.read(readStatement({
-            target: urlPath("known", "/both"),
-            lineMarker: { first: 1, last: null },
-            body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+            target: urlPath("known", "/c"),
+            lineMarker: { first: 2, last: 2 },
+            body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, sessionId }));
-        assert.equal(result.status, 400);
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "foo");
     } finally { db.close(); }
 });
 

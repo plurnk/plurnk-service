@@ -7,19 +7,22 @@ const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 test("sliceLines: single line", () => {
     const r = sliceLines(TEXT, { first: 2, last: null });
     assert.equal(r.status, 200);
-    assert.equal(r.text, "2:\tbeta");
+    assert.equal(r.text, "beta");
+    assert.equal(r.startLine, 2);
 });
 
 test("sliceLines: range", () => {
     const r = sliceLines(TEXT, { first: 2, last: 3 });
     assert.equal(r.status, 200);
-    assert.equal(r.text, "2:\tbeta\n3:\tgamma");
+    assert.equal(r.text, "beta\ngamma");
+    assert.equal(r.startLine, 2);
 });
 
 test("sliceLines: range <1,-1> = whole content", () => {
     const r = sliceLines(TEXT, { first: 1, last: -1 });
     assert.equal(r.status, 200);
-    assert.equal(r.text, "1:\talpha\n2:\tbeta\n3:\tgamma\n4:\tdelta");
+    assert.equal(r.text, "alpha\nbeta\ngamma\ndelta");
+    assert.equal(r.startLine, 1);
 });
 
 test("sliceLines: <0> sentinel is insertion point, returns empty", () => {
