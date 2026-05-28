@@ -102,14 +102,20 @@ test("Known.read: regex body matcher returns JSON array of match rows", async ()
     } finally { db.close(); }
 });
 
-test("Known.read: glob body matcher → 501 (glob applies to FIND paths)", async () => {
+test("Known.read: glob body matcher returns matching lines (line-filter primitive)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        await k.edit(editStatement({ target: urlPath("known", "/g"), body: "x" }), makeSchemeCtx({ db, sessionId, runId }));
-        const matcher: MatcherBody = { dialect: "glob", raw: "match*" };
+        await k.edit(editStatement({ target: urlPath("known", "/g"), body: "TODO: one\nhello\nTODO: two\nworld" }), makeSchemeCtx({ db, sessionId, runId }));
+        const matcher: MatcherBody = { dialect: "glob", raw: "TODO*" };
         const result = await k.read(readStatement({ target: urlPath("known", "/g"), body: matcher }), makeSchemeCtx({ db, sessionId }));
-        assert.equal(result.status, 501);
+        assert.equal(result.status, 200);
+        assert.equal(result.mimetype, "application/json");
+        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
+        assert.deepEqual(rows, [
+            { line: 1, matched: "TODO: one" },
+            { line: 3, matched: "TODO: two" },
+        ]);
     } finally { db.close(); }
 });
 

@@ -168,14 +168,6 @@ test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () 
     } finally { await story.cleanup(); }
 });
 
-// NOTE — natural-prompt matcher / <L> demos here exercise model
-// COMPREHENSION of the matcher return contract (grouped JSON rows,
-// source-line semantics, etc.). The contract isn't documented in
-// plurnk.md yet (filed plurnk-grammar#17). Until that lands and a new
-// grammar release is adopted, the model is reading these prompts
-// without a contract — failures should be read as "model hasn't been
-// taught the contract yet", not as engine regressions. Engine-side
-// correctness is covered at the intg + live structural-prompt layer.
 test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () => {
     // Natural prompt that benefits from READ <L>. The model may also read
     // the whole file and report the line; either way, the holistic outcome

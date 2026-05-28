@@ -98,6 +98,49 @@ const matchedFromRegex = (m: RegExpMatchArray | RegExpExecArray): unknown => {
 
 const prettyJson = (value: unknown): string => JSON.stringify(value, null, 2);
 
+// Convert a shell-style glob pattern to a RegExp for full-line matching.
+// Per plurnk-grammar#17 closing comment, glob in READ body is a line
+// filter: each content line tested against the glob; matching lines
+// yield rows. Conventions match shell globs:
+//   `TODO*`   → starts with TODO   (`^TODO.*$`)
+//   `*TODO*`  → contains TODO      (`^.*TODO.*$`)
+//   `*.log`   → ends with `.log`   (`^.*\.log$`)
+//   `[Tt]odo*`→ char class anchor  (`^[Tt]odo.*$`)
+// Model controls anchoring via the pattern; no implicit "contains" wrapping.
+const globToLineRegex = (glob: string): RegExp => {
+    let pattern = "^";
+    let i = 0;
+    while (i < glob.length) {
+        const c = glob[i];
+        if (c === "*") {
+            pattern += ".*";
+        } else if (c === "?") {
+            pattern += ".";
+        } else if (c === "[") {
+            // Character class — pass through with `!` → `^` per glob convention.
+            let cls = "[";
+            i++;
+            if (i < glob.length && (glob[i] === "!" || glob[i] === "^")) {
+                cls += "^";
+                i++;
+            }
+            while (i < glob.length && glob[i] !== "]") {
+                cls += glob[i];
+                i++;
+            }
+            cls += "]";
+            pattern += cls;
+        } else if (".+(){}|^$\\".includes(c)) {
+            pattern += `\\${c}`;
+        } else {
+            pattern += c;
+        }
+        i++;
+    }
+    pattern += "$";
+    return new RegExp(pattern);
+};
+
 // Apply a matcher against text content. Returns a JSON-array body of
 // per-match objects on success, or status 204 with no body when there
 // are zero matches.
@@ -144,7 +187,20 @@ export const matchAgainstContent = (
         if (!isJsonFamily(mimetype)) return { status: 415, error: `jsonpath requires json mimetype; got \`${mimetype}\`` };
         return { status: 501, error: "jsonpath not implemented (see plurnk-mimetypes#3)" };
     }
-    // glob over arbitrary content has no clear semantics; pathname glob is
-    // the actual use case (handled in _entry-find.ts for FIND scope).
-    return { status: 501, error: "glob over content not supported; glob applies to FIND target paths" };
+    // glob in READ body = line filter (plurnk-grammar#17 ratification).
+    // Each content line tested against the glob pattern; matching lines
+    // yield `{line, matched: <lineContent>}` rows. Complements regex
+    // (substring/capture extraction); glob is the grep-like primitive.
+    let re: RegExp;
+    try { re = globToLineRegex(body.raw); }
+    catch (err) { return { status: 400, error: err instanceof Error ? err.message : String(err) }; }
+    const lines = content.split("\n");
+    const rows: MatchRow[] = [];
+    lines.forEach((line, i) => {
+        if (re.test(line)) {
+            rows.push({ line: baseLine + i, matched: line });
+        }
+    });
+    if (rows.length === 0) return { status: 204, matches: 0 };
+    return { status: 200, body: prettyJson(rows), matches: rows.length };
 };

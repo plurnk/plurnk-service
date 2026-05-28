@@ -154,9 +154,106 @@ test("any matcher on binary mimetype returns 415", () => {
     assert.equal(r.status, 415);
 });
 
-test("glob over content returns 501 (use FIND paths)", () => {
-    const r = matchAgainstContent({ dialect: "glob", raw: "*.md" }, "foo", "text/plain");
-    assert.equal(r.status, 501);
+// --- Glob: line filter (plurnk-grammar#17) ---------------------------
+
+test("glob `TODO*` matches lines starting with TODO", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "TODO*" },
+        "TODO: add error handling\nconst app = express();\nTODO: refactor\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+    const rows = JSON.parse(r.body ?? "") as { line: number; matched: string }[];
+    assert.deepEqual(rows, [
+        { line: 1, matched: "TODO: add error handling" },
+        { line: 3, matched: "TODO: refactor" },
+    ]);
+});
+
+test("glob `*error*` case-sensitive — no match against uppercase [ERROR] → 204", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "*error*" },
+        "[INFO] starting\n[ERROR] connection refused\n[INFO] retrying\n[ERROR] timeout\n", "text/plain",
+    );
+    // Case-sensitive: only lines with lowercase "error" match. Both [ERROR] lines have uppercase.
+    assert.equal(r.status, 204);
+    assert.equal(r.matches, 0);
+});
+
+test("glob `*ERROR*` (case-sensitive) matches uppercase error lines", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "*ERROR*" },
+        "[INFO] starting\n[ERROR] connection refused\n[INFO] retrying\n[ERROR] timeout\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+    const rows = JSON.parse(r.body ?? "") as { line: number; matched: string }[];
+    assert.deepEqual(rows.map((r) => r.line), [2, 4]);
+});
+
+test("glob `*.log` matches lines ending with .log", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "*.log" },
+        "app.log\nconfig.json\nerror.log\nREADME.md\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+    const rows = JSON.parse(r.body ?? "") as { line: number; matched: string }[];
+    assert.deepEqual(rows.map((r) => r.matched), ["app.log", "error.log"]);
+});
+
+test("glob `[Tt]odo*` character class for case-insensitive prefix", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "[Tt]odo*" },
+        "Todo: thing\ntodo: other\nTODO: caps doesn't match\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+});
+
+test("glob `?` matches single character", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "a?c" },
+        "abc\naxc\nabbc\naac\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 3);  // abc, axc, aac (abbc has two chars between)
+});
+
+test("glob zero matches returns 204", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "NOPE*" },
+        "alpha\nbeta\n", "text/plain",
+    );
+    assert.equal(r.status, 204);
+    assert.equal(r.matches, 0);
+});
+
+test("glob baseLine — source positions when matcher runs inside an <L> slice", () => {
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "*foo*" },
+        "foo\nbar foo\nbaz", "text/plain", 10,
+    );
+    assert.equal(r.status, 200);
+    const rows = JSON.parse(r.body ?? "") as { line: number; matched: string }[];
+    assert.deepEqual(rows.map((r) => r.line), [10, 11]);
+});
+
+test("glob on binary mimetype returns 415", () => {
+    const r = matchAgainstContent({ dialect: "glob", raw: "*foo*" }, "x", "image/png");
+    assert.equal(r.status, 415);
+});
+
+test("glob escapes regex metacharacters in literal text", () => {
+    // `.` in pattern should match literal `.`, not "any char".
+    const r = matchAgainstContent(
+        { dialect: "glob", raw: "v1.0.*" },
+        "v1.0.1\nv1x0x1\nv1.0.2\n", "text/plain",
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+    const rows = JSON.parse(r.body ?? "") as { line: number; matched: string }[];
+    assert.deepEqual(rows.map((r) => r.matched), ["v1.0.1", "v1.0.2"]);
 });
 
 test("regex malformed pattern returns 400", () => {
