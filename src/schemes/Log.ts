@@ -1,9 +1,9 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { sliceLines } from "../core/line-marker.ts";
+import { sliceLines, sliceJsonItems } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
-import { TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
+import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null };
 type ShowHideResult = { status: number };
@@ -86,13 +86,25 @@ export default class Log {
         }
 
         // `<L>` scopes; body matches within the scope (slice-then-match).
+        // `<L>` dispatches on the unwrapped rx's mimetype: JSON → sliceJsonItems,
+        // line-navigable → sliceLines. This is what makes
+        // <<READ(log://N/M/K)<1>::READ pick the first item of a matcher result.
         let workingContent = underlyingContent;
         let workingStart: number | null = 1;
+        let workingMimetypeForSlice = TEXT_PRIMITIVE_MIMETYPE;
         if (statement.lineMarker !== null) {
-            const sliced = sliceLines(underlyingContent, statement.lineMarker);
-            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
-            workingContent = sliced.text ?? "";
-            workingStart = sliced.startLine ?? null;
+            if (isJsonMimetype(underlyingMimetype)) {
+                const sliced = sliceJsonItems(underlyingContent, statement.lineMarker);
+                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
+                workingContent = sliced.body ?? "[]";
+                workingStart = null;
+                workingMimetypeForSlice = "application/json";
+            } else {
+                const sliced = sliceLines(underlyingContent, statement.lineMarker);
+                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
+                workingContent = sliced.text ?? "";
+                workingStart = sliced.startLine ?? null;
+            }
         }
         if (statement.body !== null) {
             const matched = matchAgainstContent(statement.body, workingContent, underlyingMimetype, workingStart ?? 1);
@@ -103,9 +115,11 @@ export default class Log {
             return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
         }
         if (statement.lineMarker !== null) {
-            // `<L>` slice always returns text/markdown — text primitive.
-            if (workingContent === "") return { status: 204, content: "", mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: null };
-            return { status: 200, content: workingContent, mimetype: TEXT_PRIMITIVE_MIMETYPE, startLine: workingStart };
+            const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
+            if (workingContent === "" || isEmptyJsonArray) {
+                return { status: 204, content: "", mimetype: workingMimetypeForSlice, startLine: null };
+            }
+            return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, startLine: workingStart };
         }
         if (underlyingContent === "") return { status: 204, content: "", mimetype: underlyingMimetype, startLine: null };
         return { status: 200, content: underlyingContent, mimetype: underlyingMimetype, startLine: 1 };

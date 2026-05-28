@@ -1,8 +1,8 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { isBinaryMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
-import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
+import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit } from "../core/line-marker.ts";
 import { matchAgainstContent } from "../core/matcher.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
@@ -150,14 +150,26 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
 
     // `<L>` scopes; body matches within the scope. Slot order in plurnk.md
     // is `<L>?:body?`, so the natural composition is slice-then-match.
+    // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
+    //   line-navigable (text/markdown, source) → sliceLines (line index)
+    //   JSON                                   → sliceJsonItems (item index)
+    //   XML/HTML                               → sliceLines (defer XML structural)
     let workingContent = row.content;
     let workingStart: number | null = 1;
+    let workingMimetypeForSlice = TEXT_PRIMITIVE_MIMETYPE;
     if (statement.lineMarker !== null) {
-        const sliced = sliceLines(row.content, statement.lineMarker);
-        if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        workingContent = sliced.text ?? "";
-        // Sentinel slices (<0>, <-1>) have undefined startLine — 204 case.
-        workingStart = sliced.startLine ?? null;
+        if (isJsonMimetype(row.mimetype)) {
+            const sliced = sliceJsonItems(row.content, statement.lineMarker);
+            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
+            workingContent = sliced.body ?? "[]";
+            workingStart = null;
+            workingMimetypeForSlice = "application/json";
+        } else {
+            const sliced = sliceLines(row.content, statement.lineMarker);
+            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
+            workingContent = sliced.text ?? "";
+            workingStart = sliced.startLine ?? null;
+        }
     }
 
     if (statement.body !== null) {
@@ -174,13 +186,17 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     }
 
     if (statement.lineMarker !== null) {
-        // `<L>` slice always returns text/markdown — the slice is a text
-        // view selected by line, regardless of source mimetype. Markdown
-        // is plurnk-service's text primitive.
-        if (workingContent === "") {
-            return { status: 204, content: "", mimetype: TEXT_PRIMITIVE_MIMETYPE, channel: targetChannel, startLine: null };
+        // `<L>` slice mimetype follows the source family:
+        //   line-navigable source → text/markdown (text primitive)
+        //   JSON source           → application/json (preserve structure for compose)
+        // Workspace `<L>` empty case (sentinel <0>/<-1>) is 204.
+        // For JSON sources sliceJsonItems returns body="[]" on sentinels;
+        // we treat empty array as 204 here for shape consistency.
+        const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
+        if (workingContent === "" || isEmptyJsonArray) {
+            return { status: 204, content: "", mimetype: workingMimetypeForSlice, channel: targetChannel, startLine: null };
         }
-        return { status: 200, content: workingContent, mimetype: TEXT_PRIMITIVE_MIMETYPE, channel: targetChannel, startLine: workingStart };
+        return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, channel: targetChannel, startLine: workingStart };
     }
 
     if (row.content === "") {

@@ -42,6 +42,12 @@ export const isBinaryMimetype = (mimetype: string): boolean => {
     return true;
 };
 
+// JSON-family check — used by `<L>` dispatch to pick structural slicer
+// (sliceJsonItems) over line slicer (sliceLines) for JSON sources.
+// Matches application/json plus +json suffix variants per RFC 6839.
+export const isJsonMimetype = (mimetype: string): boolean =>
+    mimetype === "application/json" || mimetype.endsWith("+json");
+
 export const isLineNavigableMimetype = (mimetype: string): boolean => {
     if (mimetype.length === 0) return false;
     if (isBinaryMimetype(mimetype)) return false;

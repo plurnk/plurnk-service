@@ -115,16 +115,22 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <N> slices the unwrapped rx body with startLine", async () => {
+test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion order (structural <L>)", async () => {
+    // EDIT rx is JSON {"status":201,"entryId":N,"channel":"body"}; <L>
+    // dispatches on mimetype (application/json), so <1> picks the 1st
+    // key-value pair by insertion order, wrapped in an array per the
+    // structural-<L> contract.
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 1, last: null } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.equal((r as { startLine?: number }).startLine, 1);
-        // First line of the unwrapped pretty-printed rx is "{".
-        assert.match(r.content ?? "", /^\{/);
+        assert.equal(r.mimetype, "application/json");
+        const items = JSON.parse(r.content ?? "") as Array<Record<string, unknown>>;
+        assert.equal(items.length, 1);
+        // First key in the rx JSON is "status" (DispatchResult shape).
+        assert.equal(items[0].status, 201);
     } finally { db.close(); }
 });
 
@@ -157,21 +163,58 @@ test("Log.read: non-empty tag filter → 404 (log has no tag concept)", async ()
     } finally { db.close(); }
 });
 
-test("Log.read: <L> + body matcher composes — slice first, match within", async () => {
+test("Log.read: <L> + body matcher composes — slice structural item first, match within", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-        // Slice line 1 of the unwrapped rx (just `{`); match the `{` character.
+        // <L> dispatches structural on the JSON rx — <1> picks the first
+        // kv pair. Then regex matches against that JSON slice. The slice is
+        // `[{"status":201}]`; `\d+` extracts the status code.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "1/1/1")),
             lineMarker: { first: 1, last: 1 },
-            body: { dialect: "regex", raw: "/\\{/", pattern: "\\{", flags: "" },
+            body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
         assert.equal(rows.length, 1);
-        assert.equal(rows[0].matched, "{");
+        assert.equal(rows[0].matched, "201");
+    } finally { db.close(); }
+});
+
+test("Log.read: matcher-then-<L> composition — pick Nth match from a prior READ", async () => {
+    // The killer compose-chain: prior READ used a matcher, log entry's rx
+    // is `application/json` array of {line,matched} rows. Reading the log
+    // entry with <L><N> uses structural <L> to pick the N-th row.
+    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        const Known = (await import("../../src/schemes/Known.ts")).default;
+        await new Known().edit(
+            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
+            { db, sessionId, runId, loopId, turnId, writer: "model", signal: undefined },
+        );
+        // Dispatch a matcher READ — captures all three lines.
+        await engine.dispatch({
+            statement: {
+                op: "READ", suffix: "", signal: null,
+                target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null },
+                lineMarker: null,
+                body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
+                position: { line: 1, column: 1 },
+            },
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        // Now <<READ(log://1/1/1)<2>::READ — structural <L> on the JSON array,
+        // picking the 2nd match row.
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 2, last: null } };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        assert.equal(r.status, 200);
+        assert.equal(r.mimetype, "application/json");
+        // Result is the 2nd match row wrapped in a single-element array.
+        const items = JSON.parse(r.content ?? "") as Array<{ line: number; matched: string }>;
+        assert.equal(items.length, 1);
+        assert.equal(items[0].matched, "beta");
     } finally { db.close(); }
 });
 

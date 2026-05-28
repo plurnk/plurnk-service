@@ -71,7 +71,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker <N> returns raw line + startLine + text/markdown mimetype", async () => {
+test("Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -80,7 +80,7 @@ test("Known.read: lineMarker <N> returns raw line + startLine + text/markdown mi
         assert.equal(result.status, 200);
         assert.equal(result.content, "second");
         assert.equal((result as { startLine?: number }).startLine, 2);
-        // <L> slice always emits text/markdown (the text primitive).
+        // <L> on line-navigable source → text/markdown (text primitive).
         assert.equal(result.mimetype, "text/markdown");
     } finally { db.close(); }
 });

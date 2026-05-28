@@ -65,6 +65,53 @@ export const sliceLines = (content: string, marker: LineMarker): SliceResult => 
     return { status: 200, text: selected.join("\n"), startLine: norm.start };
 };
 
+// Structural `<L>` slice for JSON sources (plurnk-grammar 0.13.0).
+// "On structured entries, <L> addresses item index, not line number."
+// Every JSON value becomes a list of top-level items:
+//   array `[a, b, c]`     → items are the array elements
+//   object `{k1: v1, ...}` → items are key-value pairs (as single-key objects)
+//   scalar `"hello"` / 42  → item is the scalar itself (length-1 list)
+// `<L>` indexes into that list (1-indexed). Result is always a JSON array.
+// Sentinels `<0>` / `<-1>` are insertion points — empty `[]` for READ.
+// Out-of-range positions return 416. Matches the uniform "always JSON
+// array out" shape we settled for matcher results.
+
+const jsonValueToItems = (parsed: unknown): unknown[] => {
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed !== null && typeof parsed === "object") {
+        // Object items are single-key {key: value} wrappers, in insertion
+        // order. Object.entries preserves spec-guaranteed iteration order
+        // for string keys.
+        return Object.entries(parsed).map(([k, v]) => ({ [k]: v }));
+    }
+    // Scalar (string, number, boolean, null): a length-1 list of itself.
+    return [parsed];
+};
+
+export interface JsonSliceResult { status: number; body?: string; error?: string }
+
+export const sliceJsonItems = (content: string, marker: LineMarker): JsonSliceResult => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(content); }
+    catch (err) { return { status: 400, error: `malformed JSON: ${err instanceof Error ? err.message : String(err)}` }; }
+    const items = jsonValueToItems(parsed);
+    const total = items.length;
+    const { first, last } = marker;
+    if (last === null) {
+        if (first === 0 || first === -1) return { status: 200, body: "[]" };
+        if (first > 0 && first <= total) return { status: 200, body: JSON.stringify([items[first - 1]], null, 2) };
+        return { status: 416, error: `item ${first} out of range (1..${total})` };
+    }
+    let n = first;
+    let m = last;
+    if (n === 0) n = 1;
+    if (m === -1) m = total;
+    if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
+    if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
+    if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
+    return { status: 200, body: JSON.stringify(items.slice(n - 1, m), null, 2) };
+};
+
 // COPY-style raw line slice. Returns the selected lines verbatim (no line-
 // number prefix), trailing newline appended if any lines were selected.
 // Used for COPY/MOVE `<L>` per AGENTS.md "Resolved ambiguities" §4
