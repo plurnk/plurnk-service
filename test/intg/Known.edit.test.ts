@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, ParsedPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
@@ -18,6 +18,16 @@ const editStatement = (opts: {
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
+    position: { line: 1, column: 1 },
+});
+
+const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
+    op: "READ",
+    suffix: "",
+    signal: null,
+    target: opts.target ?? null,
+    lineMarker: null,
+    body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -110,15 +120,69 @@ test("Known.edit: null tags signal and empty tag array both produce no tag rows"
     } finally { await db.close(); }
 });
 
-test("Known.edit: lineMarker present returns 501 without writing anything", async () => {
+test("Known.edit: lineMarker on non-existent entry — body becomes content", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
-        const stmt = editStatement({ target: urlPath("known", "/lined"), body: "line 5 content", lineMarker: { first: 5, last: null } });
+        const stmt = editStatement({ target: urlPath("known", "/new"), body: "first line\nsecond line", lineMarker: { first: 0, last: null } });
         const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(result.status, 501);
-        assert.equal(result.entryId, null);
-        const count = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-        assert.equal(count, 0, "no entry should have been created");
+        assert.equal(result.status, 201);
+        const read = await new Known().read({ ...stmt, op: "READ", lineMarker: null, body: null } as never, makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((read as { content: string }).content, "first line\nsecond line");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: lineMarker <N> on existing entry replaces line N", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/ed"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await k.edit(editStatement({ target: urlPath("known", "/ed"), body: "BETA", lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(r.status, 200);
+        const read = await k.read(readStatement({ target: urlPath("known", "/ed") }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((read as { content: string }).content, "alpha\nBETA\ngamma");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: lineMarker <0> on existing entry prepends", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/p"), body: "one\ntwo" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ target: urlPath("known", "/p"), body: "zero", lineMarker: { first: 0, last: null } }), makeSchemeCtx({ db, sessionId, runId }));
+        const read = await k.read(readStatement({ target: urlPath("known", "/p") }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((read as { content: string }).content, "zero\none\ntwo");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: lineMarker <-1> on existing entry appends", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/a"), body: "one\ntwo" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ target: urlPath("known", "/a"), body: "three", lineMarker: { first: -1, last: null } }), makeSchemeCtx({ db, sessionId, runId }));
+        const read = await k.read(readStatement({ target: urlPath("known", "/a") }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((read as { content: string }).content, "one\ntwo\nthree");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: lineMarker <1,-1> empty body clears", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/c"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStatement({ target: urlPath("known", "/c"), body: "", lineMarker: { first: 1, last: -1 } }), makeSchemeCtx({ db, sessionId, runId }));
+        const read = await k.read(readStatement({ target: urlPath("known", "/c") }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((read as { content: string }).content, "");
+    } finally { await db.close(); }
+});
+
+test("Known.edit: lineMarker out of range returns 416", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/r"), body: "only line" }), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await k.edit(editStatement({ target: urlPath("known", "/r"), body: "x", lineMarker: { first: 99, last: null } }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(r.status, 416);
     } finally { await db.close(); }
 });
 

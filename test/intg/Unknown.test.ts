@@ -68,12 +68,23 @@ test("Unknown.edit: idempotent on same path", async () => {
     } finally { await db.close(); }
 });
 
-test("Unknown.edit: null path → 400; lineMarker → 501", async () => {
+test("Unknown.edit: null path → 400", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const u = new Unknown();
         assert.equal((await u.edit({ ...editStmt(urlPath("unknown", "/x")), target: null }, makeSchemeCtx({ db, sessionId, runId }))).status, 400);
-        assert.equal((await u.edit({ ...editStmt(urlPath("unknown", "/x"), "x"), lineMarker: { first: 5, last: null } }, makeSchemeCtx({ db, sessionId, runId }))).status, 501);
+    } finally { await db.close(); }
+});
+
+test("Unknown.edit: lineMarker <-1> appends to existing entry", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        const u = new Unknown();
+        await u.edit(editStmt(urlPath("unknown", "/x"), "one\ntwo"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await u.edit({ ...editStmt(urlPath("unknown", "/x"), "three"), lineMarker: { first: -1, last: null } }, makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(r.status, 200);
+        const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r.entryId, name: "body" });
+        assert.equal(channel?.content, "one\ntwo\nthree");
     } finally { await db.close(); }
 });
 
@@ -112,15 +123,25 @@ test("Unknown.read: scheme isolation", async () => {
     } finally { await db.close(); }
 });
 
-test("Unknown.read: all 501 modes", async () => {
+test("Unknown.read: lineMarker, body matcher, tag filter — positive coverage", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const u = new Unknown();
-        await u.edit(editStmt(urlPath("unknown", "/x"), "data"), makeSchemeCtx({ db, sessionId, runId }));
-        const path = urlPath("unknown", "/x");
-        assert.equal((await u.read(readStmtPlus(path, { lineMarker: { first: 1, last: null } }), makeSchemeCtx({ db, sessionId }))).status, 501);
-        assert.equal((await u.read(readStmtPlus(path, { body: { dialect: "glob", raw: "*" } }), makeSchemeCtx({ db, sessionId }))).status, 501);
-        assert.equal((await u.read(readStmtPlus(path, { tags: ["any"] }), makeSchemeCtx({ db, sessionId }))).status, 501);
+        await u.edit(editStmt(urlPath("unknown", "/lined"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, sessionId, runId }));
+        const sliced = await u.read(readStmtPlus(urlPath("unknown", "/lined"), { lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(sliced.status, 200);
+        assert.equal(sliced.content, "2:\tbeta");
+
+        await u.edit(editStmt(urlPath("unknown", "/m"), "match these alpha words"), makeSchemeCtx({ db, sessionId, runId }));
+        const matched = await u.read(readStmtPlus(urlPath("unknown", "/m"), { body: { dialect: "regex", raw: "/alpha/", pattern: "alpha", flags: "" } }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(matched.status, 200);
+        assert.equal(matched.content, "alpha");
+
+        await u.edit(editStmt(urlPath("unknown", "/t"), "tagged", ["france"]), makeSchemeCtx({ db, sessionId, runId }));
+        const hit = await u.read(readStmtPlus(urlPath("unknown", "/t"), { tags: ["france"] }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(hit.status, 200);
+        const miss = await u.read(readStmtPlus(urlPath("unknown", "/t"), { tags: ["germany"] }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(miss.status, 404);
     } finally { await db.close(); }
 });
 

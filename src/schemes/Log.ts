@@ -1,6 +1,8 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import { sliceLines } from "../core/line-marker.ts";
+import { matchAgainstContent } from "../core/matcher.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null };
 type ShowHideResult = { status: number };
@@ -35,9 +37,13 @@ export default class Log {
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         const { db, runId } = ctx;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
-        if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null };
-        if (statement.body !== null) return { status: 501, content: null, mimetype: null };
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null };
+        if (statement.lineMarker !== null && statement.body !== null) {
+            return { status: 400, content: null, mimetype: null };
+        }
+        // log:// entries have no tag concept (engine-written events).
+        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
+            return { status: 404, content: null, mimetype: null };
+        }
 
         const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
         const coord = parseCoordinate(pathname);
@@ -56,6 +62,17 @@ export default class Log {
 
         const target = row.scheme !== null ? `${row.scheme}://${row.pathname ?? ""}` : (row.pathname ?? "(no path)");
         const summary = `${row.op} ${target}\nstatus: ${row.status_rx}\nresponse: ${row.rx}`;
+
+        if (statement.lineMarker !== null) {
+            const sliced = sliceLines(summary, statement.lineMarker);
+            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: "text/plain" };
+            return { status: 200, content: sliced.text ?? "", mimetype: "text/plain" };
+        }
+        if (statement.body !== null) {
+            const matched = matchAgainstContent(statement.body, summary, "text/plain");
+            if (matched.status !== 200) return { status: matched.status, content: null, mimetype: "text/plain" };
+            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: "text/plain" };
+        }
         return { status: 200, content: summary, mimetype: "text/plain" };
     }
 

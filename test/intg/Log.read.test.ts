@@ -116,16 +116,51 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: 501 on lineMarker / body matcher / non-empty tag filter", async () => {
+test("Log.read: lineMarker <N> slices the log summary", async () => {
+    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 1, last: null } };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        assert.equal(r.status, 200);
+        assert.match(r.content ?? "", /^1:\t/);
+    } finally { db.close(); }
+});
+
+test("Log.read: regex body matcher returns matches from summary", async () => {
+    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({ statement: editStmt("/y", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        const stmt: ReadStatement = {
+            ...readStmt(urlPath("log", "1/1/1")),
+            body: { dialect: "regex", raw: "/EDIT/", pattern: "EDIT", flags: "" },
+        };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "EDIT");
+    } finally { db.close(); }
+});
+
+test("Log.read: non-empty tag filter → 404 (log has no tag concept)", async () => {
+    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({ statement: editStmt("/z", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), signal: ["france"] };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        assert.equal(r.status, 404);
+    } finally { db.close(); }
+});
+
+test("Log.read: <L> + body matcher together → 400", async () => {
     const { db } = await setup();
     try {
-        const lineMarker: ReadStatement = { ...readStmt(urlPath("log", "1/1/0")), lineMarker: { first: 1, last: null } };
-        const body: ReadStatement = { ...readStmt(urlPath("log", "1/1/0")), body: { dialect: "glob", raw: "*" } };
-        const tags: ReadStatement = { ...readStmt(urlPath("log", "1/1/0")), signal: ["france"] };
-        const log = new Log();
-        assert.equal((await log.read(lineMarker, makeSchemeCtx({ db, runId: 1 }))).status, 501);
-        assert.equal((await log.read(body, makeSchemeCtx({ db, runId: 1 }))).status, 501);
-        assert.equal((await log.read(tags, makeSchemeCtx({ db, runId: 1 }))).status, 501);
+        const stmt: ReadStatement = {
+            ...readStmt(urlPath("log", "1/1/1")),
+            lineMarker: { first: 1, last: null },
+            body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+        };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId: 1 }));
+        assert.equal(r.status, 400);
     } finally { db.close(); }
 });
 

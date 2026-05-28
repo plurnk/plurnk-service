@@ -5,6 +5,9 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
+import { isBinaryMimetype } from "../core/mimetype-binary.ts";
+import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
+import { matchAgainstContent } from "../core/matcher.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
@@ -28,6 +31,17 @@ type ContainmentResult =
 
 // Resolve + workspace-root containment check. Returns the canonical
 // path on success; classified error on absence/traversal. Used by read.
+// Detect mimetype from a file's path. Routes through the Mimetypes service
+// when available; falls back to "text/plain" so naked extensions (no
+// handler registered) still read as text.
+const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): Promise<string> => {
+    if (ctx.mimetypes !== undefined) {
+        const detected = await ctx.mimetypes.detect({ path: canonical });
+        if (detected !== null) return detected;
+    }
+    return "text/plain";
+};
+
 const resolveContained = async (pathname: string, root: string): Promise<ContainmentResult> => {
     const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
     let canonical: string;
@@ -61,19 +75,14 @@ export default class File {
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, error: "READ requires a target path" };
-        // Error messages on the 501 paths are LOAD-BEARING: they surface
-        // through the engine's telemetry.errors[] to the model's next
-        // packet, telling it to retry with a different shape. Without
-        // these, the model sees status=501 in the log with no
-        // remediation hint and burns turns guessing.
-        if (statement.lineMarker !== null) {
-            return { status: 501, content: null, mimetype: null, error: "READ with <line-marker> not yet supported on file://; emit READ without <line-marker> to read the entire file" };
-        }
-        if (statement.body !== null) {
-            return { status: 501, content: null, mimetype: null, error: "READ with a matcher body not yet supported on file://; emit `<<READ(path)::READ` (empty body) to read the entire file" };
+        if (statement.lineMarker !== null && statement.body !== null) {
+            return { status: 400, content: null, mimetype: null, error: "<L> and body matcher cannot combine on one READ" };
         }
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            return { status: 501, content: null, mimetype: null, error: "READ with [tag] filters not yet supported on file://; emit `<<READ(path)::READ` without the [tag] prefix" };
+            // file:// entries don't carry tag metadata (tags belong to canonical
+            // entries; file entries are disk-truth). A tag-filtered READ on a
+            // file path will never match — 404 by definition.
+            return { status: 404, content: null, mimetype: null };
         }
 
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
@@ -83,10 +92,25 @@ export default class File {
         const resolved = await resolveContained(pathname, root);
         if ("error" in resolved) {
             if (resolved.error === "not-found") return { status: 404, content: null, mimetype: null };
-            return { status: 403, content: null, mimetype: null };  // traversal
+            return { status: 403, content: null, mimetype: null };
         }
+
+        const mimetype = await detectFileMimetype(resolved.canonical, ctx);
+        if (isBinaryMimetype(mimetype)) return { status: 415, content: null, mimetype };
+
         const content = await readFile(resolved.canonical, "utf8");
-        return { status: 200, content, mimetype: "text/plain" };
+
+        if (statement.lineMarker !== null) {
+            const sliced = sliceLines(content, statement.lineMarker);
+            if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
+            return { status: 200, content: sliced.text ?? "", mimetype };
+        }
+        if (statement.body !== null) {
+            const matched = matchAgainstContent(statement.body, content, mimetype);
+            if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
+            return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype };
+        }
+        return { status: 200, content, mimetype };
     }
 
     // Edit op (task #42 canonical proposal consumer). Returns status=202
@@ -95,7 +119,6 @@ export default class File {
     // calls applyResolution() (below) after the proposal accepts.
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
         if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
-        if (statement.lineMarker !== null) return { status: 501, error: "lineMarker-based edits not yet supported" };
 
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
         if (root === null) {
@@ -109,23 +132,41 @@ export default class File {
         let canonical: string;
         const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
         let original = "";
+        let fileExists = true;
         try {
             canonical = await realpath(requested);
             original = await readFile(canonical, "utf8");
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-            // File doesn't exist — propose to create it.
             canonical = requested;
+            fileExists = false;
         }
-        // Re-check containment against the (now-resolved-or-fabricated)
-        // canonical path. The requested path could resolve to a parent of
-        // workspace via symlink; reject.
+        // Re-check containment against the canonical path. Symlinks could
+        // escape workspace; reject.
         const rel = relative(root, canonical);
         if (rel.startsWith("..") || isAbsolute(rel)) {
             return { status: 403, error: "path escapes workspace root" };
         }
 
-        const patched = statement.body ?? "";
+        // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2).
+        // Existing file's mimetype takes precedence; for new files, derive
+        // from the proposed path so we don't accept binary writes via edit.
+        const mimetype = await detectFileMimetype(canonical, ctx);
+        if (isBinaryMimetype(mimetype)) return { status: 415, error: `cannot EDIT binary mimetype \`${mimetype}\`` };
+
+        // `<L>` line marker (plurnk.md §`<L>`). On a non-existent file,
+        // body becomes content regardless of marker (per "Resolved
+        // ambiguities" §3).
+        const body = statement.body ?? "";
+        let patched: string;
+        if (statement.lineMarker !== null && fileExists) {
+            const result = applyLineMarkerEdit(original, statement.lineMarker, body);
+            if (result.status !== 200) return { status: result.status, error: result.error };
+            patched = result.result ?? "";
+        } else {
+            patched = body;
+        }
+
         const patch = createPatch(rel, original, patched, "current", "proposed");
         return {
             status: 202,
@@ -133,8 +174,8 @@ export default class File {
             attrs: {
                 path: rel,
                 canonical,
-                patch,        // full udiff (sent to client for render)
-                patched,      // full new content (used by applyResolution)
+                patch,
+                patched,
             },
         };
     }

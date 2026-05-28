@@ -129,14 +129,63 @@ test("File.read: null path → 400", async () => {
     });
 });
 
-test("File.read: lineMarker / body matcher / non-empty tag filter → 501", async () => {
+test("File.read: lineMarker <N> selects line N with line-number prefix", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
+        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "2:\tbeta");
+    });
+});
+
+test("File.read: lineMarker <N,M> selects inclusive range", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
+        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "2:\tb\n3:\tc");
+    });
+});
+
+test("File.read: lineMarker out of range returns 416", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "one\ntwo\n");
+        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 99, last: null } }), ctx);
+        assert.equal(r.status, 416);
+    });
+});
+
+test("File.read: regex body matcher returns matches", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "foo bar foo baz");
+        const r = await new File().read(
+            readStmt(urlPath("file", "f.txt"), { body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" } }),
+            ctx,
+        );
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "foo\nfoo");
+    });
+});
+
+test("File.read: <L> + body matcher together → 400", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
-        const file = new File();
-        const target = urlPath("file", "f.txt");
-        assert.equal((await file.read(readStmt(target, { lineMarker: { first: 1, last: null } }), ctx)).status, 501);
-        assert.equal((await file.read(readStmt(target, { body: { dialect: "glob", raw: "*" } }), ctx)).status, 501);
-        assert.equal((await file.read(readStmt(target, { tags: ["any"] }), ctx)).status, 501);
+        const r = await new File().read(
+            readStmt(urlPath("file", "f.txt"), {
+                lineMarker: { first: 1, last: null },
+                body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+            }),
+            ctx,
+        );
+        assert.equal(r.status, 400);
+    });
+});
+
+test("File.read: non-empty tag filter on file:// returns 404 (no tag concept)", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "x");
+        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { tags: ["any"] }), ctx);
+        assert.equal(r.status, 404);
     });
 });
 

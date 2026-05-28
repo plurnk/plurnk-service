@@ -561,7 +561,15 @@ export default class Engine {
         // parsed ops) → packet.assistant per Packet.json §assistant;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
-        const { packetAssistant, callMetadata } = this.#splitResponse(response);
+        const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response);
+        // Surface parse errors to the model's NEXT packet so it can self-
+        // correct. Without this, malformed emissions (e.g. a READ matcher
+        // body starting with `//` being interpreted as xpath) silently
+        // drop, the model sees zero ops dispatched, strike-rail fires,
+        // model has no feedback on WHY its emission didn't take effect.
+        for (const message of parseErrors ?? []) {
+            this.#pushTelemetry(loopId, { kind: "parse_error", message });
+        }
         const opsCount = packetAssistant.ops.length;
         const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
@@ -625,11 +633,12 @@ export default class Engine {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderResponse): { packetAssistant: PacketAssistant; callMetadata: TurnCallMetadata } {
+    #splitResponse(response: ProviderResponse): { packetAssistant: PacketAssistant; callMetadata: TurnCallMetadata; parseErrors: string[] } {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
         const textFragments: string[] = [];
+        const parseErrors: string[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
         } else {
@@ -640,6 +649,11 @@ export default class Engine {
                     const trimmed = item.text.trim();
                     if (trimmed.length > 0) textFragments.push(trimmed);
                 }
+                else if (item.kind === "error") {
+                    const err = (item as { error?: { message?: string } }).error;
+                    const msg = (err && typeof err.message === "string") ? err.message : "parse error";
+                    parseErrors.push(msg);
+                }
             }
         }
         const wireReasoning = assistant.reasoning ?? "";
@@ -649,6 +663,7 @@ export default class Engine {
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
+            parseErrors,
         };
     }
 
@@ -942,6 +957,7 @@ export default class Engine {
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
+            mimetypes: this.#mimetypes,
         };
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);

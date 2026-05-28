@@ -1,6 +1,9 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
+import { isBinaryMimetype } from "../core/mimetype-binary.ts";
+import { sliceLines, applyLineMarkerEdit } from "../core/line-marker.ts";
+import { matchAgainstContent } from "../core/matcher.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -32,7 +35,6 @@ const resolveChannel = (fragment: string | null, channels: Record<string, string
 
 export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> => {
     if (statement.target === null) return { status: 400, entryId: null, channel: null };
-    if (statement.lineMarker !== null) return { status: 501, entryId: null, channel: null };
 
     const { db, sessionId, runId } = ctx;
     const { name: scheme, channels, defaultChannel } = manifest;
@@ -49,6 +51,40 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         return { status: 404, entryId: null, channel: targetChannel };
     }
 
+    // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2). Only
+    // applies when entry exists with a known mimetype; new entries use the
+    // manifest's channel mimetype, which we control.
+    const channelMimetype = channels[targetChannel];
+    if (existing !== undefined) {
+        const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
+            session_id: sessionId, scheme, pathname, channel: targetChannel,
+        });
+        if (channel !== undefined && isBinaryMimetype(channel.mimetype)) {
+            return { status: 415, entryId: existing.id, channel: targetChannel };
+        }
+    }
+    if (isBinaryMimetype(channelMimetype)) {
+        return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
+    }
+
+    const body = statement.body ?? "";
+
+    // `<L>` line marker EDIT semantics (plurnk.md §`<L>`). On a non-existent
+    // entry, body becomes the content regardless of marker (per "Resolved
+    // ambiguities" §3 — sentinels/positions only apply to existing content).
+    let newContent: string;
+    if (statement.lineMarker !== null && existing !== undefined) {
+        const channel = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
+            session_id: sessionId, scheme, pathname, channel: targetChannel,
+        });
+        const currentContent = channel?.content ?? "";
+        const result = applyLineMarkerEdit(currentContent, statement.lineMarker, body);
+        if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel };
+        newContent = result.result ?? "";
+    } else {
+        newContent = body;
+    }
+
     let entryId: number;
     let createdNow: boolean;
     if (existing === undefined) {
@@ -61,8 +97,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         createdNow = false;
     }
 
-    const body = statement.body ?? "";
-    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: body, mimetype: channels[targetChannel] });
+    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: channelMimetype });
     await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: targetChannel });
 
     if (Array.isArray(statement.signal)) {
@@ -76,9 +111,12 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
     if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
-    if (statement.lineMarker !== null) return { status: 501, content: null, mimetype: null, channel: null };
-    if (statement.body !== null) return { status: 501, content: null, mimetype: null, channel: null };
-    if (Array.isArray(statement.signal) && statement.signal.length > 0) return { status: 501, content: null, mimetype: null, channel: null };
+    // <L> and body matcher are orthogonal selectors; combining them is
+    // semantically ambiguous (slice-then-match vs match-then-slice not
+    // resolved by plurnk.md). Reject.
+    if (statement.lineMarker !== null && statement.body !== null) {
+        return { status: 400, content: null, mimetype: null, channel: null };
+    }
 
     const { db, sessionId } = ctx;
     const { name: scheme, channels, defaultChannel } = manifest;
@@ -91,8 +129,36 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
         session_id: sessionId, scheme, pathname, channel: targetChannel,
     });
-
     if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+
+    if (isBinaryMimetype(row.mimetype)) {
+        return { status: 415, content: null, mimetype: row.mimetype, channel: targetChannel };
+    }
+
+    // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
+    // (entry doesn't match the tag-scoped READ).
+    if (Array.isArray(statement.signal) && statement.signal.length > 0) {
+        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        if (entry === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+        const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
+        const have = new Set(tagRows.map((r) => r.tag));
+        for (const want of statement.signal) {
+            if (!have.has(want)) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+        }
+    }
+
+    if (statement.lineMarker !== null) {
+        const sliced = sliceLines(row.content, statement.lineMarker);
+        if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
+        return { status: 200, content: sliced.text ?? "", mimetype: row.mimetype, channel: targetChannel };
+    }
+
+    if (statement.body !== null) {
+        const matched = matchAgainstContent(statement.body, row.content, row.mimetype);
+        if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
+        return { status: 200, content: (matched.matches ?? []).join("\n"), mimetype: row.mimetype, channel: targetChannel };
+    }
+
     return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel };
 };
 

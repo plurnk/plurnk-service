@@ -1,6 +1,7 @@
 // Shared types for the scheme extension surface. See SCHEMES.md.
 
 import type { Db } from "./Db.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 
 export type WriterTier = "model" | "client" | "system" | "plugin";
@@ -28,6 +29,10 @@ export interface PlurnkSchemeContext {
     // to actually open a new loop based on engine state (active-loop check).
     // intg tests can pass a stub to assert the call payload.
     readonly wakeRunNotify?: WakeRunNotify;
+    // Mimetypes service for schemes that need extension-based detection
+    // (file://) or per-mimetype handler lookup. Optional so intg helpers can
+    // omit it when the scheme under test doesn't use it.
+    readonly mimetypes?: Mimetypes;
 }
 
 export interface SchemeFlagAffinity {

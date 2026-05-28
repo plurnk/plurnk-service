@@ -71,37 +71,72 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker present returns 501 without DB read", async () => {
+test("Known.read: lineMarker <N> selects line N with prefix", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        await k.edit(editStatement({ target: urlPath("known", "/lined"), body: "multi\nline\ncontent" }), makeSchemeCtx({ db, sessionId, runId }));
-        const result = await k.read(readStatement({ target: urlPath("known", "/lined"), lineMarker: { first: 1, last: null } }), makeSchemeCtx({ db, sessionId }));
-        assert.equal(result.status, 501);
-        assert.equal(result.content, null);
+        await k.edit(editStatement({ target: urlPath("known", "/lined"), body: "first\nsecond\nthird" }), makeSchemeCtx({ db, sessionId, runId }));
+        const result = await k.read(readStatement({ target: urlPath("known", "/lined"), lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "2:\tsecond");
     } finally { db.close(); }
 });
 
-test("Known.read: body matcher present returns 501 without DB read", async () => {
+test("Known.read: regex body matcher returns matches", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        await k.edit(editStatement({ target: urlPath("known", "/match"), body: "matchable content" }), makeSchemeCtx({ db, sessionId, runId }));
-        const matcher: MatcherBody = { dialect: "glob", raw: "match*" };
+        await k.edit(editStatement({ target: urlPath("known", "/match"), body: "alpha beta alpha gamma" }), makeSchemeCtx({ db, sessionId, runId }));
+        const matcher: MatcherBody = { dialect: "regex", raw: "/alpha/g", pattern: "alpha", flags: "g" };
         const result = await k.read(readStatement({ target: urlPath("known", "/match"), body: matcher }), makeSchemeCtx({ db, sessionId }));
-        assert.equal(result.status, 501);
-        assert.equal(result.content, null);
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "alpha\nalpha");
     } finally { db.close(); }
 });
 
-test("Known.read: tag filter (non-empty signal) returns 501 without DB read", async () => {
+test("Known.read: glob body matcher → 501 (glob applies to FIND paths)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
-        await k.edit(editStatement({ target: urlPath("known", "/tagged"), tags: ["france"], body: "Paris" }), makeSchemeCtx({ db, sessionId, runId }));
-        const result = await k.read(readStatement({ target: urlPath("known", "/tagged"), tags: ["france"] }), makeSchemeCtx({ db, sessionId }));
+        await k.edit(editStatement({ target: urlPath("known", "/g"), body: "x" }), makeSchemeCtx({ db, sessionId, runId }));
+        const matcher: MatcherBody = { dialect: "glob", raw: "match*" };
+        const result = await k.read(readStatement({ target: urlPath("known", "/g"), body: matcher }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 501);
-        assert.equal(result.content, null);
+    } finally { db.close(); }
+});
+
+test("Known.read: tag filter — entry has all requested tags → 200", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/tagged"), tags: ["france", "geography"], body: "Paris" }), makeSchemeCtx({ db, sessionId, runId }));
+        const result = await k.read(readStatement({ target: urlPath("known", "/tagged"), tags: ["france"] }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "Paris");
+    } finally { db.close(); }
+});
+
+test("Known.read: tag filter — entry missing requested tag → 404", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/u"), tags: ["france"], body: "Paris" }), makeSchemeCtx({ db, sessionId, runId }));
+        const result = await k.read(readStatement({ target: urlPath("known", "/u"), tags: ["germany"] }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(result.status, 404);
+    } finally { db.close(); }
+});
+
+test("Known.read: <L> + body matcher together → 400", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        await k.edit(editStatement({ target: urlPath("known", "/both"), body: "x" }), makeSchemeCtx({ db, sessionId, runId }));
+        const result = await k.read(readStatement({
+            target: urlPath("known", "/both"),
+            lineMarker: { first: 1, last: null },
+            body: { dialect: "regex", raw: "/x/", pattern: "x", flags: "" },
+        }), makeSchemeCtx({ db, sessionId }));
+        assert.equal(result.status, 400);
     } finally { db.close(); }
 });
 
