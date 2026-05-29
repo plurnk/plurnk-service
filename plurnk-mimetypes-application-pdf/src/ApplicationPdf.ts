@@ -67,14 +67,27 @@ export default class ApplicationPdf extends BaseHandler {
 
     override async preview(content: string | Uint8Array): Promise<Preview> {
         const bytes = toBytes(content);
-        let symbols: MimeSymbol[];
+        let result: { symbols: MimeSymbol[]; text: string };
         try {
-            symbols = await extractStructure(bytes);
+            // Single pdfjs parse extracts BOTH structure and page text so the
+            // hybrid fallback doesn't pay for a second parse. pdfjs detaches
+            // the underlying buffer per call, so calling extractStructure
+            // and extractAllText separately on the same bytes would fail.
+            result = await extractBoth(bytes);
         } catch {
             return null;
         }
-        if (symbols.length === 0) return null;
-        return { kind: "symbols", symbols };
+        if (result.symbols.length > 0) {
+            return { kind: "symbols", symbols: result.symbols };
+        }
+        // Hybrid fallback: no outline and no metadata Title — surface
+        // extracted page text as a head-oriented TextPreview so the channel
+        // shows something rather than going dark. The framework's truncation
+        // marker keeps it honest about being a partial slice.
+        if (result.text.length > 0) {
+            return { kind: "text", text: result.text, orientation: "head" };
+        }
+        return null;
     }
 
     protected override async toText(content: string | Uint8Array): Promise<string> {
@@ -124,6 +137,31 @@ function toBytes(content: string | Uint8Array): Uint8Array {
     return new TextEncoder().encode(content);
 }
 
+// Single-parse extractor: produces both structural symbols and page text from
+// one pdfjs.getDocument call. Used by preview's hybrid (symbols when present,
+// text fallback when not) so we don't double-parse — pdfjs detaches the
+// underlying buffer per call, so two separate parses on the same bytes would
+// fail anyway. extractStructure remains for the query() override which only
+// needs symbols.
+async function extractBoth(bytes: Uint8Array): Promise<{ symbols: MimeSymbol[]; text: string }> {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const params = {
+        data: bytes,
+        isEvalSupported: false,
+        verbosity: 0,
+    } as unknown as Parameters<typeof pdfjs.getDocument>[0];
+    const doc = await pdfjs.getDocument(params).promise;
+    try {
+        const symbols = await collectSymbols(doc);
+        // Only spend time on full-text extraction when we'll actually need the
+        // fallback. Symbols present → text not needed.
+        const text = symbols.length > 0 ? "" : await readAllPagesText(doc);
+        return { symbols, text };
+    } finally {
+        await doc.destroy();
+    }
+}
+
 async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const params = {
@@ -133,29 +171,33 @@ async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     } as unknown as Parameters<typeof pdfjs.getDocument>[0];
     const doc = await pdfjs.getDocument(params).promise;
     try {
-        const symbols: MimeSymbol[] = [];
-        const outline = (await doc.getOutline()) as OutlineItem[] | null;
-        if (outline !== null && outline.length > 0) {
-            const counter = { n: 1 };
-            walkOutline(outline, 1, symbols, counter);
-        }
-        if (symbols.length === 0) {
-            const meta = await doc.getMetadata();
-            const info = (meta.info ?? {}) as { Title?: string };
-            if (typeof info.Title === "string" && info.Title.trim().length > 0) {
-                symbols.push({
-                    name: info.Title.trim(),
-                    kind: "heading",
-                    level: 1,
-                    line: 1,
-                    endLine: 1,
-                });
-            }
-        }
-        return symbols;
+        return await collectSymbols(doc);
     } finally {
         await doc.destroy();
     }
+}
+
+async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMetadata: () => Promise<{ info?: unknown }> }): Promise<MimeSymbol[]> {
+    const symbols: MimeSymbol[] = [];
+    const outline = (await doc.getOutline()) as OutlineItem[] | null;
+    if (outline !== null && outline.length > 0) {
+        const counter = { n: 1 };
+        walkOutline(outline, 1, symbols, counter);
+    }
+    if (symbols.length === 0) {
+        const meta = await doc.getMetadata();
+        const info = (meta.info ?? {}) as { Title?: string };
+        if (typeof info.Title === "string" && info.Title.trim().length > 0) {
+            symbols.push({
+                name: info.Title.trim(),
+                kind: "heading",
+                level: 1,
+                line: 1,
+                endLine: 1,
+            });
+        }
+    }
+    return symbols;
 }
 
 async function extractAllText(bytes: Uint8Array): Promise<string> {
@@ -167,20 +209,30 @@ async function extractAllText(bytes: Uint8Array): Promise<string> {
     } as unknown as Parameters<typeof pdfjs.getDocument>[0];
     const doc = await pdfjs.getDocument(params).promise;
     try {
-        const pages: string[] = [];
-        for (let i = 1; i <= doc.numPages; i += 1) {
-            const page = await doc.getPage(i);
-            const tc = await page.getTextContent();
-            const pageText = tc.items
-                .map((it: unknown) => (it as { str?: string }).str ?? "")
-                .join(" ");
-            pages.push(pageText);
-            page.cleanup();
-        }
-        return pages.join("\n\n");
+        return await readAllPagesText(doc);
     } finally {
         await doc.destroy();
     }
+}
+
+async function readAllPagesText(doc: {
+    numPages: number;
+    getPage: (i: number) => Promise<{
+        getTextContent: () => Promise<{ items: unknown[] }>;
+        cleanup: () => void;
+    }>;
+}): Promise<string> {
+    const pages: string[] = [];
+    for (let i = 1; i <= doc.numPages; i += 1) {
+        const page = await doc.getPage(i);
+        const tc = await page.getTextContent();
+        const pageText = tc.items
+            .map((it: unknown) => (it as { str?: string }).str ?? "")
+            .join(" ");
+        pages.push(pageText);
+        page.cleanup();
+    }
+    return pages.join("\n\n");
 }
 
 function walkOutline(

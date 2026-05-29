@@ -146,7 +146,10 @@ describe("ApplicationPdf — metadata title fallback", () => {
 });
 
 describe("ApplicationPdf — null returns (dark in the radar)", () => {
-    it("returns null preview for a PDF with no outline and no Title", async () => {
+    it("returns null preview for a PDF with no outline, no Title, AND no page text", async () => {
+        // buildPdf({}) makes a structurally valid but textless PDF — no
+        // outline, no metadata Title, and no content stream on the page.
+        // No structure, no text → null preview, by design.
         const pdf = buildPdf({});
         const preview = await h.preview(pdf);
         assert.equal(preview, null);
@@ -156,6 +159,25 @@ describe("ApplicationPdf — null returns (dark in the radar)", () => {
         const garbage = new Uint8Array([0x00, 0x01, 0x02, 0x03]);
         const preview = await h.preview(garbage);
         assert.equal(preview, null);
+    });
+});
+
+describe("ApplicationPdf — hybrid TextPreview fallback", () => {
+    it("falls back to head-oriented TextPreview when the PDF has page text but no outline/Title", async () => {
+        // The Hello-world fixture has a text content stream but no bookmark
+        // outline and no Info dict Title. The hybrid should surface the
+        // extracted page text rather than going dark.
+        const preview = await h.preview(helloWorldPdf());
+        assert.equal(preview?.kind, "text");
+        if (preview?.kind !== "text") return;
+        assert.equal(preview.orientation, "head");
+        assert.ok(preview.text.includes("Hello, world!"), `got: ${JSON.stringify(preview.text)}`);
+    });
+
+    it("prefers structural SymbolPreview over text fallback when outline exists", async () => {
+        const pdf = buildPdf({ outline: [{ title: "Chapter 1" }] });
+        const preview = await h.preview(pdf);
+        assert.equal(preview?.kind, "symbols");
     });
 });
 
