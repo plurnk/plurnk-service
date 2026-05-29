@@ -1,5 +1,5 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
 
 // text/markdown handler. Replaces the legacy regex heading scanner with
@@ -10,6 +10,11 @@ import { Lexer, type Token } from "marked";
 //   - heading: every heading at every depth, with `level` from token.depth
 //   - module:  every fenced code block, named by its language tag (or "code"
 //              when no language), with line range covering the full fence
+//
+// Hybrid preview: returns SymbolPreview when extractRaw finds structural
+// signals (headings or code blocks), TextPreview head-oriented over the raw
+// markdown body when it doesn't. The fallback handles the "poem case" —
+// markdown content with no headings flat-renders rather than going dark.
 //
 // validate() inherits BaseHandler's no-op default (any string is valid markdown).
 export default class TextMarkdown extends BaseHandler {
@@ -32,6 +37,17 @@ export default class TextMarkdown extends BaseHandler {
         }
 
         return symbols;
+    }
+
+    override preview(content: string | Uint8Array): Preview {
+        const text = typeof content === "string"
+            ? content
+            : new TextDecoder("utf-8").decode(content);
+        const symbols = this.extractRaw(text);
+        if (symbols.length > 0) {
+            return { kind: "symbols", symbols };
+        }
+        return { kind: "text", text, orientation: "head" };
     }
 }
 

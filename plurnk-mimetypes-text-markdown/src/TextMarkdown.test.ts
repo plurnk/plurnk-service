@@ -150,13 +150,31 @@ describe("TextMarkdown", () => {
         assert.ok(out.includes("### Subsection"));
     });
 
-    it("preview returns a SymbolPreview wrapping extractRaw output", async () => {
+    it("preview returns a SymbolPreview when headings are present", async () => {
         const h = new TextMarkdown(metadata);
         const preview = await h.preview("# Top\n\n## Section\n");
         assert.equal(preview?.kind, "symbols");
         if (preview?.kind !== "symbols") return;
         const names = [...preview.symbols].map((s) => s.name);
         assert.deepEqual(names, ["Top", "Section"]);
+    });
+
+    it("preview falls back to TextPreview head when no headings/code blocks (poem case)", async () => {
+        const h = new TextMarkdown(metadata);
+        const poem = "Some prose without headings.\nMore prose. Still no structure.";
+        const preview = await h.preview(poem);
+        assert.equal(preview?.kind, "text");
+        if (preview?.kind !== "text") return;
+        assert.equal(preview.text, poem);
+        assert.equal(preview.orientation, "head");
+    });
+
+    it("preview returns SymbolPreview when only a code block is present (no headings)", async () => {
+        const h = new TextMarkdown(metadata);
+        const src = "Some intro.\n\n```ts\nconst x = 1;\n```\n\nMore prose.";
+        const preview = await h.preview(src);
+        // Code block IS a structural symbol → SymbolPreview wins over text fallback.
+        assert.equal(preview?.kind, "symbols");
     });
 
     it("inherits jsonpath query against the bare-leaves outline tree", async () => {
