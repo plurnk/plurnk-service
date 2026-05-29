@@ -9,18 +9,29 @@ const MAX_FIT_CONTENT_ITERATIONS = 20;
 // overshoot on the next measurement.
 const FIT_CONTENT_RATIO_MARGIN = 0.9;
 
+// Truncation sentinel. Appended (head orientation) or prepended (tail
+// orientation) to a TextPreview that overflowed budget and had to be sliced.
+// Distinctive enough to be unambiguous in agent output; reserved budget so
+// the model knows the preview is incomplete and a fetch reveals more.
+const TRUNCATION_MARKER_HEAD = "...[[TRUNCATED]]";
+const TRUNCATION_MARKER_TAIL = "[[TRUNCATED]]...";
+
 // Top-level dispatcher for Preview material. Handlers return a Preview; the
 // framework calls this to produce the final budgeted string.
 //
-//   null     → "" (no structural signal for this content)
+//   null     → "" (handler explicitly declines)
 //   symbols  → fit-symbols (drop-deepest-first, then drop-trailing-roots)
+//   text     → fit-content (oriented truncation with [[TRUNCATED]] marker)
 export async function fitPreview(
     preview: Preview,
     budget: number,
     tokenize: TokenizeFn,
 ): Promise<string> {
     if (preview === null) return "";
-    return fitSymbols([...preview.symbols], budget, tokenize);
+    if (preview.kind === "symbols") {
+        return fitSymbols([...preview.symbols], budget, tokenize);
+    }
+    return fitContent(preview.text, budget, tokenize, preview.orientation);
 }
 
 // Fit a flat MimeSymbol[] to a token budget. Builds a containment tree from
@@ -59,9 +70,14 @@ export async function fitSymbols(
 }
 
 // Fit raw content to a token budget by iteratively shrinking. Orientation
-// chooses which end of the content survives: "head" keeps the start (default
-// for documents, articles, source files); "tail" keeps the end (logs,
-// append-only feeds, diffs).
+// chooses which end of the content survives:
+//   - "head" keeps the start (documents, articles, source files), trails with
+//     `...[[TRUNCATED]]` when truncation occurred.
+//   - "tail" keeps the end (streams, logs, append-only feeds), leads with
+//     `[[TRUNCATED]]...`.
+// When no truncation is needed (content fits the budget as-is), no marker is
+// added. The marker's token cost is reserved up front so the final output
+// (content slice + marker) stays within the budget.
 export async function fitContent(
     content: string,
     budget: number,
@@ -73,10 +89,18 @@ export async function fitContent(
     let tokens = await tokenize(content);
     if (tokens <= budget) return content;
 
+    // Truncation will happen. Reserve budget for the marker; if even the
+    // marker can't fit, give up rather than return a misleading partial
+    // slice without an "incomplete" signal.
+    const marker = orientation === "head" ? TRUNCATION_MARKER_HEAD : TRUNCATION_MARKER_TAIL;
+    const markerTokens = await tokenize(marker);
+    if (markerTokens >= budget) return "";
+    const effectiveBudget = budget - markerTokens;
+
     let working = content;
     let iterations = 0;
-    while (tokens > budget && working.length > 1 && iterations < MAX_FIT_CONTENT_ITERATIONS) {
-        const ratio = (budget / tokens) * FIT_CONTENT_RATIO_MARGIN;
+    while (tokens > effectiveBudget && working.length > 1 && iterations < MAX_FIT_CONTENT_ITERATIONS) {
+        const ratio = (effectiveBudget / tokens) * FIT_CONTENT_RATIO_MARGIN;
         const newLen = Math.max(1, Math.floor(working.length * ratio));
         if (newLen >= working.length) break;
         working = orientation === "tail"
@@ -85,5 +109,7 @@ export async function fitContent(
         tokens = await tokenize(working);
         iterations += 1;
     }
-    return tokens <= budget ? working : "";
+    if (tokens > effectiveBudget) return "";
+
+    return orientation === "head" ? working + marker : marker + working;
 }

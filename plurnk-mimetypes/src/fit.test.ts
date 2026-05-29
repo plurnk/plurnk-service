@@ -76,21 +76,53 @@ describe("fitContent", () => {
         assert.equal(await fitContent("hello", 0, charTokenize), "");
     });
 
-    it("keeps the head of the content under 'head' orientation", async () => {
-        const out = await fitContent("abcdefghij", 4, charTokenize, "head");
-        assert.ok(out.length <= 4);
-        assert.ok("abcdefghij".startsWith(out));
+    it("returns empty when budget is smaller than the truncation marker", async () => {
+        // Marker "...[[TRUNCATED]]" is 16 chars / 16 tokens with charTokenize.
+        // Budget of 10 can't even fit the marker alone — no meaningful slice.
+        const long = "a".repeat(100);
+        assert.equal(await fitContent(long, 10, charTokenize), "");
+    });
+});
+
+describe("fitContent — head orientation with truncation marker", () => {
+    it("keeps the head of the content and appends ...[[TRUNCATED]]", async () => {
+        // 100 char content, budget 50 (well above 16-char marker reservation).
+        const long = "abcdefghij".repeat(10);
+        const out = await fitContent(long, 50, charTokenize, "head");
+        assert.ok(out.endsWith("...[[TRUNCATED]]"), `expected trailing marker; got ${JSON.stringify(out)}`);
+        assert.ok(out.length <= 50);
+        const head = out.slice(0, out.length - "...[[TRUNCATED]]".length);
+        assert.ok(long.startsWith(head), "head slice should be a prefix of content");
     });
 
-    it("keeps the tail of the content under 'tail' orientation", async () => {
-        const out = await fitContent("abcdefghij", 4, charTokenize, "tail");
-        assert.ok(out.length <= 4);
-        assert.ok("abcdefghij".endsWith(out));
+    it("defaults to head orientation when unspecified", async () => {
+        const long = "abcdefghij".repeat(10);
+        const out = await fitContent(long, 50, charTokenize);
+        assert.ok(out.endsWith("...[[TRUNCATED]]"));
     });
 
-    it("defaults to 'head' orientation when unspecified", async () => {
-        const out = await fitContent("abcdefghij", 4, charTokenize);
-        assert.ok("abcdefghij".startsWith(out));
+    it("does not add the marker when no truncation occurs", async () => {
+        const short = "hello";
+        const out = await fitContent(short, 100, charTokenize, "head");
+        assert.equal(out, "hello");
+        assert.ok(!out.includes("[[TRUNCATED]]"));
+    });
+});
+
+describe("fitContent — tail orientation with truncation marker", () => {
+    it("keeps the tail of the content and prepends [[TRUNCATED]]...", async () => {
+        const long = "abcdefghij".repeat(10);
+        const out = await fitContent(long, 50, charTokenize, "tail");
+        assert.ok(out.startsWith("[[TRUNCATED]]..."), `expected leading marker; got ${JSON.stringify(out)}`);
+        assert.ok(out.length <= 50);
+        const tail = out.slice("[[TRUNCATED]]...".length);
+        assert.ok(long.endsWith(tail), "tail slice should be a suffix of content");
+    });
+
+    it("does not add the marker when no truncation occurs", async () => {
+        const out = await fitContent("recent\nlog\nlines", 100, charTokenize, "tail");
+        assert.equal(out, "recent\nlog\nlines");
+        assert.ok(!out.includes("[[TRUNCATED]]"));
     });
 });
 
@@ -105,5 +137,20 @@ describe("fitPreview", () => {
             symbols: [{ name: "Foo", kind: "class", line: 1, endLine: 10 }],
         };
         assert.equal(await fitPreview(preview, 1000, charTokenize), "class Foo [1-10]");
+    });
+
+    it("dispatches text material through fitContent with handler-declared orientation", async () => {
+        const headPreview: Preview = { kind: "text", text: "a".repeat(100), orientation: "head" };
+        const headOut = await fitPreview(headPreview, 50, charTokenize);
+        assert.ok(headOut.endsWith("...[[TRUNCATED]]"));
+
+        const tailPreview: Preview = { kind: "text", text: "a".repeat(100), orientation: "tail" };
+        const tailOut = await fitPreview(tailPreview, 50, charTokenize);
+        assert.ok(tailOut.startsWith("[[TRUNCATED]]..."));
+    });
+
+    it("returns text as-is when it fits the budget (no marker, no symbols)", async () => {
+        const preview: Preview = { kind: "text", text: "hello", orientation: "head" };
+        assert.equal(await fitPreview(preview, 100, charTokenize), "hello");
     });
 });

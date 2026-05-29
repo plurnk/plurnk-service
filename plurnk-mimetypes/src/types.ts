@@ -38,18 +38,39 @@ export interface ExtractionVisitor {
     readonly symbols: MimeSymbol[];
 }
 
-// Preview material returned by Handler.preview(). The handler is the sole
-// author of structural symbols; the framework owns the budget math. Handlers
-// never see budget or tokenize values. There is no raw-text preview branch
-// by design: the radar is a passive structural signal, not a body slice.
-// Mimetypes without a structural extraction path return null.
-export type Preview = SymbolPreview | null;
+// Preview material returned by Handler.preview(). The handler authors the
+// preview policy; the framework owns the budget math. Handlers never see the
+// token budget or the tokenize function.
+//
+// Three shapes:
+//   - SymbolPreview: structural outline (handler has structure to extract).
+//   - TextPreview: oriented text slice (content is inherently flat, or the
+//     handler's structural extraction came up empty and a body slice is
+//     better than nothing). Framework appends/prepends a [[TRUNCATED]] marker
+//     when the slice doesn't fit the full content so the model knows the
+//     preview is incomplete and a fetch is needed.
+//   - null: handler explicitly declines — no preview signal of any kind.
+export type Preview = SymbolPreview | TextPreview | null;
 
 // Structural preview: an outline of symbols. Framework fits via fitSymbols(),
 // dropping deepest-first then trailing roots until the budget is met.
 export interface SymbolPreview {
     readonly kind: "symbols";
     readonly symbols: readonly MimeSymbol[];
+}
+
+// Text preview: oriented content slice.
+//
+//   orientation: "head" — keep the start, trail with `...[[TRUNCATED]]` when
+//                          truncated. Documents, articles, source files,
+//                          prose — content read top-down.
+//   orientation: "tail" — keep the end, lead with `[[TRUNCATED]]...` when
+//                          truncated. Streams, logs, append-only feeds,
+//                          diffs — content where recency matters.
+export interface TextPreview {
+    readonly kind: "text";
+    readonly text: string;
+    readonly orientation: "head" | "tail";
 }
 
 export interface Registry {
