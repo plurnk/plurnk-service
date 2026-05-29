@@ -1,0 +1,51 @@
+{
+    "name": "@plurnk/plurnk-providers",
+    "version": "0.1.0",
+    "description": "Framework + contract for the @plurnk/plurnk-providers-* LLM transport family.",
+    "keywords": ["plurnk", "llm", "provider", "tokenizer"],
+    "homepage": "https://github.com/plurnk/plurnk-providers#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-providers/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-providers.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-grammar": "^0.15.0"
+    },
+    "devDependencies": {
+        "@plurnk/plurnk-grammar": "^0.15.0",
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
