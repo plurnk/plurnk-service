@@ -46,12 +46,6 @@ FROM turns WHERE id = $id;
 SELECT id, status_rx, state, outcome, attrs, rx
 FROM log_entries WHERE id = $id;
 
--- PREP: test_list_log_rx_for_run
--- Lists rx blobs for every log entry in a run. Used by live tests that
--- need to sniff the rx for sibling-pending markers (e.g., a 501 carrying
--- the plurnk-mimetypes#3 reference) without dispatching another op.
-SELECT rx FROM log_entries WHERE run_id = $run_id ORDER BY id;
-
 -- PREP: test_get_session_cost
 SELECT cost_pico FROM sessions WHERE id = $id;
 

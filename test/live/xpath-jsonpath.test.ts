@@ -1,8 +1,9 @@
 // Live xpath/jsonpath coverage. Structural prompts walk the model
 // through the dialect; assertions verify wire-level emission against
-// the matcher contract. Tests are skipped at the engine level when the
-// matcher returns 501 (sibling-pending); they auto-activate when
-// plurnk-mimetypes#3 lands.
+// the matcher contract. Expected to FAIL until plurnk-mimetypes#3
+// lands and matcher.ts wires through — that red is the honest signal
+// that the dialects aren't live yet. When the sibling ships, every
+// test in this file activates with no code change here.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +54,7 @@ const liveSetup = async (label: string): Promise<LiveSetup> => {
     return { db, engine, provider, sessionId, runId };
 };
 
-const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ status: number; turnIds: number[]; lastContent: string; sawSibling501: boolean }> => {
+const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ status: number; turnIds: number[]; lastContent: string }> => {
     const loopId = await insertLoop(s.db, s.runId, 1, prompt);
     await (s.db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
     const result = await s.engine.runLoop({
@@ -63,11 +64,6 @@ const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ st
             { role: "user", content: prompt },
         ],
     });
-    // Sniff for the sibling-pending 501 in any of the run's log entries —
-    // if matcher.ts is still stubbed out the model will hit it.
-    type LogRow = { rx: string };
-    const rxRows = await (s.db.test_list_log_rx_for_run as PrepMethod | undefined)?.all<LogRow>({ run_id: s.runId }) ?? [];
-    const sawSibling501 = rxRows.some((row) => (row.rx ?? "").includes("plurnk-mimetypes#3"));
     const lastTurnId = result.turnIds[result.turnIds.length - 1];
     let lastContent = "";
     if (lastTurnId !== undefined) {
@@ -75,7 +71,7 @@ const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ st
         const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
         lastContent = packet.assistant?.content ?? "";
     }
-    return { status: result.finalStatus, turnIds: result.turnIds, lastContent, sawSibling501 };
+    return { status: result.finalStatus, turnIds: result.turnIds, lastContent };
 };
 
 test("live: jsonpath $.field on known://config.json extracts a value", { timeout: TIMEOUT }, async () => {
@@ -88,10 +84,6 @@ test("live: jsonpath $.field on known://config.json extracts a value", { timeout
             "3) <<SEND[200]:<the host value>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
-        if (r.sawSibling501) {
-            console.error("[pending plurnk-mimetypes#3] jsonpath $.field — skipping assertion");
-            return;
-        }
         assert.equal(r.status, 200);
         assert.match(r.lastContent, /db\.internal/);
     } finally { await s.db.close(); }
@@ -107,10 +99,6 @@ test("live: jsonpath $.users[*].name wildcard extracts list", { timeout: TIMEOUT
             "3) <<SEND[200]:<both names in any form>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
-        if (r.sawSibling501) {
-            console.error("[pending plurnk-mimetypes#3] jsonpath wildcard — skipping assertion");
-            return;
-        }
         assert.equal(r.status, 200);
         assert.match(r.lastContent, /Alice/);
         assert.match(r.lastContent, /Bob/);
@@ -127,10 +115,6 @@ test("live: xpath //h1/text() on known://page.html extracts heading text", { tim
             "3) <<SEND[200]:<the h1 text>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
-        if (r.sawSibling501) {
-            console.error("[pending plurnk-mimetypes#3] xpath //h1/text() — skipping assertion");
-            return;
-        }
         assert.equal(r.status, 200);
         assert.match(r.lastContent, /Welcome/);
     } finally { await s.db.close(); }
@@ -151,10 +135,6 @@ test("live: jsonpath compose-chain — extract then pick first via structural <L
             "4) <<SEND[200]:Alice:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
-        if (r.sawSibling501) {
-            console.error("[pending plurnk-mimetypes#3] jsonpath compose-chain — skipping assertion");
-            return;
-        }
         assert.equal(r.status, 200);
         assert.match(r.lastContent, /Alice/);
     } finally { await s.db.close(); }

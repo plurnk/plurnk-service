@@ -1,12 +1,9 @@
-// xpath / jsonpath matcher coverage — written to activate the moment
-// plurnk-mimetypes#3 lands. Each test asserts the EXPECTED behavior;
-// the `skipIfPendingSibling` guard at the top checks for the canonical
-// 501 response and short-circuits with a `console.error` note so the
-// suite stays green while the sibling work is in flight.
-//
-// When plurnk-mimetypes ships the matcher API and plurnk-service's
-// matcher.ts wires it through, every test in this file should activate
-// automatically without code changes here.
+// xpath / jsonpath matcher coverage — asserts the EXPECTED behavior
+// against the matcher contract. These tests are expected to FAIL until
+// plurnk-mimetypes#3 lands and matcher.ts wires the dialect dispatch
+// through; the suite carrying red here is the honest signal that the
+// dialects aren't wired yet. When the sibling lands, every test in this
+// file activates with no code change here.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -50,19 +47,6 @@ const seedJson = async (db: Db, sessionId: number, runId: number, mimetypes: Mim
     );
 };
 
-// Skip helper — the only path that returns 501 for xpath/jsonpath dialects
-// is matcher.ts pending plurnk-mimetypes#3. When the sibling lands and
-// the matcher wires through, status will move off 501 and the assertions
-// activate. (The error string doesn't propagate through READ result, so
-// we identify pending-sibling by status code at the dialect site.)
-const pendingSibling = (status: number, _error: string | undefined, label: string): boolean => {
-    if (status === 501) {
-        console.error(`[pending plurnk-mimetypes#3] ${label}`);
-        return true;
-    }
-    return false;
-};
-
 // --- jsonpath -------------------------------------------------------
 
 test("jsonpath: $.field extracts a scalar value from a JSON entry", async () => {
@@ -73,7 +57,7 @@ test("jsonpath: $.field extracts a scalar value from a JSON entry", async () => 
             readStmt(urlPath("known", "/config.json"), { dialect: "jsonpath", raw: "$.host" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "$.host")) return;
+
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: unknown }>;
@@ -91,7 +75,7 @@ test("jsonpath: $.users[*].name wildcard extracts multiple values with `matching
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "$.users[*].name")) return;
+
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: unknown; matching?: string }>;
@@ -112,7 +96,7 @@ test("jsonpath: $.users[*] returns object values; `matched` holds the JSON shape
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "$.users[*]")) return;
+
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: { name: string; role: string } }>;
         assert.equal(rows.length, 2);
@@ -130,7 +114,7 @@ test("jsonpath: filter expression `$.users[?(@.role==\"admin\")]` selects matchi
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[?(@.role=='admin')]" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "filter")) return;
+
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: { name: string } }>;
         assert.equal(rows.length, 2);
@@ -146,7 +130,7 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
             readStmt(urlPath("known", "/empty.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "zero-match")) return;
+
         assert.equal(r.status, 204);
         assert.equal((r as { matches?: number }).matches, 0);
     } finally { await db.close(); }
@@ -164,7 +148,7 @@ test("jsonpath on a non-JSON mimetype (text/markdown) → 415", async () => {
         // 415 is dialect/mimetype mismatch — should activate independently
         // of the sibling impl. Allow either 415 (already implemented) or
         // 501 (still pending).
-        if (pendingSibling(r.status, (r as { error?: string }).error, "415-gate")) return;
+
         assert.equal(r.status, 415);
     } finally { await db.close(); }
 });
@@ -181,7 +165,7 @@ test("xpath: //h1/text() extracts text content from HTML entries", async () => {
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//h1/text()" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "//h1/text()")) return;
+
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: string; matching?: string }>;
@@ -198,7 +182,7 @@ test("xpath: //element/@attr extracts attribute values", async () => {
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user/@email" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "//user/@email")) return;
+
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
         assert.deepEqual(rows.map((r) => r.matched), ["alice@x.com", "bob@x.com"]);
@@ -214,7 +198,7 @@ test("xpath: //element node selection serializes XML into `matched`", async () =
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//user" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "//user")) return;
+
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: string; matching?: string }>;
         assert.equal(rows.length, 2);
@@ -235,7 +219,7 @@ test("xpath with predicate: //user[@role='admin']", async () => {
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user[@role='admin']/text()" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "predicate")) return;
+
         assert.equal(r.status, 200);
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
         assert.deepEqual(rows.map((r) => r.matched), ["Alice", "Carol"]);
@@ -250,7 +234,7 @@ test("xpath on a non-XML mimetype (text/markdown) → 415", async () => {
             readStmt(urlPath("known", "/notes"), { dialect: "xpath", raw: "//h1" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r.status, (r as { error?: string }).error, "xpath-415-gate")) return;
+
         assert.equal(r.status, 415);
     } finally { await db.close(); }
 });
@@ -269,7 +253,6 @@ test("jsonpath result is composable: log://N/M/K<P>::READ picks P-th match", asy
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        if (pendingSibling(r1.status, (r1 as { error?: string }).error, "compose-step")) return;
         assert.equal(r1.status, 200);
         // After this lands, an end-to-end test should dispatch through
         // engine + log scheme to verify <<READ(log://...)<2>::READ picks
