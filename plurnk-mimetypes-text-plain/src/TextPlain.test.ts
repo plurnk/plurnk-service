@@ -38,4 +38,18 @@ describe("TextPlain", () => {
         assert.equal(preview.kind, "symbols");
         assert.deepEqual([...preview.symbols], []);
     });
+
+    it("inherits query: regex against text body works", async () => {
+        const handler = new TextPlain(metadata);
+        const out = await handler.query("error: foo\nok: bar\nerror: baz", "regex", "error: \\w+");
+        assert.equal(out.length, 2);
+        assert.equal(out[0].matched, "error: foo");
+        assert.equal(out[1].matched, "error: baz");
+    });
+
+    it("inherits query: jsonpath against the (empty) outline returns no matches", async () => {
+        const handler = new TextPlain(metadata);
+        const out = await handler.query("any text", "jsonpath", "$.anything");
+        assert.deepEqual(out, []);
+    });
 });
