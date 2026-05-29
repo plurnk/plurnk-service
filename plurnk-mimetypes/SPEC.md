@@ -247,8 +247,75 @@ exports tokenize(text)  ─→   registers from active   ─→    receives at c
                               DEFAULT_TOKENS env (256)
 ```
 
-Handlers never see the tokenize function or the budget — they return preview *material* (`SymbolPreview | TextPreview | null`) and the framework dispatches to the right fitter. This is what makes the authority split clean: handlers cannot accidentally double-count tokens, cannot pick the wrong tokenizer, and cannot leak budget logic into per-mimetype repos.
+Handlers never see the tokenize function or the budget — they return preview *material* (`SymbolPreview | null`) and the framework dispatches to the right fitter. This is what makes the authority split clean: handlers cannot accidentally double-count tokens, cannot pick the wrong tokenizer, and cannot leak budget logic into per-mimetype repos.
 
-## 11. Public API stability
+## 11. Body-matcher query
+
+Plurnk-service dispatches `FIND`/`READ`/`SHOW`/`HIDE` body matchers through `Mimetypes.query(input, expression)`. The framework parses the matcher's leading prefix to a `QueryDialect` (per plurnk-grammar's plurnk.md table) and forwards to the resolved handler's `query(content, dialect, pattern, flags?)`.
+
+### 11.1 Dialect dispatch
+
+| Leading prefix | Dialect | Form |
+|---|---|---|
+| `//` | xpath | `//selector` |
+| `/` | regex | `/pattern/[igmsuy]?` (escape `\/` inside pattern body) |
+| `$` | jsonpath | `$.field` |
+| otherwise | glob | `pattern` |
+
+Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
+
+### 11.2 Per-match return shape (from plurnk-grammar #17)
+
+```ts
+interface QueryMatch {
+    readonly line: number;             // 1-indexed source position
+    readonly matched: unknown;         // polymorphic per dialect (see below)
+    readonly matching?: string;        // resolved canonical locator when disambiguating
+}
+```
+
+`matched` is polymorphic by extractor:
+
+| Dialect | Extractor variant | `matched` shape |
+|---|---|---|
+| regex | bare (no captures) | string (the full match) |
+| regex | anonymous captures | array `[c1, c2, ...]` |
+| regex | named (and mixed) captures | object `{name: value, ..., "1": ..., "2": ...}` |
+| glob | line-anchored | string (the matching line) |
+| jsonpath | any | the JSON value at the resolved path (any shape) |
+| xpath | text/attribute node | string |
+| xpath | element node | serialized XML string |
+
+`matching` is the resolved locator for multi-match dialects: jsonpath wildcards emit `$.users[0].name` etc.; xpath multi-match emits `(//user)[1]` etc.; regex omits it (captures + line carry discrimination).
+
+### 11.3 Handler defaults
+
+`BaseHandler.query` provides defaults:
+
+- **regex / glob** — apply against `toText(content)`. Default `toText` returns string content as-is; for binary content it throws `UnsupportedDialectError`. Handlers with binary content (PDF) override `toText` to provide a text projection (e.g. extracted page text).
+- **jsonpath** — apply against the **bare-leaves outline** built from `extractRaw`:
+
+  ```json
+  { "Parser": { "parse": 10, "load": 22 }, "topLevel": 50 }
+  ```
+
+  Nesting matches structural depth; leaves are bare line numbers; parents are objects. No `kind`, no `endLine`, no `params` — those live on `MimeSymbol` for callers using `extractRaw` directly but are absent from the queryable shape. This is the unified shape across markdown, HTML headings, PDF outline, and source-code symbol trees: one navigation idiom for the model.
+
+  Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath against the parsed value instead of the outline. Line resolution is per-handler (jsonc-parser tree, yaml Document positions, etc.).
+- **xpath** — throws `UnsupportedDialectError`. `text/html` overrides to apply xpath against the parsed DOM.
+
+### 11.4 Error policy
+
+| Condition | Behavior |
+|---|---|
+| Detection returns null | `Mimetypes.query` throws `ReferenceError` |
+| Content unreadable | `Mimetypes.query` throws `ReferenceError` |
+| Dialect unsupported for resolved mimetype | `UnsupportedDialectError` → consumer maps to 415 |
+| Body-glob 415 case (not in v0.6.0) | per grammar #17, glob-on-body returns line matches; no 415 |
+| Malformed expression | `InvalidExpressionError` → consumer maps to 400 |
+| Content can't be parsed for the dialect | `QueryParseFailureError` → consumer maps to 422 |
+| Zero matches | returns `[]` → consumer maps to 204 |
+
+## 12. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.

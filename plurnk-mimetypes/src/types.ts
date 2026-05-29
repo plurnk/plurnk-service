@@ -88,3 +88,31 @@ export interface DiscoverOptions {
     packageDirs?: string[];
     cwd?: string;
 }
+
+// Body matcher dialects, dispatched by leading-prefix from plurnk-grammar's
+// plurnk.md table: `//` xpath, `/.../flags` regex, `$` jsonpath, otherwise
+// glob (line-anchored against body text).
+export type QueryDialect = "regex" | "glob" | "xpath" | "jsonpath";
+
+// Per-match result shape, per grammar #17. Returned by Handler.query for every
+// dialect. Empty result set is `[]` (consumer maps to 204).
+//
+// `matched` is polymorphic by extractor:
+//   - regex bare        → string (the full match)
+//   - regex anon captures → readonly string[] (positional captures)
+//   - regex named captures → readonly { [name]: string } (named captures; mixed
+//     includes positional "1", "2", ... keys)
+//   - glob              → string (the matching line)
+//   - jsonpath          → the matched value (any JSON shape)
+//   - xpath text/attr   → string
+//   - xpath element     → string (serialized XML)
+//
+// `matching` is the resolved canonical locator for multi-match dialects:
+//   - jsonpath wildcards → `$.users[0].name` per match
+//   - xpath multi-match → `(//user)[1]` per match
+//   - omitted otherwise.
+export interface QueryMatch {
+    readonly line: number;
+    readonly matched: unknown;
+    readonly matching?: string;
+}

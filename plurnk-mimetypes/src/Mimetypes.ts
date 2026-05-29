@@ -3,12 +3,14 @@ import { defaultTokenize } from "./defaults.ts";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { fitPreview } from "./fit.ts";
+import { parseBodyMatcher } from "./parseBodyMatcher.ts";
 import type BaseHandler from "./BaseHandler.ts";
 import type {
     DetectInput,
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
+    QueryMatch,
     TokenizeFn,
 } from "./types.ts";
 
@@ -178,6 +180,41 @@ export default class Mimetypes {
         const preview = await fitPreview(material, budget, this.#tokenize);
 
         return { mimetype, preview, ok: true };
+    }
+
+    // Body-matcher query entry point. Plurnk-service passes a raw matcher
+    // expression (e.g. "$.users[0].name", "//user", "/error.*/g", "*.log") and
+    // we dispatch by leading prefix to the resolved handler's query method.
+    //
+    // Errors:
+    //   * detection fails → throws ReferenceError (no handler to query)
+    //   * content read fails → throws (caller must know to retry/handle)
+    //   * handler missing → throws ReferenceError
+    //   * dialect unsupported for this mimetype → UnsupportedDialectError → 415
+    //   * malformed expression → InvalidExpressionError → 400
+    //   * content can't be parsed for dialect → QueryParseFailureError → 422
+    //   * zero matches → returns [] (consumer maps to 204)
+    async query(input: ProcessInput, expression: string): Promise<QueryMatch[]> {
+        const mimetype = await this.detect(input);
+        if (mimetype === null) {
+            throw new ReferenceError("Mimetypes.query: no mimetype could be resolved for input");
+        }
+
+        const info = this.#discovery!.handlers.get(mimetype) ?? null;
+        const isBinary = info?.binary ?? false;
+
+        const content = await this.#resolveContent(input, isBinary);
+        if (content === null) {
+            throw new ReferenceError(`Mimetypes.query: content unreadable for ${mimetype}`);
+        }
+
+        const handler = await this.getHandler(mimetype);
+        if (handler === null) {
+            throw new ReferenceError(`Mimetypes.query: no handler discovered for ${mimetype}`);
+        }
+
+        const parsed = parseBodyMatcher(expression);
+        return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
     }
 
     async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {

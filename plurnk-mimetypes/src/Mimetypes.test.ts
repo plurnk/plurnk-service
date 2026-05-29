@@ -327,3 +327,88 @@ describe("Mimetypes — process", () => {
         assert.equal(result.ok, true);
     });
 });
+
+describe("Mimetypes — query", () => {
+    it("dispatches regex via /pattern/flags expression to the handler", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const results = await m.query(
+            { path: "foo.txt", content: "alpha\nbeta\ngamma\nbeta" },
+            "/beta/",
+        );
+        assert.equal(results.length, 2);
+        assert.equal(results[0].matched, "beta");
+        assert.equal(results[0].line, 2);
+        assert.equal(results[1].line, 4);
+    });
+
+    it("dispatches jsonpath via $ expression to the handler's outline", async () => {
+        class OutlineHandler extends BaseHandler {
+            override extractRaw(): MimeSymbol[] {
+                return [
+                    { name: "Top", kind: "heading", level: 1, line: 1, endLine: 1 },
+                    { name: "Section", kind: "heading", level: 2, line: 5, endLine: 5 },
+                ];
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: OutlineHandler }),
+        });
+        const results = await m.query(
+            { path: "foo.txt", content: "(unused)" },
+            "$.Top.Section",
+        );
+        assert.equal(results.length, 1);
+        assert.equal(results[0].matched, 5);
+        assert.equal(results[0].line, 5);
+    });
+
+    it("dispatches glob (no prefix) line-anchored against text body", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const results = await m.query(
+            { path: "foo.txt", content: "error: a\nok: b\nerror: c" },
+            "error: *",
+        );
+        assert.equal(results.length, 2);
+        assert.equal(results[0].matched, "error: a");
+        assert.equal(results[1].matched, "error: c");
+    });
+
+    it("dispatches xpath via // expression; default handler throws (mapped to 415 upstream)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        await assert.rejects(
+            async () => {
+                await m.query({ path: "foo.txt", content: "any" }, "//foo");
+            },
+            /xpath/,
+        );
+    });
+
+    it("throws when detection fails (no mimetype to resolve)", async () => {
+        const m = new Mimetypes({ discovery: makeDiscovery([]) });
+        await assert.rejects(
+            async () => { await m.query({ path: "foo.unknown" }, "/x/"); },
+            /no mimetype/,
+        );
+    });
+
+    it("throws when content is unreadable", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        await assert.rejects(
+            async () => { await m.query({ path: "/nonexistent.txt" }, "/x/"); },
+            /content unreadable/,
+        );
+    });
+});

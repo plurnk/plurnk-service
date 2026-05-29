@@ -1,5 +1,14 @@
+import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
-import type { HandlerMetadata, MimeSymbol, Preview } from "./types.ts";
+import { queryGlob, queryJsonpathObject, queryRegex } from "./query.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
+import type {
+    HandlerMetadata,
+    MimeSymbol,
+    Preview,
+    QueryDialect,
+    QueryMatch,
+} from "./types.ts";
 
 // Content shape that handler methods accept. Text mimetypes receive `string`;
 // binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers
@@ -47,13 +56,65 @@ export default class BaseHandler {
 
     // The handler's preview policy. Returns:
     //   - SymbolPreview: structural outline (framework fits via fit())
-    //   - TextPreview:   raw text with orientation (framework fits via fitContent())
     //   - null:          no preview (handler explicitly declines)
     //
-    // Default: SymbolPreview wrapping extractRaw output. Handlers with text
-    // content (PDF extracted text, HTML→markdown, plain-text bodies, etc.)
-    // override to return TextPreview with the appropriate orientation.
+    // Default: SymbolPreview wrapping extractRaw output. Handlers whose
+    // structure isn't reachable through extractRaw (notably async ones like
+    // application-pdf) override preview directly.
     preview(content: HandlerContent): Preview | Promise<Preview> {
         return { kind: "symbols", symbols: this.extractRaw(content) };
+    }
+
+    // Body-matcher query. Plurnk-service calls this through Mimetypes.query
+    // with a dialect + pattern parsed from the matcher expression's leading
+    // prefix (see parseBodyMatcher).
+    //
+    // Defaults:
+    //   - regex/glob: apply against decoded text content (toText). Subclasses
+    //     with binary content override toText to provide a text projection
+    //     (e.g. PDF returns extracted page text).
+    //   - jsonpath: apply against the bare-leaves outline tree built from
+    //     extractRaw. Mimetypes with native JSON-shaped content (JSON, YAML,
+    //     TOML, CSV) override to apply against the parsed value instead.
+    //   - xpath: throws UnsupportedDialectError. text-html overrides to apply
+    //     against the parsed DOM.
+    async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        switch (dialect) {
+            case "regex": {
+                const text = await this.toText(content);
+                return queryRegex(text, pattern, flags);
+            }
+            case "glob": {
+                const text = await this.toText(content);
+                return queryGlob(text, pattern);
+            }
+            case "jsonpath": {
+                const outline = buildJsonOutline(this.extractRaw(content));
+                return queryJsonpathObject(outline, pattern);
+            }
+            case "xpath":
+                throw new UnsupportedDialectError({
+                    mimetype: this.mimetype,
+                    dialect: "xpath",
+                    reason: "no xpath projection for this mimetype",
+                });
+        }
+    }
+
+    // Provide a text projection for regex/glob queries. Default: pass through
+    // for string content; throw for binary. Subclasses with binary content
+    // (PDF, future image OCR) override to extract a readable representation.
+    protected toText(content: HandlerContent): string | Promise<string> {
+        if (typeof content === "string") return content;
+        throw new UnsupportedDialectError({
+            mimetype: this.mimetype,
+            dialect: "regex",
+            reason: "binary content has no text projection for this mimetype",
+        });
     }
 }
