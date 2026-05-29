@@ -63,6 +63,23 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         ) + "\n",
     );
 
+    // HTML fixture for xpath demos. Small page with multiple users so
+    // attribute/text/predicate selectors all have a target.
+    await writeFile(
+        join(workspace, "data/users.html"),
+        [
+            "<html>",
+            "  <body>",
+            "    <h1>Team Roster</h1>",
+            '    <user role="admin" email="alice@x.com">Alice</user>',
+            '    <user role="viewer" email="bob@x.com">Bob</user>',
+            '    <user role="admin" email="carol@x.com">Carol</user>',
+            "  </body>",
+            "</html>",
+            "",
+        ].join("\n"),
+    );
+
     // git init — some operations rely on the working dir being a git
     // repo for the workspace boundary to make sense. Matches rummy.
     execSync(

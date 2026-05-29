@@ -219,6 +219,77 @@ test("story: extract one specific value from a structured config", { timeout: TI
     } finally { await story.cleanup(); }
 });
 
+// --- xpath / jsonpath demos (auto-activate when plurnk-mimetypes#3 lands) ---
+//
+// These demos exercise the dialect the model is MOST likely to reach for
+// given the prompt: natural language that asks for structured extraction
+// against JSON or HTML. Currently jsonpath/xpath return 501 in matcher.ts;
+// the model will see that and fall back to regex / EXEC / full-read.
+// The assertions still validate the outcome (the answer reaches SEND);
+// when the sibling lands and matcher.ts wires through, the model will
+// reach for jsonpath/xpath directly and the same demos pass via that path.
+
+test("story: list every admin user from a JSON file", { timeout: TIMEOUT }, async () => {
+    // data/users.json: [{name:Alice,role:admin}, {name:Bob,role:viewer}].
+    // jsonpath path: $.[?(@.role=='admin')].name → ["Alice"]
+    // Fallback paths: regex match on lines / EXEC + jq / full READ + reason.
+    const story = await runStory({
+        label: "list-admins",
+        prompt: "In data/users.json, who has the 'admin' role? List each admin's name.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/Alice/.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /Alice/,
+            `final reply names the admin; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
+test("story: pull the host field from a JSON config", { timeout: TIMEOUT }, async () => {
+    // src/config.json: {db:postgres, pool:5, host:db.internal}.
+    // jsonpath path: $.host → "db.internal"
+    const story = await runStory({
+        label: "host-field",
+        prompt: "What's the value of the `host` field in src/config.json?",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/db\.internal/.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /db\.internal/);
+    } finally { await story.cleanup(); }
+});
+
+test("story: extract all h1 headings from an HTML page", { timeout: TIMEOUT }, async () => {
+    // data/users.html has one h1 "Team Roster".
+    // xpath path: //h1/text() → ["Team Roster"]
+    // Fallback: regex /<h1>(.+?)<\/h1>/ or full READ + visual parse.
+    const story = await runStory({
+        label: "html-headings",
+        prompt: "Read data/users.html and tell me what the page's heading says.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/Team Roster/i.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /Team Roster/i);
+    } finally { await story.cleanup(); }
+});
+
+test("story: pull email addresses out of an HTML element's attribute", { timeout: TIMEOUT }, async () => {
+    // data/users.html: <user email="alice@x.com">, <user email="bob@x.com">, <user email="carol@x.com">.
+    // xpath path: //user/@email → ["alice@x.com", "bob@x.com", "carol@x.com"]
+    const story = await runStory({
+        label: "html-attrs",
+        prompt: "List the email addresses for every user in data/users.html.",
+    });
+    try {
+        if (story.finalStatus !== 200 || !/alice@x\.com/.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /alice@x\.com/);
+        assert.match(story.lastContent, /bob@x\.com/);
+        assert.match(story.lastContent, /carol@x\.com/);
+    } finally { await story.cleanup(); }
+});
+
 test("story: report the number of files in a directory", { timeout: TIMEOUT }, async () => {
     // src/ has 2 files: app.js, config.json.
     const story = await runStory({
