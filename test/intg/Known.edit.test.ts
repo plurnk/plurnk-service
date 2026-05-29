@@ -309,6 +309,48 @@ test("Known.edit: <L> on no-suffix path is line-based; .json siblings get struct
     } finally { await db.close(); }
 });
 
+test("Known.edit: diff surfaced in EditResult on successful edit (M.12)", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    await mimetypes.ready();
+    try {
+        const k = new Known();
+        // Create
+        const r1 = await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"}]' }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        assert.equal(r1.status, 201);
+        const diff1 = (r1 as { diff?: string }).diff;
+        assert.ok(typeof diff1 === "string", "diff present on create");
+        assert.match(diff1, /\+\[\{"name":"Alice"\}\]/);
+
+        // Update
+        const r2 = await k.edit(
+            editStatement({ target: urlPath("known", "/users.json"), body: '{"name":"Eve"}', lineMarker: { first: -1, last: null } }),
+            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        );
+        assert.equal(r2.status, 200);
+        const diff2 = (r2 as { diff?: string }).diff;
+        assert.ok(typeof diff2 === "string", "diff present on update");
+        assert.match(diff2, /Alice/);
+        assert.match(diff2, /Eve/);
+    } finally { await db.close(); }
+});
+
+test("Known.edit: no-op edit (same content) omits diff", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        // Create entry
+        await k.edit(editStatement({ target: urlPath("known", "/x"), body: "hello" }), makeSchemeCtx({ db, sessionId, runId }));
+        // Re-write same content
+        const r = await k.edit(editStatement({ target: urlPath("known", "/x"), body: "hello" }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(r.status, 200);
+        assert.equal((r as { diff?: string }).diff, undefined, "no diff when content unchanged");
+    } finally { await db.close(); }
+});
+
 test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });

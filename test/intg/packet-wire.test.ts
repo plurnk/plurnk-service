@@ -122,6 +122,73 @@ test("log render: READ@200 with application/json rx body → verbatim heredoc (n
     assert.doesNotMatch(out, /<<notes\.md:\n1:\t/);
 });
 
+test("log render: EDIT@200 with rx.diff → diff body block (M.12)", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/2",
+            origin: "model",
+            op: "EDIT",
+            status: 200,
+            target: { scheme: "known", pathname: "/users.json" },
+            rx: {
+                status: 200,
+                entryId: 5,
+                channel: "body",
+                diff: "Index: known:///users.json\n===================================================================\n--- known:///users.json\tcurrent\n+++ known:///users.json\tproposed\n@@ -1 +1 @@\n-[]\n+[{\"name\":\"Eve\"}]\n",
+            },
+        }],
+    };
+    const out = renderSystemContent(system);
+    assert.match(out, /<<known:\/\/\/users\.json:\nIndex:/, "diff body emitted under entry's fence");
+    assert.match(out, /\+\[\{"name":"Eve"\}\]/, "diff shows the addition");
+});
+
+test("log render: EDIT@200 with no diff (no-op edit) → meta line only", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/3",
+            origin: "model",
+            op: "EDIT",
+            status: 200,
+            target: { scheme: "known", pathname: "/x" },
+            rx: { status: 200, entryId: 5, channel: "body" },  // no diff field
+        }],
+    };
+    const out = renderSystemContent(system);
+    // Should NOT have a heredoc body — just the meta line.
+    assert.doesNotMatch(out, /<<known:\/\/\/x:/);
+});
+
+test("log render: EDIT@201 (entry created) with diff → diff body emitted", () => {
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [],
+        log: [{
+            coordinate: "1/1/1",
+            origin: "model",
+            op: "EDIT",
+            status: 201,
+            target: { scheme: "known", pathname: "/users.json" },
+            rx: {
+                status: 201,
+                entryId: 5,
+                channel: "body",
+                diff: "Index: known:///users.json\n===================================================================\n--- known:///users.json\tcurrent\n+++ known:///users.json\tproposed\n@@ -0,0 +1 @@\n+[{\"name\":\"Alice\"}]\n",
+            },
+        }],
+    };
+    const out = renderSystemContent(system);
+    assert.match(out, /<<known:\/\/\/users\.json:\nIndex:/);
+    assert.match(out, /\+\[\{"name":"Alice"\}\]/);
+});
+
 test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
     const system = {
         system_definition: "SD",

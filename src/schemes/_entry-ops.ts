@@ -1,4 +1,5 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import { createPatch } from "diff";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
@@ -11,7 +12,12 @@ import { resolveEntryMimetype } from "../core/path-mimetype.ts";
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
-export type EditResult = { status: number; entryId: number | null; channel: string | null };
+// diff (unified diff format) — surfaces the change so the model can see
+// what just happened without a follow-up READ. Catches "wrong marker"
+// mistakes on the next turn (the M.12 safety net we identified during the
+// structural-EDIT design discussion). Present on status 200/201 when
+// content actually changed; omitted otherwise.
+export type EditResult = { status: number; entryId: number | null; channel: string | null; diff?: string };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -81,6 +87,16 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
 
     const body = statement.body ?? "";
 
+    // Read current content unconditionally for diff generation (M.12 —
+    // surface diff in EDIT response so wrong-marker mistakes are visible).
+    let originalContent = "";
+    if (existing !== undefined) {
+        const channel = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
+            session_id: sessionId, scheme, pathname, channel: targetChannel,
+        });
+        originalContent = channel?.content ?? "";
+    }
+
     // `<L>` line marker EDIT semantics. Dispatch on effective mimetype:
     // JSON → applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
     // otherwise → applyLineMarkerEdit (line edit, original semantics).
@@ -89,13 +105,9 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
     // existing content).
     let newContent: string;
     if (statement.lineMarker !== null && existing !== undefined) {
-        const channel = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
-            session_id: sessionId, scheme, pathname, channel: targetChannel,
-        });
-        const currentContent = channel?.content ?? "";
         const result = isJsonMimetype(effectiveMimetype)
-            ? applyJsonItemEdit(currentContent, statement.lineMarker, body)
-            : applyLineMarkerEdit(currentContent, statement.lineMarker, body);
+            ? applyJsonItemEdit(originalContent, statement.lineMarker, body)
+            : applyLineMarkerEdit(originalContent, statement.lineMarker, body);
         if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel };
         newContent = result.result ?? "";
     } else {
@@ -123,7 +135,16 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         }
     }
 
-    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
+    // M.12 diff: surface what actually changed so model sees the result
+    // of its EDIT without a follow-up READ. Skip if content is identical
+    // (no-op edit). Path-format string is just the entry's URI for the
+    // model's correlation; consumers (digest, intg) parse the unified
+    // diff body.
+    const diff = originalContent !== newContent
+        ? createPatch(`${scheme}://${pathname}`, originalContent, newContent, "current", "proposed")
+        : undefined;
+
+    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, diff };
 };
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {

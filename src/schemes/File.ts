@@ -10,7 +10,12 @@ import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } fr
 import { matchAgainstContent } from "../core/matcher.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null };
-type EditResult = { status: number; body?: string; attrs?: object; error?: string };
+// diff: unified diff string surfaced in EDIT response so the model sees
+// what changed without a follow-up READ (M.12 — symmetric with
+// _entry-ops.EditResult.diff). For File scheme the diff is already
+// computed in the proposal (attrs.patch); we surface it at the result
+// level too so the post-acceptance log entry carries it.
+type EditResult = { status: number; body?: string; attrs?: object; error?: string; diff?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
@@ -207,6 +212,9 @@ export default class File {
                 patch,
                 patched,
             },
+            // Surface the diff at the result level too — the log render
+            // emits it for the model to see what changed (M.12).
+            diff: original !== patched ? patch : undefined,
         };
     }
 

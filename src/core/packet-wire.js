@@ -193,6 +193,16 @@ const renderLogEntries = (entries) =>
         // READ@200: expose the response body. READ@204 (successfully empty —
         // 0 matcher hits, sentinel slice, or empty source) has no body to
         // render; the meta line carries the signal via `matches` / status code.
+        // EDIT@200/201: surface the unified diff so the model sees what
+        // changed without an explicit follow-up READ. Catches wrong-marker
+        // mistakes on the next turn (M.12).
+        if (op === "EDIT" && (e.status === 200 || e.status === 201)) {
+            const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
+            if (rx !== null && typeof rx === "object" && typeof rx.diff === "string" && rx.diff.length > 0) {
+                const fence = target ?? `log://${coordinate}`;
+                return `${metaLine}\n<<${fence}:\n${rx.diff}\n:${fence}`;
+            }
+        }
         if (op === "READ" && e.status === 200) {
             const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
             if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
