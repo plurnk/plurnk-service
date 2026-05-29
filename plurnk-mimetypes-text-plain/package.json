@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-plain",
-    "version": "0.5.0",
-    "description": "text/plain mimetype handler for plurnk-service.",
+    "version": "0.6.0",
+    "description": "text/plain (head-oriented prose) and text/stream (tail-oriented live data) mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -19,6 +19,11 @@
                 "extensions": [
                     ".txt"
                 ]
+            },
+            {
+                "name": "text/stream",
+                "glyph": "📡",
+                "extensions": []
             }
         ]
     },
@@ -42,7 +47,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.6.0"
+        "@plurnk/plurnk-mimetypes": "^0.7.0"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
