@@ -158,4 +158,26 @@ describe("TextMarkdown", () => {
         const names = [...preview.symbols].map((s) => s.name);
         assert.deepEqual(names, ["Top", "Section"]);
     });
+
+    it("inherits jsonpath query against the bare-leaves outline tree", async () => {
+        const h = new TextMarkdown(metadata);
+        const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");
+        // Navigate via heading names.
+        const sub = await h.query(src, "jsonpath", "$.Top.Section.Sub");
+        assert.equal(sub.length, 1);
+        assert.equal(sub[0].matched, 5);
+        assert.equal(sub[0].line, 5);
+
+        const sectionSubtree = await h.query(src, "jsonpath", "$.Top.Section");
+        assert.equal(sectionSubtree.length, 1);
+        assert.deepEqual(sectionSubtree[0].matched, { Sub: 5 });
+    });
+
+    it("inherits regex query against the raw markdown body", async () => {
+        const h = new TextMarkdown(metadata);
+        const src = "# Top\n\nSome body with codename: phoenix in it.";
+        const out = await h.query(src, "regex", "codename: (\\w+)");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].matched, ["codename: phoenix", "phoenix"]);
+    });
 });
