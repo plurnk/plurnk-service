@@ -9,9 +9,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
+import Log from "../../src/schemes/Log.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -137,18 +140,16 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
 });
 
 test("jsonpath on a non-JSON mimetype (text/markdown) → 415", async () => {
+    // Mimetype-mismatch gate already lives in matcher.ts ahead of the
+    // sibling-pending 501; this test passes today and should continue
+    // passing after the sibling lands.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
-        // No .json suffix → manifest default = text/markdown.
         await seedJson(db, sessionId, runId, mimetypes, "/notes", "not actually json");
         const r = await new Known().read(
             readStmt(urlPath("known", "/notes"), { dialect: "jsonpath", raw: "$.field" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        // 415 is dialect/mimetype mismatch — should activate independently
-        // of the sibling impl. Allow either 415 (already implemented) or
-        // 501 (still pending).
-
         assert.equal(r.status, 415);
     } finally { await db.close(); }
 });
@@ -241,22 +242,43 @@ test("xpath on a non-XML mimetype (text/markdown) → 415", async () => {
 
 // --- Composition with structural <L> on log:// ----------------------
 
-test("jsonpath result is composable: log://N/M/K<P>::READ picks P-th match", async () => {
-    // Already exercised in test/intg/Log.read.test.ts for regex; this
-    // verifies the same composition works once jsonpath lands. The
-    // matcher returns application/json; structural <L> indexes its array.
+test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://", async () => {
+    // End-to-end the killer composition: dispatch a jsonpath matcher
+    // READ through the engine, then dispatch <<READ(log://N/M/K)<2>::READ
+    // to pick the 2nd match. Mirrors the regex version in Log.read.test.ts.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
+        const loopId = await insertLoop(db, runId, 1, "compose-jsonpath");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
+
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
             '{"users":[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]}');
-        const r1 = await new Known().read(
-            readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
-        );
-        assert.equal(r1.status, 200);
-        // After this lands, an end-to-end test should dispatch through
-        // engine + log scheme to verify <<READ(log://...)<2>::READ picks
-        // "Bob" as the 2nd match. Marked as a follow-up here since this
-        // file scopes to the matcher.ts surface.
+
+        // Dispatch the matcher READ — lands at log://1/1/1.
+        await engine.dispatch({
+            statement: {
+                op: "READ", suffix: "", signal: null,
+                target: urlPath("known", "/team.json"),
+                lineMarker: null,
+                body: { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+                position: { line: 1, column: 1 },
+            },
+            sessionId, runId, loopId, turnId,
+            sequence: 1, origin: "model",
+        });
+
+        // Now structural <L><2> on the log entry — should return the 2nd
+        // match (Bob) as a single-element JSON array.
+        const stmt: ReadStatement = {
+            ...readStmt(urlPath("log", "1/1/1")),
+            lineMarker: { first: 2, last: null },
+        };
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId, mimetypes }));
+        assert.equal(r.status, 200);
+        assert.equal(r.mimetype, "application/json");
+        const items = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
+        assert.equal(items.length, 1);
+        assert.equal(items[0].matched, "Bob");
     } finally { await db.close(); }
 });
