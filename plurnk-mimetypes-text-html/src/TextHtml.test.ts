@@ -52,10 +52,20 @@ describe("TextHtml — heading extraction", () => {
         assert.equal(syms[0].name, "Real");
     });
 
-    it("returns an empty SymbolPreview for HTML with no structural signal", async () => {
+    it("falls back to head-oriented TextPreview when no headings/title exist (hybrid)", async () => {
         const html = "<html><body><p>Just a paragraph.</p></body></html>";
-        const syms = await symbolsOf(html);
-        assert.deepEqual(syms, []);
+        const preview = await h.preview(html);
+        assert.equal(preview?.kind, "text");
+        if (preview?.kind !== "text") return;
+        assert.equal(preview.text, html);
+        assert.equal(preview.orientation, "head");
+    });
+
+    it("falls back to TextPreview for empty input rather than going dark", async () => {
+        const preview = await h.preview("");
+        // Empty input → no structural symbols → text fallback with empty content.
+        // Framework's fitContent returns "" for empty content anyway.
+        assert.equal(preview?.kind, "text");
     });
 });
 
@@ -130,9 +140,11 @@ describe("TextHtml — content shape", () => {
         assert.doesNotThrow(() => h.validate(""));
     });
 
-    it("returns empty SymbolPreview for empty input", async () => {
-        const syms = await symbolsOf("");
-        assert.deepEqual(syms, []);
+    it("falls back to (empty) TextPreview for empty input", async () => {
+        // No structural signal → text fallback. The text is empty but the
+        // preview shape is text/head, not symbols.
+        const preview = await h.preview("");
+        assert.equal(preview?.kind, "text");
     });
 });
 

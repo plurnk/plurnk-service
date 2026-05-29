@@ -6,6 +6,7 @@ import {
 import type {
     HandlerContent,
     MimeSymbol,
+    Preview,
     QueryDialect,
     QueryMatch,
 } from "@plurnk/plurnk-mimetypes";
@@ -62,6 +63,23 @@ export default class TextHtml extends BaseHandler {
         }
 
         return symbols;
+    }
+
+    // Hybrid preview: SymbolPreview when headings (h1-h6) or a <title>
+    // surface, head-oriented TextPreview over the raw HTML otherwise. The
+    // fallback handles pages without structural markup — login forms, single
+    // <body>-of-text pages, fragments — by surfacing the raw HTML rather
+    // than going dark. The truncation marker keeps the model honest about
+    // it being a partial slice.
+    override preview(content: HandlerContent): Preview {
+        const html = typeof content === "string"
+            ? content
+            : new TextDecoder("utf-8").decode(content);
+        const symbols = this.extractRaw(html);
+        if (symbols.length > 0) {
+            return { kind: "symbols", symbols };
+        }
+        return { kind: "text", text: html, orientation: "head" };
     }
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
