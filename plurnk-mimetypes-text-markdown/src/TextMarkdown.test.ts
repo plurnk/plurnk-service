@@ -178,6 +178,8 @@ describe("TextMarkdown", () => {
         const src = "# Top\n\nSome body with codename: phoenix in it.";
         const out = await h.query(src, "regex", "codename: (\\w+)");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].matched, ["codename: phoenix", "phoenix"]);
+        // Anonymous captures per grammar #17: array of capture values only
+        // (the full match itself is not included).
+        assert.deepEqual(out[0].matched, ["phoenix"]);
     });
 });
