@@ -1,23 +1,46 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
+import {
+    BaseHandler,
+    buildJsonOutline,
+    queryJsonpathObject,
+    QueryParseFailureError,
+} from "@plurnk/plurnk-mimetypes";
+import type {
+    MimeSymbol,
+    Preview,
+    QueryDialect,
+    QueryMatch,
+} from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 
 // application/pdf handler. Binary mimetype — receives Uint8Array content.
+//
 // validate() does a sync header-magic check; preview() walks the PDF's
 // outline (bookmark TOC) and emits each entry as a heading symbol nested by
 // outline depth. PDFs without an outline fall back to the document's
 // metadata title (if present); without that, preview is null and the
 // channel is dark in the radar.
 //
-// We deliberately do NOT extract the full text body. Per the v0.5.0
-// framework contract, the preview is a structural signal — never a body
-// slice. A body slice would teach LLM consumers to read the preview as
-// content and skip the actual fetch.
+// toText() extracts the full PDF body via pdfjs.getTextContent and joins the
+// pages. This text is used for body-matcher query operations (regex and
+// glob) — the active body-read path, NOT the passive preview/radar path.
+// The structural-only preview rule applies to preview, not query.
+//
+// We deliberately do NOT use extracted text in the preview pipeline. Per the
+// v0.5.0 framework contract, the preview is a structural signal — never a
+// body slice. A body slice would teach LLM consumers to read the preview as
+// content and skip the actual fetch. Query is different: the consumer
+// explicitly asked for the body match.
 //
 // Why a header-magic validate and not a full parse: pdfjs transfers the
 // underlying ArrayBuffer during getDocument(), so a parse in validate()
 // would compete with the same parse in preview() and detach the buffer.
 // The header check catches non-PDF content cheaply without touching the
 // bytes preview() will need.
+//
+// Caller note: pdfjs detaches the underlying ArrayBuffer per call. Callers
+// should not reuse the same Uint8Array across preview() and query() calls;
+// the framework's orchestrator reads the file fresh per call, which avoids
+// the issue.
 //
 // Salvage pattern from rummy.web/WebFetcher.js: pdfjs-dist legacy build
 // (Node-compatible), isEvalSupported:false (no PDF JS execution),
@@ -53,6 +76,39 @@ export default class ApplicationPdf extends BaseHandler {
         if (symbols.length === 0) return null;
         return { kind: "symbols", symbols };
     }
+
+    protected override async toText(content: string | Uint8Array): Promise<string> {
+        if (typeof content === "string") return content;
+        try {
+            return await extractAllText(content);
+        } catch (cause) {
+            throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
+        }
+    }
+
+    // Override jsonpath dispatch because PDF's structural extraction is async
+    // (pdfjs is async-only) and can't flow through BaseHandler's sync
+    // extractRaw → outline path. We replicate the outline + jsonpath
+    // composition directly here for the jsonpath case; everything else falls
+    // through to the inherited defaults.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            const bytes = toBytes(content);
+            let symbols: MimeSymbol[];
+            try {
+                symbols = await extractStructure(bytes);
+            } catch {
+                return [];
+            }
+            return queryJsonpathObject(buildJsonOutline(symbols), pattern);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
 }
 
 function startsWith(haystack: Uint8Array, needle: Uint8Array): boolean {
@@ -70,9 +126,6 @@ function toBytes(content: string | Uint8Array): Uint8Array {
 
 async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    // isEvalSupported and verbosity are real pdfjs runtime parameters but
-    // aren't declared in DocumentInitParameters' published .d.ts — cast through
-    // unknown to set them without disabling type safety wholesale.
     const params = {
         data: bytes,
         isEvalSupported: false,
@@ -87,9 +140,6 @@ async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
             walkOutline(outline, 1, symbols, counter);
         }
         if (symbols.length === 0) {
-            // Outline missing or empty — try the document Title from the PDF
-            // Info dict. Most authored PDFs have one even when they lack an
-            // outline; scanned/unstructured PDFs will have neither.
             const meta = await doc.getMetadata();
             const info = (meta.info ?? {}) as { Title?: string };
             if (typeof info.Title === "string" && info.Title.trim().length > 0) {
@@ -108,11 +158,31 @@ async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     }
 }
 
-// Walk a pdfjs outline (nested bookmark TOC). Each item produces one
-// heading symbol; `level` matches outline nesting depth (root items are
-// level 1, their children level 2, etc.). PDFs don't have lines, so we
-// use a monotonic counter for `line` so format()'s downstream tree-builder
-// gets unique, ordered positions.
+async function extractAllText(bytes: Uint8Array): Promise<string> {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const params = {
+        data: bytes,
+        isEvalSupported: false,
+        verbosity: 0,
+    } as unknown as Parameters<typeof pdfjs.getDocument>[0];
+    const doc = await pdfjs.getDocument(params).promise;
+    try {
+        const pages: string[] = [];
+        for (let i = 1; i <= doc.numPages; i += 1) {
+            const page = await doc.getPage(i);
+            const tc = await page.getTextContent();
+            const pageText = tc.items
+                .map((it: unknown) => (it as { str?: string }).str ?? "")
+                .join(" ");
+            pages.push(pageText);
+            page.cleanup();
+        }
+        return pages.join("\n\n");
+    } finally {
+        await doc.destroy();
+    }
+}
+
 function walkOutline(
     items: OutlineItem[],
     level: number,

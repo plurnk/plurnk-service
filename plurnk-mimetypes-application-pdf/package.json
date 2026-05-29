@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-pdf",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "application/pdf mimetype handler for plurnk-service. Binary content; extracts structural symbols from PDF bookmark outline and metadata title via pdfjs-dist.",
     "type": "module",
     "license": "MIT",
@@ -43,7 +43,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.5.0",
+        "@plurnk/plurnk-mimetypes": "^0.6.0",
         "pdfjs-dist": "^5.0.0"
     },
     "devDependencies": {

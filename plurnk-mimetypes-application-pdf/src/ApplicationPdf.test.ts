@@ -170,3 +170,37 @@ describe("ApplicationPdf — escape hatches", () => {
         assert.deepEqual(h.extractRaw(pdf), []);
     });
 });
+
+// Hand-crafted PDF with an actual text content stream ("Hello, world!") —
+// the buildPdf helper produces structurally valid PDFs but doesn't emit page
+// content, which means it has no text for regex/glob queries to match
+// against. Embedded here for the body-text query tests below.
+const HELLO_WORLD_PDF_B64 =
+    "JVBERi0xLjQKJaWx6woxIDAgb2JqCjw8IC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUiA+PgplbmRvYmoKMiAwIG9iago8PCAvVHlwZSAvUGFnZXMgL0tpZHMgWzMgMCBSXSAvQ291bnQgMSA+PgplbmRvYmoKMyAwIG9iago8PCAvVHlwZSAvUGFnZSAvUGFyZW50IDIgMCBSIC9NZWRpYUJveCBbMCAwIDMwMCAxNDRdIC9SZXNvdXJjZXMgPDwgL0ZvbnQgPDwgL0YxIDUgMCBSID4+ID4+IC9Db250ZW50cyA0IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvTGVuZ3RoIDQ1ID4+CnN0cmVhbQpCVCAvRjEgMTggVGYgMzYgMTAwIFRkIChIZWxsbywgd29ybGQhKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTQgMDAwMDAgbiAKMDAwMDAwMDA2MyAwMDAwMCBuIAowMDAwMDAwMTIwIDAwMDAwIG4gCjAwMDAwMDAyNDYgMDAwMDAgbiAKMDAwMDAwMDM0MCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQxMAolJUVPRgo=";
+
+function helloWorldPdf(): Uint8Array {
+    return new Uint8Array(Buffer.from(HELLO_WORLD_PDF_B64, "base64"));
+}
+
+describe("ApplicationPdf — query (body-matcher path)", () => {
+    it("regex matches against extracted page text via toText override", async () => {
+        const out = await h.query(helloWorldPdf(), "regex", "Hello, (\\w+)");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].matched, ["world"]);
+    });
+
+    it("glob matches against extracted page text", async () => {
+        const out = await h.query(helloWorldPdf(), "glob", "Hello, *");
+        assert.equal(out.length, 1);
+        assert.ok((out[0].matched as string).includes("Hello, world!"));
+    });
+
+    it("jsonpath inherits outline-shape default; PDF with outline is queryable by bookmark title", async () => {
+        const pdf = buildPdf({
+            outline: [{ title: "Chapter 1", items: [{ title: "Section 1.1" }] }],
+        });
+        const out = await h.query(pdf, "jsonpath", "$['Chapter 1']['Section 1.1']");
+        assert.equal(out.length, 1);
+        assert.equal(typeof out[0].matched, "number");
+    });
+});
