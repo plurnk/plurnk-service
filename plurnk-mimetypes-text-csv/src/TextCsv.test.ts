@@ -103,3 +103,53 @@ describe("parseAll (RFC 4180 tokenizer)", () => {
         assert.throws(() => parseAll('"unterminated,2\n'));
     });
 });
+
+describe("TextCsv — query (jsonpath against row objects)", () => {
+    const src = [
+        "name,role,score",
+        "alice,admin,99",
+        "bob,user,72",
+        "carol,admin,84",
+    ].join("\n");
+
+    it("returns the actual cell value as matched", async () => {
+        const out = await h.query(src, "jsonpath", "$[0].name");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "alice");
+    });
+
+    it("returns all values in a column with $[*]", async () => {
+        const out = await h.query(src, "jsonpath", "$[*].role");
+        assert.equal(out.length, 3);
+        assert.deepEqual(out.map((m) => m.matched), ["admin", "user", "admin"]);
+    });
+
+    it("supports filter expressions over row objects", async () => {
+        const out = await h.query(src, "jsonpath", "$[?(@.role=='admin')].name");
+        assert.equal(out.length, 2);
+        assert.deepEqual(out.map((m) => m.matched), ["alice", "carol"]);
+    });
+
+    it("returns line numbers (header=1, first data row=2, ...)", async () => {
+        const out = await h.query(src, "jsonpath", "$[1].name");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "bob");
+        // bob is on line 3 (header line 1, alice line 2, bob line 3)
+        assert.equal(out[0].line, 3);
+    });
+
+    it("throws QueryParseFailureError on malformed CSV", async () => {
+        await assert.rejects(
+            async () => { await h.query('"unterminated', "jsonpath", "$[0]"); },
+            (err: unknown) => err instanceof Error && err.name === "QueryParseFailureError",
+        );
+    });
+
+    it("inherits regex against the raw CSV source", async () => {
+        // Need the multiline flag for ^ to anchor at line starts.
+        const out = await h.query(src, "regex", "^(\\w+),admin,", "m");
+        assert.equal(out.length, 2);
+        assert.deepEqual(out[0].matched, ["alice"]);
+        assert.deepEqual(out[1].matched, ["carol"]);
+    });
+});

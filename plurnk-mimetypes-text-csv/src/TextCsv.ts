@@ -1,5 +1,14 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import {
+    BaseHandler,
+    queryJsonpathObject,
+    QueryParseFailureError,
+} from "@plurnk/plurnk-mimetypes";
+import type {
+    HandlerContent,
+    MimeSymbol,
+    QueryDialect,
+    QueryMatch,
+} from "@plurnk/plurnk-mimetypes";
 
 // text/csv handler. CSV's structural signal is the header row's column names;
 // no library dependency — RFC 4180 is small enough to hand-roll correctly.
@@ -35,6 +44,65 @@ export default class TextCsv extends BaseHandler {
             endLine: 1,
         }));
     }
+
+    // Override jsonpath dispatch to query against the row objects
+    // ([{header1: value, header2: value, ...}, ...]) shaped from the parsed
+    // CSV — the natural model for "find rows where X" queries.
+    //
+    // Line numbers: header is row 1 (line 1); data rows start at line 2 and
+    // count up. Embedded newlines inside quoted fields will skew this — the
+    // simple convention "line = rowIndex + 2" is approximate; consumers with
+    // structured CSVs containing literal newlines should fall back to regex
+    // against the raw source for exact positions.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            if (typeof content !== "string") {
+                throw new QueryParseFailureError({
+                    mimetype: this.mimetype,
+                    cause: new TypeError(`${this.mimetype} content must be a string`),
+                });
+            }
+            let rows: Array<Record<string, string>>;
+            try {
+                rows = parseToRowObjects(content);
+            } catch (cause) {
+                throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
+            }
+            const lineFor = (path: string): number => {
+                // jsonpath path starts with $[N] where N is the row index.
+                const m = path.match(/^\$\[(\d+)\]/);
+                if (!m) return 1;
+                return Number(m[1]) + 2;
+            };
+            return queryJsonpathObject(rows, pattern, lineFor);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
+}
+
+// Parse CSV into an array of row objects keyed by header column. Header row
+// becomes the keys; subsequent rows become objects. Mismatched column counts
+// fall through silently (extra columns ignored; missing columns become
+// empty strings) so query stays robust against slightly-malformed CSVs that
+// validate() would have caught earlier.
+function parseToRowObjects(content: string): Array<Record<string, string>> {
+    const records = parseAll(content);
+    if (records.length < 2) return [];
+    const headers = records[0];
+    const rows: Array<Record<string, string>> = [];
+    for (let r = 1; r < records.length; r += 1) {
+        const obj: Record<string, string> = {};
+        for (let c = 0; c < headers.length; c += 1) {
+            obj[headers[c]] = records[r][c] ?? "";
+        }
+        rows.push(obj);
+    }
+    return rows;
 }
 
 // RFC 4180 tokenizer. Walks character by character, tracking quoted state,
