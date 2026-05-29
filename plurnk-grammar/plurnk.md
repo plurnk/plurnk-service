@@ -99,6 +99,7 @@ Body content is character-perfect, exactly matching whitespace.
 ```
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
+<<READ(README.md):$.Installation:READ
 <<READ(log://1/2/3):$[*].matched.codename:READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
