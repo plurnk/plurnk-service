@@ -1,6 +1,22 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
-import { type Node, type ParseError, parseTree, printParseErrorCode } from "jsonc-parser";
+import {
+    BaseHandler,
+    queryJsonpathObject,
+    QueryParseFailureError,
+} from "@plurnk/plurnk-mimetypes";
+import type {
+    HandlerContent,
+    MimeSymbol,
+    QueryDialect,
+    QueryMatch,
+} from "@plurnk/plurnk-mimetypes";
+import {
+    findNodeAtLocation,
+    getNodeValue,
+    type Node,
+    type ParseError,
+    parseTree,
+    printParseErrorCode,
+} from "jsonc-parser";
 
 // One class serves two mimetype names — application/json (strict) and
 // application/jsonc (comments + trailing commas allowed). The framework
@@ -43,6 +59,67 @@ export default class ApplicationJson extends BaseHandler {
         collectKeys(tree, content, symbols);
         return symbols;
     }
+
+    // Override jsonpath dispatch so queries hit the parsed JSON value (the
+    // actual data the model is asking about) rather than the bare-leaves
+    // outline of keys. Line numbers for matches come from jsonc-parser's
+    // positional tree: findNodeAtLocation walks segments to the result node,
+    // and the node's offset maps to a source line.
+    //
+    // regex/glob inherit BaseHandler's defaults (against the raw JSON text).
+    // xpath inherits the unsupported-dialect throw.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            if (typeof content !== "string") {
+                throw new QueryParseFailureError({
+                    mimetype: this.mimetype,
+                    cause: new TypeError("application/json content must be a string"),
+                });
+            }
+            const errors: ParseError[] = [];
+            const allowsRelaxation = this.mimetype === "application/jsonc";
+            const tree = parseTree(content, errors, {
+                allowTrailingComma: allowsRelaxation,
+                disallowComments: !allowsRelaxation,
+            });
+            if (tree === undefined || errors.length > 0) {
+                throw new QueryParseFailureError({
+                    mimetype: this.mimetype,
+                    cause: errors[0]
+                        ? new SyntaxError(printParseErrorCode(errors[0].error))
+                        : new SyntaxError("empty JSON"),
+                });
+            }
+            const value = getNodeValue(tree) as unknown;
+            const lineFor = (path: string): number => {
+                const segments = pathToSegments(path);
+                const node = findNodeAtLocation(tree, segments);
+                if (node === undefined) return 1;
+                return offsetToLineCol(content, node.offset).line;
+            };
+            return queryJsonpathObject(value, pattern, lineFor);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
+}
+
+// Convert a jsonpath-plus "path" string ($['users'][0]['name']) into the
+// segment array shape that jsonc-parser's findNodeAtLocation accepts
+// (['users', 0, 'name']).
+function pathToSegments(path: string): Array<string | number> {
+    const segments: Array<string | number> = [];
+    const re = /\['([^']*)'\]|\[(\d+)\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(path)) !== null) {
+        if (m[1] !== undefined) segments.push(m[1]);
+        else segments.push(Number(m[2]));
+    }
+    return segments;
 }
 
 // Walk a jsonc-parser Node tree and emit a field symbol for every property

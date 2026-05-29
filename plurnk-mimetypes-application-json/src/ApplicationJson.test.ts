@@ -218,3 +218,61 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.deepEqual(names, ["a", "b"]);
     });
 });
+
+describe("ApplicationJson — query (jsonpath against parsed value)", () => {
+    const h = new ApplicationJson(jsonMetadata);
+    const src = [
+        "{",
+        '    "users": [',
+        '        { "name": "Alice", "role": "admin" },',
+        '        { "name": "Bob", "role": "user" }',
+        "    ],",
+        '    "version": "0.6.0"',
+        "}",
+    ].join("\n");
+
+    it("returns the actual JSON value as matched (string), not a line number", async () => {
+        const out = await h.query(src, "jsonpath", "$.users[0].name");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "Alice");
+    });
+
+    it("returns an object subtree when the jsonpath resolves to one", async () => {
+        const out = await h.query(src, "jsonpath", "$.users[1]");
+        assert.equal(out.length, 1);
+        // jsonc-parser creates objects with null prototype. Spread to compare
+        // structural content — prototype doesn't survive JSON serialization
+        // on the wire to plurnk-service anyway.
+        assert.deepEqual({ ...(out[0].matched as object) }, { name: "Bob", role: "user" });
+    });
+
+    it("emits one match per wildcard hit with resolved matching path", async () => {
+        const out = await h.query(src, "jsonpath", "$.users[*].name");
+        assert.equal(out.length, 2);
+        assert.equal(out[0].matched, "Alice");
+        assert.equal(out[1].matched, "Bob");
+        assert.ok(out[0].matching?.includes("[0]"));
+        assert.ok(out[1].matching?.includes("[1]"));
+    });
+
+    it("maps matches back to source lines via jsonc-parser positions", async () => {
+        const out = await h.query(src, "jsonpath", "$.version");
+        assert.equal(out.length, 1);
+        // "version" key is on line 6
+        assert.equal(out[0].line, 6);
+    });
+
+    it("throws QueryParseFailureError on malformed JSON", async () => {
+        await assert.rejects(
+            async () => { await h.query("{not json", "jsonpath", "$.x"); },
+            (err: unknown) => err instanceof Error && err.name === "QueryParseFailureError",
+        );
+    });
+
+    it("inherits regex against the raw JSON source", async () => {
+        const out = await h.query(src, "regex", '"name": "(\\w+)"');
+        assert.equal(out.length, 2);
+        assert.deepEqual(out[0].matched, ["Alice"]);
+        assert.deepEqual(out[1].matched, ["Bob"]);
+    });
+});
