@@ -1,9 +1,18 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
-import { parse } from "parse5";
+import {
+    BaseHandler,
+    InvalidExpressionError,
+    QueryParseFailureError,
+} from "@plurnk/plurnk-mimetypes";
 import type {
-    DefaultTreeAdapterMap,
-} from "parse5";
+    HandlerContent,
+    MimeSymbol,
+    QueryDialect,
+    QueryMatch,
+} from "@plurnk/plurnk-mimetypes";
+import { parse } from "parse5";
+import type { DefaultTreeAdapterMap } from "parse5";
+import { DOMParser } from "@xmldom/xmldom";
+import * as xpath from "xpath";
 
 // text/html + application/xhtml+xml handler. Parses with parse5 and emits
 // structural symbols only — never a body slice. Per the framework's v0.5.0
@@ -54,6 +63,85 @@ export default class TextHtml extends BaseHandler {
 
         return symbols;
     }
+
+    // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
+    // re-parse via @xmldom/xmldom (which produces a real DOM that the `xpath`
+    // package can walk). Line numbers default to 1 because xmldom doesn't
+    // track source positions — accepting that limitation in exchange for a
+    // standards-compliant XPath 1.0 engine. Models can still get the matched
+    // value and a structural locator via `matching` for multi-match queries.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "xpath") {
+            const html = typeof content === "string"
+                ? content
+                : new TextDecoder("utf-8").decode(content);
+
+            // We parse as text/xml on purpose. Parsing as text/html or
+            // application/xhtml+xml causes xmldom to put every element in the
+            // XHTML namespace, which makes xpath queries without a namespace
+            // prefix (the natural `//p`, `//user`, etc.) match nothing —
+            // unusable from the matcher contract's perspective. text/xml
+            // omits the namespace assignment, so queries work as the model
+            // expects. Cost: content must be reasonably well-formed XML;
+            // malformed HTML (unclosed tags, void elements written without
+            // self-closing) throws QueryParseFailureError → 422.
+            let doc;
+            try {
+                doc = new DOMParser().parseFromString(html, "text/xml");
+            } catch (cause) {
+                throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
+            }
+
+            let result: xpath.SelectReturnType;
+            try {
+                result = xpath.select(pattern, doc as unknown as Node);
+            } catch (cause) {
+                throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
+            }
+
+            return shapeXpathResult(pattern, result);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
+}
+
+// Translate an xpath.select return value to QueryMatch[] per grammar #17.
+function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
+    if (Array.isArray(result)) {
+        return result.map((node, i): QueryMatch => ({
+            line: 1,
+            matched: serializeNode(node),
+            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+        }));
+    }
+    if (result === null || result === undefined) return [];
+    // Primitive result (string/number/boolean from a function expression like
+    // string(...), count(...), boolean(...)).
+    return [{ line: 1, matched: typeof result === "string" ? result : String(result) }];
+}
+
+// Convert an xpath result node to a string suitable for QueryMatch.matched.
+// Per grammar #17: text/attribute → string value; element → serialized XML.
+// The xpath package's .d.ts advertises type-guard helpers (xpath.isAttribute
+// etc.) that aren't actually exported at runtime, so we dispatch on the
+// numeric nodeType the DOM spec defines.
+const ATTRIBUTE_NODE = 2;
+const TEXT_NODE = 3;
+const CDATA_SECTION_NODE = 4;
+const PROCESSING_INSTRUCTION_NODE = 7;
+const COMMENT_NODE = 8;
+function serializeNode(node: Node): string {
+    const nt = node.nodeType;
+    if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
+    if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;
+    if (nt === COMMENT_NODE) return (node as Comment).data;
+    if (nt === PROCESSING_INSTRUCTION_NODE) return (node as ProcessingInstruction).data;
+    return (node as unknown as { toString: () => string }).toString();
 }
 
 // Walk the parse5 tree depth-first, emitting heading and code-block symbols

@@ -135,3 +135,74 @@ describe("TextHtml — content shape", () => {
         assert.deepEqual(syms, []);
     });
 });
+
+describe("TextHtml — xpath query", () => {
+    it("matches elements and returns serialized XML as `matched`", async () => {
+        const html = "<html><body><p>One</p><p>Two</p></body></html>";
+        const out = await h.query(html, "xpath", "//p");
+        assert.equal(out.length, 2);
+        const first = out[0].matched as string;
+        assert.ok(first.includes("One"));
+        assert.ok(first.includes("<p"));
+    });
+
+    it("emits `matching` with indexed xpath form when there are multiple results", async () => {
+        const html = "<html><body><p>A</p><p>B</p><p>C</p></body></html>";
+        const out = await h.query(html, "xpath", "//p");
+        assert.equal(out.length, 3);
+        assert.equal(out[0].matching, "(//p)[1]");
+        assert.equal(out[1].matching, "(//p)[2]");
+        assert.equal(out[2].matching, "(//p)[3]");
+    });
+
+    it("omits `matching` for single results", async () => {
+        const html = "<html><body><h1>Only</h1></body></html>";
+        const out = await h.query(html, "xpath", "//h1");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matching, undefined);
+    });
+
+    it("returns string for attribute-axis queries", async () => {
+        const html = '<html><body><a href="x">a</a><a href="y">b</a></body></html>';
+        const out = await h.query(html, "xpath", "//a/@href");
+        assert.equal(out.length, 2);
+        assert.equal(out[0].matched, "x");
+        assert.equal(out[1].matched, "y");
+    });
+
+    it("returns string for text() node queries", async () => {
+        const html = "<html><body><p>Hello world</p></body></html>";
+        const out = await h.query(html, "xpath", "//p/text()");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "Hello world");
+    });
+
+    it("returns a single primitive for string() function expressions", async () => {
+        const html = "<html><body><h1>Top</h1></body></html>";
+        const out = await h.query(html, "xpath", "string(//h1)");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "Top");
+    });
+
+    it("returns [] when xpath matches nothing", async () => {
+        const html = "<html><body><h1>Top</h1></body></html>";
+        const out = await h.query(html, "xpath", "//nonexistent");
+        assert.deepEqual(out, []);
+    });
+});
+
+describe("TextHtml — regex/jsonpath inheritance", () => {
+    it("inherits regex query against the raw HTML source", async () => {
+        const html = "<html><body><!-- TODO: cleanup --></body></html>";
+        const out = await h.query(html, "regex", "TODO: (\\w+)");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].matched, ["cleanup"]);
+    });
+
+    it("inherits jsonpath query against the outline (heading navigation)", async () => {
+        const html = "<html><body><h1>Top</h1><h2>Section</h2><h3>Sub</h3></body></html>";
+        const out = await h.query(html, "jsonpath", "$.Top.Section.Sub");
+        assert.equal(out.length, 1);
+        assert.equal(typeof out[0].matched, "number");
+    });
+});

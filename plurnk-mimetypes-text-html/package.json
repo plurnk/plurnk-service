@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-html",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Extracts headings, code blocks, and title via parse5.",
     "type": "module",
     "license": "MIT",
@@ -50,8 +50,10 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.5.0",
-        "parse5": "^8.0.1"
+        "@plurnk/plurnk-mimetypes": "^0.6.0",
+        "@xmldom/xmldom": "^0.9.10",
+        "parse5": "^8.0.1",
+        "xpath": "^0.0.34"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
