@@ -10,7 +10,7 @@ Framework + contract for `@plurnk/plurnk-providers-*` sibling packages (LLM tran
 ## Exports
 
 - `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `ProviderFactory` — types.
-- `parseAliasesFromEnv`, `resolveActiveAlias`, `instantiateProvider`, `loadActiveProvider` — alias-cascade resolution and provider instantiation.
+- `parseAliasesFromEnv`, `resolveActiveAlias` — alias-cascade resolution (pure env-parsing). Provider instantiation (`instantiateProvider`, `loadActiveProvider`) is consumer-side; see SPEC §5.
 - `Mock` — reference implementation + test fixture (dual-purpose).
 
 ## Tests

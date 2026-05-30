@@ -78,7 +78,7 @@ class OpenAI {
 }
 ```
 
-The framework's `instantiateProvider` calls `mod.default.fromEnv(env, alias.model)` generically.
+The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model)` generically (§5).
 
 `fromEnv` MAY be sync or async; return type `Provider | Promise<Provider>`.
 
@@ -104,10 +104,13 @@ PLURNK_MODEL=gemma
 
 First path segment names the provider plugin (`@plurnk/plurnk-providers-<provider>`); rest is the model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`).
 
-Framework helpers (`./ProviderRegistry.ts`):
+Framework helpers (`./ProviderRegistry.ts`) — pure env-parsing only:
 
 - `parseAliasesFromEnv(env)` — extracts alias entries.
 - `resolveActiveAlias(env)` — `{ alias, provider, model } | null`.
+
+Instantiation is **consumer-side**, not shipped here. Node's `import()` resolves package specifiers relative to the calling module, so the consumer — the package that actually has the `@plurnk/plurnk-providers-<provider>` sibling in its `node_modules` — owns the dynamic-import path:
+
 - `instantiateProvider(alias, env)` — dynamic-imports `@plurnk/plurnk-providers-<provider>` and calls `fromEnv(env, model)`.
 - `loadActiveProvider(env)` — resolve + instantiate in one call.
 
