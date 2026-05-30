@@ -1,13 +1,14 @@
 // Model alias resolution. Reads PLURNK_MODEL_<alias>=<provider>/<model>
-// env vars; PLURNK_MODEL=<alias> selects which is active at boot. Each
-// alias maps to a provider plugin (@plurnk/plurnk-providers-<provider>);
-// the registry dynamic-imports the package and calls its `fromEnv` factory.
+// env vars; PLURNK_MODEL=<alias> selects which is active at boot.
 //
-// The first path segment of the value names the provider plugin; the rest
-// is the provider's own identifier (may contain "/" for tri-level providers
-// like openrouter's publisher/model).
+// `instantiateProvider` and `loadActiveProvider` (the dynamic-import path)
+// live in the consumer (plurnk-service) because Node's `import()` resolves
+// package specifiers relative to the calling module's location; the
+// consumer is the package that actually has the `@plurnk/plurnk-providers-*`
+// sibling installed in its node_modules. This module ships only the pure
+// env-parsing helpers.
 
-import type { Provider, ProviderAlias, ProviderFactory } from "./types.ts";
+import type { ProviderAlias } from "./types.ts";
 
 export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): ProviderAlias[] => {
     const out: ProviderAlias[] = [];
@@ -32,32 +33,4 @@ export const resolveActiveAlias = (env: NodeJS.ProcessEnv = process.env): Provid
     if (selected === undefined || selected.length === 0) return null;
     const aliases = parseAliasesFromEnv(env);
     return aliases.find((a) => a.alias === selected.toLowerCase()) ?? null;
-};
-
-export const instantiateProvider = async (alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> => {
-    const packageName = `@plurnk/plurnk-providers-${alias.provider}`;
-    let mod: { default: ProviderFactory };
-    try {
-        mod = await import(packageName);
-    } catch (cause) {
-        throw new Error(
-            `provider package ${packageName} not installed (alias '${alias.alias}' requires it): ` +
-            (cause instanceof Error ? cause.message : String(cause)),
-        );
-    }
-    const factory = mod.default;
-    if (typeof factory?.fromEnv !== "function") {
-        throw new Error(
-            `${packageName}: default export must have a static \`fromEnv(env, model)\` factory`,
-        );
-    }
-    return await factory.fromEnv(env, alias.model);
-};
-
-// Convenience: resolve + instantiate in one call. Returns null when no
-// PLURNK_MODEL is set (caller decides what 'no provider' means).
-export const loadActiveProvider = async (env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> => {
-    const alias = resolveActiveAlias(env);
-    if (alias === null) return null;
-    return instantiateProvider(alias, env);
 };

@@ -9,8 +9,6 @@ export type {
 } from "./types.ts";
 
 export {
-    instantiateProvider,
-    loadActiveProvider,
     parseAliasesFromEnv,
     resolveActiveAlias,
 } from "./ProviderRegistry.ts";
