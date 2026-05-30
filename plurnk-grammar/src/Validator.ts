@@ -18,6 +18,7 @@ import runSchema from "../schema/Run.json" with { type: "json" };
 import sessionSchema from "../schema/Session.json" with { type: "json" };
 import agentSchema from "../schema/Agent.json" with { type: "json" };
 import packetSchema from "../schema/Packet.json" with { type: "json" };
+import telemetryEventSchema from "../schema/TelemetryEvent.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -29,6 +30,7 @@ const FOUNDATIONAL = [
     entrySchema, logEntrySchema,
     schemeRegistrationSchema, providerDeclarationSchema,
     visibilitySchema,
+    telemetryEventSchema,
     packetSchema,
 ];
 
@@ -55,6 +57,7 @@ export default class Validator {
     static #session = Validator.#buildWithRefs(sessionSchema, [schemeRegistrationSchema]);
     static #agent = Validator.#buildWithRefs(agentSchema, [providerDeclarationSchema, schemeRegistrationSchema]);
     static #packet = Validator.#buildWithRefs(packetSchema, FOUNDATIONAL);
+    static #telemetryEvent = new CfValidator(telemetryEventSchema as Schema, "2020-12");
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -86,6 +89,7 @@ export default class Validator {
     static validateSession(obj: unknown): ValidationResult { return Validator.#run_(Validator.#session, obj); }
     static validateAgent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#agent, obj); }
     static validatePacket(obj: unknown): ValidationResult { return Validator.#run_(Validator.#packet, obj); }
+    static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#telemetryEvent, obj); }
 
     static #run_(validator: CfValidator, obj: unknown): ValidationResult {
         const result = validator.validate(obj);

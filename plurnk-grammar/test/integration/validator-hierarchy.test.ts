@@ -76,7 +76,7 @@ const packet = () => ({
         prompt: "What is the meaning of life?",
         telemetry: {
             budget: "| tokens remaining | 198500 |\n",
-            errors: [],
+            events: [],
         },
         system_requirements: "* answer concisely",
     },

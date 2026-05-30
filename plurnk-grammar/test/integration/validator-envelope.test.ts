@@ -537,3 +537,86 @@ test("Validator: Entry params via $ref to Params.json validates multi-value", ()
     const { valid, errors } = Validator.validateEntry(entry);
     assert.equal(valid, true, JSON.stringify(errors));
 });
+
+// -------------------------------------------------------------------------
+// TelemetryEvent
+// -------------------------------------------------------------------------
+
+test("Validator: TelemetryEvent accepts grammar parse_error with content-offset position", () => {
+    const ev = {
+        source: "grammar",
+        kind: "parse_error:lexer",
+        message: "unexpected `<<` in target",
+        position: { type: "content-offset", line: 3, column: 12 },
+    };
+    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: TelemetryEvent accepts engine:rail strike with kind-specific fields", () => {
+    const ev = {
+        source: "engine:rail",
+        kind: "strike",
+        streak: 2,
+        maxStrikes: 3,
+        reason: "no_ops",
+    };
+    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: TelemetryEvent accepts scheme:wiki dispatch_failure with log-coordinate", () => {
+    const ev = {
+        source: "scheme:wiki",
+        kind: "dispatch_failure",
+        message: "no such entry",
+        position: { type: "log-coordinate", coordinate: "log://1/2/3", op: "READ" },
+    };
+    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: TelemetryEvent accepts engine:rail sudden_death with no message", () => {
+    const ev = { source: "engine:rail", kind: "sudden_death" };
+    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: TelemetryEvent rejects missing source", () => {
+    const ev: any = { kind: "parse_error" };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: TelemetryEvent rejects missing kind", () => {
+    const ev: any = { source: "grammar" };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: TelemetryEvent rejects malformed source pattern", () => {
+    const ev = { source: "Grammar:Bad", kind: "x" };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: TelemetryEvent rejects unknown position type", () => {
+    const ev = {
+        source: "grammar",
+        kind: "parse_error",
+        position: { type: "byte-offset", offset: 42 },
+    };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: PlurnkParseError.toTelemetryEvent() validates", async () => {
+    const { default: PlurnkParseError } = await import("../../src/PlurnkParseError.ts");
+    const err = new PlurnkParseError(5, 12, "lexer", "stray token");
+    const ev = err.toTelemetryEvent();
+    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, true, JSON.stringify(errors));
+    assert.equal(ev.source, "grammar");
+    assert.equal(ev.kind, "parse_error:lexer");
+    assert.deepEqual(ev.position, { type: "content-offset", line: 5, column: 12 });
+});

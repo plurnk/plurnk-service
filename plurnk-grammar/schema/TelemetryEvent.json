@@ -1,0 +1,62 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/TelemetryEvent.json",
+    "title": "TelemetryEvent",
+    "description": "Cross-ecosystem error/telemetry event envelope. Producers (grammar, schemes, engine rails, providers) emit events into `packet.user.telemetry.events[]`; consumers route on `source` + `kind`. Open at the kind-specific field layer — additionalProperties:true lets producers extend without coordinating schema changes. Strict-kind validation lives producer-side; the discriminator (`source` + `kind`) is what consumers actually dispatch on.",
+    "type": "object",
+    "required": ["source", "kind"],
+    "additionalProperties": true,
+    "properties": {
+        "source": {
+            "type": "string",
+            "pattern": "^[a-z]+(:[a-z][a-z0-9-]*)?$",
+            "description": "Producer identifier. Top-level for self-contained subsystems (`grammar`, `engine:rail`); colon-namespaced for parameterized producers (`scheme:wiki`, `provider:openai`)."
+        },
+        "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Discriminator within a source. Open vocabulary — each producer mints kinds as needed. Examples: `parse_error` (grammar), `strike`/`cycle`/`sudden_death`/`no_ops`/`max_commands_exceeded` (engine:rail), `dispatch_failure` (scheme:*), `rate_limit` (provider:*)."
+        },
+        "message": {
+            "type": ["string", "null"],
+            "description": "Terse, factual message when present. Optional — engine rail kinds (strike, cycle) carry no human-meaningful message; the kind discriminator is the signal. Grammar/scheme/provider kinds typically include a message."
+        },
+        "position": {
+            "oneOf": [
+                { "$ref": "#/$defs/ContentOffset" },
+                { "$ref": "#/$defs/LogCoordinate" },
+                { "type": "null" }
+            ],
+            "description": "Optional typed position. ContentOffset points into the model's prior assistant.content (parser errors); LogCoordinate points at a specific log row (action failures). Tagged union extensible: future variants for entry-coordinate, channel-coordinate, range-coordinate."
+        }
+    },
+    "$defs": {
+        "ContentOffset": {
+            "type": "object",
+            "required": ["type", "line", "column"],
+            "additionalProperties": false,
+            "properties": {
+                "type": { "const": "content-offset" },
+                "line": { "type": "integer", "minimum": 0 },
+                "column": { "type": "integer", "minimum": 0 }
+            }
+        },
+        "LogCoordinate": {
+            "type": "object",
+            "required": ["type", "coordinate"],
+            "additionalProperties": false,
+            "properties": {
+                "type": { "const": "log-coordinate" },
+                "coordinate": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Log row identity, typically `log://<loop>/<turn>/<sequence>`."
+                },
+                "op": {
+                    "type": "string",
+                    "description": "Optional op token (FIND/READ/EDIT/...) at the coordinate, for human-readable rendering."
+                }
+            }
+        }
+    }
+}

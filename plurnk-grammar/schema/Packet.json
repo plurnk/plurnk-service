@@ -39,15 +39,15 @@
                 "prompt": { "type": "string", "description": "Copy of loop.prompt — never null on a continuation turn." },
                 "telemetry": {
                     "type": "object",
-                    "description": "Per-turn instrumentation surfaced to the model. `budget` is renderer-provided markdown describing remaining context / cost / etc. `errors` carries actionless failures (parse errors and similar) that the model should confront on this turn. Inner shapes intentionally open at v0; consumers populate as needs solidify.",
-                    "required": ["budget", "errors"],
+                    "description": "Per-turn instrumentation surfaced to the model. `budget` is renderer-provided markdown describing remaining context / cost / etc. `events` carries the cross-ecosystem error/telemetry stream (parser errors, scheme dispatch failures, engine rail signals, provider faults) — consumers route on each event's `source` + `kind` discriminator.",
+                    "required": ["budget", "events"],
                     "additionalProperties": false,
                     "properties": {
                         "budget": { "type": "string", "description": "text/markdown — budget surface (token/cost/etc. left to spend). Empty string when nothing to surface." },
-                        "errors": {
+                        "events": {
                             "type": "array",
-                            "items": { "type": "object" },
-                            "description": "TelemetryError[] — element shape TBD. Empty array when no errors to surface."
+                            "items": { "$ref": "https://schemas.plurnk.dev/v0/TelemetryEvent.json" },
+                            "description": "TelemetryEvent[]. Empty array when nothing to surface."
                         }
                     }
                 },
