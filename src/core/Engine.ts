@@ -12,7 +12,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import { writeEntry } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import { sliceLinesRaw, isBinaryMimetype } from "@plurnk/plurnk-schemes";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
@@ -343,18 +343,26 @@ export default class Engine {
 
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
+    // Telemetry event fan-out: every TelemetryEvent pushed to the loop's
+    // buffer is also broadcast live to the connected client(s) on the
+    // session. Without this, the client sees `loop/terminated` with a
+    // status code but has no way to surface why the loop degraded.
+    // Per-grammar 0.17.0 protocol — see SPEC §15.1.
+    #telemetryEventNotify: TelemetryEventNotify | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, telemetryEventNotify }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         wakeRunNotify?: WakeRunNotify;
+        telemetryEventNotify?: TelemetryEventNotify;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeRunNotify = wakeRunNotify;
+        this.#telemetryEventNotify = telemetryEventNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -365,10 +373,14 @@ export default class Engine {
         this.#previewBudget = readBudget();
     }
 
-    #pushTelemetry(loopId: number, error: object): void {
+    #pushTelemetry(sessionId: number, loopId: number, event: object): void {
         const existing = this.#telemetryBuffer.get(loopId);
-        if (existing === undefined) this.#telemetryBuffer.set(loopId, [error]);
-        else existing.push(error);
+        if (existing === undefined) this.#telemetryBuffer.set(loopId, [event]);
+        else existing.push(event);
+        // Live fan-out: client sees the event the moment it lands in the
+        // model's buffer (not at the next packet build). Same envelope on
+        // both sides per the grammar 0.17.0 TelemetryEvent protocol.
+        this.#telemetryEventNotify?.(sessionId, { loopId, event });
     }
 
     #drainTelemetry(loopId: number): object[] {
@@ -487,7 +499,7 @@ export default class Engine {
             const cycle = detectCycle(state.history, minCycles, maxCyclePeriod);
             if (cycle.detected) {
                 state.turnErrors++;
-                this.#pushTelemetry(loopId, {
+                this.#pushTelemetry(sessionId, loopId, {
                     kind: "cycle",
                     period: cycle.period,
                     cycles: cycle.cycles,
@@ -507,7 +519,7 @@ export default class Engine {
             if (struck) {
                 state.streak++;
                 const reason = noOps ? "no_ops" : recordedFailed ? "recorded_failure" : "rail";
-                this.#pushTelemetry(loopId, {
+                this.#pushTelemetry(sessionId, loopId, {
                     kind: "strike",
                     streak: state.streak,
                     maxStrikes,
@@ -529,7 +541,7 @@ export default class Engine {
             // each turn so the model can wrap up before the hard cancel.
             // Soft: no strike, no loop-status change. SPEC §15.1.
             if (turnIds.length >= suddenDeathThreshold && turnIds.length < maxTurns) {
-                this.#pushTelemetry(loopId, {
+                this.#pushTelemetry(sessionId, loopId, {
                     kind: "sudden_death",
                     remaining: maxTurns - turnIds.length,
                 });
@@ -637,7 +649,7 @@ export default class Engine {
         // connect that to what IT wrote — and tends to regenerate the
         // same broken emission. See edit-todo demo for the canonical case.
         for (const { message, line, column, source } of parseErrors ?? []) {
-            this.#pushTelemetry(loopId, {
+            this.#pushTelemetry(sessionId, loopId, {
                 source: "grammar",
                 kind: "parse_error",
                 message,
@@ -696,7 +708,7 @@ export default class Engine {
             statuses.push(result.status);
         }
         if (droppedCount > 0) {
-            this.#pushTelemetry(loopId, {
+            this.#pushTelemetry(sessionId, loopId, {
                 kind: "max_commands_exceeded",
                 emitted: opsCount,
                 cap: maxCommands,
@@ -709,7 +721,7 @@ export default class Engine {
             // op." Zero ops = actionless failure. SEND specifically is not
             // required — any of the 9 grammar ops satisfies. Pushed AFTER
             // #buildPacket so this turn's drain doesn't consume it.
-            this.#pushTelemetry(loopId, {
+            this.#pushTelemetry(sessionId, loopId, {
                 kind: "no_ops",
             });
         }

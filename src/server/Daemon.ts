@@ -103,6 +103,7 @@ export default class Daemon {
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
             wakeRunNotify: (payload) => { void this.#handleWakeRun(payload); },
+            telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),
         });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
@@ -261,6 +262,13 @@ export default class Daemon {
                 contentLength: "number — current length of the channel's content",
             },
         });
+        this.#registry.registerNotification("telemetry/event", {
+            description: "A TelemetryEvent (per @plurnk/plurnk-grammar 0.17.0) was pushed to the loop's telemetry buffer. Same envelope the model sees on the next packet's telemetry.errors[], delivered live for client-side surfacing (debug panel, loop-degrading toasts, session timeline). Sources include `grammar` (parse errors), `engine:rail` (strike, cycle, sudden_death, no_ops, max_commands_exceeded), `scheme:<name>` (action failures, future), and `provider:<vendor>` (provider issues, future). Scoped to the loop's session.",
+            params: {
+                loopId: "number — the loop that produced the event",
+                event: "TelemetryEvent — { source, kind, message?, position?, ...kind-specific }",
+            },
+        });
         this.#registry.registerNotification("stream/concluded", {
             description: "A streaming-scheme subscription closed (the underlying connection / subprocess finished, errored, or was cancelled). Scoped to the entry's session. wakeAction describes whether the daemon opened a fresh loop to surface the conclusion to the model.",
             params: {
@@ -282,6 +290,17 @@ export default class Daemon {
      */
     notifyStreamEvent(sessionId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
         this.#broadcast({ sessionId }, null, "stream/event", event);
+    }
+
+    /**
+     * Emit a telemetry/event notification scoped to the session containing
+     * the loop. Engine.#pushTelemetry invokes this for every TelemetryEvent
+     * (parse_error, strike, cycle, sudden_death, no_ops, max_commands_exceeded,
+     * action_failure) the moment it lands in the loop's telemetry buffer.
+     * SPEC §15.1.
+     */
+    notifyTelemetryEvent(sessionId: number, payload: { loopId: number; event: object }): void {
+        this.#broadcast({ sessionId }, null, "telemetry/event", payload);
     }
 
     /**

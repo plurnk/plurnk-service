@@ -972,6 +972,10 @@ Action-bound failures (handler returned 4xx/5xx or threw) mirror as `action_fail
 
 **No `error://` scheme.** Actionless failures route to telemetry, not a queryable scheme namespace.
 
+**Client surface: `telemetry/event` notification.** Every event the engine pushes to the loop's telemetry buffer also broadcasts live via the `telemetry/event` WS notification. Same envelope on both sides — `{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema. The model sees the event on the NEXT packet's `telemetry.errors[]` (drains on read); the client sees it the moment it lands. Client uses cases: render parse errors in a debug panel (the `snippet` field is content the model emitted), surface strike/cycle/sudden_death as "loop is degrading" toasts, log everything to a session timeline. Scoped to the loop's session. {§15.1-telemetry-event-notify}
+
+**Content-offset snippet rendering.** When telemetry carries `position: { type: "content-offset", line, column }`, plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct (canonical case: the edit-todo demo where a READ body starting with `//` got xpath-dispatched). The snippet field is stripped from the meta JSON so it appears once, in the body block. {§15.1-content-offset-snippet}
+
 ### §15.2 user.system_requirements — static per-turn rules
 
 Rendered at the END of the user packet under `# Plurnk System Requirements` — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`").

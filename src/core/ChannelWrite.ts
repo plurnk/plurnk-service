@@ -37,6 +37,19 @@ export interface WakeRunPayload {
 
 export type WakeRunNotify = (payload: WakeRunPayload) => void;
 
+// Telemetry event fan-out. Engine.#pushTelemetry fires this for every
+// TelemetryEvent (parse_error, strike, cycle, sudden_death, no_ops,
+// max_commands_exceeded, action_failure) it pushes to a loop's buffer.
+// Daemon broadcasts as `telemetry/event` scoped to the loop's session.
+// Same envelope on both ends: the model sees it on the next packet's
+// telemetry.errors[]; the client sees it live. SPEC §15.1.
+export interface TelemetryEventPayload {
+    loopId: number;
+    event: object;                 // TelemetryEvent per @plurnk/plurnk-grammar
+}
+
+export type TelemetryEventNotify = (sessionId: number, payload: TelemetryEventPayload) => void;
+
 interface ChannelMetaRow {
     session_id: number;
     state: ChannelState;
