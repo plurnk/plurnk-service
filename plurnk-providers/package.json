@@ -2,7 +2,12 @@
     "name": "@plurnk/plurnk-providers",
     "version": "0.1.0",
     "description": "Framework + contract for the @plurnk/plurnk-providers-* LLM transport family.",
-    "keywords": ["plurnk", "llm", "provider", "tokenizer"],
+    "keywords": [
+        "plurnk",
+        "llm",
+        "provider",
+        "tokenizer"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-providers#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-providers/issues"
@@ -47,5 +52,9 @@
         "@plurnk/plurnk-grammar": "^0.15.0",
         "@types/node": "^25.8.0",
         "typescript": "^6.0.3"
+    },
+    "dependencies": {
+        "gpt-tokenizer": "^3.4.0",
+        "llama-tokenizer-js": "^1.2.2"
     }
 }

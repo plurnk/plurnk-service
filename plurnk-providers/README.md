@@ -9,8 +9,13 @@ Framework + contract for `@plurnk/plurnk-providers-*` sibling packages (LLM tran
 
 ## Exports
 
-- `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `ProviderFactory` — types.
+- `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `FinishReason`, `ProviderFactory` — types.
 - `parseAliasesFromEnv`, `resolveActiveAlias` — alias-cascade resolution (pure env-parsing). Provider instantiation (`instantiateProvider`, `loadActiveProvider`) is consumer-side; see SPEC §5.
+- `OpenAICompatProvider` (+ `OpenAICompatConfig`, `ReasoningStyle`, `effortFromBudget`) — shared OpenAI-compatible transport spine; siblings extend it (SPEC §11).
+- `chatCompletionStream`, `OpenAiHttpError`, `StreamResponse` — the shared SSE client.
+- `parseRequiredInt`, `parseOptionalInt`, `requireEnv` — env helpers.
+- `tokenizerFor`, `tokenizerByPublisher`, `parseTokenizerFamily` (+ `TokenizerFamily`, `CountTokens`) — synchronous tokenizer strategies.
+- `STANDARD_PROVIDERS`, `isStandardProvider`, `standardProviderFromEnv` — pure-config OpenAI-compatible providers (no sibling package needed).
 - `Mock` — reference implementation + test fixture (dual-purpose).
 
 ## Tests
