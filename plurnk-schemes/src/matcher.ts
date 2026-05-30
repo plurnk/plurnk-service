@@ -75,20 +75,25 @@ export const matchAgainstContent = async (
             matches: adjusted.length,
         };
     } catch (err) {
-        if (err instanceof UnsupportedDialectError) {
-            return { status: 415, error: err.message };
+        // Name-based dispatch tolerates dup-copy node_modules layouts where
+        // `instanceof` against the framework's exported classes can fail
+        // because the consumer loads a different physical copy. The framework
+        // sets each error subclass's `.name` to its class name.
+        const name = err instanceof Error ? err.name : "";
+        if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
+            return { status: 415, error: err instanceof Error ? err.message : String(err) };
         }
-        if (err instanceof InvalidExpressionError) {
-            return { status: 400, error: err.message };
+        if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
+            return { status: 400, error: err instanceof Error ? err.message : String(err) };
         }
-        if (err instanceof QueryParseFailureError) {
+        if (name === "QueryParseFailureError" || err instanceof QueryParseFailureError) {
             // 203 soft fallback: return raw content as text so the model
             // can fall back to regex/visual parsing or fix the source.
             return {
                 status: 203,
                 body: content,
                 mimetype: TEXT_PRIMITIVE_MIMETYPE,
-                reason: err.message,
+                reason: err instanceof Error ? err.message : String(err),
             };
         }
         // Unexpected — let it propagate so the engine logs it as a 500.
