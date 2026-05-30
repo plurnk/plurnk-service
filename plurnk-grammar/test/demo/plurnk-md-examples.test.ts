@@ -16,9 +16,13 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
 const exampleBlock = (() => {
-    const match = /## Examples\s*\n+```\n([\s\S]*?)\n```/.exec(plurnkMd);
-    assert.ok(match, "plurnk.md is missing its `## Examples` code block");
-    return match[1];
+    const headingMatch = /^## Examples\s*$/m.exec(plurnkMd);
+    assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
+    const startIdx = (headingMatch.index ?? 0) + headingMatch[0].length;
+    const rest = plurnkMd.substring(startIdx);
+    const nextHeadingMatch = /^## /m.exec(rest);
+    const endIdx = nextHeadingMatch ? nextHeadingMatch.index : rest.length;
+    return rest.substring(0, endIdx).trim();
 })();
 
 test("plurnk.md examples block parses with no errors and no unparsed tail", () => {

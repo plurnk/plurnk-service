@@ -4,9 +4,7 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MO
 
 ## Syntax
 
-```
 <<OPsuffix[signal]?(target)?<L>?:body?:OPsuffix
-```
 
 Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty).
 
@@ -84,11 +82,9 @@ YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of e
 
 YOU MAY use an optional matching suffix on the opening and closing tags for disambiguation.
 
-```
 <<EDITouter(known://demo):
 quoted: <<EDIT(known://inner):hello:EDIT
 :EDITouter
-```
 
 ## Body
 
@@ -96,7 +92,6 @@ Body content is character-perfect, exactly matching whitespace.
 
 ## Examples
 
-```
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
 <<READ(README.md):$.Installation:READ
@@ -136,4 +131,3 @@ chmod +x ./example.sh
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
 <<SEND[200]:Paris:SEND
 <<SEND[200]:{"city":"Paris","population":2161000}:SEND
-```
