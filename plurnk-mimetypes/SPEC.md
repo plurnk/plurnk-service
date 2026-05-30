@@ -341,6 +341,10 @@ interface QueryMatch {
 | Content can't be parsed for the dialect | `QueryParseFailureError` → consumer maps to 422 |
 | Zero matches | returns `[]` → consumer maps to 204 |
 
+### 11.5 TelemetryEvent envelope
+
+All three error classes expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar 0.17.0. Consumers can route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`) surface as additional properties so consumers don't need to re-parse the message.
+
 ## 12. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.

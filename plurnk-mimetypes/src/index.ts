@@ -46,6 +46,11 @@ export {
     QueryParseFailureError,
     UnsupportedDialectError,
 } from "./QueryError.ts";
+export type {
+    ContentOffset,
+    LogCoordinate,
+    TelemetryEvent,
+} from "./TelemetryEvent.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
