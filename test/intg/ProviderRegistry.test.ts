@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseAliasesFromEnv, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
+import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model> entries", () => {
     const aliases = parseAliasesFromEnv({

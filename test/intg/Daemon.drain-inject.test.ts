@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Mock from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);

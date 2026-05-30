@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import { isKnownRuntime, resolveRuntime } from "@plurnk/plurnk-execs";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
@@ -39,19 +40,6 @@ const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
     return null;
 };
 
-const runtimeToSpawnArgs = (runtime: string, command: string): { cmd: string; args: string[]; useShell: boolean } => {
-    // plurnk.md: "EXEC may include an optional runtime tag ("sh", "node", etc.)."
-    // Map common runtimes to their invocation. Default = shell.
-    if (runtime === "" || runtime === "sh" || runtime === "bash") {
-        return { cmd: command, args: [], useShell: true };
-    }
-    if (runtime === "node") return { cmd: "node", args: ["-e", command], useShell: false };
-    if (runtime === "python" || runtime === "python3") return { cmd: "python3", args: ["-c", command], useShell: false };
-    // Unknown runtime: fall through to shell with the runtime as the first arg
-    // (treat as `<runtime> -c <command>` style). Conservative.
-    return { cmd: runtime, args: ["-c", command], useShell: false };
-};
-
 const streamShellCommand = async (
     runtime: string,
     command: string,
@@ -61,7 +49,7 @@ const streamShellCommand = async (
     entryId: number,
     signal: AbortSignal,
 ): Promise<SpawnOutcome> => {
-    const { cmd, args, useShell } = runtimeToSpawnArgs(runtime, command);
+    const { cmd, args, useShell } = resolveRuntime(runtime, command);
     return new Promise((resolvePromise, rejectPromise) => {
         const child = spawn(cmd, args, {
             shell: useShell,
@@ -102,7 +90,7 @@ const streamShellCommand = async (
 export default class Exec {
     static manifest: SchemeManifest = {
         name: "exec",
-        channels: { stdout: "text/plain", stderr: "text/plain" },
+        channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
         scope: "session",
@@ -142,8 +130,7 @@ export default class Exec {
         }
 
         const runtime = typeof statement.signal === "string" ? statement.signal : "";
-        const KNOWN_RUNTIMES = new Set(["", "sh", "bash", "node", "python", "python3"]);
-        if (!KNOWN_RUNTIMES.has(runtime)) {
+        if (!isKnownRuntime(runtime)) {
             return { status: 501, error: `\`${runtime}\` executable not configured.` };
         }
         const cwdFromOp = cwdFromTarget(statement.target);
@@ -157,10 +144,12 @@ export default class Exec {
             const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
             cwd = sessionRow?.project_root ?? null;
         }
-        // Auto-generated pathname so the model can READ exec://<pathname> later.
-        // Short random suffix keeps it readable while remaining unique within a session.
-        const pathname = `r-${crypto.randomUUID().slice(0, 8)}`;
-        const attrs: ExecAttrs = { runtime, cwd, command, pathname };
+        // Pathname is assigned by Engine.#writeLog from the log coordinate
+        // (<loop_seq>/<turn_seq>/<sequence>/EXEC), so the exec entry's URI
+        // mirrors its log row's URI on the same coordinate. `pathname` is
+        // stamped into attrs at log-write time; applyResolution reads it
+        // back here.
+        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "" };
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
@@ -185,8 +174,8 @@ export default class Exec {
 
         const seed: EntryData = {
             channels: {
-                stdout: { content: "", mimetype: "text/plain", state: "active" },
-                stderr: { content: "", mimetype: "text/plain", state: "active" },
+                stdout: { content: "", mimetype: "text/stream", state: "active" },
+                stderr: { content: "", mimetype: "text/stream", state: "active" },
             },
             tags: [],
         };

@@ -1,5 +1,5 @@
-// File scheme as the canonical proposal consumer (task #42, AGENTS.md
-// §Phase E.4). EDIT against file:// returns status=202 with a udiff body
+// File scheme as the canonical proposal consumer (SPEC.md §0.5 + §13.5
+// + §14.3 D3 — disk co-location). EDIT against file:// returns status=202 with a udiff body
 // and {path, canonical, patch, patched} attrs; on accept the engine calls
 // File.applyResolution which writes patched content to disk.
 

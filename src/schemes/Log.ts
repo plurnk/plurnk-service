@@ -1,11 +1,11 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { sliceLines, sliceJsonItems } from "../core/line-marker.ts";
-import { matchAgainstContent } from "../core/matcher.ts";
-import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
+import { sliceLines, sliceJsonItems } from "@plurnk/plurnk-schemes";
+import { matchAgainstContent } from "@plurnk/plurnk-schemes";
+import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 type ShowHideResult = { status: number };
 
 // log://<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
@@ -107,9 +107,15 @@ export default class Log {
             }
         }
         if (statement.body !== null) {
-            const matched = matchAgainstContent(statement.body, workingContent, underlyingMimetype, workingStart ?? 1);
+            if (ctx.mimetypes === undefined) {
+                return { status: 500, content: null, mimetype: underlyingMimetype };
+            }
+            const matched = await matchAgainstContent(statement.body, workingContent, underlyingMimetype, ctx.mimetypes, workingStart ?? 1);
             if (matched.status === 204) {
                 return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+            }
+            if (matched.status === 203) {
+                return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
             }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype: underlyingMimetype };
             return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };

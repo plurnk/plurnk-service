@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Mock from "../../src/providers/Mock.ts";
-import type { MockResponse } from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
@@ -184,12 +184,70 @@ test("Engine.runTurn: no_ops failure surfaces in NEXT packet's user.telemetry.er
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; message: string }> } };
+            user: { telemetry: { errors: Array<{ kind: string }> } };
         };
         const noOpsErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_ops");
         assert.equal(noOpsErrors.length, 1, "turn 1's empty-ops surfaces in turn 2's telemetry");
-        assert.match(noOpsErrors[0].message, /at least one operation/);
+        // No prose; the `kind` field IS the message.
+        assert.deepEqual(noOpsErrors[0], { kind: "no_ops" });
     } finally { await db.close(); }
+});
+
+// PLURNK_MAX_COMMANDS cap. The html-attrs demo surfaced a pathology where
+// the model emitted 635 ops in a single assistant turn; without a cap the
+// engine dispatches every one (each is a real DB write + handler call).
+// Cap dispatches at the configured limit; overflow ops are silently dropped
+// (no per-op log rows, to keep forensics from drowning in identical refusals)
+// and a single max_commands_exceeded telemetry entry tells the model next turn.
+test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + telemetry signals", async () => {
+    const original = process.env.PLURNK_MAX_COMMANDS;
+    process.env.PLURNK_MAX_COMMANDS = "3";
+    try {
+        const { db, engine, sessionId, runId, loopId } = await setup();
+        try {
+            const provider = new Mock({
+                contextSize: 100000,
+                responses: [
+                    // Turn 1 emits 5 ops; cap = 3; expect 3 dispatched, 2 dropped.
+                    response([
+                        editStmt("/a", "1"),
+                        editStmt("/b", "2"),
+                        editStmt("/c", "3"),
+                        editStmt("/d", "4"),
+                        editStmt("/e", "5"),
+                    ]),
+                    // Turn 2 clean — gives us a packet whose telemetry drained turn 1's signal.
+                    response([editStmt("/z", "z"), sendStmt(200, "ok")]),
+                ],
+            });
+            const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            assert.equal(t1.statuses.length, 3, "only 3 ops dispatched (cap)");
+
+            // Confirm only 3 model EDITs landed — overflow didn't sneak through.
+            // Scope to scheme='known' to exclude the engine's plurnk://prompt entry.
+            const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+                session_id: sessionId, scheme: "known",
+            });
+            assert.equal(known?.n, 3, "3 known:// entries; overflow ops never reached schemes");
+
+            // Turn 2 packet should carry the max_commands_exceeded telemetry.
+            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+            const packet = JSON.parse(row?.packet ?? "{}") as {
+                user: { telemetry: { errors: Array<{
+                    kind: string; emitted?: number; cap?: number; dropped?: number;
+                }> } };
+            };
+            const capErrors = packet.user.telemetry.errors.filter((e) => e.kind === "max_commands_exceeded");
+            assert.equal(capErrors.length, 1, "exactly one max_commands_exceeded entry from turn 1");
+            assert.equal(capErrors[0].emitted, 5);
+            assert.equal(capErrors[0].cap, 3);
+            assert.equal(capErrors[0].dropped, 2);
+        } finally { await db.close(); }
+    } finally {
+        if (original === undefined) delete process.env.PLURNK_MAX_COMMANDS;
+        else process.env.PLURNK_MAX_COMMANDS = original;
+    }
 });
 
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
@@ -357,17 +415,16 @@ test("Engine.runLoop: strike telemetry surfaces in next packet with streak count
         // Turn 3's packet should show strike#2 (from turn 2).
         const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
         const t3 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[2] });
-        type StrikeErr = { kind: string; streak: number; maxStrikes: number; reason: string; message: string };
+        type StrikeErr = { kind: string; streak: number; maxStrikes: number; reason: string };
         const t2packet = JSON.parse(t2?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
         const t3packet = JSON.parse(t3?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
         const t2strike = t2packet.user.telemetry.errors.find((e) => e.kind === "strike");
         const t3strike = t3packet.user.telemetry.errors.find((e) => e.kind === "strike");
         assert.equal(t2strike?.streak, 1);
+        assert.equal(t2strike?.maxStrikes, 5);
         assert.equal(t3strike?.streak, 2);
-        // §15.1 contract: every telemetry kind carries a human-readable
-        // `message` the model can act on without parsing kind-specific fields.
-        assert.match(t2strike?.message ?? "", /strike 1\/5/, "strike message names the streak");
-        assert.match(t2strike?.message ?? "", /before abandonment/i, "strike message names the abandonment threshold");
+        // Structured fields only — no prose `message` to fight the contract.
+        assert.equal((t2strike as { message?: string }).message, undefined);
     } finally { await db.close(); }
 });
 
@@ -699,7 +756,7 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; message: string }> } };
+            user: { telemetry: { errors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; error: string }> } };
         };
         assert.equal(packet.user.telemetry.errors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.user.telemetry.errors;
@@ -709,7 +766,8 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(err.op, "EDIT");
         assert.equal(err.target, "log:///illegal");
         assert.equal(err.status, 403);
-        assert.match(err.message, /writer 'model'.*'log'/);
+        // `error` carries the scheme's terse fact — not editorial guidance.
+        assert.match(err.error, /writer 'model'.*'log'/);
     } finally { await db.close(); }
 });
 

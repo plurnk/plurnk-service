@@ -22,8 +22,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { loadActiveProvider, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
-import type { Provider } from "../../src/core/ProviderRegistry.ts";
+import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
+import type { Provider } from "@plurnk/plurnk-providers";
 import { PATHS } from "../../src/index.ts";
 import { attachYolo } from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
@@ -38,6 +39,8 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readPath(PATHS.instructionsSystem, "utf8");
+const PERSONA = await readPath(PATHS.defaultPersona, "utf8");
+const REQUIREMENTS = await readPath(PATHS.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
@@ -90,6 +93,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 
     const result = await engine.runLoop({
         provider, sessionId, runId, loopId,
+        persona: PERSONA, requirements: REQUIREMENTS,
         ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
         messages: [
             { role: "system", content: SYSTEM_PROMPT },

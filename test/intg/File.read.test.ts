@@ -7,7 +7,7 @@ import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/pl
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -37,7 +37,7 @@ const withSessionWorkspace = async (fn: (root: string, ctx: PlurnkSchemeContext,
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, sessionId, runId, loopId, turnId,
-            writer: "model", signal: undefined,
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
         };
         await fn(root, ctx, db);
     } finally {
@@ -57,7 +57,7 @@ const withHeadlessSession = async (fn: (ctx: PlurnkSchemeContext, db: Db) => Pro
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, sessionId, runId, loopId, turnId,
-            writer: "model", signal: undefined,
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
         };
         await fn(ctx, db);
     } finally { await db.close(); }

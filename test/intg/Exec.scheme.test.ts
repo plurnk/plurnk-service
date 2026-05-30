@@ -74,7 +74,10 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, null);
         assert.equal(attrs.command, "echo hello");
-        assert.match(attrs.pathname, /^r-[a-f0-9]+$/, "auto-generated r-<uuid> path");
+        // Coordinate-based pathname mirrors the log row's URI: the stream
+        // entry at exec://<loop_seq>/<turn_seq>/<sequence>/EXEC parallels
+        // the log row at log://<...>/EXEC.
+        assert.match(attrs.pathname, /^\d+\/\d+\/\d+\/EXEC$/, "pathname is the log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;

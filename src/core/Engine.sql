@@ -45,6 +45,14 @@ UPDATE loops SET status = $status WHERE id = $loop_id;
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
+-- PREP: engine_loop_turn_seqs
+-- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
+-- #writeLog when an op needs to address itself or its output by log
+-- coordinate (e.g. EXEC's stream entry at exec://<loop_seq>/<turn_seq>/<sequence>/EXEC).
+SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
+FROM loops l, turns t
+WHERE l.id = $loop_id AND t.id = $turn_id;
+
 -- PREP: engine_open_turn
 -- Turn-as-container model: insert a turn row at runTurn open with a
 -- placeholder packet and status=102 (in-progress). Pre-model writes

@@ -5,8 +5,7 @@ import { WebSocket } from "ws";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Daemon from "../../src/server/Daemon.ts";
-import type Mock from "../../src/providers/Mock.ts";
-import type { MockResponse } from "../../src/providers/Mock.ts";
+import type { Mock, MockResponse } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 

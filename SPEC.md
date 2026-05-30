@@ -1,10 +1,8 @@
 # plurnk-service — Specification
 
-Single source of truth for what plurnk-service IS — the contracts it exposes, the architecture it implements, the promises it makes to the rest of the constellation (`plurnk-grammar`, `plurnk-providers-*`, `plurnk-schemes-*`, `plurnk-mimetypes-*`, the user-facing `plurnk` CLI). `AGENTS.md` covers how we work on it; this file covers what we're working on.
+Canonical contracts plurnk-service exposes, architecture it implements, promises it makes to the constellation (`plurnk-grammar`, `plurnk-providers`, `plurnk-schemes`, `plurnk-mimetypes`, `plurnk-execs`, the user-facing `plurnk` CLI). `AGENTS.md` covers process; this file covers contract.
 
-Section numbers are stable. Anchor-to-test wiring binds individual promises here to integration / live / demo tests, giving semi-deterministic specification-testing alignment.
-
-**Promise anchors.** Individual contract assertions in this document carry a trailing `{§<id>}` marker. Tests reference these anchors in their names (`test("[§<id>] description", ...)`). An alignment test (`test/intg/spec-anchors.test.ts`) fails if a test cites a nonexistent anchor (orphan — typo or stale reference) and surfaces gaps (anchored promises with no test) informationally. The anchors are **grounding against drift**, not a forcing function on development — write the spec, write the test, jot the link, move on. Coverage grows organically.
+Section numbers are stable. Promise anchors `{§<id>}` mark individual assertions; tests cite them in their names (`test("[§<id>] …", …)`). `test/intg/spec-anchors.test.ts` fails on orphan citations and reports gaps. Anchors are drift-grounding, not a forcing function.
 
 ---
 
@@ -33,9 +31,9 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `preview`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
 | **scope** | `"agent"` or `"session"`. Determines who reads. Agent-scope entries visible to every run; session-scope entries to that session's runs. |
-| **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. See SCHEMES.md. |
-| **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. See MIMETYPES.md. |
-| **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. See PROVIDERS.md. |
+| **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. Consumption surface §3.6; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
+| **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. Consumption surface §4.5; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
+| **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. Consumption surface §2; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
 
 ### §0.3 State / visibility / status
 
@@ -61,7 +59,7 @@ Three independent axes on entries and channels. Confusion across them is a recur
 
 | Term | Meaning |
 |---|---|
-| **verdict** | End-of-turn ruling from the verdict filter chain. Returns `{continue: boolean, status: number, reason: string}`. Decides whether the loop terminates or another turn fires. |
+| **verdict** | End-of-turn ruling computed directly in `Engine.runLoop` from strike/cycle/sudden-death rail state. Decides whether the loop terminates or another turn fires. No filter chain — rails are inline. |
 | **strike** | A turn whose verdict counts toward `MAX_STRIKES`. Fires when `turnErrors > 0` or cycle detection trips. The streak counter resets on clean turn; reaches `MAX_STRIKES` → loop abandons at 499. |
 | **cycle** | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
 | **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
@@ -92,166 +90,78 @@ Three independent axes on entries and channels. Confusion across them is a recur
 
 ## §1 Architecture
 
-`plurnk-service` is an engine library plus an admin CLI. The engine orchestrates a model's interaction with a workspace through three plug points:
+Engine library + admin CLI + daemon. Four plug points:
 
-- **Providers** (§2) — LLM transports. The engine asks a provider for the next assistant turn; the provider returns parsed plurnk ops.
-- **Schemes** (§3) — addressable resources. Every plurnk op targets a URI; the URI's scheme picks the handler. Schemes own their storage substrate (SQL entries for `known`/`unknown`/`skill`; filesystem for `file`; subprocess for `exec`; remote endpoints for future `http`/`ws`/`sse`/etc.).
-- **Mimetypes** (§4) — content interpretation. Schemes produce content with a declared mimetype; mimetype handlers validate, summarize, and render that content for the model's index view.
+- **Providers** (§2) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
+- **Schemes** (§3) — addressable resources. Every op targets a URI; scheme handler interprets paths under its prefix and owns its storage substrate.
+- **Mimetypes** (§4) — content interpretation. Render-time handlers consume channel content; framework owns the dispatch.
+- **Executors** (§6.8 / §10) — EXEC runtime dispatch. Subprocess shells, search backends, future tool runtimes.
 
-The engine itself is small. It dispatches ops, persists state to SQLite, orchestrates cross-scheme operations (COPY/MOVE — see §6.4/§6.5), and writes the log. All substantive behavior lives in the three plug points.
+The engine dispatches ops, persists state to SQLite, orchestrates cross-scheme COPY/MOVE (§6.4/§6.5), writes the log. Substantive behavior lives in the four plug points.
 
-The grammar — `@plurnk/plurnk-grammar` — is the parser and AST contract. Engine receives parsed `PlurnkStatement[]` from providers; engine does not re-parse. Schemes receive statement fragments via dispatch.
+The grammar (`@plurnk/plurnk-grammar`) owns parser + AST contract. Schemes receive parsed statement fragments via dispatch.
 
-Client/server posture: this package is the server / core / agent runtime. The user-facing CLI lives in a separate `plurnk` repo and consumes plurnk-service through its public library API (`src/index.ts` + `PATHS` helper).
+Server posture: this package is the runtime. User-facing CLI lives in `plurnk` and consumes the library API (`src/index.ts` + `PATHS`).
 
 ---
 
 ## §2 Provider Contract
 
-A provider transports model interactions. It exposes one required method (generate) and one mandatory token-counting method. Every `@plurnk/plurnk-providers-*` package implements this contract.
+Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-providers/issues/1). Below: consumption surface + engine→provider guarantees.
 
-### §2.1 Manifest
+### §2.1 Consumption surface
 
-Each provider package declares itself in its `package.json`:
+Three entry points:
 
-```json
-{
-  "name": "@plurnk/plurnk-providers-<name>",
-  "plurnk": { "kind": "provider", "name": "<name>" }
-}
+- `provider.generate({messages, signal})` — once per turn; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`.
+- `provider.countTokens(text)` — synchronous, called at write-time (§14.2) and render-time. Non-negative integer.
+- `provider.costFor(usage)` — once per completed turn; pico-USD. Engine writes to `turns.usage_cost_pico`; triggers cascade to `runs.cost_pico` / `sessions.cost_pico`.
+
+Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info") and `provider.model`.
+
+### §2.2 Engine → provider guarantees
+
+- `messages` is a complete prompt (`system_definition`, `persona`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` pre-assembled). Provider does not reorder.
+- `signal` is wired to the run's AbortController.
+- `generate` is single-call per turn. No parallel calls on the same instance.
+- `assistantRaw` is opaque to the engine (forensics-only).
+- `countTokens` is cheap by contract; engine calls frequently.
+
+### §2.3 Provider instantiation
+
+Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
+
+```
+PLURNK_MODEL_gemma=openai/macher.gguf
+PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
+PLURNK_MODEL=gemma
 ```
 
-`name` is the lookup key. Collisions on `(kind, name)` are fail-hard at boot per §9.
+First path segment = provider plugin; rest = provider's own model id.
 
-### §2.2 generate(args) — required
+### §2.4 In-tree Mock provider
 
-```ts
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-
-type ProviderResponse = {
-    assistant: {
-        tokens: number;                  // completion-token count for this turn
-        content: string;                 // raw text from the model
-        ops: PlurnkStatement[];          // parsed plurnk ops; see grammar AST
-        reasoning: string | null;        // thinking/reasoning payload if the model emitted one
-    };
-    assistantRaw: unknown;               // provider's raw wire response for forensic capture
-};
-
-generate({ messages, signal? }: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;
-```
-
-Promises:
-- The provider returns parsed `PlurnkStatement[]` in `assistant.ops`. The engine does NOT re-parse. Provider is responsible for invoking `@plurnk/plurnk-grammar`'s parser against `assistant.content`.
-- `assistant.tokens` is the completion token count for THIS turn — used for cost accounting and packet token tracking.
-- `assistantRaw` preserves the wire response verbatim for log forensics. Schema-free; provider's discretion.
-- If `signal` aborts, the provider MUST tear down its connection and reject the promise. AbortController lifecycle is the provider's responsibility.
-
-### §2.3 countTokens(text) — required
-
-```ts
-countTokens(text: string): Promise<number>;
-```
-
-Promises:
-- Returns the token count for `text` according to the active model's tokenizer.
-- The engine treats this as authoritative — there is no fallback estimator at the engine layer.
-- Provider implementations MAY cache by content hash; the engine ALSO caches by `(provider_id, content_hash)` in a `token_counts` table.
-- Mock provider returns a deterministic length-based estimate (e.g., `len/4`) sufficient for integration tests.
-
-### §2.4 Cancellation
-
-Every provider call accepts an optional `AbortSignal`. When aborted:
-- The provider's outbound connection MUST tear down.
-- The promise MUST reject (not resolve with partial content).
-- Any provider-internal streams MUST close cleanly.
+`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextSize, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this.
 
 ---
 
 ## §3 Scheme Contract
 
-A scheme is an addressable resource handler. Every URI in plurnk has a scheme prefix (`known://`, `file://`, `https://`, etc.); the scheme handler interprets paths under that prefix.
-
-Every `@plurnk/plurnk-schemes-*` package implements this contract.
+Author-facing contract: [plurnk-schemes#1](https://github.com/plurnk/plurnk-schemes/issues/1). Below: what plurnk-service exposes to schemes and orchestrates over them.
 
 ### §3.1 Manifest
 
-Each scheme package declares itself in its `package.json`:
+Per author contract. Each scheme declares a `static manifest: SchemeManifest` with `name`, `channels`, `defaultChannel`, `category`, `scope`, `writableBy`, `volatile`, `modelVisible`, optional `flags`. Identity match enforced at plugin load: `manifest.name` must equal `package.json#plurnk.name`.
 
-```json
-{
-  "name": "@plurnk/plurnk-schemes-<name>",
-  "plurnk": { "kind": "scheme", "name": "<name>" }
-}
-```
+### §3.2 CRUD primitives
 
-The class declares its full manifest as a static field (per `SchemeManifest` in `src/core/scheme-types.ts`):
+Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives cross-scheme COPY/MOVE/SEND[410] through these. Each method is one SQL transaction; engine owns the outer transaction for orchestrations.
 
-```ts
-class Known {
-    static manifest: SchemeManifest = {
-        name: "known",
-        channels: { body: "text/markdown", preview: "text/markdown" },
-        defaultChannel: "body",
-        category: "data",
-        scope: "session",
-        writableBy: ["model", "client"],
-        volatile: false,
-        modelVisible: true,
-        flags: { /* optional flag affinity per LoopFlags */ },
-    };
-    // ...
-}
-```
+### §3.3 Op methods
 
-Each entry in `manifest.channels` names a channel and pins its mimetype. The engine consults this manifest before writing channels. Schemes whose mimetypes are content-dynamic (file, eventually exec) declare an empty `channels: {}` and supply mimetype per-call instead; the engine accepts either path but never accepts an unset mimetype (see §5).
-
-`manifest.defaultChannel` is REQUIRED for any scheme that accepts EDIT or READ on fragment-less paths. It names which channel of the entry is targeted when the path has no `#fragment`. See §5.5 for the channel-selection semantic.
-
-Identity-match is enforced at plugin load: `manifest.name` must equal the `plurnk.name` in `package.json` (PluginLoader.assertIdentityMatch).
-
-### §3.2 CRUD Primitives (uniform across schemes)
-
-The canonical surface a scheme exposes for engine orchestration. Every entry-bearing scheme MUST implement these three methods. The engine uses them to drive cross-scheme operations (§6.4 COPY, §6.5 MOVE) and the SEND[410] delete pattern (§6.8).
-
-```ts
-type EntryData = {
-    channels: Record<string, { content: string; mimetype: string }>;
-    tags: string[];
-};
-
-readEntry(pathname: string, ctx: PlurnkSchemeContext):  Promise<ReadEntryResult>;
-writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext):  Promise<WriteEntryResult>;
-deleteEntry(pathname: string, ctx: PlurnkSchemeContext):  Promise<DeleteEntryResult>;
-```
-
-Where `PlurnkSchemeContext` is the per-call helper bundling `{ db, sessionId, runId, loopId, turnId, writer, signal }` (per `scheme-types.ts`). v0 ctx exposes `db` directly; the namespaced surface described in SCHEMES.md §4 (entries / channels / visibility / tags / subscriptions / proposals / crossScheme / notify) lands in v1 when third-party plugin schemes are an actual concern.
-
-Promises:
-- `readEntry` returns the full entry shape at `pathname` or `{ status: 404, entry: null }`.
-- `writeEntry` accepts a full entry shape and persists it. Returns `{ status: 201, created: true }` for new entries; `{ status: 200, created: false }` for replaces — UNLESS the scheme's policy forbids overwrites, in which case it returns `{ status: 409, created: false }`. See §6.4 for the COPY/MOVE conflict policy.
-- `deleteEntry` removes the entry. Returns 200 on success, 404 if absent.
-- Validation: `writeEntry` MUST verify channel mimetypes against the scheme's manifest (§3.1) and crash on mismatch. No defaults, no coercion (see §5 Channel Topology).
-- Atomicity: each method is a single SQL transaction. Engine orchestration (COPY = read + write) is responsible for its own outer transaction.
-
-### §3.3 Op Methods (layered over CRUD)
-
-The DSL-facing methods the engine dispatches based on parsed `PlurnkStatement.op`. Signature: `op(statement, ctx)` where `statement` is the parsed AST node and `ctx` is the per-call `PlurnkSchemeContext`.
-
-```ts
-edit(statement: EditStatement, ctx: PlurnkSchemeContext):   Promise<EditResult>;
-read(statement: ReadStatement, ctx: PlurnkSchemeContext):   Promise<ReadResult>;
-show(statement: ShowStatement | HideStatement, ctx): Promise<ShowHideResult>;
-hide(statement: ShowStatement | HideStatement, ctx): Promise<ShowHideResult>;
-find(statement: FindStatement, ctx: PlurnkSchemeContext):   Promise<FindResult>;
-send(statement: SendStatement, ctx: PlurnkSchemeContext):   Promise<SendResult>;
-```
-
-COPY and MOVE are NOT scheme methods. They are engine orchestrations over CRUD primitives (§6.4, §6.5).
+Per author contract (`edit`/`read`/`show`/`hide`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives.
 
 ### §3.4 Cross-scheme orchestration
-
-The engine — not any individual scheme — handles cross-scheme COPY and MOVE:
 
 ```
 copy(source_path, dest_path, signal_tags, ctx):
@@ -269,78 +179,130 @@ move(source_path, dest_path, signal_tags, ctx):
     src_scheme.deleteEntry(source_pathname, ctx)
 ```
 
-Same- and cross-scheme operations follow the identical orchestration. Same-scheme COPY (e.g., `known://a` → `known://b`) is NOT a special case — it is COPY where src_scheme and dst_scheme happen to be the same handler. The engine does not optimize this case; uniformity beats local efficiency at this layer.
-
-For v0 (known/unknown/skill, all sharing the `entries` table), CRUD primitives are thin wrappers over entry-table operations. For future schemes (file, exec, http), the same orchestrator drives the same primitives over different storage substrates.
+Same- and cross-scheme operations share the orchestrator. Same-scheme COPY is not a special case.
 
 ### §3.5 SEND dispatch (status-code-as-verb)
 
-When the engine dispatches a `SEND` op with a non-null path (recipient-directed SEND), the target scheme's `send` method receives the statement. The scheme interprets the status code as an intent:
+Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 
-- `SEND[200](path)` — write the body into the resource at `path` (e.g., WebSocket message, exec stdin).
-- `SEND[410](path)` — delete the resource at `path`. Scheme calls its own `delete` primitive. {§3.5-410-deletes-resource}
-- `SEND[499](path)` — cancel any active subscription bound to `path` (§7).
+- `SEND[200](path)` — write body into resource (WS message, exec stdin).
+- `SEND[410](path)` — delete the resource. {§3.5-410-deletes-resource}
+- `SEND[410](path#fragment)` — delete the named channel only. {§3.5-410-fragment-channel-delete}
+- `SEND[499](path)` — cancel active subscription (§7).
 
-Other status codes are scheme-specific. The engine does not interpret SEND status codes for directed (non-broadcast) sends. Entry-bearing schemes return 501 for status codes they don't interpret. {§3.5-entry-schemes-501-on-non-410}
+Other status codes return 501 from entry-bearing schemes by default. {§3.5-entry-schemes-501-on-non-410}
 
-For SEND[410], channel-level deletion via `#fragment` is deferred — schemes return 400 on fragment-targeted 410. {§3.5-410-fragment-400}
+Null-path SEND is broadcast (§6.7), engine-handled.
 
-`SEND` with null path is broadcast (§6.7) — engine-handled, not scheme-handled.
+### §3.6 Consumption surface
+
+Per-call context (`src/core/scheme-types.ts`):
+
+```ts
+interface PlurnkSchemeContext {
+    readonly db: Db;
+    readonly sessionId: number;
+    readonly runId: number;
+    readonly loopId: number;
+    readonly turnId: number;
+    readonly writer: "model" | "client" | "system" | "plugin";
+    readonly signal: AbortSignal | undefined;
+    readonly streamEventNotify?: StreamEventNotify;
+    readonly wakeRunNotify?: WakeRunNotify;
+    readonly mimetypes?: Mimetypes;
+}
+```
+
+Notifier fields populated by the Daemon; absent in test fixtures.
+
+Engine → scheme guarantees:
+
+- `ctx` is fresh per call. No mutation across calls.
+- `ctx.writer` reflects the actual writer at this dispatch.
+- `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion.
+- `ctx.signal` is wired to the run's AbortController.
+- Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `packet.user.telemetry.errors[]` (§15.1).
+
+**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.provider.countTokens`. Raw DB writes bypass tokenization — out of API scope.
 
 ---
 
 ## §4 Mimetype Contract
 
-A mimetype handler interprets channel content for validation, structural extraction, and preview rendering. Every `@plurnk/plurnk-mimetypes-*` package implements this contract.
+Author-facing contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). Below: firing semantics + consumption surface.
 
-**Firing semantics.** Mimetype handlers are **render-time** consumers. The engine invokes them when assembling the turn packet at turn boundaries — they read the current channel content (whatever's there, possibly mid-stream), produce a structural view, and the result lands in the model's context. {§4-handlers-fire-render-time} Schemes do NOT call mimetype handlers at write time; schemes just append to channel content. Render is the only consumer of "interpreted" content. {§4-schemes-do-not-invoke-handlers} Memoization (handler result cached by content hash) is an implementation concern; the contract is render-time.
+**Firing semantics.** Render-time consumers. Engine invokes during packet assembly; handlers read current channel content (possibly mid-stream), produce structural view, result lands in model's context. {§4-handlers-fire-render-time} Schemes do NOT call mimetype handlers at write time. {§4-schemes-do-not-invoke-handlers}
 
 ### §4.1 Manifest
 
-```json
-{
-  "name": "@plurnk/plurnk-mimetypes-<name>",
-  "plurnk": { "kind": "mimetype", "name": "<mimetype-id>" }
-}
-```
-
-`<mimetype-id>` follows IANA conventions (`text/plain`, `application/json`, `text/vnd.<vendor>`, etc.). Collisions fail-hard at boot per §9.
-
-The handler class declares two required identifiers as instance properties:
-
-```ts
-class TextMarkdown implements MimetypeHandler {
-    readonly mimetype = "text/markdown";
-    readonly glyph = "📝";
-    // ... methods (§4.2)
-}
-```
-
-`mimetype` is the IANA-shaped identifier — must match the manifest `name`. `glyph` is a single emoji representing this mimetype, used by clients rendering log waterfalls, channel tiles, and any structural index. Every handler MUST declare both. The engine treats an absent `glyph` as a contract violation at registration time, parallel to absent `mimetype`.
+Per author contract. Manifest declares `kind: "mimetype"`; handler class declares `mimetype` (matches manifest name) and `glyph` (single emoji). Collisions fail-hard at boot per §9.
 
 ### §4.2 Methods
 
-```ts
-validate(content: string): void;
-symbols(content: string): string;
-preview(content: string, budget: number): string;
-```
+Author contract owned by plurnk-mimetypes. plurnk-service consumes through two entry points:
 
-Promises:
-- `validate` is a render-time guard. If it throws, that's a handler bug — engine crashes loudly per fail-hard. Schemes that want write-time validation handle that themselves; it's not plurnk-service's contract.
-- `symbols` returns a structural index of the content. For text/markdown, this is the heading outline. For application/json, the top-level key tree. For text/plain, an empty string (no structure).
-- `preview` returns a budget-bounded structural summary. `budget` is a character-count hint (not strictly enforced; handler does its best). For text/plain, head-truncation. For text/markdown, heading outline. For application/json, depth-limited key tree.
-- All three methods MUST be deterministic for caching to work — same content in, same output out.
+- `Mimetypes.process(input, options)` — packet-assembly; returns `{ mimetype, preview, ok }`. {§4.2-process-entry-point}
+- `Mimetypes.query(input, expression)` — body-matcher dispatch (§16.1); returns `QueryMatch[]`.
 
-### §4.3 What mimetype handlers do NOT do
+Cross-cutting promises service relies on:
 
-- **Tokenization.** Token counting is provider-bound (§2.3). Mimetype handlers describe structure; tokenizers count tokens.
-- **Storage.** Mimetype handlers are pure functions over content strings. They neither read nor write the DB.
-- **Streaming.** Mimetype handlers operate on whatever content is current when invoked. The streaming relationship (§7) is between schemes and the subscription registry; mimetype handlers don't see it.
+- Render-time only. Schemes do not invoke.
+- Deterministic for a given (content, budget, mimetype) tuple.
+- Validation errors propagate (fail-hard).
+- Empty preview rather than throw when handler can't produce one.
+
+### §4.3 What handlers do NOT do
+
+- **Tokenization** — provider-bound (§2).
+- **Storage** — pure functions over content strings.
+- **Streaming** — handlers see whatever content is current; subscription registry lives between schemes and §7.
 
 ### §4.4 Bundled vs sibling handlers
 
-No mimetype handlers ship in-tree. Every handler is a sibling `@plurnk/plurnk-mimetypes-*` package; the framework (`@plurnk/plurnk-mimetypes`) is also a sibling and is the surface plurnk-service consumes via `Mimetypes.process()`. Handlers register at boot via plugin discovery (§9). The in-tree set is empty by design — the framework is responsible for the universal fallback, not us.
+No mimetype handlers ship in-tree. Framework + every handler are siblings.
+
+### §4.5 Consumption surface
+
+plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label + budget to `Mimetypes.process({content, hint}, {budget})`; uses `result.preview` as the rendered output in `packet.system.index[].channels[name].content`.
+
+**Required dependencies** (hard deps in `package.json`):
+
+| Package | Mimetype | Why required |
+|---|---|---|
+| `@plurnk/plurnk-mimetypes-text-markdown` | `text/markdown` | LLM emission default; configured as `defaultMimetype` on the `Mimetypes` orchestrator. |
+| `@plurnk/plurnk-mimetypes-text-plain` | `text/plain` | Canonical EXEC stdout/stderr channel mimetype. |
+| `@plurnk/plurnk-mimetypes-application-json` | `application/json`, `application/jsonc` | Service emits json for `log_entries` rx/tx, telemetry, packet serialization. |
+
+Everything else is opt-in; framework's `discover()` picks up installed packages automatically.
+
+**Tokenize injection.** Daemon constructs `Mimetypes` with a `tokenize` lambda capturing the active provider's `countTokens`:
+
+```ts
+new Mimetypes({
+    tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
+    defaultMimetype: "text/markdown",
+});
+```
+
+Fallback heuristic is a boot-before-provider-resolved tripwire.
+
+**Render pipeline.** `Engine.#buildIndex`:
+
+```ts
+const result = await this.#mimetypes.process(
+    { content: row.content, hint: row.mimetype },
+    { budget: this.#previewBudget },
+);
+entry.channels[row.channel] = {
+    content: result.preview,
+    mimetype: row.mimetype,
+    tokens: row.tokens,
+};
+```
+
+`hint` short-circuits detection. plurnk-mimetypes 0.6.0+ dropped the fitContent raw-content fallback — handlers without symbols return empty preview. Per-mimetype handlers (text-plain) return content under budget directly.
+
+**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: engine routes through `Mimetypes.process` with right hint/budget; `result.preview` lands in the right packet slot; tests use auto-discovery (production handler set); custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ---
 
@@ -352,337 +314,313 @@ Every entry has named channels. **Channels are append-only content stores** keye
 
 EDIT writes one channel per call — the channel resolved from the path's fragment (or the scheme's `defaultChannel` when no fragment). {§5.1-edit-writes-only-body}
 
-There is no stored `preview` channel. Preview is a **render-time output**, computed by passing the channel's content through `Mimetypes.process()` at packet-build time. The result lands in `packet.system.index[].channels[name].content`. {§5.1-preview-is-handler-output} The mimetype framework owns the preview pipeline; plurnk-service consumes the returned preview and never inspects the framework's internals.
+No stored `preview` channel. Preview is render-time output via `Mimetypes.process()` at packet-build; lands in `packet.system.index[].channels[name].content`. {§5.1-preview-is-handler-output}
 
-Schemes MAY declare multiple channels (exec will declare `stdout`/`stderr`/`stdin`; http will declare `body`/`header`; SSE may declare per-event-type channels). Each channel goes in the scheme's `channels` manifest (§3.1) and has its mimetype pinned there. Each channel is rendered independently at packet-build time.
+Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently.
 
 ### §5.2 Visibility lattice
 
-Visibility is per-`(run, entry, channel)` — a bit per cell in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of the target entry to `indexed=1`; HIDE flips all to `indexed=0`. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment exists for the entry-bearing schemes; see §5.5.
+Per-`(run, entry, channel)` bit in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of target entry to 1; HIDE flips to 0. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment per §5.5.
 
-The engine's render-time index (`packet.system.index`) includes only `indexed=1` channels for the current run. {§5.2-render-filters-by-indexed} Each included channel is passed through its mimetype handler's `preview(content, budget)` per §4 / §5.1, with the result landing in the entry's `channels[name].content` field in the packet.
+Render-time index includes only `indexed=1` channels for the current run. {§5.2-render-filters-by-indexed}
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
-The mimetype of a channel is declared by the scheme's manifest (§3.1) or — for dynamic schemes — supplied per-call. If the engine attempts to write a channel without a declared mimetype, it throws. There is no default mimetype anywhere in the system. This is a reinforcement of the no-fallbacks rule at the channel layer.
+Mimetype is declared by scheme manifest (§3.1) or supplied per-call for dynamic schemes. Writing a channel without a declared mimetype throws. No default mimetype anywhere.
 
-Implications:
-- Cross-mimetype COPY/MOVE crashes (`415 Unsupported Media Type`) — never coerces. See §6.4.
+- Cross-mimetype COPY/MOVE → 415, never coerces (§6.4).
 
 ### §5.5 Channel selection in the DSL
 
-The DSL targets a specific channel of an entry via the URL **fragment** — the `#name` segment of the path. Per the grammar's `UrlPath` shape (0.3.0+), every parsed path has a nullable `fragment` field; this section defines its semantic for the engine.
+DSL targets a specific channel via the URL fragment (`#name`).
 
 Rules:
 
-1. **Fragment-less paths target the scheme's `defaultChannel`.** For `known` / `unknown` / `skill` that's `body`. The path `known://philosophy/meaning` writes/reads the body channel of that entry; equivalent to `known://philosophy/meaning#body` made explicit. {§5.5-fragmentless-targets-default-channel}
-2. **Paths with a fragment target the named channel.** `known://philosophy/meaning#preview` targets the preview channel. {§5.5-fragment-selects-named-channel}
-3. **Unknown channel name → 400 (bad request).** The channel name must appear in the scheme's `channels` manifest (§3.1). Engine never writes to an undeclared channel. {§5.5-unknown-channel-400}
-4. **Schemes without `defaultChannel` reject fragment-less EDIT/READ.** Streaming schemes like `sse://feed/x` may require an explicit fragment (`#data`, `#error`, etc.) and have no default.
-5. **Non-default channel EDIT requires entry to exist.** Writing to a fragment-targeted channel of a nonexistent entry returns 404. Default-channel EDIT creates the entry if absent (existing semantics). {§5.5-fragment-on-nonexistent-404}
-6. **Fragment-targeted SHOW/HIDE flips only the named channel.** Fragment-less SHOW/HIDE flips all channels per §5.2. {§5.5-fragment-targeted-show-hide}
+1. Fragment-less paths target the scheme's `defaultChannel`. {§5.5-fragmentless-targets-default-channel}
+2. Paths with a fragment target the named channel. {§5.5-fragment-selects-named-channel}
+3. Unknown channel name → 400. {§5.5-unknown-channel-400}
+4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
+5. Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. {§5.5-fragment-on-nonexistent-404}
+6. Fragment-targeted SHOW/HIDE flips only the named channel; fragment-less flips all per §5.2. {§5.5-fragment-targeted-show-hide}
 
-Examples:
-
-| URI | Scheme's interpretation |
+| URI | Channel |
 |---|---|
-| `known://france/capital` | body channel of the entry (text/markdown) |
-| `known://france/capital#preview` | preview channel (text/markdown structural summary) |
-| `exec://run/abc#stdout` | stdout channel of the exec invocation |
-| `exec://run/abc#stderr` | stderr channel |
-| `sse://feed/y#data` | named channel for the SSE "data" event type (§7) |
-| `log://N/T/A` | log entry at coordinates; no channel concept (log entries are atomic rows) |
+| `known://france/capital` | body (default) |
+| `known://france/capital#preview` | preview |
+| `exec://run/abc#stdout` | stdout |
+| `exec://run/abc#stderr` | stderr |
+| `sse://feed/y#data` | data |
+| `log://N/T/A` | (no channel concept; atomic log row) |
 
-Implications for operations:
+Op implications:
 
-- **EDIT** writes the body to the resolved channel. If the channel doesn't exist in the manifest → 400. If the scheme doesn't support EDIT to that channel (e.g., exec stdout is read-only) → 405.
-- **READ** returns content + mimetype from the resolved channel.
-- **SHOW / HIDE** flip visibility for the resolved channel only — channel-specific visibility is achievable via fragments. Fragment-less SHOW/HIDE flips ALL channels of the entry per §5.2 (existing behavior).
-- **COPY / MOVE** with a fragment is a per-channel operation; deferred design pass needed before specifying (out of scope for v0).
+- EDIT to undeclared channel → 400; read-only channel → 405.
+- COPY/MOVE with fragment is per-channel; design deferred until needed.
 
-The clean-shape RPC params (§13.5) carry the fragment naturally inside the `target` string: `{ target: "known://x#stderr" }` works as expected. No new RPC parameter needed; the URL surface handles it.
+RPC params carry fragments inline via the `target` string (`{ target: "known://x#stderr" }`).
 
-**Wire-rendering inverse: default channel is path-only.** When the engine projects entries to the model's view, the heredoc fence omits `#channel` whenever the channel name matches the scheme's `defaultChannel`. Single-channel entries (the channel IS the default) render path-only; multi-channel entries render the default channel path-only and only non-default channels carry `#name` in the fence. {§5.5-wire-omits-suffix-on-default-channel} Examples:
+**Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`. {§5.5-wire-omits-suffix-on-default-channel}
 
-- `<<notes.md:...:notes.md` — file scheme renders bare (see §10 file note)
-- `<<exec://run:...:exec://run` — exec's default (`stdout`)
-- `<<exec://run#stderr:...:exec://run#stderr` — explicit non-default
-- `<<log://1/1/0:...:log://1/1/0` — log responses (single-payload; no channel concept)
-
-The absence of `#channel` IS the addressing of the default. This matches what models naturally emit and removes `#body` / `#rx` clutter from every packet.
+```
+<<notes.md:...:notes.md             — file scheme (bare)
+<<exec://run:...:exec://run         — exec default (stdout)
+<<exec://run#stderr:...:exec://run#stderr — non-default
+<<log://1/1/0:...:log://1/1/0       — atomic log row
+```
 
 ### §5.6 Channel state — metadata, not gating
 
-Per the grammar's `ChannelContent` schema, each channel has a `state ∈ {static, active, closed, errored}`. This is **information about the channel's current writing status**, not a gate on engine behavior. {§5.6-state-is-metadata}
+Each channel has `state ∈ {static, active, closed, errored}`. Metadata only, not an engine gate. {§5.6-state-is-metadata}
 
-- `static` — content is final; not actively being written. Entry-bearing schemes (known/unknown/skill) stay here always after EDIT.
-- `active` — a scheme is currently writing to this channel (chunks arriving). Streaming schemes use this during their connection's accumulating phase.
-- `closed` — a scheme finished writing cleanly. The channel content is final but came from a stream that has now ended.
-- `errored` — a scheme was writing but ended in error. Content may be partial; subsequent reads still return what was accumulated.
+- `static` — content final, not being written. Entry schemes after EDIT.
+- `active` — scheme is writing (chunks arriving). Streaming schemes during accumulation.
+- `closed` — stream ended cleanly. Content final.
+- `errored` — stream ended in error. Content may be partial; reads return what accumulated.
 
-Schemes own state transitions. They UPDATE `entry_channels.state` as their connection lifecycle progresses. {§5.6-schemes-own-state-transitions} The engine does NOT branch on state during rendering — it reads `content` and `state`, includes both in the rendered tile, lets the model and clients see the truth. {§5.6-engine-does-not-branch-on-state}
+Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. {§5.6-schemes-own-state-transitions} Engine does NOT branch on state during rendering — reads `content` and `state`, includes both. {§5.6-engine-does-not-branch-on-state}
 
-The model uses state for context: "this channel says `active` — content may grow before my next turn." Clients use state for UI: render an active channel with a spinner, errored with red, etc.
+Model uses state to anticipate growth between turns. Clients use state for UI (spinner / red border / etc.).
 
 ---
 
 ## §6 Op Surface
 
-Per-op semantics for `FIND | READ | EDIT | COPY | MOVE | SHOW | HIDE | SEND | EXEC`. Each subsection includes the AST shape (per `@plurnk/plurnk-grammar`'s `PlurnkStatement` schema), the engine's dispatch behavior, and the promises returned to callers.
+Per-op semantics. AST shapes from `@plurnk/plurnk-grammar`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract (§3).
 
 ### §6.1 EDIT
 
-AST: `{ op: "EDIT", target: ParsedPath, body: string | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker? }`.
 
-Engine dispatches to `scheme.edit(statement, ctx)`. Scheme:
-- Resolves the target channel from the path's fragment (§5.5). Fragment absent → scheme's `manifest.defaultChannel`. Unknown channel → 400. Channel manifest-undeclared → engine crashes per §5.3.
-- Writes the body to the resolved channel.
-- Indexes the written channel in the current run (visibility = 1).
+- Resolves target channel from fragment (§5.5); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
+- Writes body; `body: null` clears.
+- Sets `indexed=1` for written channel in current run.
 - Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates.
-- `body: null` clears the content (writes empty string).
-- Tags from `signal[]` are applied via `entry_tags` (additive on update for the v0 entry schemes; final policy may vary by scheme).
+- Tags from `signal[]` apply additively via `entry_tags` (scheme may vary).
 
 ### §6.2 READ
 
-AST: `{ op: "READ", target: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
-Engine dispatches to `scheme.read(statement, ctx)`. Scheme:
-- Returns the body channel content + mimetype for `path`, or `{ status: 404 }`.
-- `lineMarker` selects a line range (e.g., `<10-20>` for lines 10-20).
-- `body` (matcher) is for streaming-scheme deep reads (§7) — not v0 surface for entry schemes.
+- Returns channel content + mimetype, or 404.
+- `lineMarker` slices per §16.3.
+- `body` matcher dispatches through `Mimetypes.query` per §16.1 (all four dialects wired).
 
 ### §6.3 SHOW / HIDE
 
-AST: `{ op: "SHOW"|"HIDE", target: ParsedPath, body: MatcherBody | null, signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "SHOW"|"HIDE", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
-Engine dispatches to `scheme.show(statement, ctx)` / `scheme.hide(statement, ctx)`. Scheme:
-- Flips `visibility.indexed` for every channel of the targeted entry to 1 (SHOW) or 0 (HIDE).
-- Returns 200 on transition, 304 on no-op, 404 if entry not found.
-- No channel-specific selectors in v0; SHOW/HIDE always affects all channels of the entry.
+- Flips `visibility.indexed` for the targeted channel(s) per §5.5 rules.
+- Returns 200 on transition, 304 on no-op, 404 if entry absent.
 
 ### §6.4 COPY (engine-orchestrated)
 
-AST: `{ op: "COPY", target: ParsedPath (source), body: ParsedPath (destination), signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "COPY", target (source), body (destination), signal: tags | null, lineMarker? }`.
 
 Engine orchestrates over CRUD primitives (§3.2, §3.4):
 
-1. `src_scheme.readEntry(source_pathname, ctx)` → entry or 404. Missing source returns 404. {§6.4-missing-source-404}
-2. `dst_scheme.readEntry(dest_pathname, ctx)` to check conflict — if exists, return **409 Conflict** (no overwrite). Per fail-hard discipline. {§6.4-conflict-409}
-3. Mimetype compatibility check — channels of `entry` MUST have mimetypes accepted by `dst_scheme`'s `manifest.channels`. Mismatch returns **415 Unsupported Media Type**.
-4. Tag resolution: if `signal` is non-null, dest tags = signal_tags (REPLACE). {§6.4-signal-replaces-source-tags} If signal is null/empty, dest tags = source tags (CARRY). {§6.4-no-signal-carries-source-tags}
-5. `dst_scheme.writeEntry(dest_pathname, { channels: entry.channels, tags }, ctx)`.
-6. Dest visibility indexed=1 in current run (parity with EDIT-creating-new).
+1. `src_scheme.readEntry` → 404 if missing. {§6.4-missing-source-404}
+2. `dst_scheme.readEntry` → if exists, 409 (no overwrite). {§6.4-conflict-409}
+3. Mimetype compat — channels' mimetypes must be accepted by `dst_scheme.manifest.channels`. Mismatch → 415.
+4. Tags: `signal` non-null replaces source tags {§6.4-signal-replaces-source-tags}; null/empty carries source tags {§6.4-no-signal-carries-source-tags}.
+5. `dst_scheme.writeEntry({channels, tags})`.
+6. Dest `indexed=1` in current run.
 
-Returns `{ status: 201 }` on success.
-
-Same- and cross-scheme COPY both go through this orchestrator. {§6.4-cross-scheme-copy}
+Returns 201 on success. Same- and cross-scheme COPY share the orchestrator. {§6.4-cross-scheme-copy}
 
 ### §6.5 MOVE (engine-orchestrated)
 
-AST: `{ op: "MOVE", target: ParsedPath (source), body: ParsedPath | null (destination), signal: tags | null, lineMarker?: LineMarker }`.
+AST: `{ op: "MOVE", target (source), body: dest | null, signal: tags | null, lineMarker? }`.
 
-Two modes:
+- **Relocation** (`body` non-null): COPY (§6.4) + `src_scheme.deleteEntry` in one transaction. 201 on success. {§6.5-relocation-deletes-source} Cross-scheme same as same-scheme. {§6.5-cross-scheme-move}
+- **Deletion** (`body: null`): `src_scheme.deleteEntry` directly. {§6.5-null-body-deletes} 200 on success, 404 if absent. {§6.5-missing-source-404}
 
-**Relocation** (`body` non-null): engine runs §6.4 COPY then `src_scheme.deleteEntry(source_pathname, ctx)`. One transaction. Returns 201 on success. Source is removed. {§6.5-relocation-deletes-source} Cross-scheme relocation works the same as same-scheme. {§6.5-cross-scheme-move}
-
-**Deletion** (`body` is null): engine runs `src_scheme.deleteEntry(source_pathname, ctx)` directly. The null-body MOVE expresses "relocate to nowhere" = delete. {§6.5-null-body-deletes} Returns 200 on success, 404 if source absent. {§6.5-missing-source-404}
-
-Log history is preserved through MOVE because `log_entries`' URI-bit columns (`scheme`, `pathname`, etc.) store the path tuple as text, not FK to `entries.id`.
+Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 
 ### §6.6 FIND
 
-AST: `{ op: "FIND", target: ParsedPath (scope), body: MatcherBody | null (predicate), signal: tags | null (tag filter), lineMarker?: LineMarker }`.
+AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
-Engine dispatches to `scheme.find(statement, ctx)`. Scheme:
-- Filters entries within the path's scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
-- Applies `body` matcher if present. v0 supports `glob` dialect over pathname. {§6.6-glob-filter-on-pathname} Other dialects (regex over content, xpath, jsonpath) return **501 Not Implemented** until the relevant infrastructure exists. {§6.6-non-glob-dialects-501}
-- Applies `signal` as a tag filter: only entries with ALL listed tags pass. {§6.6-tag-filter-and-semantics}
-- Results are session- and scheme-scoped — no cross-session or cross-scheme leakage. {§6.6-scoped-isolation}
-- Returns `{ status: 200, results: string }` where `results` is `text/plain` with newline-separated matching paths.
+- Filters entries within scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
+- `body` matcher operates on pathname (glob). {§6.6-glob-filter-on-pathname} Content matchers (xpath/jsonpath/regex over body) live on READ.
+- `signal` is a tag filter; entries match if they have ALL listed tags. {§6.6-tag-filter-and-semantics}
+- Session + scheme scoped — no cross-session/cross-scheme leakage. {§6.6-scoped-isolation}
+- Returns `{ status: 200, results: string }` (newline-separated matching paths, `text/plain`).
 
 ### §6.7 SEND
 
 AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: number | null }`.
 
-Two modes:
-
-**Broadcast** (`path` is null): terminal status (200/499) updates `loop.status` and ends the loop. Other status codes return `{ status }` without state change. The model's universal "talk to the orchestrator" surface.
-
-**Directed** (`path` is non-null): engine dispatches `scheme.send(statement, ctx)`. Scheme interprets `signal` as an intent per §3.5:
-- 200 → write `body` into the resource (stream-write, exec stdin, etc.)
-- 410 → delete the resource at `path` (scheme calls its own `delete` primitive)
-- 499 → cancel active subscription (§7)
-- Other → scheme-specific
+- **Broadcast** (path null): terminal status (200/499) updates `loop.status` and ends loop. Other codes return `{status}` with no state change.
+- **Directed** (path non-null): routes to `scheme.send` per §3.5.
 
 ### §6.8 EXEC
 
-AST: `{ op: "EXEC", target: ParsedPath (cwd), body: string | null (command), signal: string | null (runtime tag) }`.
+AST: `{ op: "EXEC", target (cwd), body: string | null (command), signal: string | null (runtime tag) }`.
 
-Deferred. The `exec` scheme is in §10's bundled set but lacks a working handler; calls return 501. Sandboxing design and process-lifecycle semantics are the substance to figure out, drawing on rummy's exec plugin as prior art.
+Engine routes unconditionally to `exec` scheme (path slot is `cwd`, not a URI). Scheme spawns subprocess, writes stdout/stderr to channels of an `exec://r-<hash>` entry, returns `102 Processing` log row immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.6). Runtime slot (`signal`) selects executor (`sh` default, `node`, `python`); unknown runtime → 501.
+
+`SEND[499](exec://r-<hash>)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.7).
 
 ---
 
 ## §7 Stream Model
 
-The model can't poll and can't wait for streams to complete. It must stay passively informed of ongoing streams between turns. Plurnk-service treats streams as **the same as static content from the engine's perspective** — content arrives over time, channels grow, mimetype handlers render whatever's there at turn boundaries. There is no engine-level "transaction" abstraction; schemes own their connection lifecycle entirely. {§7-no-engine-transaction-abstraction}
+Streams are static content from the engine's perspective — content arrives over time, channels grow, mimetype handlers render whatever's there at turn boundaries. No engine-level transaction abstraction; schemes own connection lifecycle. {§7-no-engine-transaction-abstraction}
 
 ### §7.1 Subscriptions
 
-READ on a streaming scheme is a subscription, not a one-shot. The scheme handler opens the connection (SSE, WS, exec subprocess, etc.), returns a `102 Processing` log row immediately, and stays alive. The engine records `(sessionId, entryId) → schemeName + scheme-handle` in a **subscription registry** so cancellation (SEND[499]) can be routed to the scheme owning the active connection. {§7.1-subscription-registry-routes-cancellation}
+READ on a streaming scheme is a subscription, not a one-shot. Scheme opens the connection (SSE/WS/subprocess), returns `102 Processing` immediately, stays alive. Engine records `(sessionId, entryId) → schemeName + handle` in a subscription registry so `SEND[499]` cancellation routes to the owning scheme. {§7.1-subscription-registry-routes-cancellation}
 
-The subscription registry is plurnk-service runtime state (its own SQLite table). Not in the grammar's schema. **It exists ONLY for cancellation routing** — not for lifecycle tracking, not for state coordination. Channel state (§5.6) and log entries (§7.3) carry the lifecycle information.
+Subscription registry is plurnk-service runtime state (its own SQLite table). Exists ONLY for cancellation routing. Channel state (§5.6) + log entries (§7.3) carry lifecycle.
 
 ### §7.2 Chunk accumulation
 
-SSE event types, WS message types, exec stdout/stderr — each maps to a named channel on the entry. Channel record (per grammar's `ChannelContent`): `content`, `mimetype`, `tokens`. Whether a connection is currently feeding the channel is tracked in the subscription registry, not on the channel itself.
+SSE event types, WS message types, exec stdout/stderr each map to a named channel. Channel record (`ChannelContent`): `content`, `mimetype`, `tokens`. Active-connection state lives in the subscription registry, not on the channel.
 
 ### §7.3 No per-chunk log rows
 
-Channels are the single source of truth for chunk content. Log captures **lifecycle events** only: open (`102`), graceful close (`200`), explicit cancel (`499`), errors (`5xx`), scheme-significant transitions. {§7.3-log-captures-lifecycle-only}
+Channels are the source of truth for chunk content. Log captures lifecycle events only: open (102), graceful close (200), cancel (499), errors (5xx), scheme-significant transitions. {§7.3-log-captures-lifecycle-only}
 
-The model sees lifecycle events in `packet.system.log[]` per turn (§7.4 / §7.8). This is how the model learns "the stream opened" / "the stream closed cleanly" / "an error happened" — through log rows, not through engine-level state inspection.
+Model sees lifecycle events in `packet.system.log[]` per turn.
 
 ### §7.4 Index tile rendering
 
-Per-channel previews use `SchemeRegistration.channel_orientations` (grammar 0.3.0). The scheme declares each channel as `"head"` (front-anchored — render from beginning) or `"tail"` (append-temporal — render most recent). Channels not listed default to `"head"`. The renderer (plurnk-service code) decides token budget via `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (§12).
+Per-channel previews use `SchemeRegistration.channel_orientations` (grammar): `"head"` (front-anchored) or `"tail"` (most recent); default `"head"`. Renderer passes `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` budget (§12) to `Mimetypes.process()`; handler fits to budget per §14.2.
 
 ### §7.5 Deep slices on demand
 
-`<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a specific slice of the channel's content into a log row when the model wants depth beyond the preview.
+`<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a slice into a log row when the model wants depth beyond the preview.
 
 ### §7.6 HIDE is pure archive
 
-`<<HIDE(sse://feed/x)::HIDE` demotes the entry from the index. The connection persists silently; channels keep updating in the background; the model can `SHOW` it back later. HIDE never tears down a subscription.
+`<<HIDE(sse://feed/x)::HIDE` demotes from index. Connection persists; channels keep updating. HIDE never tears down a subscription.
 
 ### §7.7 SEND for stream control
 
-- **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme interprets 499 as "tear down." Subscription registry transitions to closed; the AbortController fires; channel stops accumulating.
-- **Write:** `<<SEND[200](wss://feed/x):message body:SEND` — pipes body into an active WS connection, exec stdin, etc.
+- **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme tears down via AbortController.
+- **Write:** `<<SEND[200](wss://feed/x):body:SEND` — pipes body into active connection (WS, exec stdin, etc.).
 
 ### §7.8 Engine constraints
 
-The engine imposes ONE constraint: **100 MiB char-length cap per channel content body.** Enforced at the storage layer via `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/005_entries.sql). Writes exceeding this fail at the SQL boundary with a SQLITE_CONSTRAINT; the action-entry captures the rejection at status 500.
+ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/001_schema.sql). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
 
-All other limits are **extrinsic** — owned by providers (request size, model context, fetch timeouts), schemes (per-call validation, scheme-specific size policies), and mimetypes (render budgets per `preview(content, budget)`). The engine does not throttle, batch, rate-limit, or cap anything else. {§7.8-engine-one-cap}
-
-This reflects an intentional v0 stance: pre-MVP, every operator-configurable cap is a barrier between the user and the system actually running. The user-facing CLI/TUI fiddles best when nothing fires unexpectedly. When real production pressure arrives, additional caps land as opt-in operator config — not as defaults.
+All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else. {§7.8-engine-one-cap}
 
 ### §7.9 Live updates for clients (between turns)
 
-While the model only sees turn-boundary rendering (coherent context per turn), connected RPC clients (TUI, neovim, web) want to see channel content grow in real time. The daemon emits `stream/event` notifications (§13.6) when channel content changes. Clients use these to render live waterfalls and refresh entry views without polling. {§7.9-stream-event-fires-on-chunk}
+Daemon emits `stream/event` notifications (§13.6) when channel content changes; clients use them for live waterfalls without polling. {§7.9-stream-event-fires-on-chunk}
 
-The model is NOT a stream/event consumer. The model is a turn-based consumer; whatever's in the channel at the next turn boundary is what gets rendered into its packet.
+The model is NOT a stream/event consumer — turn-based only; sees whatever's in the channel at the next turn boundary.
 
 ---
 
 ## §8 Storage Model
 
-SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL, validated against grammar schemas via a CI test.
+SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
 
-### §8.1 DDL strategy — hand-written, STRICT, indexed
+### §8.1 DDL strategy
 
-No generator. The value-add of JSON-Schema-to-DDL generation tops out at ~30% (table skeletons with NOT NULL columns and naive types); the remaining 70% — FK semantics, indexes, triggers, generated columns, FTS5, `WITHOUT ROWID`, defaults, decomposition decisions — is hand-written regardless. The generator's only real win is drift detection, which a CI alignment test handles at a fraction of the complexity.
+No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, explicit `NOT NULL`, indexed query paths, deliberate FK `ON DELETE`/`ON UPDATE`, `WITHOUT ROWID` where access pattern warrants, generated columns, FTS5.
 
-- All `migrations/*.sql` files are authored deliberately. SQLite-optimal: STRICT tables (3.37+), `INTEGER PRIMARY KEY` aliasing where appropriate, explicit `NOT NULL`, indexed query paths, FKs with deliberate `ON DELETE`/`ON UPDATE` semantics, `WITHOUT ROWID` where access pattern warrants, generated columns for materialized derivations, FTS5 virtual tables where text search is load-bearing.
-- One migration file per cohesive concern. Numbered for deterministic apply order.
-- `migrate` CLI subcommand applies in numeric order. Idempotent — runner skips migrations whose marker is in the `applied_migrations` meta table.
-- **Schema-alignment test** loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, and asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI; hand-written DDL catches up before the alignment goes green again.
-- **Storage shape ≠ wire shape.** DDL is source of truth for storage; JSON schemas are source of truth for wire format. Tested-aligned, but allowed to differ where SQLite ergonomics demand it.
+- One migration file per cohesive concern. Numbered, deterministic apply order.
+- `migrate` CLI: idempotent; skips applied markers in `applied_migrations`.
+- **Schema-alignment test**: loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI.
+- DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
 
 ### §8.2 SQL/TS responsibility boundary
 
-**Lives-in-SQL:**
-- The visibility / index / archive lattice (CTEs per run computing the projected entry list).
-- Cross-scope path collision detection (CHECK or trigger producing the `409 Conflict` response).
-- Cost rollups (denormalized integer pico-units; updated atomically on turn close via triggers).
-- Sequence number issuance (1-based per the grammar spec).
-- Entry-vs-log integrity (channels carry latest state; log carries every interaction).
+**Lives in SQL:**
+- Visibility / index / archive lattice (CTEs).
+- Cross-scope path collision (CHECK/trigger → 409).
+- Cost rollups (denormalized pico-units; atomic on turn close).
+- Sequence number issuance (1-based per grammar).
+- Entry-vs-log integrity.
 
-**Lives-in-TS:**
-- All status-bubble rules (`turn.status` → `loop.status` → `run.status` → `session.status`). Engine UPDATEs status explicitly when it observes terminal turn semantics. CHECK constraints enforce contract; trigger doesn't have to compute it. Triggers were tried and explicitly removed — they fight branching state machines.
-- Tokenization (active model's tokenizer; provider-bound; hot-swap requires re-tokenize on switch).
-- Provider dispatch and response normalization to `{ assistant, assistantRaw }`.
-- Scheme-handler invocation (open connections, run subprocesses, fetch URLs).
-- Plugin loading (boot-time scan per §9).
+**Lives in TS:**
+- Status-bubble rules (`turn.status` → `loop.status` → `run.status` → `session.status`). Engine UPDATEs explicitly; CHECK constraints enforce; triggers fight branching state machines.
+- Tokenization (provider-bound; hot-swap re-tokenizes per §14.2).
+- Provider dispatch + response normalization.
+- Scheme-handler invocation (connections, subprocesses, fetch).
+- Plugin loading (§9).
 - Stream AbortController lifecycle.
-- The CLI surface and the long-running daemon.
+- CLI + daemon.
 
-When SQL becomes onerous for a specific case, retreat for that case and document the retreat.
+When SQL becomes onerous for a specific case, retreat for that case and document why.
 
 ---
 
 ## §9 Plugin Discovery
 
-External `@plurnk/*` npm packages register at boot via the **scoped-package scan with manifest field** pattern:
+Scoped-package scan with manifest field:
 
-1. Each external package declares its kind in its `package.json`:
+1. Each package declares its kind:
    ```json
    { "name": "@plurnk/plurnk-providers-openrouter",
      "plurnk": { "kind": "provider", "name": "openrouter" } }
    ```
-2. On boot, `plurnk-service` reads every `node_modules/@plurnk/*/package.json`, filters for those with a `plurnk` field, dynamic-imports the matches.
-3. Load order: deterministic, alphabetical by name.
-4. Collision on `(kind, name)` is fail-hard at boot.
-5. The user's flow: `npm i @plurnk/plurnk-<kind>-<name> && plurnk start`. Zero config.
+2. Boot scans `node_modules/@plurnk/*/package.json`, filters by `plurnk` field, dynamic-imports matches.
+3. Load order: deterministic alphabetical.
+4. Collision on `(kind, name)` is fail-hard.
+5. Operator flow: `npm i @plurnk/plurnk-<kind>-<name> && plurnk start`. Zero config.
 
-Env vars are reserved for *configuring* installed plugins (API keys, endpoints, throttles), never for *declaring their existence*. The filesystem is the source of truth for what's installed.
+Env vars configure installed plugins; never declare existence. Filesystem is the source of truth.
 
-Versioning: a `plurnkContractVersion` field on each plugin's `plurnk` manifest declares which version of this SPEC the plugin targets. Engine refuses incompatible plugins at boot. (Wired up post-v1.0 of this document.)
+`plurnkContractVersion` on each manifest declares SPEC target version; engine refuses incompatible plugins. (Wired post-v1.0.)
 
 ---
 
 ## §10 Bundled Set
 
-What ships in-tree vs. in sibling `@plurnk/*` packages. Plugin discovery (§9) finds every installed `@plurnk/*` package at boot and registers what they declare; the system runs against whatever is present in `node_modules`.
+Plugin discovery (§9) registers whatever's in `node_modules/@plurnk/*`.
 
-**Providers in-tree (`src/providers/`):**
-- `Mock` — fake provider used exclusively in `intg` for deterministic engine tests. Also serves as a minimal worked example for authors of external provider packages.
+**Providers in-tree (`src/providers/`):** `Mock` (intg-only test fixture + worked example).
 
-All real providers are siblings, registered via plugin discovery.
+**Mimetypes in-tree:** none. Framework + handlers are all siblings.
 
-**Mimetypes in-tree:** none. The framework (`@plurnk/plurnk-mimetypes`) and every handler are siblings.
+**Schemes in-tree (`src/schemes/`)** — transitional; each extracts to a sibling under [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) as the framework matures:
 
-**Schemes in-tree (`src/schemes/`):**
-- `plurnk` — indexable scheme for internal model-interactions. Current use: `plurnk://prompt/<loop_id>` carries each loop's prompt as a body-channel entry written on loop start. Manifest-level writability is open (any origin); model-origin writes to `plurnk://prompt/*` are rejected in-handler (engine + client own those paths).
-- `log` — coordinate-addressed log entries. Read returns a summary of the action at `log://<loop_seq>/<turn_seq>/<sequence>`; SHOW/HIDE toggle the row's `indexed` flag (log entries are not entries-table entries, but participate in the model's curation surface via URI dispatch). Each entry renders in the packet as a single JSON meta line — no fence, no body — with `path` = the log entry's own URI (`log://<L>/<T>/<S>/<op>`) and `target` = the URI the action acted on. Errors mirror to `packet.user.telemetry.errors[]` per §15.1; status ≥ 400 in the meta signals "look in telemetry."
-- `known` — primary narrative entries.
-- `unknown` — decomposition / open questions.
-- `skill` — sibling of known/unknown; semantics provisional.
-- `exec` — manifest only; subprocess invocation not yet implemented.
-- `file` — in-tree; extraction to a sibling repo is planned once the workspace + exec/streams work shapes the scheme's full surface. **The model is never trained on `file://` and never sees it in any rendered output.** Bare paths (`README.md`, `/abs/path.txt`) are the model-facing form; `file://` is accepted as an explicit input for absolute root paths but renders bare in the index, log, and every other model-facing surface.
+| In-tree | Future sibling | Notes |
+|---|---|---|
+| `Known.ts` | `@plurnk/plurnk-schemes-known` | Primary narrative entries; session-scoped. |
+| `Unknown.ts` | `@plurnk/plurnk-schemes-unknown` | Open questions / decomposition. |
+| `Skill.ts` | `@plurnk/plurnk-schemes-skill` | Skill docs; same shape as known. |
+| `Plurnk.ts` | may stay in-tree | `plurnk://prompt/<loop_id>` carries each loop's prompt. Model-origin writes to `plurnk://prompt/*` rejected in-handler. |
+| `Log.ts` | may stay in-tree | Read-only coordinate-addressed (`log://<L>/<T>/<S>`). Renders as JSON meta line in packet log; status ≥ 400 mirrors to `packet.user.telemetry.errors[]` (§15.1). |
+| `File.ts` | `@plurnk/plurnk-schemes-file` | Filesystem-backed. **Model is never trained on `file://` and never sees it.** Bare paths are model-facing; `file://` accepted as input, renders bare. |
+| `Exec.ts` | stays in-tree | Dispatches EXEC op to runtime executors registered via [plurnk-execs](https://github.com/plurnk/plurnk-execs). |
 
-In-tree schemes will move to siblings as their surfaces stabilize.
+**Executors in-tree:** none. Framework + every runtime are siblings. `Exec.ts` dispatches by the EXEC op's `runtime` slot (`sh` default, `node`, `python`) to the matching sibling. Today's registry is hardcoded; plugin discovery migration tracked in [plurnk-execs#1](https://github.com/plurnk/plurnk-execs/issues/1).
 
 ---
 
 ## §11 Grammar Dependency
 
-`@plurnk/plurnk-grammar` is the contract. Treat it as authoritative; surface gaps to the user, don't redesign from this side. When a gap surfaces, file an issue upstream and adopt whatever lands.
+`@plurnk/plurnk-grammar` is the contract. Authoritative; surface gaps via issue, adopt what lands. Don't redesign from this side.
 
 ### §11.1 What grammar provides
 
-- Parser (`PlurnkParser`, ANTLR4-generated) — DSL text → `PlurnkStatement[]`.
-- AST types (`@plurnk/plurnk-grammar`'s exported TypeScript interfaces).
+- Parser (`PlurnkParser`, ANTLR4) — DSL text → `PlurnkStatement[]`.
+- AST types — exported TypeScript interfaces.
 - JSON schemas (`schema/*.json`, draft 2020-12) for every wire shape.
-- The grammar's `plurnk.md` is the canonical model-facing description of the DSL.
+- `plurnk.md` — canonical model-facing DSL description.
 
-### §11.2 What plurnk-service tracks in its own runtime state (NOT in the grammar)
+### §11.2 What plurnk-service tracks (NOT in grammar)
 
-- Channel lifecycle (`active` / `closed` / `errored`) — subscription registry, not on `ChannelContent`. Streams are not a distinct paradigm at the contract layer; they're a runtime relationship between an entry and an open connection.
-- Render budget per channel — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` operator config (§12); character-count today (§14.2).
-- Backpressure caps — none in v0 (§7.8). Providers/schemes/mimetypes own their own throttling.
-- Stream cancel verb — no dedicated cancel op or signal in the grammar. SEND[499] to the URI is the pattern (§7.7).
-- Delete verb — no dedicated DELETE op. SEND[410] to the URI is the pattern (§3.5, §6.5).
-- Per-loop flag plumbing — `loops.flags` JSON column. Engine plumbs the grammar's `LoopFlags` shape (yolo, mode, noWeb, noInteraction, noProposals) per-loop; today `yolo` is end-to-end, others are scheduled.
-- Wire-rendering conventions on top of grammar fences — see §5.5 default-channel addressing.
+- Channel state (`active`/`closed`/`errored`) — subscription registry, not on `ChannelContent`.
+- Render budget per channel — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (§12); tokenization per §14.2.
+- Backpressure caps — none (§7.8).
+- Stream cancel — `SEND[499]` (§7.7).
+- Delete — `SEND[410]` (§3.5, §6.5).
+- Per-loop flags — `loops.flags` JSON column; `yolo` end-to-end today, others scheduled.
+- Default-channel wire rendering — §5.5.
 
 ---
 
 ## §12 Operator Configuration
 
-Every plurnk-service deployment configures via env vars. Cascade: `.env.example` (shipped defaults) < `.env` (project) < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example` so the daemon starts on `./bin/plurnk-service.js` with no setup required.
+Env-var cascade: `.env.example` < `.env` < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example`; zero-setup boot.
 
-Model selection uses a separate alias cascade managed by `ProviderRegistry` (`src/core/ProviderRegistry.ts`): `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias; `PLURNK_MODEL=<alias>` selects which is active. The first path segment of the value names the provider plugin (`@plurnk/plurnk-providers-<provider>`); the rest is the provider's own model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`). Aliases live in `.env`, not `.env.example`, since they're operator-specific. Rummy parallel: `RUMMY_MODEL_<alias>` cascade.
+Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Aliases live in `.env`, not `.env.example` (operator-specific).
 
 | Var                                  | Default            | Status     | Purpose                                                       |
 |--------------------------------------|--------------------|------------|---------------------------------------------------------------|
@@ -690,7 +628,7 @@ Model selection uses a separate alias cascade managed by `ProviderRegistry` (`sr
 | `PLURNK_HOST`                        | `127.0.0.1`        | enforced   | Bind address for the daemon WebSocket. Local-only by default. |
 | `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the daemon WebSocket.                            |
 | `PLURNK_MAX_TURNS`                   | `999`              | enforced   | Per-loop turn cap (overridable per `loop.run` call).          |
-| `PLURNK_MAX_COMMANDS`                | `99`               | reserved   | Per-turn op cap. Not yet enforced; Phase B scope.             |
+| `PLURNK_MAX_COMMANDS`                | `99`               | enforced   | Per-emission op cap. Overflow ops drop silently; one `max_commands_exceeded` telemetry entry surfaces on the next packet. |
 | `PLURNK_RPC_TIMEOUT`                 | `30000`            | reserved   | ms timeout for non-`longRunning` RPC handlers. Not yet enforced. |
 | `PLURNK_LOOP_TIMEOUT`                | `86400000`         | reserved   | ms wall-clock budget for a single `loop.run`. Not yet enforced. |
 | `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§0.5).             |
@@ -700,56 +638,45 @@ Model selection uses a separate alias cascade managed by `ProviderRegistry` (`sr
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
-| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (characters; §14.2). |
+| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (tokens; see §14.2 for the tokenization contract). |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
 
-**enforced** = the engine actually reads and acts on this value. **reserved** = shipped in `.env.example` (rummy parity, forward-spec) but not yet read anywhere in code. Reserved vars are still parsed as CLI flags by `bin/plurnk-service.js` (auto-derived from `.env.example`); their values currently no-op.
+**enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.example` (forward-spec) but no-op until wired.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
-External provider/scheme/mimetype plugins declare their own env vars in their own `.env.example` files; plurnk-service merges them at boot via the cascading-env convention.
+External plugins declare their own env vars in their own `.env.example`; service merges at boot via the cascade.
 
-The admin CLI (`bin/plurnk-service.js`) auto-derives flags from `.env.example`. Every `PLURNK_*` env var becomes a `--<kebab-cased-name>` flag (prefix stripped, lowercased, underscores → dashes). A comment immediately above the env line (no blank line between) becomes the flag's `-h` description. Vars without a comment are still accepted as flags but hidden from `-h`. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor-specific config belongs to the vendor's package, not to plurnk-service's namespace.
+**Admin CLI flag derivation.** `bin/plurnk-service.js` auto-derives flags from `.env.example`: every `PLURNK_*` becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). Comment immediately above (no blank line) becomes `-h` description. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor config belongs in the vendor's package namespace.
 
 ---
 
 ## §13 RPC Surface
 
-`plurnk-service` runs as a daemon — a long-lived process owning the engine, DB, providers, schemes, and mimetypes. Clients (TUI, CLI, neovim plugin, Telegram bot, web app, anything) connect over a network protocol and drive the agent through a self-describing RPC contract.
-
-This section defines the wire. Implementing a new client should require reading only §13 — no source diving, no protocol guessing.
+plurnk-service runs as a daemon. Clients (TUI/CLI/neovim/web/Telegram/etc.) drive it via self-describing RPC. This section is the wire — implementing a new client should require reading only §13.
 
 ### §13.1 Transport
 
-WebSocket via the `ws` npm package. One message per `ws.send`. UTF-8 JSON payloads. Single full-duplex connection per client.
+WebSocket (`ws` npm). One message per `ws.send`. UTF-8 JSON. One full-duplex connection per client. Bind: `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`).
 
-Configuration via §12:
-
-- `PLURNK_PORT` (default `3044`) — TCP port to bind.
-- `PLURNK_HOST` (default `127.0.0.1`) — bind address. Local-only by default; explicit operator action to expose beyond loopback.
-
-Out of scope for v0: authentication, TLS, multiplexing. Local-loopback + filesystem permissions are the access control. Network exposure gets its own design pass with auth.
+Out of scope for v0: auth, TLS, multiplexing. Local-loopback + filesystem permissions are the access control.
 
 ### §13.2 Protocol
 
-JSON-RPC 2.0 (https://www.jsonrpc.org/specification). Two message kinds:
+JSON-RPC 2.0. Two message kinds:
 
-- **Request:** `{ "jsonrpc": "2.0", "id": "...", "method": "...", "params": {...} }`. Server replies with a matching `id`.
-- **Notification:** `{ "jsonrpc": "2.0", "method": "...", "params": {...} }`. No `id`; no reply expected. Server-initiated for live events.
+- **Request:** `{ "jsonrpc": "2.0", "id": …, "method": …, "params": … }`. Server replies with matching `id`.
+- **Notification:** `{ "jsonrpc": "2.0", "method": …, "params": … }`. No `id`; server-initiated; no reply.
 
-Server responses are `{ "jsonrpc": "2.0", "id": "...", "result": {...} }` on success or `{ "jsonrpc": "2.0", "id": "...", "error": { "code": ..., "message": "...", "data": {...} } }` on failure.
-
-Wire envelope matches rummy's; clients written against rummy translate with cosmetic renames only.
+Success response: `{ "jsonrpc": "2.0", "id": …, "result": … }`. Failure: `{ "jsonrpc": "2.0", "id": …, "error": { "code": …, "message": …, "data": … } }`.
 
 ### §13.3 Method registration
-
-Every RPC method is registered on the daemon with metadata:
 
 ```ts
 registry.register("loop.run", {
     handler: async (params, ctx) => { /* ... */ },
-    description: "Run a model-driven loop with a prompt; streams log/entry notifications.",
+    description: "Run a model-driven loop with a prompt.",
     params: {
         prompt: "string — the user prompt for the loop",
         sessionId: "number? — defaults to current attached session",
@@ -760,17 +687,14 @@ registry.register("loop.run", {
 });
 ```
 
-Metadata fields:
-
-- `handler(params, ctx) -> Promise<result>` — the implementation.
-- `description: string` — one-line human description; surfaced by `discover`.
-- `params: Record<string, string>` — per-param descriptions; surfaced by `discover`. The string format is `"type — meaning"` with `?` suffix for optional types. Self-documenting, not enforced.
-- `requiresInit: boolean` — if true, server rejects this method until a session is attached.
-- `longRunning: boolean` — exempt from the RPC timeout (`PLURNK_RPC_TIMEOUT`). Use for methods that intentionally take many seconds (running a loop).
+- `description`: one-liner surfaced by `discover`.
+- `params`: `"type — meaning"` per param; `?` suffix = optional. Self-documenting, not enforced.
+- `requiresInit`: rejects until a session is attached.
+- `longRunning`: exempt from `PLURNK_RPC_TIMEOUT`.
 
 ### §13.4 Discovery
 
-The `discover` method returns the entire method + notification catalog:
+`discover` returns the catalog:
 
 ```json
 {
@@ -792,17 +716,15 @@ The `discover` method returns the entire method + notification catalog:
 }
 ```
 
-`capabilities` lists the registered plug-ins by `(kind, name)` so clients can show "what's available" without polling separate endpoints. A client connecting cold calls `discover` first, then renders its UI accordingly. No hardcoding of method names or capability lists in any client.
+`capabilities` lists registered plug-ins by `(kind, name)`. Cold clients call `discover` first. No hardcoded method names or capability lists in any client.
 
 ### §13.5 Core method set
-
-The minimum v0 surface. Methods are grouped by concern.
 
 **Liveness + introspection**
 
 | Method     | Params | Result | Notes |
 |------------|--------|--------|-------|
-| `ping`     | none   | `{}`   | Liveness. No init required. |
+| `ping`     | none   | `{}`   | No init required. |
 | `discover` | none   | catalog (§13.4) | No init required. |
 
 **Sessions**
@@ -816,7 +738,7 @@ The minimum v0 surface. Methods are grouped by concern.
 | `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
 | `session.set_persona`  | `persona: string \| null` | `{ persona }`  | Update the session-level persona. Null clears the override (falls through to PLURNK_PERSONA file). |
 
-If a client issues a method requiring init (`requiresInit: true`) without first calling `session.attach` or `session.create`, the daemon auto-creates the envelope on demand: session → run → client loop, all persisted normally. Auto-creation is a convenience for one-off invocations (Telegram quick-queries, neovim ad-hoc dispatches, `plurnk "prompt"` CLI shots); the records carry through the same way explicitly-created ones do. **Auto-created ≠ auto-deleted.** Records persist for the log's forensic value. If a client wants active cleanup, that's a future `session.delete` / `session.archive` endpoint, opt-in.
+**Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint.
 
 **Loops (model-driven)**
 
@@ -833,13 +755,13 @@ If a client issues a method requiring init (`requiresInit: true`) without first 
 | `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. |
 | `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. |
 
-**DSL operations (client-driven, mirror the grammar)**
+**DSL operations (client-driven, mirror grammar)**
 
-Per the **Speak in DSL, not plumbing** rule (AGENTS.md Standing Rules): RPC methods for client-driven ops construct DSL statements internally and dispatch through the same `Engine.dispatch` path the model uses. Param shapes are ergonomic (semantic names, not HEREDOC slot positions); the semantics ARE the DSL's.
+Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
 
-Each `op.*` call creates a turn in the connection's client loop (§13.7) with the constructed statement as a single action, dispatches it, fires a `log/entry` notification to attached clients of the session, returns the dispatch result.
+Each `op.*` call creates a turn in the connection's client loop (§13.7), dispatches, fires `log/entry`, returns the dispatch result.
 
-Naming follows the uniform principle: `target` is the URI the op acts on (the operand); `scope` for FIND (the search root); `source`/`destination` for COPY/MOVE; `recipient` for SEND (or null = broadcast); `cwd` for EXEC. `path` is never an RPC operand here — that word is reserved for *identity* throughout plurnk (the URI of *this thing*).
+Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` for COPY/MOVE; `recipient` for SEND (or null = broadcast); `cwd` for EXEC. `path` is reserved for *identity* — never an RPC operand.
 
 | Method        | Params                                                  | Notes |
 |---------------|---------------------------------------------------------|-------|
@@ -855,28 +777,23 @@ Naming follows the uniform principle: `target` is the URI the op acts on (the op
 | `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
 | `op.parse`    | `text: string`                                          | Convenience: daemon parses raw DSL text via the grammar, dispatches each statement as actions of one turn, returns `{ results: DispatchResult[] }`. |
 
-All `op.*` methods return `{ status: number, ...op-specific-extras }`. They are `requiresInit: true`. They are NOT `longRunning` (one dispatch per call; result returns when the engine returns).
+All `op.*` return `{ status, ...op-specific }`. All `requiresInit: true`. None `longRunning`.
 
-Future-reserved (post-v0):
-
-- `subscription.list` — list active streaming subscriptions (§7).
-- `subscription.cancel` — analog of `SEND[499]` over RPC, though `op.send({status: 499, recipient})` does the same thing today.
+Future: `subscription.list`, `subscription.cancel` (the latter is `op.send({status: 499, recipient})` today).
 
 ### §13.6 Notifications
 
-Server-initiated events streamed to the client over the same WebSocket. Critical for live waterfall rendering.
+Server-initiated events on the same WebSocket.
 
 | Notification       | Params                              | When fired |
 |--------------------|-------------------------------------|------------|
-| `log/entry`        | `{ entry: LogEntry }`               | Every time a `log_entries` row is written. |
-| `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | When a loop reaches a terminal status. |
-| `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Fired when dispatch pauses on a status=202 proposed entry. Carries the proposal payload + the loop's `flags` so a client connected to a server-YOLO loop can suppress its review UI. Client responds with `loop.resolve` (or ignores, in which case the daemon's `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
-| `session/created`  | `{ id, name, projectRoot, persona }` | When a session is created (any client's action; gives multi-client awareness). |
-| `stream/event`     | `{ entryId, channel, state, contentLength }` | When a channel's content grows or its state transitions. For clients rendering live; the model only sees state at turn boundaries. {§13.6-stream-event-on-channel-change} |
+| `log/entry`        | `{ entry: LogEntry }`               | Every `log_entries` write. |
+| `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | Loop reaches terminal status. |
+| `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so server-YOLO clients can suppress review UI. Client responds with `loop.resolve` (or `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
+| `session/created`  | `{ id, name, projectRoot, persona }` | Any client creates a session. |
+| `stream/event`     | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. {§13.6-stream-event-on-channel-change} |
 
-The `stream/event` payload deliberately carries metadata, NOT content. Clients that want the new content call `entry.read({target})` to fetch — this avoids large notification payloads and gives the client agency over whether to refresh. Sample-driven (notifications include `contentLength` so clients can dedupe / batch).
-
-Notifications are scoped to the connection's attached session — a client attached to session A does NOT receive `log/entry` notifications for actions on session B. (Cross-session observation is a future feature; v0 keeps the scope tight.)
+`stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. Notifications are session-scoped.
 
 ### §13.7 Connection lifecycle
 
@@ -907,13 +824,13 @@ Notifications are scoped to the connection's attached session — a client attac
    |   (daemon closes the client loop; session keeps)|
 ```
 
-The **client loop** is the envelope for client-origin actions. When a session is attached (explicit or auto-created), the daemon opens a loop in the session's current run (auto-creating the run too if absent) with `origin = "client"`. Every `op.dispatch` call creates a turn in that loop. On disconnect, the loop's `status` transitions to a closed terminal but the rows persist. Multiple connections to the same session each get their own client loop; they coexist.
+**Client loop.** Envelope for client-origin actions. Attached session → daemon opens loop in current run (auto-creating run if absent) with `origin = "client"`. Each `op.*` creates a turn in that loop. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client loop.
 
-`loop.run` creates a separate, normal loop (origin = "model") for the model-driven turn sequence. It coexists with the client loop in the same run.
+`loop.run` creates a separate loop with `origin = "model"` for the model-driven turn sequence. Coexists with client loop in same run.
 
 ### §13.8 Errors
 
-Standard JSON-RPC error codes:
+Standard JSON-RPC codes:
 
 | Code   | Meaning                       |
 |--------|-------------------------------|
@@ -923,60 +840,83 @@ Standard JSON-RPC error codes:
 | -32602 | Invalid params                |
 | -32603 | Internal error                |
 
-Plurnk-specific extensions in the `-32000` to `-32099` range:
+Plurnk-specific (`-32000` to `-32099`):
 
 | Code   | Meaning                                            |
 |--------|----------------------------------------------------|
-| -32000 | Not initialized (method requires session attach)   |
+| -32000 | Not initialized (requires session attach)          |
 | -32001 | Session not found                                  |
 | -32002 | Loop not found                                     |
-| -32003 | Entry not found (404 from the engine layer)        |
+| -32003 | Entry not found (engine 404)                       |
 | -32004 | Provider unavailable                               |
 | -32005 | Scheme unavailable                                 |
 | -32006 | Mimetype unavailable                               |
 | -32007 | Timeout                                            |
 
-Error responses MAY include `data: { ... }` with structured context (the path that was 404'd, the method that timed out, etc.) for client error rendering.
+Error responses MAY include `data: {…}` with structured context (404'd path, timed-out method, etc.).
 
 ### §13.9 Versioning
 
-Pre-interface-stabilization. The RPC surface evolves freely; clients track HEAD. No semver promises until we have an actual interface worth committing to.
+Pre-stabilization. Clients track HEAD. No semver until the interface is worth committing to.
 
 ---
 
 ## §14 Architectural decisions
 
-Each entry: the question, the answer, the rationale, the migration path if revisited.
+Each entry: question, answer, rationale, migration path.
 
 ### §14.1 Packet assembly: engine-direct, not filter-chain
 
-**Question.** Rummy assembles `<index>`, `<log>`, `<turn>`, `<system_commands>`, `<system_requirements>` via priority-ordered filter chains (`assembly.system` + `assembly.user`); plugins each filter for their data and append their section. Plurnk assembles `packet.system.index` directly in `Engine.#buildIndex` by querying visibility + entries + entry_channels and routing each channel's content through its mimetype handler; `packet.system.log` similarly via `Engine.#buildLog`. Both queries are engine-direct.
+**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk assembles directly in `Engine.#buildIndex` / `#buildLog`.
 
-**Decision.** v0 stays engine-direct. The engine reads the DB and constructs the packet. Plugin-driven assembly is out of v0 scope. {§14.1-engine-direct-assembly}
+**Decision.** Engine-direct. Plugin-driven assembly is out of scope. {§14.1-engine-direct-assembly}
 
-**Rationale.**
-- Plurnk's bundled extension set is small (3 entry-bearing schemes, 2 mimetypes, 1 provider). No current plugin wants to inject a packet section.
-- The channel + mimetype split already gives substantial extensibility: scheme registers channels, mimetype owns rendering. Visibility lattice owns *which* channels appear. A filter chain on top of that would be paying for indirection nothing currently exercises.
-- Rummy's pattern earns its keep through 25+ plugins each owning a tag. Plurnk's pattern earns its keep through schemes-as-URI-handlers + mimetypes-as-renderers. Different shapes; different consequences.
-- The engine-direct path is testable end-to-end against real visibility/render-time behavior. The filter-chain path requires testing the composition of plugins, which is a separate axis of complexity.
+**Rationale.** Channel + mimetype split already extends rendering; visibility lattice owns inclusion. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
 
-**Migration path if revisited.** If a future plugin needs to inject a packet section (e.g., a `<turn>` metadata table per rummy SPEC §packet_structure), the engine grows a single `packet.augment` filter hook called after `#buildIndex` returns. Plugins subscribe with a priority; each returns a `system` and/or `user` augmentation object that gets merged into the packet shape. This is additive — the engine-direct base case stays; plugins augment.
+**Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildIndex`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
 
-### §14.2 Budget unit: character count
+### §14.2 Tokenomics: real provider tokens, stored at write, summed at render
 
-**Question.** `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` is named for tokens; the engine passes it as a character-count budget to mimetype processing. Env var name and implementation disagree.
+**Question.** How does plurnk track token costs accurately enough for model SHOW/HIDE/compose decisions, without re-tokenizing every turn?
 
-**Decision.** Budget is character count. The env var name is a forward-naming placeholder for an eventual token unit; today it means characters. {§14.2-budget-is-characters-v0}
+**Decision.** Provider tokenizers authoritative; counts computed at write time and stored; render-time accounting is SQL `SUM` plus tokenization of a small set of wrapper strings. {§14.2-tokenomics-v0}
 
-**Rationale.** Mimetype handlers operate on strings. They have no tokenizer reference and shouldn't — tokenization is provider-bound (§2.3). Character-count is the tokenizer-independent budget that fits the handler's domain. Engine *could* post-tokenize the resulting preview for accounting (the provider's `countTokens` is available), but the budget passed *into* the handler is characters by design.
+Lattice:
 
-**Migration path if revisited.** Either rename the env var to reflect characters, or change the budget semantic to tokens by handing handlers a tokenizer reference (`preview(content, budget, countTokens?)`). The latter conflates concerns and isn't appealing.
+- **`provider.countTokens` is the source of truth.** No chars/DIVISOR approximation. Per-provider tokenizer (§2) is the foundation.
+- **Stored at write time.** `entry_channels.tokens` populated by `_entry-crud.ts` on INSERT/UPDATE. `log_entries.tokens` populated by `Engine.#writeLog`. Write helper IS the contract sister modules see.
+- **Render-time SUM.** `Engine.#buildIndex` adds per-scheme `SUM(tokens)`. Only wrapper strings re-tokenize each render — bounded.
+- **Hot model switch is a feature.** Session model change walks `entry_channels` + `log_entries` and recomputes against new tokenizer. One-time cost at switch boundary.
+- **Budget table self-reference via placeholder substitution.** Render with `{{tokenUsage}}`/`{{tokensFree}}`, measure, substitute. ±1–2 token drift accepted.
+- **Telemetry shape.** Per-scheme breakdown table in `packet.user.telemetry.budget` with `tokenCeiling`/`tokenUsage`/`tokensFree` headline; markdown table groups by scheme with indexed-count, archived-count, tokens.
+
+**Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT because its sync-only SQL function couldn't call provider tokenizers. plurnk's async `countTokens` is potentially expensive; pay once at write, never re-pay at render. Approximation can't ground SHOW/HIDE decisions — the model curating its own context only works if numbers are accurate.
+
+**Migration path.** If `countTokens` cost becomes prohibitive, retreat to chars/DIVISOR per provider, async-refined to real count when budget permits. Schema unchanged.
+
+### §14.3 Workspace identity, membership, disk co-location
+
+**Question.** How does plurnk represent the project a session works on? Where does file membership come from? Does writing an entry imply writing to disk?
+
+**Decision lattice.** {§14.3-workspace-phase-f}
+
+- **D1. Workspace identity lives on the session.** No `projects` table. `sessions.project_root TEXT` (nullable = headless). Constraints scoped via `session_constraints`. plurnk has no users/auth/multi-tenant; workspace = session.
+- **D2. No new `entries.scope` value.** Stays `∈ {'agent', 'session'}`.
+- **D3. Disk co-location optional.** `sessions.project_root` set → disk side-effects on accept; null → canonical entries land, no disk write (client owns materialization).
+- **D4. Membership without git: no fs-walk.** git present → ls-files + constraint overlay. git absent → `effect='add'` constraints only.
+- **D5. EMI is eager + relevance-bounded.** Fires at prompt-composition time; checks only entries the current run will include (`visibility.indexed=1`). Divergent → re-read disk + emit synthetic log entry.
+- **D6. Edit-on-untouched-file: disk-read-first.** EDIT targeting a member with no existing entry reads disk first to populate canonical baseline, then diffs. Prevents silent overwrite.
+- **D7. Constraint pattern matching via `node:path.matchesGlob`.** No dep. Helper wrapper for swap-out optionality.
+
+**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale previews without per-turn full-repo cost.
+
+**Migration path.** Tenancy / cross-session shared workspaces require a `workspaces` table joining sessions to workspace id, with constraints lifted off `session_constraints`. Disk co-location semantics unchanged.
 
 ---
 
 ## §15 Packet shape
 
-The canonical packet shape is defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`). Engine assembles in `Engine.#buildRequestPacket`; plugins do not augment in v0 (§14.1). This section describes plurnk-service's responsibilities under that contract — see grammar for the authoritative schema.
+Canonical shape defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`). Engine assembles in `Engine.#buildRequestPacket`; no plugin augmentation (§14.1). This section is plurnk-service's responsibilities under that contract.
 
 ```ts
 type Packet = {
@@ -992,40 +932,199 @@ type Packet = {
         tokens: number;
         prompt: string;
         telemetry: { budget: string; errors: object[] };   // §15.1
-        system_requirements: string;
+        system_requirements: string;                        // §15.2
     };
     assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
     assistantRaw: unknown;
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable entry, body channel, text/markdown). The corresponding log row renders as `* {"op":"EDIT","origin":"system","path":"log://<L>/1/1/EDIT","status":201,"target":"plurnk://prompt/<L>"}` — `path` is the log row's own URI, `target` is the plurnk entry that got written. At render time, the *current* loop's `plurnk://prompt/<loop_id>` entry is foisted out of `packet.system.index` and materialized in `packet.user.prompt` — one section, one mechanism, no duplicate content rendering. Previous loops' prompt entries remain in the index and are addressable for the model to READ or HIDE. {§15-current-prompt-foist}
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's entry is foisted out of `packet.system.index` into `packet.user.prompt` — no duplicate rendering. Previous loops' prompts remain in the index, addressable for READ/HIDE. {§15-current-prompt-foist}
 
 ### §15.1 user.telemetry — model-facing runtime telemetry
 
-The slot for telemetry the model MUST react to right now: budget pressure and last-turn failures that didn't produce an action-entry. Rendered prominently at the bottom of the user section so the model cannot ignore it. Errors here are transient — they appear on the turn AFTER the failure and clear once the model has seen them. The action-entries (`packet.system.log[]`) are the durable audit; `telemetry.errors[]` is the **alert**.
+Slot for telemetry the model MUST react to immediately. Rendered at the bottom of the user section. Errors are transient — appear on the turn AFTER the failure, clear once seen. `packet.system.log[]` is the durable audit; `telemetry.errors[]` is the **alert**.
 
-**Grammar contract (authoritative, plurnk-grammar 0.4.0):**
+**Grammar contract:**
 
-- `budget: string` — text/markdown. Renderer-provided summary of remaining context / cost / etc. Empty string when nothing to surface.
-- `errors: object[]` — element shape intentionally open at v0. Consumers populate as actionless-failure rendering needs solidify. Empty array when no errors to surface.
+- `budget: string` — text/markdown. Empty when nothing to surface.
+- `errors: object[]` — shape open at v0.
 
-**Plurnk-service rendering (v0):**
+**Plurnk-service rendering:**
 
-- `budget` is rendered as a short markdown line. Unit follows §14.2 (character count); the exact rendering is engine-internal and may evolve without a schema change.
-- `errors[]` carries telemetry from the previous turn's dispatch + rail evaluation. Each element has a required `kind` discriminator and a required `message` string (human-readable, model-actionable). Additional kind-specific fields are flat on the element — there is NO nested `detail` envelope; canonical-JSON serialization sorts keys for prefix-cache friendliness.
-- Wire format: one `* {canonical-JSON}` line per error under `# Plurnk System Errors`, in push order. Buffer drains on read — each error appears in exactly one packet. {§15.1-drain-on-read}
+- `budget` per §14.2: per-scheme breakdown table with `tokenCeiling`/`tokenUsage`/`tokensFree`.
+- `errors[]` from previous turn's dispatch + rail eval. Required: `kind` discriminator. Additional kind-specific fields are flat on the element — NO nested `detail`. Canonical-JSON serialization sorts keys for prefix-cache friendliness.
+- Wire: one `* {canonical-JSON}` line per error under `# Plurnk System Errors`, push order. Buffer drains on read. {§15.1-drain-on-read}
+- **No prose `message` field.** Errors carry structured facts. The `kind` is the alert; the named fields are the data. Guidance, advice, hints, and exhortation MUST NOT appear in telemetry. Letting the model infer what to do from facts (and the log) beats handing it instructions it will second-guess.
 
-**Kinds emitted by plurnk-service v0:**
+**Kinds emitted by plurnk-service:**
 
-| `kind` | Source | Required fields | Additional fields |
-|---|---|---|---|
-| `action_failure` | Log entry with `status_rx ≥ 400` from previous turn | `kind`, `message`, `coordinate` (`<L>/<T>/<S>`), `op`, `status` | `target` (URI or null) |
-| `no_ops` | Rail #41 — turn ended with zero ops | `kind`, `message` | — |
-| `strike` | Rail #38 — strike streak bumped (no_ops / recorded_failure / rail) | `kind`, `message`, `streak`, `maxStrikes`, `reason` | — |
-| `cycle` | Rail #39 — repeating turn fingerprint pattern detected | `kind`, `message`, `period`, `cycles` | — |
-| `sudden_death` | Rail #40 — entering the last `maxStrikes`-sized window before `maxTurns` | `kind`, `message`, `remaining` | — |
+| `kind` | Source | Required fields |
+|---|---|---|
+| `action_failure` | Log entry with `status_rx ≥ 400` from previous turn | `kind`, `coordinate` (`<L>/<T>/<S>`), `op`, `status`, `target` (URI or null). May carry scheme-emitted `error` (a terse fact, not guidance). |
+| `no_ops` | Rail #41 — turn ended with zero ops | `kind` |
+| `strike` | Rail #38 — strike streak bumped (no_ops / recorded_failure / rail) | `kind`, `streak`, `maxStrikes`, `reason` |
+| `cycle` | Rail #39 — repeating turn fingerprint pattern detected | `kind`, `period`, `cycles` |
+| `sudden_death` | Rail #40 — entering the last `maxStrikes`-sized window before `maxTurns` | `kind`, `remaining` |
+| `max_commands_exceeded` | Single emission exceeded `PLURNK_MAX_COMMANDS` cap; overflow ops dropped without dispatch | `kind`, `emitted`, `cap`, `dropped` |
 
-Action-bound failures (handler returned 4xx/5xx or threw) are mirrored as the `action_failure` kind on the next packet — same forced-confrontation pattern. Full detail stays queryable via `log://`. {§15.1-no-error-scheme}
+Action-bound failures (handler returned 4xx/5xx or threw) mirror as `action_failure` kind on the next packet. Full detail queryable via `log://`. {§15.1-no-error-scheme}
 
-**No `error://` scheme.** Actionless failures route to telemetry, not to a queryable scheme namespace.
+**No `error://` scheme.** Actionless failures route to telemetry, not a queryable scheme namespace.
+
+### §15.2 user.system_requirements — static per-turn rules
+
+Rendered at the END of the user packet under `# Plurnk System Requirements` — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`").
+
+**Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
+
+**Rationale:** the user's prompt is natural language ("Reply with just the number") and routinely conflicts with the grammar's operational contract. Without an explicit requirement block, the model obeys the prompt literally and never reaches for SEND. Requirements are the contract that wins those conflicts.
+
+---
+
+## §16 Matcher and `<L>` slicing
+
+Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-char classification (`//` xpath, `/` regex, `$` jsonpath, otherwise glob). `<L>`: line-navigable → by line, structured → by item.
+
+### §16.1 Matcher dispatch (delegated to `Mimetypes.query`)
+
+`matchAgainstContent` (exported from `@plurnk/plurnk-schemes`) is an adapter over `Mimetypes.query(input, expression)`. Framework parses leading prefix, resolves per-mimetype handler, returns `QueryMatch[]`. Adapter maps typed errors:
+
+| Framework error | HTTP status |
+|---|---|
+| `UnsupportedDialectError` | 415 |
+| `InvalidExpressionError` | 400 |
+| `QueryParseFailureError` | 203 (soft fallback: raw content as `text/markdown` with `reason`) |
+| Empty match array | 204 |
+| Match array | 200 |
+
+203 is HTTP-creative ("Non-Authoritative Information"). On parse failure, returns raw bytes as text primitive with `reason` so the model can fall back to regex/visual parsing or fix source. {§16.1-203-soft-fallback}
+
+Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with, `[Tt]odo*` char class) lives in framework's `BaseHandler`.
+
+### §16.2 Matcher result shape (uniform across dialects)
+
+Body: JSON array of `{line, matched, matching?}`. Empty → 204. Mimetype = `application/json` regardless of source dialect. Render verbatim (no `N:\t` — tree-navigable per §16.6).
+
+- `line` — 1-indexed source line.
+- `matched` — extracted value, polymorphic per dialect:
+  - **bare regex** → string (full match)
+  - **anon captures** → array `[c1, c2, …]`
+  - **named captures** → object `{name: v, …}`. Mixed anon+named uses positional keys `"1"`, `"2"` alongside names.
+  - **glob** → string (matching source line)
+  - **jsonpath** → JSON value at the path
+  - **xpath text/attr** → string
+  - **xpath node** → serialized XML
+- `matching` — per-instance discriminator. Present for jsonpath wildcards (bracket form like `$['users'][0]['name']`) and xpath multi-match (`(//user)[1]`). Omitted otherwise.
+
+| Dialect | Extracts | Natural use |
+|---|---|---|
+| regex `/pat/` | substring (or captures) | extract the value after X: |
+| glob `pat` | whole matching lines | show lines containing TODO |
+| jsonpath `$.path` | JSON values (parsed value for JSON-shaped mimetypes; bare-leaves outline for markdown/HTML/source) | get the host field / jump to Installation |
+| xpath `//sel` | XML nodes/text/attrs (text/html only) | get the h1 contents |
+
+### §16.3 `<L>` semantics by source mimetype
+
+**General**: sentinels `<0>` (before pos 1) and `<-1>` (after last) are EDIT insertion points; READ/COPY select empty. Other negatives in a single-position marker → 416. In a range, `M = -1` normalizes to "last" so `<1,-1>` is the whole content.
+
+**Line-navigable** (text/markdown, source code, csv, yaml/toml): indexes by line via `sliceLines`. Output mimetype = `text/markdown`.
+
+**JSON**: indexes by item via `sliceJsonItems`. Every JSON value becomes a list of top-level items:
+
+| Source | Items |
+|---|---|
+| Array `[a, b, c]` | array elements |
+| Object `{k1: v1, k2: v2}` | key-value pairs as single-key wrappers (insertion order) |
+| Scalar | the scalar itself (length-1 list) |
+
+`<L>` indexes 1-based. READ result always a JSON array. Output mimetype = `application/json` (preserves structure for compose).
+
+- `<N>` → `[items[N-1]]`
+- `<N,M>` → `items.slice(N-1, M)`
+- `<1,-1>` → whole top-level
+- `<0>` / `<-1>` → `[]` for READ
+- Out-of-range → 416; malformed JSON → 400
+
+**Killer composition.** `<<READ(log://N/M/K)<P>::READ` picks the P-th match from a prior matcher result — matcher rx is `application/json`, structural `<L>` selects the P-th element. {§16.3-compose-pattern}
+
+### §16.4 Structural EDIT on JSON
+
+When effective mimetype is `application/json`, EDIT dispatches through `applyJsonItemEdit`. Body shape rule (parse-then-discriminate):
+
+- Body parses as JSON array → items to splice
+- Body parses as non-array JSON → single item to splice
+- Empty body → delete the selection
+- Body fails JSON parse → 400 (path-extension declares intent; honor strictly)
+
+**Array source marker × body:**
+
+| Marker | Body | Effect |
+|---|---|---|
+| `<-1>` | `"d"` | append one |
+| `<-1>` | `["x","y"]` | append multiple |
+| `<-1>` | `[[1,2]]` | append inner array as one element (wrap-workaround) |
+| `<0>` | `"x"` | prepend |
+| `<N>` | `"X"` | replace position N |
+| `<N>` | `["X","Y"]` | replace position N, expanding |
+| `<N,M>` | `"X"` | range collapses to single item |
+| `<N,M>` | `[...]` | range replaced with array items |
+| `<N>` | (empty) | delete position N |
+| `<1,-1>` | (empty) | clear to `[]` |
+| `<-1>` / `<0>` | (empty) | no-op |
+
+**Object source** (items are kv-pairs): body items must be objects (multi-key body inserts multiple kv-pairs). Array body → 400.
+
+**Scalar source**: `<1>` replaces only. Grow markers (`<-1>`, `<0>`) and multi-item bodies → 400 (no implicit promotion scalar→array).
+
+### §16.5 Path-extension declares mimetype
+
+`resolveEntryMimetype` (exported from `@plurnk/plurnk-schemes`): pathname extension → `Mimetypes.detect({ ext })` (with `text/plain` normalized to `text/markdown` per the text-primitive rule §16.7); falls back to scheme manifest channel default when no extension.
+
+- `known://users.json` → `application/json` (extension wins)
+- `known://notes.md` → `text/markdown` (extension; matches default)
+- `known://config.yaml` → `application/yaml`
+- `known://users` (no suffix) → `text/markdown` (Known manifest default)
+
+Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype is stored in `entry_channels.mimetype` on write and drives `<L>` and matcher dispatch on read.
+
+### §16.6 Render rule (mimetype-driven)
+
+`packet-wire` log render branches on `isLineNavigableMimetype`:
+
+- **Line-navigable** (text/markdown, text/plain, csv, source code, yaml, toml) → `N:\t` line-number prefix per line
+- **Tree-navigable** (application/json, application/xml, text/html, +json/+xml suffixes) → verbatim body (no `N:\t` — outer line numbers would collide with structural navigation like jsonpath/xpath)
+
+The `N:\t` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
+
+### §16.7 Mimetype primitive: text/markdown
+
+Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdown`:
+
+- `<L>` slice on line-navigable source → `text/markdown`
+- File scheme extension fallback → `text/markdown`
+- `Mimetypes.detect()` returning `text/plain` → normalized via `normalizeAutoTextMimetype`
+
+`text/plain` survives only where a scheme explicitly declares it (exec stdout/stderr — subprocess byte-streams aren't markdown). The model never auto-encounters `text/plain` from defaults.
+
+### §16.8 EDIT response surfaces unified diff
+
+Every EDIT@200/201 carries `diff` (unified diff format) on the result. Both `_entry-ops.editSessionEntry` and `File.edit` produce it. `packet-wire` log render emits the diff under the entry's fence so the model sees what changed without a follow-up READ — wrong-marker mistakes (e.g., `<1>` when `<-1>` was meant) become visible on the next turn. Omitted on no-op edits (content unchanged). {§16.8-edit-diff}
+
+### §16.9 Op-level invariants and resolved ambiguities
+
+Carried from the contract walk; durable.
+
+- **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
+- **Binary entries** → 415 across the board for READ/EDIT/SHOW/HIDE.
+- **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
+- **COPY `<L>`** → source range, symmetric with READ `<L>`.
+- **READ rx** prefixes each line with `N:\t` per §16.6. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
+- **FIND body matcher** applies to pathname. xpath/jsonpath content matchers dispatch through `Mimetypes.query`.
+- **SHOW/HIDE** has a single-entry path (exact pathname, no slots) and a multi-entry path (any of body/signal/`<L>` present). Multi-entry path treats target as pathname glob scope, applies body matcher to pathnames (regex/glob), filters by `signal` tags, paginates with `<L>`, and flips visibility on the resulting set.
+- **SEND[410]** with `#fragment` deletes that channel only; without fragment, deletes the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
+- **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
+
+### §16.10 Directed-SEND status code policy
+
+Status codes outside 410/499 on directed SEND return 501 from entry schemes. plurnk.md doesn't prescribe semantics for arbitrary HTTP status codes on directed sends; each scheme decides. 501 is the default; new interpretations land as concrete use cases arise.

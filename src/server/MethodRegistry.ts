@@ -4,10 +4,10 @@
 
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
-import type { Provider } from "../core/ProviderRegistry.ts";
+import type { Provider } from "@plurnk/plurnk-providers";
 import type { ClientEnvelope } from "./envelope.ts";
 
-export type { Provider } from "../core/ProviderRegistry.ts";
+export type { Provider } from "@plurnk/plurnk-providers";
 
 export type NotifyTarget = "this" | "all" | { sessionId: number };
 

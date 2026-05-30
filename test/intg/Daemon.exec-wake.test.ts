@@ -10,7 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Mock from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 const execDsl = (command: string): string =>
@@ -59,8 +59,8 @@ test("wake-on-completion: dormant run → daemon opens a new loop with the summa
             const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.closeStatus, 200);
-            assert.match(wake.summary, /^exec:\/\/r-[a-f0-9]+ completed \(exit 0\)/,
-                "summary references the auto-generated exec://r-<uuid> path");
+            assert.match(wake.summary, /^exec:\/\/\d+\/\d+\/\d+\/EXEC completed \(exit 0\)/,
+                "summary references the coordinate-based exec://<loop>/<turn>/<seq>/EXEC path");
             assert.equal(wake.wakeAction, "opened-loop", "daemon opened a new loop because the original ended first");
             assert.ok(typeof wake.wakeLoopId === "number", "wakeLoopId is reported");
 

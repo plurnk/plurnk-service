@@ -62,10 +62,10 @@ export const discoverPlugins = async (nodeModulesDir: string): Promise<Discovere
 
 // Dynamic-import a discovered plugin's default export and instantiate it.
 // Default export MUST be a constructable class with a zero-arg constructor.
-// Identity-match enforcement per MIMETYPES.md §2 / SCHEMES.md §2: the
-// instance's claimed identity MUST match the package manifest's `plurnk.name`.
+// Identity-match enforcement per plurnk-mimetypes / plurnk-schemes manifests:
+// the instance's claimed identity MUST match the package manifest's `plurnk.name`.
 // Providers skip this check — manifest.name is a vendor identifier; the
-// instance's `model` is per-config (PROVIDERS.md §3.1).
+// instance's `model` is per-config (plurnk-providers#1, identity getters).
 export const loadPlugin = async (plugin: DiscoveredPlugin): Promise<unknown> => {
     const mod = await import(plugin.packageName);
     const PluginClass = mod.default;
@@ -94,7 +94,7 @@ export const assertIdentityMatch = (plugin: DiscoveredPlugin, instance: unknown)
     }
 
     if (plugin.manifest.kind === "scheme") {
-        // SCHEMES.md §2: schemes carry a static `manifest` on the class.
+        // Schemes carry a static `manifest` on the class (plurnk-schemes contract).
         // Transitional: bundled schemes don't yet have it (task #32 wires
         // manifest registration). When the static manifest is absent, accept
         // the package manifest name as the source of truth and trust the caller.
@@ -108,6 +108,6 @@ export const assertIdentityMatch = (plugin: DiscoveredPlugin, instance: unknown)
         return;
     }
 
-    // Providers: no identity-match at this layer. PROVIDERS.md §3.1 separates
-    // package manifest `name` (vendor family) from instance `model` (config).
+    // Providers: no identity-match at this layer. Package manifest `name` is
+    // the vendor family; instance `model` is per-config (plurnk-providers#1).
 };

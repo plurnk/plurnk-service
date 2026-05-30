@@ -5,8 +5,9 @@
 import { readFile } from "node:fs/promises";
 import type MethodRegistry from "../MethodRegistry.ts";
 import { PATHS } from "../../index.ts";
-import { parseAliasesFromEnv, instantiateProvider } from "../../core/ProviderRegistry.ts";
-import type { Provider } from "../../core/ProviderRegistry.ts";
+import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
+import { instantiateProvider } from "../../core/ProviderInstantiate.ts";
+import type { Provider } from "@plurnk/plurnk-providers";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
 // Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate

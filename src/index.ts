@@ -27,8 +27,8 @@ export { default as Plurnk } from "./schemes/Plurnk.ts";
 export { default as Exec } from "./schemes/Exec.ts";
 export { default as File } from "./schemes/File.ts";
 
-export { default as Mock } from "./providers/Mock.ts";
-export type { MockResponse, MockAssistant, ChatMessage } from "./providers/Mock.ts";
+export { Mock } from "@plurnk/plurnk-providers";
+export type { MockResponse, MockAssistant, ChatMessage } from "@plurnk/plurnk-providers";
 
 export type {
     EditResult,
@@ -60,6 +60,16 @@ const resolveDefaultPersona = (): string => {
     return resolve(PACKAGE_ROOT, "persona.md");
 };
 
+// Same shape as resolveDefaultPersona: `PLURNK_REQUIREMENTS` env (absolute
+// or relative-to-package-root) overrides the in-package `requirements.md`.
+const resolveDefaultRequirements = (): string => {
+    const env = process.env.PLURNK_REQUIREMENTS;
+    if (typeof env === "string" && env.length > 0) {
+        return resolve(PACKAGE_ROOT, env);
+    }
+    return resolve(PACKAGE_ROOT, "requirements.md");
+};
+
 export const PATHS = {
     migrations: resolve(PACKAGE_ROOT, "migrations"),
     instructionsSystem: resolve(GRAMMAR_ROOT, "plurnk.md"),
@@ -68,4 +78,8 @@ export const PATHS = {
     // RPC overrides on loop.run / session.attach / session.create populate
     // the three persistence layers; this file is the final fallback.
     defaultPersona: resolveDefaultPersona(),
+    // packet.user.system_requirements DEFAULT. Static contract appended at
+    // the end of the user packet — names rules the model has to honor that
+    // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").
+    defaultRequirements: resolveDefaultRequirements(),
 };

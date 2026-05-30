@@ -5,11 +5,11 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
-import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../core/line-marker.ts";
-import { matchAgainstContent } from "../core/matcher.ts";
+import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "@plurnk/plurnk-schemes";
+import { matchAgainstContent } from "@plurnk/plurnk-schemes";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null };
+type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
 // diff: unified diff string surfaced in EDIT response so the model sees
 // what changed without a follow-up READ (M.12 — symmetric with
 // _entry-ops.EditResult.diff). For File scheme the diff is already
@@ -126,9 +126,15 @@ export default class File {
             }
         }
         if (statement.body !== null) {
-            const matched = matchAgainstContent(statement.body, workingContent, mimetype, workingStart ?? 1);
+            if (ctx.mimetypes === undefined) {
+                return { status: 500, content: null, mimetype };
+            }
+            const matched = await matchAgainstContent(statement.body, workingContent, mimetype, ctx.mimetypes, workingStart ?? 1);
             if (matched.status === 204) {
                 return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+            }
+            if (matched.status === 203) {
+                return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
             }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
             return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
@@ -179,7 +185,7 @@ export default class File {
             return { status: 403, error: "path escapes workspace root" };
         }
 
-        // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2).
+        // 415 on binary entries (SPEC.md §16.9).
         // Existing file's mimetype takes precedence; for new files, derive
         // from the proposed path so we don't accept binary writes via edit.
         const mimetype = await detectFileMimetype(canonical, ctx);

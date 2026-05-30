@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Daemon from "../src/server/Daemon.ts";
 import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
-import { loadActiveProvider, resolveActiveAlias } from "../src/core/ProviderRegistry.ts";
+import { loadActiveProvider } from "../src/core/ProviderInstantiate.ts";
+import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 
 const die = (code, message) => {
     process.stderr.write(`${message}\n`);

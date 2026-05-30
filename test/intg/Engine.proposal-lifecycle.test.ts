@@ -1,4 +1,4 @@
-// Proposal lifecycle (task #42, AGENTS.md §Phase E). When a scheme returns
+// Proposal lifecycle (SPEC.md §0.5 + §13.5). When a scheme returns
 // status 202, the engine writes a state='proposed' log entry and pauses
 // dispatch until Engine.resolveProposal feeds back a decision. These tests
 // exercise the pause/resume machinery + the log-render visibility filter

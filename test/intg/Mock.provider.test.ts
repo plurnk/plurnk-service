@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import Mock from "../../src/providers/Mock.ts";
-import type { MockResponse } from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import type { MockResponse } from "@plurnk/plurnk-providers";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null, lineMarker: null,

@@ -13,7 +13,7 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
-import { isLineNavigableMimetype } from "./mimetype-binary.ts";
+import { isLineNavigableMimetype } from "@plurnk/plurnk-schemes";
 
 // Render packet.system → system message content (markdown string).
 //   {system_definition verbatim}
@@ -38,7 +38,9 @@ export const renderSystemContent = (system) => {
 //   # Plurnk System User Prompt
 //   # Plurnk System Budget         (token budget table — only when present)
 //   # Plurnk System Errors         (telemetry errors — only when present)
-//   # Plurnk System Requirements   (per-turn rules incl. Turn N/M marker)
+//   # Plurnk System Requirements   (static per-turn rules — only when present)
+// Requirements renders LAST so the contract the model has to honor is the
+// most recent thing in the user message — closest to the assistant turn.
 export const renderUserContent = (user) => {
     const parts = [];
     if (typeof user.prompt === "string" && user.prompt.length > 0) {
@@ -92,6 +94,19 @@ const canonicalJson = (obj) => {
     return JSON.stringify(sorted);
 };
 
+// Wrap a body in heredoc fences. Leading `\n` always (separates the
+// opening fence from the first body character — necessary because
+// numbered bodies start with `1:\t…` which would otherwise collide
+// visually with the fence's closing `:`). Trailing `\n` only when the
+// body doesn't already end with one — otherwise you get a doubled
+// newline that renders as a blank line before the closing fence, which
+// reads as "the content has a trailing blank line" when actually it
+// doesn't. The body's own whitespace decides the shape.
+const wrapHeredocBody = (fence, body) => {
+    const sep = body.endsWith("\n") ? "" : "\n";
+    return `<<${fence}:\n${body}${sep}:${fence}`;
+};
+
 // Heredoc block for one channel of one entry. Fence is `URI#channel`
 // (plurnk-grammar-native form) so model emissions and entry projections
 // share one syntax. When `channel` is null/empty the fence is path-only —
@@ -100,8 +115,61 @@ const canonicalJson = (obj) => {
 // Body is line-numbered.
 const renderHeredoc = (uri, channel, body) => {
     const fence = channel ? `${uri}#${channel}` : uri;
-    const numbered = numberLines(body);
-    return `<<${fence}:\n${numbered}\n:${fence}`;
+    return wrapHeredocBody(fence, numberLines(body));
+};
+
+// Re-render a plurnk statement (from log_entries.tx) as the heredoc form
+// the model would have emitted. Used by the log render so the model sees
+// its own ops in its own native syntax — what it wrote, mirrored back.
+//
+// Faithfulness over cleverness: render the parts as recorded. `target.raw`
+// preserves exactly what the model wrote (URL with fragment, bare path,
+// etc.) instead of round-tripping through scheme/pathname/fragment fields.
+// Returns null when tx isn't a parseable PlurnkStatement (callers fall
+// back to the meta line alone).
+//
+// Signal renders to `[…]`:
+//   - array of strings (tags) → `[tag1,tag2]`
+//   - number (status code, e.g. SEND[200]) → `[200]`
+//   - string (runtime, e.g. EXEC[python]) → `[python]`
+//   - null/missing → omitted
+// All plurnk statements share the same syntactic frame; signal type
+// varies by op but renders uniformly.
+const renderStatementHeredoc = (tx) => {
+    if (tx === null || typeof tx !== "object" || typeof tx.op !== "string" || tx.op.length === 0) return null;
+    const op = tx.op;
+    const suffix = typeof tx.suffix === "string" ? tx.suffix : "";
+    let signalStr = "";
+    const signal = tx.signal;
+    if (Array.isArray(signal)) {
+        const tags = signal.filter((t) => typeof t === "string");
+        if (tags.length > 0) signalStr = `[${tags.join(",")}]`;
+    } else if (typeof signal === "number") {
+        signalStr = `[${signal}]`;
+    } else if (typeof signal === "string" && signal.length > 0) {
+        signalStr = `[${signal}]`;
+    }
+    let targetStr = "";
+    const target = tx.target;
+    if (target !== null && typeof target === "object" && typeof target.raw === "string") {
+        targetStr = `(${target.raw})`;
+    }
+    let markerStr = "";
+    const lm = tx.lineMarker;
+    if (lm !== null && typeof lm === "object" && typeof lm.first === "number") {
+        markerStr = typeof lm.last === "number" ? `<${lm.first},${lm.last}>` : `<${lm.first}>`;
+    }
+    let body;
+    if (typeof tx.body === "string") body = tx.body;
+    else if (tx.body !== null && typeof tx.body === "object" && typeof tx.body.raw === "string") body = tx.body.raw;
+    else body = "";
+    // Character-perfect: no padding around body. The body string IS
+    // whatever the model wrote between the colons, including any leading
+    // or trailing whitespace it chose. Adding `\n` here would inflate
+    // single-line emissions into multi-line and nudge the model toward
+    // verbose forms — and it would violate the grammar's "body content
+    // is character-perfect" guarantee on the way back.
+    return `<<${op}${suffix}${signalStr}${targetStr}${markerStr}:${body}:${op}${suffix}`;
 };
 
 // Render a (scheme, pathname) tuple as the URI the model should SEE.
@@ -118,6 +186,11 @@ const renderModelUri = (scheme, pathname) => {
 // heredoc blocks. meta describes the entry; nested `channels` carries
 // per-channel mimetype/tokens so the model doesn't have to READ to
 // learn the shape of a channel's content.
+//
+// Empty channels are omitted entirely (no meta entry, no body block) —
+// an empty stderr is an infohazard: the model has to read it and infer
+// "this is intentionally blank." Absence carries the same information
+// with zero tokens spent.
 const renderIndexEntries = (entries) =>
     entries.map((e) => {
         const uri = renderModelUri(e.scheme, e.pathname);
@@ -128,7 +201,7 @@ const renderIndexEntries = (entries) =>
         const blocks = [];
         for (const [channelName, ch] of Object.entries(e.channels ?? {})) {
             const content = ch?.content;
-            if (typeof content !== "string") continue;
+            if (typeof content !== "string" || content.length === 0) continue;
             const channelInfo = {};
             if (typeof ch.mimetype === "string") channelInfo.mimetype = ch.mimetype;
             if (typeof ch.tokens === "number") channelInfo.tokens = ch.tokens;
@@ -153,12 +226,15 @@ const renderIndexEntries = (entries) =>
 // the next packet's user.telemetry.errors[] per SPEC §15.1. (Forward:
 // meta will gain tokensBefore/After + linesBefore/After to convey
 // change scope without carrying the body content.)
-// Per-entry render: one meta JSON line + optionally a body block for
-// ops whose response IS the content the model needs to see. READ is
-// the canonical case — its rx carries the file/entry content the
-// model asked for, and the model can't act on what it can't see. The
-// body block uses the heredoc fence form so it parses the same as
-// index entries (model already knows the shape).
+//
+// Per-entry render: one meta JSON line plus a body block that the model
+// can read to know what it did. Two body cases:
+//   1. READ@200 with content → render rx.content under the target fence.
+//      The model asked for content; show it the content. (Matcher is in
+//      meta.matcher, count is in meta.matches.)
+//   2. Every other op → re-emit tx as a heredoc in the model's native
+//      syntax. The model wrote this; mirror it back so the log is a true
+//      record of its actions instead of a row of opaque status codes.
 const renderLogEntries = (entries) =>
     entries.map((e) => {
         const meta = {};
@@ -193,16 +269,6 @@ const renderLogEntries = (entries) =>
         // READ@200: expose the response body. READ@204 (successfully empty —
         // 0 matcher hits, sentinel slice, or empty source) has no body to
         // render; the meta line carries the signal via `matches` / status code.
-        // EDIT@200/201: surface the unified diff so the model sees what
-        // changed without an explicit follow-up READ. Catches wrong-marker
-        // mistakes on the next turn (M.12).
-        if (op === "EDIT" && (e.status === 200 || e.status === 201)) {
-            const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
-            if (rx !== null && typeof rx === "object" && typeof rx.diff === "string" && rx.diff.length > 0) {
-                const fence = target ?? `log://${coordinate}`;
-                return `${metaLine}\n<<${fence}:\n${rx.diff}\n:${fence}`;
-            }
-        }
         if (op === "READ" && e.status === 200) {
             const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
             if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
@@ -212,16 +278,23 @@ const renderLogEntries = (entries) =>
                 // navigable (JSON, XML, HTML) render verbatim — line
                 // numbers in the wrapper would collide with structural
                 // navigation (jsonpath/xpath) used on these formats.
-                // Classifier is consumer-side in this repo (see AGENTS.md
-                // "Matcher return semantics rework" / plurnk-grammar#17).
+                // Classifier is consumer-side in this repo (SPEC.md §16.6).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
                 if (isLineNavigableMimetype(mimetype)) {
                     const start = typeof rx.startLine === "number" ? rx.startLine : 1;
-                    return `${metaLine}\n<<${fence}:\n${numberLines(rx.content, start)}\n:${fence}`;
+                    return `${metaLine}\n${wrapHeredocBody(fence, numberLines(rx.content, start))}`;
                 }
-                return `${metaLine}\n<<${fence}:\n${rx.content}\n:${fence}`;
+                return `${metaLine}\n${wrapHeredocBody(fence, rx.content)}`;
             }
         }
+        // Every other op: re-emit the model's statement. EDIT, EXEC, SEND,
+        // COPY, MOVE, FIND, SHOW, HIDE — each gets its native heredoc form
+        // back. Without this the log row is a status code with no record
+        // of what the model actually wrote, and the model has to back into
+        // its own actions by inference (see reasoning.md trace from the
+        // pre-fix count-files run).
+        const heredoc = renderStatementHeredoc(e.tx);
+        if (heredoc !== null) return `${metaLine}\n${heredoc}`;
         return metaLine;
     }).join("\n");
 
@@ -231,9 +304,28 @@ const renderActionTarget = (target) => {
     return rendered.length > 0 ? rendered : null;
 };
 
-// Render TelemetryError[] → bullet list. v0 schema is open per Packet.json
-// ("Inner shapes intentionally open at v0; consumers populate as needs
-// solidify"), so this just emits each error as a JSON line until the
-// shape settles.
+// Render TelemetryEvent[] → meta line per event, optionally followed by
+// an N:\t-prefixed snippet block when the event carries `snippet` (the
+// convention plurnk-service uses for content-offset positions — model
+// sees its own offending bytes alongside the error, not an abstract
+// message it can't trace).
+//
+// Snippet renders verbatim — already N:\t-prefixed at production time
+// (Engine.#extractSnippet). The fence is `error://<line>` to give the
+// model a stable URI shape it can ignore or reference; the `error://`
+// scheme isn't writable, it just identifies "this block is locator
+// context, not addressable content."
+//
+// `snippet` is stripped from the meta JSON so the snippet appears once,
+// in the body block, not also as a quoted string in the meta.
 const renderTelemetryErrors = (errors) =>
-    errors.map((e) => `* ${canonicalJson(e)}`).join("\n");
+    errors.map((e) => {
+        const snippet = typeof e.snippet === "string" ? e.snippet : null;
+        const meta = { ...e };
+        if (snippet !== null) delete meta.snippet;
+        const metaLine = `* ${canonicalJson(meta)}`;
+        if (snippet === null || snippet.length === 0) return metaLine;
+        const line = typeof e.position?.line === "number" ? e.position.line : 0;
+        const fence = `error://${line}`;
+        return `${metaLine}\n${wrapHeredocBody(fence, snippet)}`;
+    }).join("\n");

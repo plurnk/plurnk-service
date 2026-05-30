@@ -84,9 +84,9 @@ test("jsonpath: $.users[*].name wildcard extracts multiple values with `matching
         const rows = JSON.parse(r.content ?? "") as Array<{ matched: unknown; matching?: string }>;
         assert.equal(rows.length, 2);
         assert.deepEqual(rows.map((r) => r.matched), ["Alice", "Bob"]);
-        // Wildcard paths should resolve in `matching`.
-        assert.equal(rows[0].matching, "$.users[0].name");
-        assert.equal(rows[1].matching, "$.users[1].name");
+        // Wildcard paths resolve in `matching` (jsonpath-plus bracket form).
+        assert.equal(rows[0].matching, "$['users'][0]['name']");
+        assert.equal(rows[1].matching, "$['users'][1]['name']");
     } finally { await db.close(); }
 });
 
@@ -139,10 +139,11 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath on a non-JSON mimetype (text/markdown) → 415", async () => {
-    // Mimetype-mismatch gate already lives in matcher.ts ahead of the
-    // sibling-pending 501; this test passes today and should continue
-    // passing after the sibling lands.
+test("jsonpath on text/markdown applies against the heading outline (no headings → 204)", async () => {
+    // plurnk-mimetypes 0.6.0: jsonpath on non-JSON mimetypes operates against
+    // the bare-leaves outline (e.g. markdown heading tree). A plain-text
+    // markdown body has an empty outline, so `$.field` resolves to no
+    // matches → 204. No 415 — outline jsonpath is well-defined for markdown.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/notes", "not actually json");
@@ -150,7 +151,30 @@ test("jsonpath on a non-JSON mimetype (text/markdown) → 415", async () => {
             readStmt(urlPath("known", "/notes"), { dialect: "jsonpath", raw: "$.field" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
-        assert.equal(r.status, 415);
+        assert.equal(r.status, 204);
+        assert.equal(r.matches, 0);
+    } finally { await db.close(); }
+});
+
+test("jsonpath on text/markdown picks heading nodes from the outline", async () => {
+    // plurnk-mimetypes 0.6.0: the outline shape is bare-leaves nested by
+    // structural depth. For markdown, headings ARE the structure — the model
+    // can use `$['Installation']` etc. to jump straight to a section line.
+    const { db, sessionId, runId, mimetypes } = await setup();
+    try {
+        await seedJson(db, sessionId, runId, mimetypes, "/doc.md",
+            "# Intro\n\nopening\n\n# Installation\n\nrun npm install\n\n# Usage\n\nhello world\n");
+        const r = await new Known().read(
+            readStmt(urlPath("known", "/doc.md"), { dialect: "jsonpath", raw: "$.Installation" } as MatcherBody),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.equal(r.status, 200);
+        assert.equal(r.mimetype, "application/json");
+        const rows = JSON.parse(r.content ?? "") as Array<{ line: number; matched: unknown }>;
+        assert.equal(rows.length, 1);
+        // Leaf is the heading's source line; the bare-leaves outline collapses
+        // a section with no sub-headings to its top line.
+        assert.ok(rows[0].line >= 1);
     } finally { await db.close(); }
 });
 

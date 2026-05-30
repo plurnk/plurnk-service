@@ -75,6 +75,21 @@ test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501
     } finally { await db.close(); }
 });
 
+// SPEC.md §16.10 — directed-SEND status code policy. Entry schemes interpret
+// 410 (Gone → delete) and 499 (Client Closed Request → cancel subscription).
+// Every other status code returns 501 by default. New per-scheme overrides
+// land when concrete use cases arise; the default stays 501.
+for (const status of [201, 204, 304, 400, 404, 418, 422, 500, 503]) {
+    test(`[§3.5-entry-schemes-501-on-non-410] SEND[${status}](known://x) returns 501 (default policy)`, async () => {
+        const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+        try {
+            await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
+            const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(status, urlPath("known", "x")));
+            assert.equal(r.status, 501, `SEND[${status}] should default to 501`);
+        } finally { await db.close(); }
+    });
+}
+
 test("SEND[410](unknown://x) deletes unknown entry", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {

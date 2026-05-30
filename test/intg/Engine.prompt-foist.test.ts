@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Mock from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";

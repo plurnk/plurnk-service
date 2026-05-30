@@ -138,3 +138,69 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
         assert.equal(log?.fragment, "History");
     } finally { await db.close(); }
 });
+
+// Suffix invariance (SPEC.md §16 — opening/closing tag suffix is disambiguation
+// only). Per plurnk.md: `<<EDITouter(...):...:EDITouter` is the same statement
+// as `<<EDIT(...):...:EDIT` except the suffix string itself. Verifying so
+// downstream code can rely on it without case analysis on `statement.suffix`.
+
+const stripVolatile = (stmt: PlurnkStatement): object => {
+    // `suffix` and `position` differ across input strings by construction;
+    // strip both so deep-equal asserts the shape-invariance the contract
+    // actually claims.
+    const { suffix: _suffix, position: _position, ...rest } = stmt as PlurnkStatement & { suffix: string; position: object };
+    return rest;
+};
+
+test("parser: opening/closing tag suffix preserves statement AST (EDIT)", () => {
+    const noSuffix = parseOne("<<EDIT[france,europe](known://countries/france/capital):Paris:EDIT");
+    const withSuffix = parseOne("<<EDITouter[france,europe](known://countries/france/capital):Paris:EDITouter");
+    assert.equal(noSuffix.op, "EDIT");
+    assert.equal(withSuffix.op, "EDIT");
+    assert.equal((withSuffix as { suffix: string }).suffix, "outer");
+    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+});
+
+test("parser: opening/closing tag suffix preserves statement AST (READ with matcher)", () => {
+    const noSuffix = parseOne("<<READ(known://users.json):$.name:READ");
+    const withSuffix = parseOne("<<READa(known://users.json):$.name:READa");
+    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+});
+
+test("parser: opening/closing tag suffix preserves statement AST (SEND directed)", () => {
+    const noSuffix = parseOne("<<SEND[200](known://result):Paris:SEND");
+    const withSuffix = parseOne("<<SENDouter[200](known://result):Paris:SENDouter");
+    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+});
+
+test("parser: opening/closing tag suffix preserves statement AST (EXEC)", () => {
+    const noSuffix = parseOne("<<EXEC:uname -r:EXEC");
+    const withSuffix = parseOne("<<EXECouter:uname -r:EXECouter");
+    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+});
+
+test("parser: nested same-op uses suffix to disambiguate fence boundaries", () => {
+    // The fence-suffix contract is meant to enable nesting: an outer EDIT
+    // body that contains literal text including `<<EDIT(...):...:EDIT` must
+    // not be parsed as a nested statement. The outer EDITouter fence carries
+    // through and the inner text stays in the body verbatim.
+    const input = "<<EDITouter(known://demo):quoted: <<EDIT(known://inner):hello:EDIT\n:EDITouter";
+    const stmts = parseAll(input);
+    assert.equal(stmts.length, 1, "exactly one statement parsed (the outer); inner is text inside the body");
+    const outer = stmts[0] as EditStatement & { suffix: string };
+    assert.equal(outer.op, "EDIT");
+    assert.equal(outer.suffix, "outer");
+    assert.match(outer.body as string, /<<EDIT\(known:\/\/inner\):hello:EDIT/);
+});
+
+test("parser: mismatched suffix surfaces a parse-error item", () => {
+    // The suffix is a fence-matching token. Mismatched suffixes don't get
+    // silently absorbed: the parser emits an `error` item in result.items
+    // alongside any best-effort statement extraction. Consumers can decide
+    // whether to honor the best-effort statement or reject the whole input
+    // when an error is present.
+    const mismatched = "<<EDITouter(known://x):body:EDITother";
+    const result = PlurnkParser.parse(mismatched);
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.ok(errors.length >= 1, "mismatched suffix yields at least one error item");
+});

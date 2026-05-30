@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { parseAliasesFromEnv, resolveActiveAlias } from "../../core/ProviderRegistry.ts";
+import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 
 export const register = (registry: MethodRegistry): void => {
     registry.registerMethod("providers.list", {

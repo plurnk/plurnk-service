@@ -2,13 +2,25 @@ import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+
+// Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
+// Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*`
+// siblings and registers their handlers — same lookup the runtime uses
+// in production. Tests exercise the same dispatch surface real callers do.
+// Exported for tests that build PlurnkSchemeContext directly (File.read,
+// SEND, Engine tests) instead of going through `makeSchemeCtx`.
+export const DEFAULT_MIMETYPES = new Mimetypes({
+    tokenize: async (text) => Math.ceil(text.length / 4),
+});
 
 // Test helper: build a PlurnkSchemeContext with sensible defaults. Override
 // any field via the argument. Tests that don't exercise db ops can omit it
 // (File.read, etc); the unset slot is a tripwire — any unexpected db access
-// crashes with a clear TypeError.
+// crashes with a clear TypeError. `mimetypes` is provided by default so
+// matcher-using paths don't 500 on missing dispatch capability.
 export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): PlurnkSchemeContext => ({
     db: undefined as unknown as Db,
     sessionId: 0,
@@ -17,6 +29,7 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     turnId: 0,
     writer: "model",
     signal: undefined,
+    mimetypes: DEFAULT_MIMETYPES,
     ...overrides,
 });
 

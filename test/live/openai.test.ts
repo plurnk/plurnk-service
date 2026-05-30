@@ -5,8 +5,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { loadActiveProvider, resolveActiveAlias } from "../../src/core/ProviderRegistry.ts";
-import type { Provider } from "../../src/core/ProviderRegistry.ts";
+import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
+import type { Provider } from "@plurnk/plurnk-providers";
 import { PATHS } from "../../src/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 

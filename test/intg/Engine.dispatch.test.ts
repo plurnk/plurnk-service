@@ -191,8 +191,8 @@ test("Engine.dispatch: origin field captured in log", async () => {
     } finally { await db.close(); }
 });
 
-// SCHEMES.md §8 {§8-writable-by-enforcement}: writer must be in target scheme's
-// manifest.writableBy or dispatch returns 403 without invoking the handler.
+// SPEC §3.6: writer must be in target scheme's manifest.writableBy or dispatch
+// returns 403 without invoking the handler.
 
 test("Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['system'])", async () => {
     const { db, engine, env } = await setup();
@@ -274,8 +274,8 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     } finally { await db.close(); }
 });
 
-// SCHEMES.md §7.1 / §8: action-entry-as-outcome — scheme-handler exceptions
-// finalize the action-entry at 500, not bubble up.
+// SPEC §3.6 / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
+// exceptions finalize the action-entry at 500, not bubble up.
 
 test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
     const db = await openMigrated();

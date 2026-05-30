@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Mock from "../../src/providers/Mock.ts";
-import type { MockResponse } from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 

@@ -1,28 +1,36 @@
 // Render-time mimetype invocation in packet assembly. SPEC §4 + §5.1 + §5.6.
 // Engine.#buildIndex pulls (run, entry, channel) tuples with indexed=1 and
-// passes each channel's stored content through Mimetypes.process(). With an
-// empty discovery (no handlers installed), the framework falls back to
-// fitContent — content under budget returns verbatim, which is what these
-// tests assert against.
+// passes each channel's stored content through Mimetypes.process(). The
+// framework owns the preview pipeline: detect → handler → validate →
+// extract symbols → fit to budget. Per plurnk-mimetypes 0.6.0 (sibling #2),
+// there is no raw-content fallback — handlers without symbols produce an
+// empty preview, and unknown mimetypes (no handler discovered) produce
+// `{ ok: false, preview: "" }`. The engine writes whatever `result.preview`
+// the framework returns into the channel's content slot, no transformation.
+//
+// These tests assert the engine's plumbing, not the framework's preview
+// rendering — the auto-discovering Mimetypes from _helpers.ts loads the
+// real per-mimetype siblings (text-markdown, text-plain, etc.) so the
+// content seen at the channel slot is the production-shape preview.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Mock from "../../src/providers/Mock.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
-// Empty-discovery Mimetypes: no handlers registered, all preview rendering
-// flows through fitContent (raw-content fallback). Content under budget
-// returns verbatim. Tests installing a real handler (via dep + npm install)
-// would exercise the full extract → symbols → preview pipeline.
-const makeMimetypes = (): Mimetypes => new Mimetypes({
-    discovery: { registry: emptyRegistry(), handlers: new Map() },
-    tokenize: async (text) => Math.ceil(text.length / 4),
-});
+// Pre-compute the framework's preview for a given (content, hint) pair so
+// tests can assert engine plumbing without hard-coding handler-specific
+// output shapes. Whatever Mimetypes.process emits IS the expected channel
+// content — the engine's contract is "plumb result.preview through unchanged."
+const expectedPreview = async (content: string, hint: string): Promise<string> => {
+    const r = await DEFAULT_MIMETYPES.process({ content, hint }, { budget: 256 });
+    return r.preview;
+};
 
 const sendStmt = (status: number): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null,
@@ -76,7 +84,7 @@ test("[§4-handlers-fire-render-time] Engine invokes mimetype.preview when assem
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const body = "# Title\n\nSome paragraph.\n\n## Sub\n\nMore.";
         await seedEntry(db, {
@@ -90,9 +98,10 @@ test("[§4-handlers-fire-render-time] Engine invokes mimetype.preview when assem
         assert.equal(packet.system.index.length, 1);
         const entry = packet.system.index[0];
         assert.equal(entry.pathname, "x");
-        // Empty-discovery Mimetypes routes through fitContent; small body
-        // returns verbatim under the 256-token budget.
-        assert.equal(entry.channels.body.content, body);
+        // Engine plumbs Mimetypes.process(...).preview into the channel slot.
+        // For text/markdown, the framework's preview is the heading outline
+        // (not the raw body) — assert against the framework's own output.
+        assert.equal(entry.channels.body.content, await expectedPreview(body, "text/markdown"));
         assert.equal(entry.channels.body.mimetype, "text/markdown");
     } finally { await db.close(); }
 });
@@ -101,7 +110,7 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const md = "# Heading\n\nbody text";
         const plain = "raw\nplain\ntext";
@@ -121,8 +130,13 @@ test("[§5.1-preview-is-handler-output] each visible channel renders through its
         const packet = await readPacket(db, result.turnId);
         const entry = packet.system.index[0];
 
-        assert.equal(entry.channels.body.content, md);
-        assert.equal(entry.channels.summary.content, plain);
+        // Per-channel dispatch: each channel's mimetype routes to its own
+        // handler. text/markdown produces a heading outline; text/plain has
+        // no symbols and produces an empty preview.
+        assert.equal(entry.channels.body.content, await expectedPreview(md, "text/markdown"));
+        assert.equal(entry.channels.summary.content, await expectedPreview(plain, "text/plain"));
+        assert.equal(entry.channels.body.mimetype, "text/markdown");
+        assert.equal(entry.channels.summary.mimetype, "text/plain");
     } finally { await db.close(); }
 });
 
@@ -130,7 +144,7 @@ test("[§5.2-render-filters-by-indexed] hidden channels (indexed=0) do not appea
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "visible",
@@ -154,7 +168,7 @@ test("[§5.6-engine-does-not-branch-on-state] active (mid-stream) channels rende
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "stream",
@@ -167,7 +181,15 @@ test("[§5.6-engine-does-not-branch-on-state] active (mid-stream) channels rende
         const packet = await readPacket(db, result.turnId);
 
         assert.equal(packet.system.index.length, 1);
-        assert.equal(packet.system.index[0].channels.body.content, "chunk1\nchunk2\n");
+        // Engine doesn't branch on channel.state — active and static channels
+        // both flow through the same Mimetypes.process call. text/plain has
+        // no symbol extraction, so the rendered preview is empty regardless
+        // of state. What matters here is that the channel is rendered at all,
+        // not what shape its preview takes.
+        assert.equal(
+            packet.system.index[0].channels.body.content,
+            await expectedPreview("chunk1\nchunk2\n", "text/plain"),
+        );
     } finally { await db.close(); }
 });
 
@@ -175,7 +197,7 @@ test("empty index when run has no visible channels", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const result = await runTurnOnce(db, env, engine);
         const packet = await readPacket(db, result.turnId);
@@ -196,9 +218,13 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
         const calls: string[] = [];
         const StubHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
         class TestHandler extends StubHandler {
-            override async preview(content: string, _budget: number): Promise<string> {
-                calls.push(content);
-                return `[stub] ${content.slice(0, 10)}`;
+            override async preview(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<import("@plurnk/plurnk-mimetypes").Preview> {
+                calls.push(typeof content === "string" ? content : "");
+                return { kind: "symbols", symbols: [{
+                    name: `[stub] ${(typeof content === "string" ? content : "").slice(0, 10)}`,
+                    kind: "module",
+                    line: 1, endLine: 1,
+                }] };
             }
         }
         const mimetypes = new Mimetypes({
@@ -224,15 +250,28 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
 
         assert.equal(calls.length, 1, "handler preview invoked exactly once at render");
         assert.equal(calls[0], "hello-world-and-beyond");
-        assert.equal(packet.system.index[0].channels.body.content, "[stub] hello-worl");
+        // Framework renders the returned SymbolPreview into a tree-shaped
+        // string: `<kind> <name> [<line>]`. The stub returned one symbol
+        // {kind:"module", name:"[stub] hello-worl", line:1} → rendered as
+        // "module [stub] hello-worl [1]". Asserts the stub's preview reached
+        // the channel; the exact render format is the framework's job.
+        const rendered = packet.system.index[0].channels.body.content;
+        assert.ok(rendered.includes("[stub] hello-worl"), `expected stub marker in: ${rendered}`);
+        assert.ok(rendered.includes("[1]"), `expected line marker in: ${rendered}`);
     } finally { await db.close(); }
 });
 
-test("[§4-handlers-fire-render-time] unknown mimetype falls back to verbatim content (no handler crash)", async () => {
+test("[§4-handlers-fire-render-time] unknown mimetype produces empty preview (no handler crash)", async () => {
+    // plurnk-mimetypes 0.6.0 dropped the raw-content fitContent fallback
+    // (sibling #2). When no handler is registered for a mimetype,
+    // Mimetypes.process returns `{ ok: false, preview: "" }` — the engine
+    // plumbs that empty string into the channel content slot. The mimetype
+    // and pathname survive the trip, so the channel is still rendered, just
+    // with no preview material. No crash, no exception.
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "weird",
@@ -242,7 +281,7 @@ test("[§4-handlers-fire-render-time] unknown mimetype falls back to verbatim co
         const result = await runTurnOnce(db, env, engine);
         const packet = await readPacket(db, result.turnId);
 
-        assert.equal(packet.system.index[0].channels.body.content, "weird-bytes");
+        assert.equal(packet.system.index[0].channels.body.content, "");
         assert.equal(packet.system.index[0].channels.body.mimetype, "application/x-unregistered");
     } finally { await db.close(); }
 });
@@ -251,7 +290,7 @@ test("index entries carry tags from entry_tags", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: makeMimetypes() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const entryId = await seedEntry(db, {
             sessionId: env.sessionId, runId: env.runId, scheme: "known", pathname: "tagged",

@@ -5,7 +5,7 @@ import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -32,7 +32,7 @@ const setup = async () => {
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, "test prompt");
     const turnId = await insertTurn(db, loopId, 1, 200);
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { db, engine, sessionId, runId, loopId, turnId };
 };
 

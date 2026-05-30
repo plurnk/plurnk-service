@@ -118,6 +118,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     Packet:          { kind: "skip", reason: "embedded in turns.packet JSON column" },
+    TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.user.telemetry.events[] JSON" },
     Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
 };
 

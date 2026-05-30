@@ -1,23 +1,21 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
-import { createPatch } from "diff";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../core/mimetype-binary.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../core/line-marker.ts";
-import { matchAgainstContent } from "../core/matcher.ts";
-import { resolveEntryMimetype } from "../core/path-mimetype.ts";
+import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "@plurnk/plurnk-schemes";
+import { matchAgainstContent } from "@plurnk/plurnk-schemes";
+import { resolveEntryMimetype } from "@plurnk/plurnk-schemes";
 
 // Shared free functions for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
-// diff (unified diff format) — surfaces the change so the model can see
-// what just happened without a follow-up READ. Catches "wrong marker"
-// mistakes on the next turn (the M.12 safety net we identified during the
-// structural-EDIT design discussion). Present on status 200/201 when
-// content actually changed; omitted otherwise.
-export type EditResult = { status: number; entryId: number | null; channel: string | null; diff?: string };
+// The model sees its EDIT echoed back as heredoc form via packet-wire's
+// log render (which re-emits the source EditStatement from log_entries.tx),
+// not via a rx-side diff. Same syntax both directions — the most honest
+// signal for the model to reason about its own state changes.
+export type EditResult = { status: number; entryId: number | null; channel: string | null };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -25,7 +23,9 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // matches = count of matcher hits when body matcher was used; null when
 // no matcher in the statement. Surfaced in the log meta so the model
 // distinguishes "0 matches" from "empty content."
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null };
+// reason — surfaced on 203 dialect-fallback so the model sees why the
+// structured parse failed and got raw content instead.
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 export type ShowHideResult = { status: number };
 
 const pathnameOf = (statement: { target: EditStatement["target"] }): string => {
@@ -72,7 +72,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
     const channelManifestDefault = channels[targetChannel];
     const effectiveMimetype = await resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
-    // 415 on binary entries (per AGENTS.md "Resolved ambiguities" §2).
+    // 415 on binary entries (SPEC.md §16.9).
     if (existing !== undefined) {
         const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
             session_id: sessionId, scheme, pathname, channel: targetChannel,
@@ -135,16 +135,7 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         }
     }
 
-    // M.12 diff: surface what actually changed so model sees the result
-    // of its EDIT without a follow-up READ. Skip if content is identical
-    // (no-op edit). Path-format string is just the entry's URI for the
-    // model's correlation; consumers (digest, intg) parse the unified
-    // diff body.
-    const diff = originalContent !== newContent
-        ? createPatch(`${scheme}://${pathname}`, originalContent, newContent, "current", "proposed")
-        : undefined;
-
-    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, diff };
+    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
 };
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
@@ -204,15 +195,19 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     }
 
     if (statement.body !== null) {
-        const matched = matchAgainstContent(statement.body, workingContent, row.mimetype, workingStart ?? 1);
+        if (ctx.mimetypes === undefined) {
+            return { status: 500, content: null, mimetype: row.mimetype, channel: targetChannel };
+        }
+        const matched = await matchAgainstContent(statement.body, workingContent, row.mimetype, ctx.mimetypes, workingStart ?? 1);
         if (matched.status === 204) {
             return { status: 204, content: "", mimetype: "application/json", channel: targetChannel, startLine: null, matches: 0 };
         }
+        if (matched.status === 203) {
+            // Dialect-parse-failure fallback: raw source as text/markdown,
+            // reason field surfaces why the structured parse failed.
+            return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", channel: targetChannel, startLine: 1, reason: matched.reason };
+        }
         if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        // Matcher result body is a pretty-printed JSON array of per-match
-        // rows {line, matched, matching?}; mimetype is JSON regardless of
-        // source. startLine=null because line info is denormalized into
-        // each row (no parallel array needed).
         return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", channel: targetChannel, startLine: null, matches: matched.matches };
     }
 
