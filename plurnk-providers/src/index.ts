@@ -1,5 +1,6 @@
 export type {
     ChatMessage,
+    FinishReason,
     Provider,
     ProviderAlias,
     ProviderAssistant,

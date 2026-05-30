@@ -40,6 +40,14 @@ test("parseAliasesFromEnv: tri-level value with multiple slashes preserves model
     assert.equal(alias.model, "anthropic/claude/3.5");
 });
 
+test("parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
+    const env = {
+        PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus",
+        PLURNK_MODEL_OPUS: "anthropic/claude-opus-latest",
+    } as NodeJS.ProcessEnv;
+    assert.throws(() => parseAliasesFromEnv(env), /Duplicate provider alias "opus"/);
+});
+
 test("resolveActiveAlias: returns null when PLURNK_MODEL unset", () => {
     const env = { PLURNK_MODEL_gemma: "openai/macher.gguf" } as NodeJS.ProcessEnv;
     assert.equal(resolveActiveAlias(env), null);

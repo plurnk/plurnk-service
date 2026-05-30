@@ -12,6 +12,7 @@ import type { ProviderAlias } from "./types.ts";
 
 export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): ProviderAlias[] => {
     const out: ProviderAlias[] = [];
+    const seen = new Set<string>();
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || value.length === 0) continue;
         if (!key.startsWith("PLURNK_MODEL_")) continue;
@@ -19,11 +20,12 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
         if (aliasRaw.length === 0) continue;
         const slash = value.indexOf("/");
         if (slash <= 0) continue;
-        out.push({
-            alias: aliasRaw.toLowerCase(),
-            provider: value.slice(0, slash),
-            model: value.slice(slash + 1),
-        });
+        const alias = aliasRaw.toLowerCase();
+        // Aliases are case-folded, so PLURNK_MODEL_opus and PLURNK_MODEL_OPUS
+        // collide. Surface the ambiguity rather than silently picking one.
+        if (seen.has(alias)) throw new Error(`Duplicate provider alias "${alias}": multiple PLURNK_MODEL_* keys case-fold to the same alias. Rename one.`);
+        seen.add(alias);
+        out.push({ alias, provider: value.slice(0, slash), model: value.slice(slash + 1) });
     }
     return out;
 };

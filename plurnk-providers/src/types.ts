@@ -14,11 +14,15 @@ export interface ProviderUsage {
     readonly total: number;
 }
 
+// Closed set per SPEC §2. Relay/aggregator providers MUST normalize wire
+// values back to one of these at the provider boundary.
+export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
+
 export interface ProviderAssistant {
     readonly content: string;
     readonly reasoning: string | null;
     readonly usage: ProviderUsage;
-    readonly finishReason: string | null;
+    readonly finishReason: FinishReason;
     readonly model: string;
 }
 

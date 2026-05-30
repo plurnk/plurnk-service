@@ -6,13 +6,13 @@
 // hatch — that's an intg-only convenience.
 
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { ChatMessage, Provider, ProviderAssistant, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, Provider, ProviderAssistant, ProviderUsage } from "./types.ts";
 
 export type MockAssistant = {
     content: string;
     reasoning: string | null;
     usage?: ProviderUsage;
-    finishReason?: string | null;
+    finishReason?: FinishReason;
     model?: string;
     // Pre-parsed ops — intg-only escape hatch. Production providers
     // never include this field.
@@ -50,7 +50,10 @@ export default class Mock implements Provider {
     // Mock is free.
     costFor(_usage: ProviderUsage): number { return 0; }
 
-    async generate(_: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
+    async generate({ signal }: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
+        // Honor abort before consuming the queue — an aborted call makes no
+        // "wire call" and must not exhaust a queued response (SPEC §10.8).
+        signal?.throwIfAborted();
         const next = this.#queue.shift();
         if (next === undefined) throw new Error("Mock provider exhausted: no more queued responses");
         const a = next.assistant;
