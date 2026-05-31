@@ -9,10 +9,11 @@ Framework + contract for `@plurnk/plurnk-execs-*` runtime executor packages. Con
 
 ## Exports
 
-- `SpawnArgs`, `RuntimeResolver` — types.
-- `KNOWN_RUNTIMES` — read-only set of v0 hardcoded runtime tags.
-- `isKnownRuntime(runtime)` — predicate.
-- `resolveRuntime(runtime, command)` — runtime tag + command → `SpawnArgs` for `node:child_process.spawn`.
+- `BaseExecutor` — abstract base a `@plurnk/plurnk-execs-*` sibling subclasses: declares its output channels and implements `run(args) → ExecResult`.
+- `discover(options?)` — scans `node_modules/@plurnk/` for `plurnk.kind === "exec"` packages and builds the runtime-tag registry (fail-hard on tag collision).
+- `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions` — contract types.
+- `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — local mirror of grammar's telemetry envelope (the `emit` sink's payload).
+- `resolveRuntime(runtime, command)`, `isKnownRuntime(runtime)`, `KNOWN_RUNTIMES`, `SpawnArgs`, `RuntimeResolver` — subprocess-family helper for the consumer's legacy spawn path (§4).
 
 ## Tests
 
