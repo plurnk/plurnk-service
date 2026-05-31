@@ -7,6 +7,7 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "@plurnk/plurnk-schemes";
+import type { TelemetryEvent } from "@plurnk/plurnk-schemes";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -35,4 +36,10 @@ export interface PlurnkSchemeContext {
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
     readonly mimetypes?: Mimetypes;
+    // Push a TelemetryEvent into the loop's telemetry buffer. Closes over
+    // sessionId + loopId so the scheme just provides the event payload.
+    // Wired by Engine to #pushTelemetry → fans out to the next packet's
+    // user.telemetry.errors[] AND the live `telemetry/event` client
+    // notification. SPEC §15.1.
+    readonly pushTelemetry?: (event: TelemetryEvent) => void;
 }

@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
 import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
-import { isKnownRuntime, resolveRuntime } from "@plurnk/plurnk-execs";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import { isKnownRuntime, SubprocessExecutor } from "@plurnk/plurnk-execs";
+import type { ChannelState } from "@plurnk/plurnk-execs";
+import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
 import type { ReadResult, ShowHideResult } from "./_entry-ops.ts";
@@ -23,10 +23,14 @@ interface ExecAttrs {
     pathname: string;       // auto-generated: r-<uuid8>; entry lives at exec://<pathname>
 }
 
-interface SpawnOutcome {
-    exitCode: number;
-    aborted: boolean;
-}
+// Single SubprocessExecutor instance handles every subprocess runtime
+// (`sh`/`bash`/`node`/`python`/`python3`/...). Per the discovery-driven
+// model (plurnk-execs#1), specific runtimes will be served by sibling
+// executor packages (`plurnk-execs-search` for non-subprocess work,
+// dedicated subprocess siblings for runtime-specific configuration).
+// Until that registry exists service-side, the universal SubprocessExecutor
+// from the framework covers every KNOWN_RUNTIME the resolver handles.
+const subprocessExecutor = new SubprocessExecutor({ runtime: "subprocess", glyph: "🐚" });
 
 // Per plurnk.md, EXEC's target slot is `cwd`. ParsedPath there means a
 // bare local path or file:// URL — both decode to a filesystem directory.
@@ -38,53 +42,6 @@ const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
         return target.pathname;
     }
     return null;
-};
-
-const streamShellCommand = async (
-    runtime: string,
-    command: string,
-    cwd: string | null,
-    db: Db,
-    streamEventNotify: PlurnkSchemeContext["streamEventNotify"],
-    entryId: number,
-    signal: AbortSignal,
-): Promise<SpawnOutcome> => {
-    const { cmd, args, useShell } = resolveRuntime(runtime, command);
-    return new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn(cmd, args, {
-            shell: useShell,
-            signal,
-            cwd: cwd ?? undefined,
-        });
-        const pending: Promise<void>[] = [];
-        child.stdout.on("data", (chunk: Buffer) => {
-            pending.push(appendToChannel(db, {
-                entryId, channel: "stdout", chunk: chunk.toString("utf8"), notify: streamEventNotify,
-            }));
-        });
-        child.stderr.on("data", (chunk: Buffer) => {
-            pending.push(appendToChannel(db, {
-                entryId, channel: "stderr", chunk: chunk.toString("utf8"), notify: streamEventNotify,
-            }));
-        });
-        child.on("error", (err) => {
-            if ((err as NodeJS.ErrnoException).code === "ABORT_ERR") {
-                Promise.all(pending).then(() => {
-                    resolvePromise({ exitCode: -1, aborted: true });
-                }).catch(rejectPromise);
-                return;
-            }
-            rejectPromise(err);
-        });
-        child.on("close", (code, killedBySignal) => {
-            Promise.all(pending).then(() => {
-                resolvePromise({
-                    exitCode: code ?? -1,
-                    aborted: killedBySignal !== null,
-                });
-            }).catch(rejectPromise);
-        });
-    });
 };
 
 export default class Exec {
@@ -172,13 +129,19 @@ export default class Exec {
             return { status: 500, outcome: "missing_pathname" };
         }
 
-        const seed: EntryData = {
-            channels: {
-                stdout: { content: "", mimetype: "text/stream", state: "active" },
-                stderr: { content: "", mimetype: "text/stream", state: "active" },
-            },
-            tags: [],
-        };
+        // Seed channels from the executor's declared topology (Q1 (b)
+        // in plurnk-service#174 — executor declares, scheme honors).
+        // SubprocessExecutor declares stdout + stderr; future executors
+        // may declare different shapes (search → results, etc.).
+        const seedChannels: EntryData["channels"] = {};
+        for (const [name, decl] of Object.entries(subprocessExecutor.channels)) {
+            seedChannels[name] = {
+                content: "",
+                mimetype: decl.mimetype,
+                state: decl.defaultState ?? "active",
+            };
+        }
+        const seed: EntryData = { channels: seedChannels, tags: [] };
         const { entryId } = await writeEntry(pathname, seed, ctx, "exec");
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
@@ -194,11 +157,8 @@ export default class Exec {
         }
         this.#activeAborts.set(subscriptionId, controller);
 
-        const tail = this.#runSpawn({
-            runtime, command, cwd, db: ctx.db,
-            streamEventNotify: ctx.streamEventNotify,
-            wakeRunNotify: ctx.wakeRunNotify,
-            sessionId: ctx.sessionId, runId: ctx.runId, pathname,
+        const tail = this.#runExecutor({
+            runtime, command, cwd, ctx, pathname,
             entryId, subscriptionId, signal: controller.signal,
         });
         this.#activeSpawns.set(subscriptionId, tail);
@@ -206,37 +166,53 @@ export default class Exec {
         return { status: 200, outcome: "started" };
     }
 
-    async #runSpawn(opts: {
-        runtime: string; command: string; cwd: string | null; db: Db;
-        streamEventNotify: PlurnkSchemeContext["streamEventNotify"];
-        wakeRunNotify: PlurnkSchemeContext["wakeRunNotify"];
-        sessionId: number; runId: number; pathname: string;
-        entryId: number; subscriptionId: number; signal: AbortSignal;
+    // Bridge the executor's sink-style contract (write/setState/emit)
+    // onto plurnk-service's storage primitives (appendToChannel,
+    // setChannelState, ctx.pushTelemetry). Per plurnk-service#174 Q3,
+    // executor TelemetryEvents flow through the same engine path as
+    // grammar parse_errors — emit → buffer → next packet + live notify.
+    //
+    // write() and setState() callbacks must run in emission order:
+    // appendToChannel reads channel state AFTER the append commits, so
+    // a setState("closed") that races a prior write() can flip the
+    // notify's reported state to "closed" before the chunk event fires
+    // as "active." Chain through a single promise queue to serialize.
+    async #runExecutor(opts: {
+        runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
+        pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
     }): Promise<void> {
-        const { runtime, command, cwd, db, streamEventNotify, wakeRunNotify,
-            sessionId, runId, pathname, entryId, subscriptionId, signal } = opts;
+        const { runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal } = opts;
+        const db = ctx.db;
+        let queue: Promise<void> = Promise.resolve();
+        const enqueue = (op: () => Promise<void>): void => {
+            queue = queue.then(op, op);
+        };
         let closeStatus = 500;
         let exitLabel = "spawn_failed";
         let stdoutLength = 0;
         let stderrLength = 0;
         try {
-            let outcome: SpawnOutcome;
-            try {
-                outcome = await streamShellCommand(runtime, command, cwd, db, streamEventNotify, entryId, signal);
-            } catch (err) {
-                await setChannelState(db, { entryId, channel: "stdout", state: "errored", notify: streamEventNotify });
-                await setChannelState(db, { entryId, channel: "stderr", state: "errored", notify: streamEventNotify });
-                await closeSubscription(db, { subscriptionId, status: 500 });
-                console.error("exec spawn_failed:", err instanceof Error ? err.message : String(err));
-                closeStatus = 500;
-                exitLabel = "spawn_failed";
-                return;
-            }
-            closeStatus = outcome.aborted ? 499 : outcome.exitCode === 0 ? 200 : 500;
-            exitLabel = outcome.aborted ? "aborted" : `exit ${outcome.exitCode}`;
-            const terminalState = outcome.exitCode === 0 && !outcome.aborted ? "closed" : "errored";
-            await setChannelState(db, { entryId, channel: "stdout", state: terminalState, notify: streamEventNotify });
-            await setChannelState(db, { entryId, channel: "stderr", state: terminalState, notify: streamEventNotify });
+            const result = await subprocessExecutor.run({
+                runtime, command, cwd, signal,
+                write: (channel, chunk) => enqueue(() => appendToChannel(db, {
+                    entryId, channel, chunk, notify: ctx.streamEventNotify,
+                })),
+                setState: (channel, state: ChannelState) => enqueue(() => setChannelState(db, {
+                    entryId, channel, state, notify: ctx.streamEventNotify,
+                })),
+                emit: (event) => {
+                    ctx.pushTelemetry?.(event);
+                },
+            });
+            // Drain the queue so the subscription doesn't close before
+            // final chunk events / state transitions have committed.
+            await queue;
+
+            const exitCode = result.exitCode ?? -1;
+            closeStatus = result.status;
+            exitLabel = closeStatus === 499 ? "aborted"
+                : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
+                : `exit ${exitCode}`;
             await closeSubscription(db, { subscriptionId, status: closeStatus });
 
             const stdoutMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
@@ -247,9 +223,10 @@ export default class Exec {
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            if (wakeRunNotify !== undefined) {
-                wakeRunNotify({
-                    sessionId, runId, entryId, subscriptionId, closeStatus,
+            if (ctx.wakeRunNotify !== undefined) {
+                ctx.wakeRunNotify({
+                    sessionId: ctx.sessionId, runId: ctx.runId,
+                    entryId, subscriptionId, closeStatus,
                     scheme: "exec",
                     summary: `exec://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                 });

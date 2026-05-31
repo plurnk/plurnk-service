@@ -1059,6 +1059,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             mimetypes: this.#mimetypes,
+            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -1165,7 +1166,8 @@ export default class Engine {
                 db: this.#db, sessionId, runId, loopId, turnId,
                 writer: "model", signal: this.#loopAborts.get(loopId)?.signal,
                 streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
+                wakeRunNotify: this.#wakeRunNotify,
+                pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
             };
             const applyResult = await handler.applyResolution({
                 attrs: (originalResult.attrs ?? {}) as object,
@@ -1257,6 +1259,7 @@ export default class Engine {
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
+            pushTelemetry: (event) => this.#pushTelemetry(sessionRow.session_id, loopId, event),
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
