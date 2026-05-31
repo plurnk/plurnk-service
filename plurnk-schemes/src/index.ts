@@ -44,4 +44,5 @@ export type {
     ProposalResult,
     SchemeResult,
     SchemeResultBase,
+    TelemetryEvent,
 } from "./results.ts";
