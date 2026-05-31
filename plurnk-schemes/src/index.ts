@@ -29,3 +29,19 @@ export { resolveEntryMimetype } from "./path-mimetype.ts";
 
 export { matchAgainstContent } from "./matcher.ts";
 export type { MatchResult } from "./matcher.ts";
+
+export {
+    isEntryResult,
+    isErrorStatus,
+    isPassthroughResult,
+    isProposalResult,
+    logCoordinate,
+    schemeError,
+} from "./results.ts";
+export type {
+    EntryResult,
+    PassthroughResult,
+    ProposalResult,
+    SchemeResult,
+    SchemeResultBase,
+} from "./results.ts";
