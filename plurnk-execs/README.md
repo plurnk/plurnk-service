@@ -10,6 +10,7 @@ Framework + contract for `@plurnk/plurnk-execs-*` runtime executor packages. Con
 ## Exports
 
 - `BaseExecutor` — abstract base a `@plurnk/plurnk-execs-*` sibling subclasses: declares its output channels and implements `run(args) → ExecResult`.
+- `SubprocessExecutor` — concrete `BaseExecutor` for subprocess runtimes (sh/node/python): spawns via `resolveRuntime`, streams stdout/stderr, honors cancellation, reports exit code. Siblings subclass it.
 - `discover(options?)` — scans `node_modules/@plurnk/` for `plurnk.kind === "exec"` packages and builds the runtime-tag registry (fail-hard on tag collision).
 - `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions` — contract types.
 - `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — local mirror of grammar's telemetry envelope (the `emit` sink's payload).

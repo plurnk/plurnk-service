@@ -1,5 +1,6 @@
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
+export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export { discover } from "./discover.ts";
 
 // Runtime-tag → spawn-args helper (subprocess family; legacy scheme path)

@@ -6,7 +6,7 @@ Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors tha
 
 A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.
 
-The subprocess runtime-tag → spawn-args mapping (`resolveRuntime` / `SpawnArgs`, §4) predates this contract and is retained: plurnk-service's exec scheme still consumes it on its legacy subprocess path. The migration of subprocess runtimes onto `SubprocessExecutor` is phased and deferred until the first non-subprocess sibling (`plurnk-execs-search`) proves the contract (plurnk-service#174 Q2).
+The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python). plurnk-service's exec scheme still consumes the lower-level `resolveRuntime` / `SpawnArgs` helper on its legacy `streamShellCommand` path; its migration onto `SubprocessExecutor` is phased and on service's own timeline (plurnk-service#174 Q2). Both paths coexist until that cutover.
 
 ## §2 Executor contract
 
@@ -95,7 +95,9 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; }
 | `"python"` / `"python3"` | `{ cmd: "python3", args: ["-c", command], useShell: false }` |
 | any other | `{ cmd: runtime, args: ["-c", command], useShell: false }` (conservative fallback) |
 
-`resolveRuntime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking. This surface will fold into `SubprocessExecutor` (a `BaseExecutor` subclass owning spawn/stream/abort) during the deferred subprocess migration; until then plurnk-service's exec scheme consumes it directly for shell/node/python while routing `search` through `run()`.
+`resolveRuntime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
+
+The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). The `plurnk-execs-sh` / `-node` / `-python` siblings subclass it and differ only in their claimed `runtimes[]` tags. plurnk-service consumes `resolveRuntime` directly on its legacy path today and adopts `SubprocessExecutor` when it migrates.
 
 ## §5 Consumer surface (plurnk-service)
 
