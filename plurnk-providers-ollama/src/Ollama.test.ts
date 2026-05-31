@@ -105,5 +105,5 @@ test("fromEnv: heuristic when details block is absent", async () => {
 test("fromEnv: costFor returns 0 (local models are free)", async () => {
     mockShow({ model_info: { "phi.context_length": 8192 } });
     const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
-    assert.equal(p.costFor({ prompt: 100000, completion: 50000, cached: 10000, total: 160000 }), 0);
+    assert.equal(p.costFor({ prompt: 100000, completion: 50000, reasoning: 0, cached: 10000, total: 160000 }), 0);
 });
