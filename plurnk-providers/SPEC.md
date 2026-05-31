@@ -106,20 +106,18 @@ PLURNK_MODEL=gemma
 
 First path segment names the provider; rest is the model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`).
 
-Framework helpers (`./ProviderRegistry.ts`) — pure env-parsing only:
+This package's exported resolution surface:
 
 - `parseAliasesFromEnv(env)` — extracts alias entries.
 - `resolveActiveAlias(env)` — `{ alias, provider, model } | null`.
+- `standardProviderFromEnv(name, env, model)` / `isStandardProvider(name)` — tier-1 instantiation (below).
 
 **Two-tier provider resolution.** A provider name resolves in this order:
 
 1. **Standard provider** (`§11`) — if `isStandardProvider(name)`, the framework instantiates it directly via `standardProviderFromEnv(name, env, model)`. No sibling package exists or is imported. Covers every plain OpenAI-compatible endpoint (`openai`, `groq`, `deepseek`, `mistral`, `together`, `fireworks`, `deepinfra`, …).
 2. **Bespoke sibling** — otherwise, dynamic-import `@plurnk/plurnk-providers-<provider>` and call `fromEnv(env, model)`. Reserved for providers with real runtime surface: a catalog/pricing probe or a non-OpenAI wire shape (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `anthropic`/`bedrock`/`vertex`/`cohere`).
 
-Tier 1 lives here because it needs no package resolution. Tier 2 is **consumer-side**: Node's `import()` resolves specifiers relative to the calling module, so the consumer — which has the sibling in its `node_modules` — owns the dynamic-import path:
-
-- `instantiateProvider(alias, env)` — tries `standardProviderFromEnv` first, else dynamic-imports the sibling and calls `fromEnv(env, model)`.
-- `loadActiveProvider(env)` — resolve + instantiate in one call.
+Tier 1 lives here because it needs no package resolution. **Tier 2 is not shipped by this package.** Node's `import()` resolves specifiers relative to the calling module, so the dynamic-import step has to run where the sibling packages are actually installed — the consumer's `node_modules`, not this package's. The consumer owns it: in plurnk-service it is `src/core/ProviderInstantiate.ts` (`instantiateProvider` / `loadActiveProvider`). That code should try `standardProviderFromEnv` first and dynamic-import `@plurnk/plurnk-providers-<provider>` only when it returns `null`.
 
 ## §6 Engine → provider guarantees (consumer side)
 
