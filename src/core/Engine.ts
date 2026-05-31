@@ -493,18 +493,16 @@ export default class Engine {
 
             // Rail #39: cycle detection. Push this turn's fingerprint to
             // history, scan for repetition patterns. Detection bumps
-            // turnErrors so the strike system handles abandonment naturally.
+            // turnErrors so the strike system handles abandonment
+            // naturally — same internal-only role rummy gave it
+            // (plugins/error/error.js#verdict). Intentionally NOT a
+            // model-facing telemetry kind: model sees the strike pile-up
+            // (which IS the actionable signal); cycle is the engine's
+            // reason for treating the turn as a failure, not its own alert.
             const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
             state.history.push(turn.fingerprint);
             const cycle = detectCycle(state.history, minCycles, maxCyclePeriod);
-            if (cycle.detected) {
-                state.turnErrors++;
-                this.#pushTelemetry(sessionId, loopId, {
-                    kind: "cycle",
-                    period: cycle.period,
-                    cycles: cycle.cycles,
-                });
-            }
+            if (cycle.detected) state.turnErrors++;
             this.#strikeState.set(loopId, state);
 
             // Rail #38: strike accounting. Three sources strike a turn:
@@ -513,18 +511,19 @@ export default class Engine {
             //  2. noOps — turn.status === TURN_STATUS_NO_OPS (per #41).
             //  3. turnErrors — externally bumped by per-turn rails (#39 cycle).
             // Struck → streak++; clean → streak = 0. Threshold → abandon.
+            // Strike accounting is engine-internal bookkeeping. Per rummy
+            // precedent (plugins/error/error.js#verdict) and SPEC §15.1
+            // policy: model sees errors that happened (parse_error,
+            // action_failure), never the engine's accounting about them
+            // (strike counts, cycle detection, sudden-death threshold).
+            // Surfacing internal state to the model creates a gamification
+            // surface — model optimizes for engine metrics rather than
+            // task progress.
             const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
             const noOps = turn.status === TURN_STATUS_NO_OPS;
             const struck = noOps || recordedFailed || state.turnErrors > 0;
             if (struck) {
                 state.streak++;
-                const reason = noOps ? "no_ops" : recordedFailed ? "recorded_failure" : "rail";
-                this.#pushTelemetry(sessionId, loopId, {
-                    kind: "strike",
-                    streak: state.streak,
-                    maxStrikes,
-                    reason,
-                });
                 if (state.streak >= maxStrikes) {
                     await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
                     cleanup("forceful", "strike_threshold");
@@ -536,15 +535,11 @@ export default class Engine {
             state.turnErrors = 0;
             this.#strikeState.set(loopId, state);
 
-            // Rail #40: sudden-death soft warning. When the loop enters the
-            // last maxStrikes-sized window before maxTurns, push a warning
-            // each turn so the model can wrap up before the hard cancel.
-            // Soft: no strike, no loop-status change. SPEC §15.1.
+            // Sudden-death threshold is engine-internal — abandonment
+            // happens at maxTurns regardless. Per gamification policy:
+            // we don't warn the model that it's nearing our limit.
             if (turnIds.length >= suddenDeathThreshold && turnIds.length < maxTurns) {
-                this.#pushTelemetry(sessionId, loopId, {
-                    kind: "sudden_death",
-                    remaining: maxTurns - turnIds.length,
-                });
+                // Threshold tripped; engine bookkeeping only.
             }
         }
     }
@@ -707,24 +702,23 @@ export default class Engine {
             });
             statuses.push(result.status);
         }
+        // max_commands_exceeded IS model-facing: dropped ops are things
+        // the model emitted that didn't run — it needs to know. Engine
+        // bookkeeping (the cap value, our threshold reasoning) stays
+        // internal; only the facts of what happened are reported.
         if (droppedCount > 0) {
             this.#pushTelemetry(sessionId, loopId, {
+                source: "engine:rail",
                 kind: "max_commands_exceeded",
                 emitted: opsCount,
-                cap: maxCommands,
                 dropped: droppedCount,
             });
         }
 
-        if (opsCount === 0) {
-            // Rail #41 (revised): per-turn requirement is "emit at least one
-            // op." Zero ops = actionless failure. SEND specifically is not
-            // required — any of the 9 grammar ops satisfies. Pushed AFTER
-            // #buildPacket so this turn's drain doesn't consume it.
-            this.#pushTelemetry(sessionId, loopId, {
-                kind: "no_ops",
-            });
-        }
+        // Zero ops is NOT an error to report — the model knows it emitted
+        // nothing. Strike accounting (engine-internal) treats it as a
+        // struck turn; the model just sees an empty packet next turn.
+        // Per SPEC §15.1 gamification policy.
 
         return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops) };
     }

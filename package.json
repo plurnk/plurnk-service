@@ -46,7 +46,7 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "^0.1.0",
         "@plurnk/plurnk-grammar": "^0.17.0",
-        "@plurnk/plurnk-mimetypes": "^0.7.0",
+        "@plurnk/plurnk-mimetypes": "^0.7.1",
         "@plurnk/plurnk-mimetypes-application-json": "^0.4.0",
         "@plurnk/plurnk-mimetypes-application-pdf": "^0.5.0",
         "@plurnk/plurnk-mimetypes-application-toml": "^0.3.0",
@@ -55,6 +55,7 @@
         "@plurnk/plurnk-mimetypes-text-html": "^0.5.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "^0.5.0",
         "@plurnk/plurnk-mimetypes-text-plain": "^0.6.0",
+        "@plurnk/plurnk-mimetypes-text-python": "^0.1.0",
         "@plurnk/plurnk-mimetypes-text-typescript": "^0.3.0",
         "@plurnk/plurnk-providers": "^0.1.0",
         "@plurnk/plurnk-providers-cloudflare": "^0.2.0",

@@ -170,7 +170,10 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: no_ops failure surfaces in NEXT packet's user.telemetry.errors[]", async () => {
+test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification policy", async () => {
+    // Per SPEC §15.1 gamification policy: zero ops is the model's emission
+    // choice, not an error to report. Engine still treats it as a struck
+    // turn internally (strike accounting), but no model-facing telemetry.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -186,10 +189,8 @@ test("Engine.runTurn: no_ops failure surfaces in NEXT packet's user.telemetry.er
         const packet = JSON.parse(row?.packet ?? "{}") as {
             user: { telemetry: { errors: Array<{ kind: string }> } };
         };
-        const noOpsErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_ops");
-        assert.equal(noOpsErrors.length, 1, "turn 1's empty-ops surfaces in turn 2's telemetry");
-        // No prose; the `kind` field IS the message.
-        assert.deepEqual(noOpsErrors[0], { kind: "no_ops" });
+        assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "no_ops").length, 0);
+        assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "strike").length, 0);
     } finally { await db.close(); }
 });
 
@@ -235,14 +236,16 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 user: { telemetry: { errors: Array<{
-                    kind: string; emitted?: number; cap?: number; dropped?: number;
+                    kind: string; source?: string; emitted?: number; dropped?: number;
                 }> } };
             };
             const capErrors = packet.user.telemetry.errors.filter((e) => e.kind === "max_commands_exceeded");
             assert.equal(capErrors.length, 1, "exactly one max_commands_exceeded entry from turn 1");
+            assert.equal(capErrors[0].source, "engine:rail");
             assert.equal(capErrors[0].emitted, 5);
-            assert.equal(capErrors[0].cap, 3);
             assert.equal(capErrors[0].dropped, 2);
+            // `cap` field removed — engine bookkeeping per gamification policy.
+            assert.equal((capErrors[0] as { cap?: number }).cap, undefined);
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_MAX_COMMANDS;
@@ -253,13 +256,12 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
 // window before maxTurns. Soft: no strike, no loop-status change.
 
-test("Engine.runLoop: sudden_death fires inside the window, not before", async () => {
+test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
+    // Per SPEC §15.1 gamification policy: telling the model "you're near
+    // my abandonment threshold" is engine bookkeeping, not an error. The
+    // loop still abandons at maxTurns; the model just doesn't see warnings.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // maxTurns=5, maxStrikes=2 → threshold=3. Warnings on turns 3, 4.
-        // After turn 5 the maxTurns guard cancels.
-        // Vary per-turn fingerprint (different EDIT path each turn) so rail
-        // #39 cycle detection stays orthogonal.
         const provider = new Mock({
             contextSize: 100000,
             responses: Array.from({ length: 6 }, (_, i) => response([editStmt(`/var-${i}`, "v"), sendStmt(102, "go")])),
@@ -270,17 +272,15 @@ test("Engine.runLoop: sudden_death fires inside the window, not before", async (
         assert.equal(result.hitMaxTurns, true);
         assert.equal(result.turnIds.length, 5);
 
-        // Inspect each turn's packet to see when sudden_death first appeared.
-        const turnPackets = await Promise.all(result.turnIds.map(async (id) => {
+        const turnHadSuddenDeath = await Promise.all(result.turnIds.map(async (id) => {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 user: { telemetry: { errors: Array<{ kind: string }> } };
             };
             return packet.user.telemetry.errors.some((e) => e.kind === "sudden_death");
         }));
-        // Sudden-death pushed AFTER turn 3 → surfaces in turn 4's packet.
-        // Pushed AFTER turn 4 → surfaces in turn 5's packet.
-        assert.deepEqual(turnPackets, [false, false, false, true, true]);
+        // Zero turns should carry sudden_death telemetry under gamification policy.
+        assert.deepEqual(turnHadSuddenDeath, [false, false, false, false, false]);
     } finally { await db.close(); }
 });
 
@@ -391,7 +391,11 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: strike telemetry surfaces in next packet with streak count", async () => {
+test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT strike telemetry", async () => {
+    // Per SPEC §15.1 gamification policy: model sees the failed action
+    // (action_failure surfaces the 403), never the engine's strike
+    // counter. Telling the model "strike 1 of 5" would let it optimize
+    // for the meter instead of the task.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
@@ -411,20 +415,13 @@ test("Engine.runLoop: strike telemetry surfaces in next packet with streak count
             provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
         });
         assert.equal(result.finalStatus, 200);
-        // Turn 2's packet should show strike#1 (from turn 1).
-        // Turn 3's packet should show strike#2 (from turn 2).
         const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
-        const t3 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[2] });
-        type StrikeErr = { kind: string; streak: number; maxStrikes: number; reason: string };
-        const t2packet = JSON.parse(t2?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
-        const t3packet = JSON.parse(t3?.packet ?? "{}") as { user: { telemetry: { errors: StrikeErr[] } } };
-        const t2strike = t2packet.user.telemetry.errors.find((e) => e.kind === "strike");
-        const t3strike = t3packet.user.telemetry.errors.find((e) => e.kind === "strike");
-        assert.equal(t2strike?.streak, 1);
-        assert.equal(t2strike?.maxStrikes, 5);
-        assert.equal(t3strike?.streak, 2);
-        // Structured fields only — no prose `message` to fight the contract.
-        assert.equal((t2strike as { message?: string }).message, undefined);
+        const t2packet = JSON.parse(t2?.packet ?? "{}") as { user: { telemetry: { errors: Array<{ kind: string }> } } };
+        const errors = t2packet.user.telemetry.errors;
+        // The 403 action_failure DOES surface (real error that happened).
+        assert.ok(errors.find((e) => e.kind === "action_failure"), "action_failure surfaces the 403");
+        // The strike count does NOT (engine bookkeeping).
+        assert.equal(errors.find((e) => e.kind === "strike"), undefined);
     } finally { await db.close(); }
 });
 
@@ -502,10 +499,13 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: cycle telemetry surfaces with period and pattern", async () => {
+test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing telemetry", async () => {
+    // Per rummy precedent (plugins/error/error.js) AND gamification
+    // policy: cycle, strike, sudden_death are all engine bookkeeping.
+    // Model sees errors that happened (parse_error, action_failure),
+    // not the engine's accounting about them.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // Plenty of responses so Mock doesn't exhaust before abandon.
         const provider = new Mock({
             contextSize: 100000,
             responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), sendStmt(102, "go")])),
@@ -513,25 +513,24 @@ test("Engine.runLoop: cycle telemetry surfaces with period and pattern", async (
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
         });
-        // Turn 4's packet is built BEFORE turn 4 dispatch; it drains telemetry
-        // pushed during turn 3 (when cycle fired).
         const t4 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[3] });
         const packet = JSON.parse(t4?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; period?: number; cycles?: number }> } };
+            user: { telemetry: { errors: Array<{ kind: string }> } };
         };
-        const cycleEntry = packet.user.telemetry.errors.find((e) => e.kind === "cycle");
-        assert.ok(cycleEntry, "turn 4's packet has cycle telemetry from turn 3 detection");
-        assert.equal(cycleEntry?.period, 1);
-        assert.equal(cycleEntry?.cycles, 3);
+        // None of the engine-bookkeeping kinds surface.
+        for (const kind of ["cycle", "strike", "sudden_death", "no_ops"]) {
+            assert.equal(packet.user.telemetry.errors.find((e) => e.kind === kind), undefined,
+                `${kind} is engine bookkeeping per gamification policy`);
+        }
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: sudden_death silent when loop terminates cleanly inside the window", async () => {
+// Sudden-death telemetry was removed under gamification policy. This test
+// remains as a regression guard: loops that terminate cleanly never carry
+// sudden_death anywhere.
+test("Engine.runLoop: sudden_death never surfaces to model", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // maxTurns=5, maxStrikes=2 → threshold=3. Model emits SEND[200] on
-        // turn 3, so the warning is buffered but the loop terminates before
-        // any turn-4 packet build drains it. No leak; buffer just gets gc'd.
         const provider = new Mock({
             contextSize: 100000,
             responses: [
@@ -543,40 +542,51 @@ test("Engine.runLoop: sudden_death silent when loop terminates cleanly inside th
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 5, maxStrikes: 2,
         });
-        assert.equal(result.hitMaxTurns, false);
         assert.equal(result.finalStatus, 200);
-        // None of turns 1-3 should have seen sudden_death in their packet.
         for (const id of result.turnIds) {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 user: { telemetry: { errors: Array<{ kind: string }> } };
             };
-            const sd = packet.user.telemetry.errors.filter((e) => e.kind === "sudden_death");
-            assert.equal(sd.length, 0, `turn ${id} should not see sudden_death`);
+            assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "sudden_death").length, 0);
         }
     } finally { await db.close(); }
 });
 
 test("Engine.runTurn: telemetry buffer drains — failure shows once, then clears", async () => {
+    // Use action_failure (a model-facing kind) to verify drain semantics:
+    // it surfaces on the next packet, then is gone on the one after.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
+        const denied = (): EditStatement => ({
+            op: "EDIT", suffix: "", signal: null,
+            target: urlPath("log", "/x"),
+            lineMarker: null, body: "v", position: { line: 1, column: 1 },
+        });
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                response([]),                                          // turn 1: empty ops
-                response([editStmt("/b", "2"), sendStmt(102, "go")]),  // turn 2: clean (drains buffer)
-                response([editStmt("/c", "3"), sendStmt(200, "ok")]),  // turn 3: clean
+                response([denied(), sendStmt(102, "1")]),                // turn 1: 403 action_failure
+                response([editStmt("/b", "2"), sendStmt(102, "go")]),   // turn 2: clean (drains buffer)
+                response([editStmt("/c", "3"), sendStmt(200, "ok")]),   // turn 3: clean
             ],
         });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string }> } };
+        const getErrors = async (turnId: number): Promise<string[]> => {
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
+            const packet = JSON.parse(row?.packet ?? "{}") as {
+                user: { telemetry: { errors: Array<{ kind: string }> } };
+            };
+            return packet.user.telemetry.errors.map((e) => e.kind);
         };
-        const noOpsErrors = packet.user.telemetry.errors.filter((e) => e.kind === "no_ops");
-        assert.equal(noOpsErrors.length, 0, "no_ops drained at turn 2; turn 3 doesn't replay it");
+        // T1's packet: no errors yet (failures from T1 surface on T2).
+        assert.deepEqual((await getErrors(t1.turnId)).filter((k) => k === "action_failure"), []);
+        // T2's packet: action_failure drained from T1.
+        assert.deepEqual((await getErrors(t2.turnId)).filter((k) => k === "action_failure"), ["action_failure"]);
+        // T3's packet: action_failure GONE (drained at T2, doesn't replay).
+        assert.deepEqual((await getErrors(t3.turnId)).filter((k) => k === "action_failure"), []);
     } finally { await db.close(); }
 });
 

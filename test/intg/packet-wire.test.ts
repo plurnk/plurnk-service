@@ -351,11 +351,11 @@ test("telemetry render: telemetry without snippet → meta-only (no fence)", () 
         prompt: "P",
         telemetry: {
             budget: "",
-            errors: [{ kind: "strike", streak: 1, maxStrikes: 3, reason: "no_ops" }],
+            errors: [{ kind: "action_failure", coordinate: "1/1/2", op: "EDIT", status: 403, target: "log:///x", error: "writer 'model' denied on scheme 'log'" }],
         },
     };
     const out = renderUserContent(user);
-    assert.match(out, /\* \{"kind":"strike","maxStrikes":3,"reason":"no_ops","streak":1\}/);
+    assert.match(out, /\* \{"coordinate":"1\/1\/2","error":"writer 'model' denied on scheme 'log'","kind":"action_failure","op":"EDIT","status":403,"target":"log:\/\/\/x"\}/);
     assert.doesNotMatch(out, /<<error:\/\//);
 });
 

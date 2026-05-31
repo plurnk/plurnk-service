@@ -59,17 +59,17 @@ test("telemetry/event is session-scoped — other sessions don't see it", async 
             const aEvents = subscribeNotifications(wsA, "telemetry/event");
             const bEvents = subscribeNotifications(wsB, "telemetry/event");
 
-            daemon.notifyTelemetryEvent(sessionA, { loopId: 1, event: { source: "engine:rail", kind: "strike", streak: 1, maxStrikes: 3, reason: "no_ops" } });
-            daemon.notifyTelemetryEvent(sessionB, { loopId: 2, event: { source: "engine:rail", kind: "cycle", period: 2, cycles: 3 } });
+            daemon.notifyTelemetryEvent(sessionA, { loopId: 1, event: { source: "grammar", kind: "parse_error", message: "unexpected token", position: { type: "content-offset", line: 1, column: 0 } } });
+            daemon.notifyTelemetryEvent(sessionB, { loopId: 2, event: { source: "engine:rail", kind: "max_commands_exceeded", emitted: 50, dropped: 30 } });
 
             await flush();
 
             const aCaptured = aEvents() as Array<{ event: { kind: string } }>;
             const bCaptured = bEvents() as Array<{ event: { kind: string } }>;
             assert.equal(aCaptured.length, 1);
-            assert.equal(aCaptured[0].event.kind, "strike");
+            assert.equal(aCaptured[0].event.kind, "parse_error");
             assert.equal(bCaptured.length, 1);
-            assert.equal(bCaptured[0].event.kind, "cycle");
+            assert.equal(bCaptured[0].event.kind, "max_commands_exceeded");
         } finally { wsA.close(); wsB.close(); }
     });
 });
