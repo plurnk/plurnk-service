@@ -10,6 +10,7 @@
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import { chatCompletionStream } from "./openaiStream.ts";
+import { normalizeUsage } from "./usage.ts";
 
 // How a numeric PLURNK_REASON budget translates to the wire (SPEC §4).
 //  - "think":             llama-server / Ollama OpenAI-compat → `think: true`
@@ -94,18 +95,11 @@ export default class OpenAICompatProvider implements Provider {
 
         const raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
 
-        const usage: ProviderUsage = {
-            prompt: raw.usage?.prompt_tokens ?? 0,
-            completion: raw.usage?.completion_tokens ?? 0,
-            cached: raw.usage?.cached_tokens ?? 0,
-            total: raw.usage?.total_tokens ?? 0,
-        };
-
         return {
             assistant: {
                 content: raw.content,
                 reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
-                usage,
+                usage: normalizeUsage(raw.usage),
                 finishReason: normalizeFinishReason(raw.finish_reason),
                 model: raw.model ?? this.#model,
             },

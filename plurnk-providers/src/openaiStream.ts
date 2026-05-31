@@ -11,12 +11,14 @@ type StreamRequest = {
     signal: AbortSignal;
 };
 
+import type { RawUsage } from "./usage.ts";
+
 export type StreamResponse = {
     model: string | null;
     content: string;
     reasoning_content: string;
     finish_reason: string | null;
-    usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cached_tokens?: number } | null;
+    usage: RawUsage | null;
     chunkMetadata: Record<string, unknown>;
 };
 

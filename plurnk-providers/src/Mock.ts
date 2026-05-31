@@ -11,7 +11,8 @@ import type { ChatMessage, FinishReason, Provider, ProviderAssistant, ProviderUs
 export type MockAssistant = {
     content: string;
     reasoning: string | null;
-    usage?: ProviderUsage;
+    // Partial — omitted fields fall back to DEFAULT_USAGE (e.g. reasoning: 0).
+    usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
     // Pre-parsed ops — intg-only escape hatch. Production providers
@@ -27,7 +28,7 @@ export type MockResponse = {
 // Returned shape: ProviderAssistant + pre-parsed ops visible for tests.
 export type MockReturnedAssistant = ProviderAssistant & { ops?: PlurnkStatement[] };
 
-const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, cached: 0, total: 0 };
+const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
 
 export default class Mock implements Provider {
     #contextSize: number | null;
@@ -60,7 +61,7 @@ export default class Mock implements Provider {
         const assistant: MockReturnedAssistant = {
             content: a.content,
             reasoning: a.reasoning,
-            usage: a.usage ?? DEFAULT_USAGE,
+            usage: { ...DEFAULT_USAGE, ...a.usage },
             finishReason: a.finishReason ?? "stop",
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),

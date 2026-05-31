@@ -32,7 +32,7 @@ test("Mock: countTokens('') is 0; non-empty is a positive integer", () => {
 
 test("Mock: costFor zero usage is 0 (free)", () => {
     const m = build();
-    assert.equal(m.costFor({ prompt: 0, completion: 0, cached: 0, total: 0 }), 0);
+    assert.equal(m.costFor({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 0);
 });
 
 // — Transport (SPEC §10.7, §10.10) —
@@ -42,7 +42,7 @@ test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     const { assistant, assistantRaw } = await m.generate({ messages: [] });
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.reasoning, "cot");
-    assert.deepEqual(assistant.usage, { prompt: 0, completion: 0, cached: 0, total: 0 });
+    assert.deepEqual(assistant.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
     assert.equal(assistant.finishReason, "stop");
     assert.equal(assistant.model, "mock");
     assert.equal(assistantRaw, null); // present, defaulted
@@ -53,7 +53,7 @@ test("Mock: generate applies caller-supplied overrides", async () => {
         assistant: {
             content: "x",
             reasoning: null,
-            usage: { prompt: 1, completion: 2, cached: 0, total: 3 },
+            usage: { prompt: 1, completion: 2, reasoning: 0, cached: 0, total: 3 },
             finishReason: "length",
             model: "mock-xl",
         },
@@ -62,7 +62,7 @@ test("Mock: generate applies caller-supplied overrides", async () => {
     const { assistant, assistantRaw } = await m.generate({ messages: [] });
     assert.equal(assistant.finishReason, "length");
     assert.equal(assistant.model, "mock-xl");
-    assert.deepEqual(assistant.usage, { prompt: 1, completion: 2, cached: 0, total: 3 });
+    assert.deepEqual(assistant.usage, { prompt: 1, completion: 2, reasoning: 0, cached: 0, total: 3 });
     assert.deepEqual(assistantRaw, { wire: true });
 });
 

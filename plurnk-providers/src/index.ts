@@ -23,6 +23,8 @@ export type { StreamResponse } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, requireEnv } from "./env.ts";
 export { tokenizerFor, tokenizerByPublisher, parseTokenizerFamily } from "./tokenizers.ts";
 export type { TokenizerFamily, CountTokens } from "./tokenizers.ts";
+export { normalizeUsage, computeCost } from "./usage.ts";
+export type { RawUsage, TokenRates } from "./usage.ts";
 export { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
 export { default as Mock } from "./Mock.ts";

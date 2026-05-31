@@ -7,11 +7,17 @@ export interface ChatMessage {
     content: string;
 }
 
+// Normalized token accounting. Invariant (enforced by normalizeUsage at the
+// provider boundary): total = prompt + completion + reasoning; cached is a
+// subset of prompt. `completion` is visible output EXCLUDING reasoning; the
+// billable output is `completion + reasoning` (frontier providers bill thinking
+// tokens at the output rate).
 export interface ProviderUsage {
-    readonly prompt: number;
-    readonly completion: number;
-    readonly cached: number;
-    readonly total: number;
+    readonly prompt: number;       // input tokens (cached ones included)
+    readonly completion: number;   // visible output tokens, excluding reasoning
+    readonly reasoning: number;    // reasoning/thinking tokens, billed as output
+    readonly cached: number;       // subset of prompt served from cache
+    readonly total: number;        // prompt + completion + reasoning
 }
 
 // Closed set per SPEC §2. Relay/aggregator providers MUST normalize wire

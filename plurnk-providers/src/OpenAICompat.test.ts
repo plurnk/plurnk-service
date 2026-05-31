@@ -39,7 +39,7 @@ test("identity getters and defaults", () => {
     assert.equal(p.contextSize, null); // default
     assert.equal(p.countTokens(""), 0);
     assert.equal(p.countTokens("four"), 1); // default heuristic ceil(4/4)
-    assert.equal(p.costFor({ prompt: 9, completion: 9, cached: 0, total: 18 }), 0); // default free
+    assert.equal(p.costFor({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free
 });
 
 test("injected countTokens and costFor are used", () => {
@@ -49,7 +49,7 @@ test("injected countTokens and costFor are used", () => {
         costFor: (u) => u.total * 2,
     });
     assert.equal(p.countTokens("abc"), 3);
-    assert.equal(p.costFor({ prompt: 1, completion: 1, cached: 0, total: 5 }), 10);
+    assert.equal(p.costFor({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 5 }), 10);
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
@@ -63,7 +63,7 @@ test("generate maps a streamed response into ProviderResponse", async () => {
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.model, "wire-model"); // wire-reported wins
     assert.equal(assistant.finishReason, "stop");
-    assert.deepEqual(assistant.usage, { prompt: 3, completion: 2, cached: 1, total: 5 });
+    assert.deepEqual(assistant.usage, { prompt: 3, completion: 2, reasoning: 0, cached: 1, total: 5 });
     assert.equal(assistant.reasoning, null); // none emitted
     assert.notEqual(assistantRaw, undefined);
 });
