@@ -46,19 +46,22 @@ interface ProviderResponse {
 }
 
 interface ProviderUsage {
-    prompt: number;
-    completion: number;
-    cached: number;
-    total: number;
+    prompt: number;       // input tokens (cached ones included)
+    completion: number;   // visible output tokens, EXCLUDING reasoning
+    reasoning: number;    // reasoning/thinking tokens, billed as output
+    cached: number;       // subset of prompt served from cache
+    total: number;        // prompt + completion + reasoning
 }
 ```
+
+Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`; `completion` excludes reasoning; **billable output = `completion + reasoning`**. Providers report reasoning two ways — inside `completion_tokens` (OpenAI, via `completion_tokens_details.reasoning_tokens`) or only as the `total − prompt − completion` gap (Gemini). The framework's `normalizeUsage` (§11) collapses both to this invariant, so siblings on `OpenAICompatProvider` get it for free.
 
 ### Promises
 
 - `assistant.content` is the **verbatim** model emission. Consumer parses via `@plurnk/plurnk-grammar` — providers MUST NOT parse. plurnk uses a **tools-in-body** design: tool invocations are expressed as plurnk DSL *inside the message content*, never via a provider's native tool-calling API, so `content` is always raw text and providers never request, parse, or translate native tool calls.[^tools]
 
 [^tools]: A provider that wants to drive native tool-calling (OpenAI `tool_calls`, Anthropic `tool_use`) would have to normalize those emissions back into a plurnk DSL string at the boundary. No provider does this and it is out of scope for v0 — tools-in-body sidesteps the whole problem. The clause is recorded only so a future native-tools mode has a defined contract.
-- `assistant.usage` is authoritative. Fill `0`s when the wire response omits a breakdown.
+- `assistant.usage` is authoritative and follows the invariant above. Fill `0`s when the wire response omits a breakdown.
 - `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input.
 - `costFor` is **pure**, returns pico-USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
@@ -207,6 +210,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
   ```
 
 - **`chatCompletionStream` / `OpenAiHttpError` / `StreamResponse`** — the SSE client. One shared copy.
+- **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`tokenizerFor(family)` / `tokenizerByPublisher(model, table, index)` / `parseTokenizerFamily(...)`** — synchronous tokenizer strategies (`heuristic` | `cl100k` | `llama`) and per-publisher dispatch for relay providers.
 - **`effortFromBudget(budget)`** — the shared `PLURNK_REASON` → `low|medium|high` breakpoints.
