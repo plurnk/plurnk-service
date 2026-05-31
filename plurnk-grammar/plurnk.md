@@ -53,7 +53,7 @@ Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
 
 URI-shaped: `[scheme://]rest`.
 
-* Bare paths (no scheme) default to local relative project file paths (leader `/` for absolute path).
+* Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
 
