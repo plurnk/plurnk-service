@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "Framework + contract for the @plurnk/plurnk-providers-* LLM transport family.",
     "keywords": [
         "plurnk",
@@ -46,10 +46,10 @@
         "prepare": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-grammar": "0.17.0"
+        "@plurnk/plurnk-grammar": "0.17.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.17.0",
+        "@plurnk/plurnk-grammar": "0.17.1",
         "@types/node": "^25.8.0",
         "typescript": "^6.0.3"
     },
