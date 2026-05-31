@@ -41,11 +41,11 @@
         "prepare": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-grammar": "0.17.0",
+        "@plurnk/plurnk-grammar": "0.17.1",
         "@plurnk/plurnk-mimetypes": "0.7.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.17.0",
+        "@plurnk/plurnk-grammar": "0.17.1",
         "@plurnk/plurnk-mimetypes": "0.7.1",
         "@types/node": "^25.8.0",
         "typescript": "^6.0.3"
