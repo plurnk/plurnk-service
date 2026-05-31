@@ -29,7 +29,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 const response = (ops: PlurnkStatement[], content: string = "", completion: number = 0): MockResponse => ({
     assistant: {
         content, ops, reasoning: null,
-        usage: { prompt: 0, completion, cached: 0, total: completion },
+        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
 });
 

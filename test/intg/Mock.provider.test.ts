@@ -46,7 +46,7 @@ test("Mock.provider: assistant shape carries content + ops + reasoning + usage",
             content: "<<SEND[200]:done:SEND",
             ops: [sendStmt(200, "done")],
             reasoning: "thought about it",
-            usage: { prompt: 100, completion: 42, cached: 0, total: 142 },
+            usage: { prompt: 100, completion: 42, reasoning: 0, cached: 0, total: 142 },
             finishReason: "stop",
             model: "mock-bench-v1",
         },
@@ -68,7 +68,7 @@ test("Mock.provider: defaults fill when test omits usage/finishReason/model", as
     const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
     const mock = new Mock({ contextSize: 100, responses: [r] });
     const result = await mock.generate({ messages: [] });
-    assert.deepEqual(result.assistant.usage, { prompt: 0, completion: 0, cached: 0, total: 0 });
+    assert.deepEqual(result.assistant.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
     assert.equal(result.assistant.finishReason, "stop");
     assert.equal(result.assistant.model, "mock");
 });

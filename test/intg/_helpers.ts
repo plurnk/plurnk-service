@@ -94,7 +94,7 @@ const MIN_PACKET = JSON.stringify({
     user: { tokens: 0, prompt: "", telemetry: { budget: "", errors: [] }, system_requirements: "" },
     assistant: {
         content: "", ops: [], reasoning: null,
-        usage: { prompt: 0, completion: 0, cached: 0, total: 0 },
+        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
         finishReason: null, model: "mock",
     },
     assistantRaw: null,

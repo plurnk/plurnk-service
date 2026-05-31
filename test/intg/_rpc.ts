@@ -79,7 +79,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => ({
     assistant: {
         content: dsl, ops: parseDsl(dsl), reasoning: null,
-        usage: { prompt: 0, completion, cached: 0, total: completion },
+        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
     assistantRaw: null,
 });
