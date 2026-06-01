@@ -97,19 +97,21 @@ const canonicalJson = (obj) => {
 // Wrap a body in heredoc fences. Leading `\n` always (separates the
 // opening fence from the first body character — necessary because
 // numbered bodies start with `1:\t…` which would otherwise collide
-// visually with the fence's closing `:`). Trailing `\n` only when the
+// visually with the `:::FENCE` markers). Trailing `\n` only when the
 // body doesn't already end with one — otherwise you get a doubled
 // newline that renders as a blank line before the closing fence, which
 // reads as "the content has a trailing blank line" when actually it
 // doesn't. The body's own whitespace decides the shape.
 const wrapHeredocBody = (fence, body) => {
     const sep = body.endsWith("\n") ? "" : "\n";
-    return `<<${fence}:\n${body}${sep}:${fence}`;
+    return `<<:::${fence}\n${body}${sep}:::${fence}`;
 };
 
 // Heredoc block for one channel of one entry. Fence is `URI#channel`
-// (plurnk-grammar-native form) so model emissions and entry projections
-// share one syntax. When `channel` is null/empty the fence is path-only —
+// (the `<<:::FENCE` packet-rendering marker per wrapHeredocBody — a
+// projection is read-only context, NOT an emittable op, so it must not
+// wear the DSL op-fence; that conflation was the demo.sh corruption bug).
+// When `channel` is null/empty the fence is path-only —
 // this is the default-channel convention: the absence of `#channel` is
 // the addressing of the scheme's default channel, not a missing field.
 // Body is line-numbered.

@@ -24,9 +24,34 @@ test("index entry: null scheme renders bare path (file scheme normalized to null
     };
     const out = renderSystemContent(system);
     assert.doesNotMatch(out, /file:\/\//, "file:// must never appear in model-facing output");
-    assert.match(out, /<<notes\.md:\n/, "fence carries bare pathname");
-    assert.match(out, /:notes\.md$/m, "closing fence matches opening");
+    assert.match(out, /<<:::notes\.md\n/, "fence carries bare pathname");
+    assert.match(out, /:::notes\.md$/m, "closing fence matches opening");
     assert.doesNotMatch(out, /#body/, "no #body anywhere — it is the default channel");
+});
+
+test("[regression] entry projection wears the non-emittable <<:::path marker, never the op-lookalike <<path: (demo.sh fence-leak guard)", () => {
+    const system = {
+        system_definition: "",
+        persona: "",
+        index: [{
+            scheme: null,
+            pathname: "demo.sh",
+            defaultChannel: "body",
+            channels: { body: { content: "#!/bin/bash\necho hi", mimetype: "text/plain", tokens: 1 } },
+        }],
+        log: [],
+    };
+    const out = renderSystemContent(system);
+    // The projection wears the `<<:::path` packet-rendering marker, which
+    // cannot parse as an emittable op (op tags are words, never `:::`).
+    assert.match(out, /<<:::demo\.sh\n/, "opening :::path marker");
+    assert.match(out, /\n:::demo\.sh/, "closing :::path marker");
+    // It must NOT wear the old `<<path:…:path` op-lookalike — that form made
+    // the model copy the `:demo.sh` close into an EDIT body, the parser
+    // greedy-swallowed the rest of the emission, and the garbage hit disk
+    // and broke exec. See the fence-leak postmortem.
+    assert.doesNotMatch(out, /<<demo\.sh:/, "no op-lookalike opening");
+    assert.doesNotMatch(out, /\n:demo\.sh/, "no op-lookalike closing");
 });
 
 test("index entry: non-default channel keeps #suffix", () => {
@@ -42,7 +67,7 @@ test("index entry: non-default channel keeps #suffix", () => {
         log: [],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<exec:\/\/build\/log#stderr:/, "non-default channel keeps #stderr");
+    assert.match(out, /<<:::exec:\/\/build\/log#stderr\n/, "non-default channel keeps #stderr");
 });
 
 test("index entry: multi-channel entry omits suffix on default, keeps it on others", () => {
@@ -61,8 +86,8 @@ test("index entry: multi-channel entry omits suffix on default, keeps it on othe
         log: [],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<exec:\/\/run:\n1:\tok\n:exec:\/\/run/, "stdout fence is path-only");
-    assert.match(out, /<<exec:\/\/run#stderr:\n1:\twarn\n:exec:\/\/run#stderr/, "stderr fence keeps #stderr");
+    assert.match(out, /<<:::exec:\/\/run\n1:\tok\n:::exec:\/\/run/, "stdout fence is path-only");
+    assert.match(out, /<<:::exec:\/\/run#stderr\n1:\twarn\n:::exec:\/\/run#stderr/, "stderr fence keeps #stderr");
 });
 
 test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
@@ -99,7 +124,7 @@ test("log render: READ@200 with text/markdown rx body → line-numbered heredoc"
     };
     const out = renderSystemContent(system);
     // Line-navigable mimetype → `N:\t` prefix per line.
-    assert.match(out, /<<notes\.md:\n1:\thello\n2:\tworld\n:notes\.md/);
+    assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
 });
 
 test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
@@ -118,8 +143,8 @@ test("log render: READ@200 with application/json rx body → verbatim heredoc (n
     };
     const out = renderSystemContent(system);
     // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
-    assert.match(out, /<<notes\.md:\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:notes\.md/);
-    assert.doesNotMatch(out, /<<notes\.md:\n1:\t/);
+    assert.match(out, /<<:::notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::notes\.md/);
+    assert.doesNotMatch(out, /<<:::notes\.md\n1:\t/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -317,8 +342,8 @@ test("index entry: body ending in newline does NOT produce a doubled trailing ne
     };
     const out = renderSystemContent(system);
     // Expect exactly one newline between `src/` and the closing fence.
-    assert.match(out, /4:\tsrc\/\n:exec:\/\/1\/2\/1\/EXEC/);
-    assert.doesNotMatch(out, /4:\tsrc\/\n\n:exec:\/\/1\/2\/1\/EXEC/);
+    assert.match(out, /4:\tsrc\/\n:::exec:\/\/1\/2\/1\/EXEC/);
+    assert.doesNotMatch(out, /4:\tsrc\/\n\n:::exec:\/\/1\/2\/1\/EXEC/);
 });
 
 test("telemetry render: parse_error with snippet → meta line followed by N:\\t-prefixed snippet body", () => {
@@ -343,7 +368,7 @@ test("telemetry render: parse_error with snippet → meta line followed by N:\\t
     assert.match(out, /\* \{"kind":"parse_error","message":"invalid xpath: Unexpected character :","parserSource":"visitor","position":\{"type":"content-offset","line":1,"column":0\},"source":"grammar"\}/);
     assert.doesNotMatch(out, /"snippet":/);
     // Snippet rendered under `error://<line>` fence.
-    assert.match(out, /<<error:\/\/1:\n1:\t<<READ\(src\/app\.js\):\/\/ TODO: add error handling:READ\n:error:\/\/1/);
+    assert.match(out, /<<:::error:\/\/1\n1:\t<<READ\(src\/app\.js\):\/\/ TODO: add error handling:READ\n:::error:\/\/1/);
 });
 
 test("telemetry render: telemetry without snippet → meta-only (no fence)", () => {
@@ -376,6 +401,6 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
         }],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<page\.html:\n<h1>Hi<\/h1>\n:page\.html/);
+    assert.match(out, /<<:::page\.html\n<h1>Hi<\/h1>\n:::page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });
