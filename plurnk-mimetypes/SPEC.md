@@ -214,9 +214,16 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
-`ProcessResult = { mimetype, preview, previewTokens, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+`ProcessResult = { mimetype, preview, previewTokens, totalLines, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
 
 `previewTokens` is the token count of the returned `preview` string, measured with the same `tokenize` function the orchestrator was constructed with. Exposed so consumers (notably plurnk-service's tokenomics ledger) don't have to re-tokenize the preview to recover its render cost. Always present; `0` for empty previews (every error path, plus the `null` handler return). Empty previews short-circuit without paying a `tokenize` call.
+
+`totalLines` is the editor-convention line count of the source content. Exposed so the model can reason about context management (e.g., "this preview shows lines 8–12 of a 200-line file"). Conventions:
+
+- `wc -l`-style — `abc\ndef` → `2`, `abc\ndef\n` → `2` (trailing newline is line terminator, not new line), `"\n"` → `1`, `""` → `0`.
+- **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block — PDF, future images/archives): `totalLines: 0`. Lines aren't a meaningful unit for binary mimetypes; service reasons about size differently (e.g., pages for PDF). `0` is the explicit "not line-oriented" signal.
+- `0` on every error path (detection null, content unreadable, handler missing).
+- Independent of preview fitting — a budget-truncated preview still reports the full source's `totalLines`. The preview shows what fit; `totalLines` says how big the full thing is.
 
 **Preview rendering (#8).** `Mimetypes.process` returns `preview` ready for verbatim rendering — consumers do no post-processing. Specifically:
 

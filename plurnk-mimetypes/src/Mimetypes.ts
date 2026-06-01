@@ -69,6 +69,15 @@ export interface ProcessResult {
     // the returned preview to recover its render cost. Always present; 0 for
     // empty previews (every error path, plus `null` handler returns).
     previewTokens: number;
+    // Editor-convention line count of the source content. Exposed so models
+    // can reason about context management — "this preview shows lines 8-12
+    // of a 200-line file" requires both the prefixes in `preview` (#8) and
+    // this total. For text content: `wc -l`-style count (`abc\ndef` → 2 lines;
+    // `abc\ndef\n` → 2 lines; empty string → 0). For binary content
+    // (PDF, etc.): `0` — binary mimetypes aren't line-oriented and service
+    // should reason about size differently for them (e.g., pages for PDF).
+    // 0 on every error path.
+    totalLines: number;
     ok: boolean;
 }
 
@@ -161,7 +170,7 @@ export default class Mimetypes {
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
-            return { mimetype: null, preview: "", previewTokens: 0, ok: false };
+            return { mimetype: null, preview: "", previewTokens: 0, totalLines: 0, ok: false };
         }
 
         // Look up the handler's binary flag before reading content, so we read
@@ -171,12 +180,12 @@ export default class Mimetypes {
 
         const content = await this.#resolveContent(input, isBinary);
         if (content === null) {
-            return { mimetype, preview: "", previewTokens: 0, ok: false };
+            return { mimetype, preview: "", previewTokens: 0, totalLines: 0, ok: false };
         }
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            return { mimetype, preview: "", previewTokens: 0, ok: false };
+            return { mimetype, preview: "", previewTokens: 0, totalLines: 0, ok: false };
         }
 
         // Validate errors propagate per error policy — caller's contract.
@@ -196,8 +205,13 @@ export default class Mimetypes {
         // consumers (plurnk-service tokenomics ledger — see #7) don't have to
         // repeat the work. Empty preview short-circuits without paying.
         const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
+        // Total source-line count for the model's context-management
+        // reasoning (#9). Editor-convention count for text content; 0 for
+        // binary content (PDF etc.) since lines aren't a meaningful unit
+        // there and service reasons about size differently.
+        const totalLines = typeof content === "string" ? countLines(content) : 0;
 
-        return { mimetype, preview, previewTokens, ok: true };
+        return { mimetype, preview, previewTokens, totalLines, ok: true };
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
@@ -294,4 +308,20 @@ function prefixLinesWithSourceNumbers(text: string, startLine: number): string {
         out += `${startLine + i}:\t${lines[i]}`;
     }
     return out;
+}
+
+// Editor-convention line count: `abc\ndef` → 2, `abc\ndef\n` → 2 (trailing
+// newline is a line terminator, not a new line), `\n` → 1 (one empty line),
+// "" → 0 (no lines). Matches what the model sees in `wc -l`-style output
+// and what plurnk-grammar's `<L>` slot addresses.
+function countLines(text: string): number {
+    if (text.length === 0) return 0;
+    let newlines = 0;
+    for (let i = 0; i < text.length; i += 1) {
+        if (text.charCodeAt(i) === 0x0a) newlines += 1;
+    }
+    // If the content ends with a newline, that final `\n` is a line
+    // terminator — the line count equals the newline count. Otherwise, the
+    // trailing characters form an unterminated line, so add 1.
+    return text.charCodeAt(text.length - 1) === 0x0a ? newlines : newlines + 1;
 }

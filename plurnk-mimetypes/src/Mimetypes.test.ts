@@ -183,7 +183,7 @@ describe("Mimetypes — process", () => {
     it("returns ok:false with null mimetype when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
-        assert.deepEqual(result, { mimetype: null, preview: "", previewTokens: 0, ok: false });
+        assert.deepEqual(result, { mimetype: null, preview: "", previewTokens: 0, totalLines: 0, ok: false });
     });
 
     it("processes inline content (no fs read) when content is provided", async () => {
@@ -434,6 +434,131 @@ describe("Mimetypes — process: N:\\t line-number rendering (#8)", () => {
         // "1:\ta\n2:\tb\n3:\tc" = 15 chars. previewTokens should match.
         assert.equal(r.preview, "1:\ta\n2:\tb\n3:\tc");
         assert.equal(r.previewTokens, r.preview.length);
+    });
+});
+
+describe("Mimetypes — process: totalLines (#9)", () => {
+    it("returns 0 for empty content", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "" });
+        assert.equal(r.totalLines, 0);
+    });
+
+    it("returns 1 for single-line content without trailing newline", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "just one line" });
+        assert.equal(r.totalLines, 1);
+    });
+
+    it("returns 1 for single-line content with trailing newline (terminator, not new line)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "one line\n" });
+        assert.equal(r.totalLines, 1);
+    });
+
+    it("returns N for N lines (editor-convention count)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r1 = await m.process({ path: "foo.txt", content: "a\nb\nc" });
+        assert.equal(r1.totalLines, 3);
+
+        const r2 = await m.process({ path: "foo.txt", content: "a\nb\nc\n" });
+        assert.equal(r2.totalLines, 3);
+    });
+
+    it("counts empty lines correctly", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        // "\n" = one empty line (terminated)
+        const r1 = await m.process({ path: "foo.txt", content: "\n" });
+        assert.equal(r1.totalLines, 1);
+        // "\n\n" = two empty lines (both terminated)
+        const r2 = await m.process({ path: "foo.txt", content: "\n\n" });
+        assert.equal(r2.totalLines, 2);
+        // "a\n\nb" = three lines (a, empty, b)
+        const r3 = await m.process({ path: "foo.txt", content: "a\n\nb" });
+        assert.equal(r3.totalLines, 3);
+    });
+
+    it("returns 0 for binary content (lines not meaningful for binary mimetypes)", async () => {
+        const binaryInfo: HandlerInfo = {
+            mimetype: "application/octet-stream",
+            glyph: "📦",
+            packageName: "@plurnk/plurnk-mimetypes-application-octet-stream",
+            extensions: [".bin"],
+            binary: true,
+        };
+        class BinaryHandler extends BaseHandler {
+            override preview(): Preview {
+                return null;
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([binaryInfo]),
+            loader: async () => ({ default: BinaryHandler }),
+        });
+        // Pass Uint8Array directly (the orchestrator routes binary content
+        // through fs.readFile as Uint8Array; inline equivalent here).
+        const bytes = new Uint8Array([0x00, 0x0a, 0x0a, 0xff, 0x0a]);
+        const r = await m.process({ path: "foo.bin", content: bytes });
+        // Binary content → 0, regardless of how many \n bytes happen to be there.
+        assert.equal(r.totalLines, 0);
+    });
+
+    it("returns 0 on every error path (detection / read / handler-missing)", async () => {
+        const noDetect = new Mimetypes({ discovery: makeDiscovery([]) });
+        const r1 = await noDetect.process({ path: "foo.unknown", content: "x" });
+        assert.equal(r1.totalLines, 0);
+
+        const cantRead = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r2 = await cantRead.process({ path: "/nonexistent.txt" });
+        assert.equal(r2.totalLines, 0);
+
+        const noHandler = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: undefined }),
+        });
+        const r3 = await noHandler.process({ path: "foo.txt", content: "anything" });
+        assert.equal(r3.totalLines, 0);
+    });
+
+    it("is independent of how the preview was budget-fitted (totalLines = source, not preview)", async () => {
+        // A 20-line source, tail-truncated by a tight budget. totalLines
+        // should reflect ALL 20 source lines even though the preview only
+        // shows a few.
+        class HeadTextHandler extends BaseHandler {
+            override preview(content: string | Uint8Array): Preview {
+                const text = typeof content === "string" ? content : "";
+                return { kind: "text", text, orientation: "head" };
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: HeadTextHandler }),
+            tokenize: async (text) => text.length,
+        });
+        const content = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
+        const r = await m.process({ path: "foo.txt", content }, { budget: 50 });
+        assert.equal(r.totalLines, 20);
+        // The preview itself is truncated...
+        assert.ok(r.preview.includes("[[TRUNCATED]]"));
+        // ...but totalLines still reflects the full source.
     });
 });
 
