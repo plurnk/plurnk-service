@@ -66,6 +66,40 @@ export const packetToWireMessages = (packet) => [
     { role: "user", content: renderUserContent(packet.user) },
 ];
 
+// Measure the wire-rendered token cost of the curatable sections (index,
+// log) plus the assembled total, using the provider's tokenizer. The budget
+// readout uses this so its subtotals match what actually ships — meta lines
+// and fences included — not a serialized approximation. `total` is measured
+// over whatever the packet currently holds, so the caller renders the budget
+// with a `{{tokensFree}}` placeholder, measures, then substitutes (the
+// placeholder/number length delta is negligible).
+export const measureBudgetSections = (packet, countTokens) => {
+    const system = packet.system ?? {};
+    const user = packet.user ?? {};
+    const indexEntries = Array.isArray(system.index) ? system.index : [];
+    const logEntries = Array.isArray(system.log) ? system.log : [];
+    const indexBody = indexEntries.length > 0 ? renderIndexEntries(indexEntries) : "";
+    const logBody = logEntries.length > 0 ? renderLogEntries(logEntries) : "";
+    // A channel renders iff its content is a non-empty string (renderIndexEntries).
+    const indexChannels = indexEntries.reduce(
+        (n, e) => n + Object.values(e.channels ?? {}).filter(
+            (ch) => typeof ch?.content === "string" && ch.content.length > 0,
+        ).length,
+        0,
+    );
+    return {
+        index: {
+            channels: indexChannels,
+            tokens: indexBody ? countTokens(`# Plurnk System Index\n\n${indexBody}`) : 0,
+        },
+        log: {
+            entries: logEntries.length,
+            tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
+        },
+        total: countTokens(renderSystemContent(system)) + countTokens(renderUserContent(user)),
+    };
+};
+
 // Number each line of body as `<N>:\t<line>` — mirrors rummy
 // plugins/helpers.js numberLines. The leading digit prevents column-zero
 // fence collisions and gives the model line refs for free (`READ<42-46>`).

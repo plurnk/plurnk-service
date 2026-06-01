@@ -17,7 +17,7 @@ import { sliceLinesRaw, isBinaryMimetype } from "@plurnk/plurnk-schemes";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
-import { packetToWireMessages } from "./packet-wire.js";
+import { packetToWireMessages, measureBudgetSections, renderSystemContent, renderUserContent } from "./packet-wire.js";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
 // SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
@@ -26,6 +26,11 @@ const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MO
 const DEFAULT_PREVIEW_BUDGET = 256;
 const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
+const DEFAULT_BUDGET_CEILING = 0.9;
+
+// Substituted into the budget readout after the assembled packet is measured
+// (the figure depends on the packet's own rendered size — chicken/egg).
+const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 
 const readBudget = (): number => {
     const raw = process.env.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS;
@@ -33,6 +38,22 @@ const readBudget = (): number => {
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n <= 0) return DEFAULT_PREVIEW_BUDGET;
     return n;
+};
+
+// PLURNK_BUDGET_CEILING is dual-mode: <=1 is a fraction of the provider's
+// context window, >1 is an absolute token wall — lets a demo pin a tiny
+// ceiling regardless of the model's real window to force the grinder.
+const readCeiling = (): number => {
+    const raw = process.env.PLURNK_BUDGET_CEILING;
+    if (raw === undefined || raw.length === 0) return DEFAULT_BUDGET_CEILING;
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return DEFAULT_BUDGET_CEILING;
+    return n;
+};
+
+export const computeCeiling = (contextSize: number | null, config: number): number | null => {
+    if (contextSize === null) return null;
+    return config <= 1 ? Math.floor(contextSize * config) : Math.min(Math.floor(config), contextSize);
 };
 
 const readMaxStrikes = (): number => {
@@ -313,6 +334,7 @@ export default class Engine {
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #previewBudget: number;
+    #budgetCeiling: number;
     // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
     // contract (§2.1). Populated from the active provider's countTokens via
     // the Daemon; a divisor tripwire stands in only for bare/standalone
@@ -378,6 +400,7 @@ export default class Engine {
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
         this.#previewBudget = readBudget();
+        this.#budgetCeiling = readCeiling();
         // Tripwire default matches the Mimetypes boot affordance (SPEC §4.5):
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
@@ -834,55 +857,46 @@ export default class Engine {
         // form — wire-payload tokens may differ slightly because chat-
         // template scaffolding adds bytes, but the subtotal tracks "what
         // the model has to process" closely enough for budget diagnostics.
-        const systemTokens =
-            provider.countTokens(system_definition) +
-            provider.countTokens(persona) +
-            provider.countTokens(JSON.stringify(index)) +
-            provider.countTokens(JSON.stringify(log));
-        // user.telemetry.budget — shimmed with section-aggregate table.
-        // Real per-scheme breakdown is the tokenomics chapter (SPEC.md §14.2);
-        // depends on provider.getContextSize and write-time per-row tokens.
-        const budget = this.#renderBudgetShim(systemTokens, provider, prompt, telemetryErrors);
-        const userTokens =
-            provider.countTokens(prompt) +
-            provider.countTokens(JSON.stringify(telemetryErrors)) +
-            provider.countTokens(budget) +
-            provider.countTokens(requirements);
-        return {
-            system: {
-                tokens: systemTokens,
-                system_definition,
-                persona,
-                index,
-                log,
-            },
-            user: {
-                tokens: userTokens,
-                prompt,
-                telemetry: { budget, errors: telemetryErrors },
-                system_requirements: requirements,
-            },
+        const countTokens = (t: string): number => provider.countTokens(t);
+        // Budget readout (SPEC.md §14.2). Two-pass: measure the wire-rendered
+        // index/log sections (budget-independent), install the readout with a
+        // tokensFree placeholder, measure the assembled total, resolve free,
+        // substitute. Subtotals come from the real render — meta and fences
+        // included — not a serialized approximation. ceiling is the provider's
+        // window × PLURNK_BUDGET_CEILING (null when no window is reported →
+        // headline omitted, section lines still shown).
+        const ceiling = computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const scratch = {
+            system: { system_definition, persona, index, log },
+            user: { prompt, telemetry: { budget: "", errors: telemetryErrors }, system_requirements: requirements },
         };
+        const sections = measureBudgetSections(scratch, countTokens);
+        scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
+        const total = countTokens(renderSystemContent(scratch.system)) + countTokens(renderUserContent(scratch.user));
+        const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total);
+        const budget = tokensFree === null
+            ? scratch.user.telemetry.budget
+            : scratch.user.telemetry.budget.replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
+        const system = { tokens: 0, system_definition, persona, index, log };
+        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors }, system_requirements: requirements };
+        system.tokens = countTokens(renderSystemContent(system));
+        user.tokens = countTokens(renderUserContent(user));
+        return { system, user };
     }
 
-    // user.telemetry.budget — SHIM. Real per-scheme breakdown +
-    // context-window "free/percent-of-total" is SPEC.md §14.2; depends on
-    // provider.getContextSize and write-time per-row tokens. Until then,
-    // render the section-aggregate counts we already compute so the wire's
-    // `# Plurnk System Budget` section is non-empty for picking-apart purposes.
-    #renderBudgetShim(systemTokens: number, provider: Provider, prompt: string, telemetryErrors: object[]): string {
-        const userPromptTokens = provider.countTokens(prompt);
-        const userErrTokens = provider.countTokens(JSON.stringify(telemetryErrors));
-        const userTokens = userPromptTokens + userErrTokens;
-        const total = systemTokens + userTokens;
-        const pct = (n: number): string => total === 0 ? "0.0%" : `${((n / total) * 100).toFixed(1)}%`;
-        return [
-            "| Section | Used | Percent |",
-            "|---|---|---|",
-            `| system | ${systemTokens} | ${pct(systemTokens)} |`,
-            `| user | ${userTokens} | ${pct(userTokens)} |`,
-            `| **Total** | **${total}** | **100.0%** |`,
-        ].join("\n");
+    // Budget readout body, rendered into the `# Plurnk System Budget` section.
+    // Headline `ceiling/free` only when a ceiling exists; section lines for the
+    // curatable index/log weight the model can HIDE back. tokensFree is a
+    // placeholder here — buildSystem substitutes it after measuring the packet.
+    #renderBudget(
+        sections: { index: { channels: number; tokens: number }; log: { entries: number; tokens: number } },
+        ceiling: number | null,
+    ): string {
+        const lines: string[] = [];
+        if (ceiling !== null) lines.push(`ceiling ${ceiling}, free ${TOKENS_FREE_PLACEHOLDER}`);
+        if (sections.index.channels > 0) lines.push(`- index: ${sections.index.channels} channels, ${sections.index.tokens} tokens`);
+        if (sections.log.entries > 0) lines.push(`- log: ${sections.log.entries} entries, ${sections.log.tokens} tokens`);
+        return lines.join("\n");
     }
 
     // Wire projection lives in ./packet-wire.js (plain JS) so Engine and

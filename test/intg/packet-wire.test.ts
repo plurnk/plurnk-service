@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderSystemContent } from "../../src/core/packet-wire.js";
+import { renderSystemContent, measureBudgetSections } from "../../src/core/packet-wire.js";
 
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
@@ -363,6 +363,40 @@ test("[regression] index preview renders verbatim — service does not re-number
     const out = renderSystemContent(system);
     assert.match(out, /<<:::file:\/\/a\.ts\n1:\tclass Foo\n2:\t  bar\(\)\n:::file:\/\/a\.ts/);
     assert.doesNotMatch(out, /1:\t1:\t/, "no double-numbering");
+});
+
+test("measureBudgetSections: per-section render tokens + assembled total, non-empty channels only", () => {
+    const tk = (s: string) => s.length; // deterministic: one token per char
+    const packet = {
+        system: {
+            system_definition: "SD",
+            persona: "",
+            index: [
+                {
+                    scheme: "known", pathname: "plan", defaultChannel: "content",
+                    channels: { content: { content: "do the thing", mimetype: "text/markdown", tokens: 3 } },
+                },
+                {
+                    scheme: "exec", pathname: "1/1/1/EXEC", defaultChannel: "stdout",
+                    channels: {
+                        stdout: { content: "ok", mimetype: "text/plain", tokens: 1 },
+                        stderr: { content: "", mimetype: "text/plain", tokens: 0 }, // empty → not rendered, not counted
+                    },
+                },
+            ],
+            log: [],
+        },
+        user: { prompt: "go", telemetry: { budget: "{{tokensFree}}", errors: [] }, system_requirements: "" },
+    };
+    const m = measureBudgetSections(packet, tk);
+    assert.equal(m.index.channels, 2, "empty stderr is excluded from the channel count");
+    assert.equal(m.log.entries, 0);
+    assert.equal(m.log.tokens, 0, "no log section → zero tokens");
+    assert.ok(m.index.tokens > 0);
+    assert.ok(m.total > m.index.tokens, "total includes the index section plus the rest");
+    // total is the real assembled wire (placeholder budget included), proving
+    // it measures the render rather than a serialized stand-in.
+    assert.equal(m.total, renderSystemContent(packet.system).length + renderUserContent(packet.user).length);
 });
 
 test("telemetry render: parse_error with snippet → meta line followed by N:\\t-prefixed snippet body", () => {
