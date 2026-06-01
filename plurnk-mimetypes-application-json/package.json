@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-json",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "application/json and application/jsonc mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -49,7 +49,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "0.7.2",
+        "@plurnk/plurnk-mimetypes": "0.7.3",
         "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
