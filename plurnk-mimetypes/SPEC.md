@@ -218,6 +218,15 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 `previewTokens` is the token count of the returned `preview` string, measured with the same `tokenize` function the orchestrator was constructed with. Exposed so consumers (notably plurnk-service's tokenomics ledger) don't have to re-tokenize the preview to recover its render cost. Always present; `0` for empty previews (every error path, plus the `null` handler return). Empty previews short-circuit without paying a `tokenize` call.
 
+**Preview rendering (#8).** `Mimetypes.process` returns `preview` ready for verbatim rendering — consumers do no post-processing. Specifically:
+
+- **`SymbolPreview`** → outline emitted as-is. The outline already carries source-line annotations inline (`class Parser [5-47]`, `  method parse [10-20]`), so no further line-numbering is applied.
+- **`TextPreview` (head)** → each line prefixed with `${sourceLine}:\t` starting at 1, per plurnk-grammar's plurnk.md §"Paths" convention (also referenced by plurnk-service SPEC §16.6). The trailing `...[[TRUNCATED]]` marker rides on the final line.
+- **`TextPreview` (tail)** → each line prefixed with `${sourceLine}:\t` starting at the source line of the first surviving character (computed by finding the slice's offset in `material.text` and counting newlines before it). The leading `[[TRUNCATED]]...` marker rides on the first line — its source-line label reflects the source line that line begins in.
+- **`null` / empty** → emitted as `""`, no rendering applied.
+
+The line-numbering format (`N:\t<line>`) is the family-wide convention; consumers render `preview` directly. `previewTokens` reflects the count of the *rendered* string, including prefix overhead.
+
 | Failure | Behavior |
 |---|---|
 | Detection returns null | `{ mimetype: null, preview: "", ok: false }` |

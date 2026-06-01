@@ -328,6 +328,115 @@ describe("Mimetypes — process", () => {
     });
 });
 
+describe("Mimetypes — process: N:\\t line-number rendering (#8)", () => {
+    class HeadTextHandler extends BaseHandler {
+        override preview(content: string | Uint8Array): Preview {
+            const text = typeof content === "string" ? content : "";
+            return { kind: "text", text, orientation: "head" };
+        }
+    }
+
+    class TailTextHandler extends BaseHandler {
+        override preview(content: string | Uint8Array): Preview {
+            const text = typeof content === "string" ? content : "";
+            return { kind: "text", text, orientation: "tail" };
+        }
+    }
+
+    it("symbols preview emitted unmodified — outline already carries source lines", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "anything" });
+        // FakePlainHandler emits one symbol → outline is "module Plain [1]".
+        // No N:\t prefix added (symbols carry their own line annotation).
+        assert.equal(r.preview, "module Plain [1]");
+    });
+
+    it("head-oriented text preview gets N:\\t prefixes starting at 1", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: HeadTextHandler }),
+        });
+        const content = "first line\nsecond line\nthird line";
+        const r = await m.process({ path: "foo.txt", content });
+        assert.equal(r.preview, "1:\tfirst line\n2:\tsecond line\n3:\tthird line");
+    });
+
+    it("head-oriented text with a single line still gets numbered", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: HeadTextHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "just one line" });
+        assert.equal(r.preview, "1:\tjust one line");
+    });
+
+    it("tail-oriented text preview with no truncation numbers from 1", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: TailTextHandler }),
+            tokenize: async (text) => text.length,
+        });
+        const content = "line 1\nline 2\nline 3";
+        // Big budget — no truncation needed; whole content surfaces.
+        const r = await m.process({ path: "foo.txt", content }, { budget: 10000 });
+        assert.equal(r.preview, "1:\tline 1\n2:\tline 2\n3:\tline 3");
+    });
+
+    it("tail-oriented text preview with truncation numbers from the surviving source line", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: TailTextHandler }),
+            tokenize: async (text) => text.length,
+        });
+        // 10 lines total; budget too small for everything so the tail
+        // truncates. Expect the surviving lines numbered with their original
+        // source-line numbers (not 1, 2, 3...).
+        const content = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+        // Total length: 10 lines × ~7 chars + 9 newlines ≈ 79. Budget 50 forces truncation.
+        const r = await m.process({ path: "foo.txt", content }, { budget: 50 });
+        // The preview must include the [[TRUNCATED]] marker because tail
+        // orientation was truncated.
+        assert.ok(r.preview.includes("[[TRUNCATED]]"), `expected marker; got ${JSON.stringify(r.preview)}`);
+        // The first line of the preview should NOT be numbered 1 (because
+        // it's a tail slice — earlier source lines were dropped).
+        const firstLineLabel = parseInt(r.preview.split("\n")[0].split(":")[0]);
+        assert.ok(firstLineLabel > 1, `expected first-line label > 1 for tail truncation; got ${firstLineLabel}`);
+        // The last surviving line of the source should appear in the preview
+        // and carry a believable source-line label (~10).
+        assert.ok(r.preview.includes("line 10"), "expected line 10 to survive a tail-truncation preview");
+    });
+
+    it("empty preview short-circuits — no rendering applied", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakeNullHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "ignored" });
+        assert.equal(r.preview, "");
+    });
+
+    it("error paths leave preview empty (no rendering on null mimetype / missing handler)", async () => {
+        const m = new Mimetypes({ discovery: makeDiscovery([]) });
+        const r = await m.process({ path: "foo.unknown", content: "x" });
+        assert.equal(r.preview, "");
+    });
+
+    it("previewTokens reflects the line-numbered preview (includes prefix overhead)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: HeadTextHandler }),
+            tokenize: async (text) => text.length,
+        });
+        const r = await m.process({ path: "foo.txt", content: "a\nb\nc" });
+        // "1:\ta\n2:\tb\n3:\tc" = 15 chars. previewTokens should match.
+        assert.equal(r.preview, "1:\ta\n2:\tb\n3:\tc");
+        assert.equal(r.previewTokens, r.preview.length);
+    });
+});
+
 describe("Mimetypes — process: previewTokens (#7)", () => {
     it("returns previewTokens 0 when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });

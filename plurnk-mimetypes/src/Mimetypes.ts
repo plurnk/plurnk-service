@@ -10,6 +10,7 @@ import type {
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
+    Preview,
     QueryMatch,
     TokenizeFn,
 } from "./types.ts";
@@ -183,11 +184,17 @@ export default class Mimetypes {
         await handler.validate(content);
 
         const material = await handler.preview(content);
-        const preview = await fitPreview(material, budget, this.#tokenize);
-        // Tokenize the final preview once and expose the count so consumers
-        // (plurnk-service tokenomics ledger — see #7) don't have to repeat
-        // the work. Empty preview short-circuits to 0 without paying a
-        // tokenize call for the trivial case.
+        const fitted = await fitPreview(material, budget, this.#tokenize);
+        // Pre-format the preview for verbatim rendering downstream (#8). Text
+        // previews get `N:\t` line prefixes per plurnk-grammar's plurnk.md
+        // §"Paths" convention; symbols outlines are emitted unmodified (they
+        // already carry source-line annotations like `[5-47]` inline). null
+        // material or empty preview pass through. Service renders the result
+        // as-is — no internal preview metadata needed at the consumer.
+        const preview = renderPreviewForConsumer(material, fitted);
+        // Tokenize the final (rendered) preview once and expose the count so
+        // consumers (plurnk-service tokenomics ledger — see #7) don't have to
+        // repeat the work. Empty preview short-circuits without paying.
         const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
 
         return { mimetype, preview, previewTokens, ok: true };
@@ -239,4 +246,52 @@ export default class Mimetypes {
             return null;
         }
     }
+}
+
+// Apply plurnk-grammar's `N:\t` line-number convention (plurnk.md §"Paths" /
+// plurnk-service SPEC §16.6) to the fitted preview, so downstream renders
+// verbatim:
+//   - symbols / null material / empty preview → return unchanged
+//   - text head → number from 1; truncation marker rides on the final line
+//   - text tail → number from the source line of the first surviving char;
+//     truncation marker rides on the first line
+// Line numbers reflect positions in the handler's own `material.text` (which
+// for content-transforming handlers like text-html or application-pdf is the
+// post-transform text, not the raw bytes).
+function renderPreviewForConsumer(material: Preview, preview: string): string {
+    if (preview.length === 0 || material === null || material.kind === "symbols") {
+        return preview;
+    }
+    const startLine = material.orientation === "tail"
+        ? tailStartLine(material.text, preview)
+        : 1;
+    return prefixLinesWithSourceNumbers(preview, startLine);
+}
+
+const TAIL_MARKER = "[[TRUNCATED]]...";
+
+// Compute the source line of the first surviving character in a tail-oriented
+// preview. Strips the leading truncation marker (if present), finds where the
+// surviving slice starts in the original material text, and counts newlines
+// before that point.
+function tailStartLine(original: string, preview: string): number {
+    const slice = preview.startsWith(TAIL_MARKER) ? preview.slice(TAIL_MARKER.length) : preview;
+    const sliceStart = original.length - slice.length;
+    if (sliceStart <= 0) return 1;
+    let line = 1;
+    for (let i = 0; i < sliceStart; i += 1) {
+        if (original.charCodeAt(i) === 0x0a) line += 1;
+    }
+    return line;
+}
+
+// `<startLine>:\t<line>\n<startLine+1>:\t<line>\n...` per plurnk.md §"Paths".
+function prefixLinesWithSourceNumbers(text: string, startLine: number): string {
+    const lines = text.split("\n");
+    let out = "";
+    for (let i = 0; i < lines.length; i += 1) {
+        if (i > 0) out += "\n";
+        out += `${startLine + i}:\t${lines[i]}`;
+    }
+    return out;
 }
