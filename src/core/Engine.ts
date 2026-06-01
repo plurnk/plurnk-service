@@ -1021,7 +1021,7 @@ export default class Engine {
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string;
             params: Record<string, string> | null;
-            channels: Record<string, { content: string; mimetype: string; tokens: number }>;
+            channels: Record<string, { content: string; mimetype: string; tokens: number; lines: number }>;
             defaultChannel: string;
             attributes: Record<string, unknown>;
             tags: string[];
@@ -1071,6 +1071,7 @@ export default class Engine {
                 content: result.preview,
                 mimetype: row.mimetype,
                 tokens: row.tokens,
+                lines: result.totalLines,
             };
         }
 

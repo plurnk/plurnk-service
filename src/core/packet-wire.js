@@ -248,6 +248,7 @@ const renderIndexEntries = (entries) =>
             const channelInfo = {};
             if (typeof ch.mimetype === "string") channelInfo.mimetype = ch.mimetype;
             if (typeof ch.tokens === "number") channelInfo.tokens = ch.tokens;
+            if (typeof ch.lines === "number") channelInfo.lines = ch.lines;
             channelsMeta[channelName] = channelInfo;
             const fenceChannel = channelName === defaultChannel ? null : channelName;
             blocks.push(renderHeredoc(uri, fenceChannel, content));
