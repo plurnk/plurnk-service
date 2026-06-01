@@ -93,6 +93,16 @@ JOIN entry_channels ec ON ec.entry_id = v.entry_id AND ec.name = v.channel
 WHERE v.run_id = $run_id AND v.indexed = 1
 ORDER BY e.id, ec.name;
 
+-- PREP: engine_list_session_members
+-- All file members of a session (scheme IS NULL) with their default-channel
+-- content + metadata — source for the plurnk://manifest.json membership TOC.
+-- Session-scoped (membership persists across runs); HIDE doesn't un-member.
+SELECT e.pathname, ec.content, ec.mimetype, ec.tokens
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.scope = 'session' AND e.session_id = $session_id AND e.scheme IS NULL
+ORDER BY e.pathname;
+
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 

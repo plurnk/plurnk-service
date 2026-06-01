@@ -852,7 +852,10 @@ export default class Engine {
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
-        const index = await this.#buildIndex(runId, loopId);
+        const baseIndex = await this.#buildIndex(runId, loopId);
+        const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
+        const manifest = sessionRow !== undefined ? await this.#buildManifest(sessionRow.session_id) : null;
+        const index = manifest !== null ? [manifest, ...baseIndex] : baseIndex;
         const log = await this.#buildLog(runId);
         const telemetryErrors = await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
@@ -1076,6 +1079,30 @@ export default class Engine {
         }
 
         return [...entries.values()];
+    }
+
+    // plurnk://manifest.json — the session's file-membership table of contents,
+    // prepended to the index. Gives the model a sanctioned discovery surface
+    // (no fs-walk — SPEC §14.3 D4) and keeps the index non-empty so its heading
+    // always renders. Each row carries depth (tokens) and the addressable
+    // extent (lines) so a READ can be weighed against budget before it's
+    // committed. Workspace sessions only (project_root set); empty membership
+    // renders as an empty list, not absence.
+    async #buildManifest(sessionId: number): Promise<object | null> {
+        const session = await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+        if (session?.project_root === undefined || session.project_root === null) return null;
+        const members = await (this.#db.engine_list_session_members as PrepMethod).all<{ pathname: string; content: string; mimetype: string; tokens: number }>({ session_id: sessionId });
+        const files: { path: string; mimetype: string; tokens: number; lines: number }[] = [];
+        for (const m of members) {
+            const result = await this.#mimetypes.process({ content: m.content, hint: m.mimetype }, { budget: this.#previewBudget });
+            files.push({ path: m.pathname, mimetype: m.mimetype, tokens: m.tokens, lines: result.totalLines });
+        }
+        const json = JSON.stringify({ files }, null, 2);
+        return {
+            scheme: "plurnk", pathname: "manifest.json", defaultChannel: "content",
+            attributes: {}, tags: [],
+            channels: { content: { content: json, mimetype: "application/json", tokens: this.#tokenize(json), lines: json.split("\n").length } },
+        };
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
