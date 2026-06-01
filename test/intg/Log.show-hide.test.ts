@@ -30,7 +30,7 @@ const setup = async () => {
         lineMarker: null,
         tx: "<<EDIT(known://x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
-        status_rx: 201,
+        status_rx: 201, tokens: 0,
         state: "resolved", outcome: null, attrs: "{}",
     });
     return { db, sessionId, runId, loopId, turnId };

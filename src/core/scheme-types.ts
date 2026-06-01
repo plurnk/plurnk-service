@@ -36,6 +36,14 @@ export interface PlurnkSchemeContext {
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
     readonly mimetypes?: Mimetypes;
+    // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
+    // contract (§2.1). Engine populates it from its configured tokenizer;
+    // the entry/log write helpers count content tokens through it at write
+    // time and store the count on entry_channels.tokens / log_entries.tokens.
+    // Optional like the other engine-populated capabilities (absent in bare
+    // test fixtures) — the write helpers fail-hard if a write is attempted
+    // without it rather than silently storing 0.
+    readonly tokenize?: (text: string) => number;
     // Push a TelemetryEvent into the loop's telemetry buffer. Closes over
     // sessionId + loopId so the scheme just provides the event payload.
     // Wired by Engine to #pushTelemetry → fans out to the next packet's

@@ -313,6 +313,12 @@ export default class Engine {
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #previewBudget: number;
+    // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
+    // contract (§2.1). Populated from the active provider's countTokens via
+    // the Daemon; a divisor tripwire stands in only for bare/standalone
+    // construction before a provider is wired (same boot affordance as
+    // Mimetypes, §4.5). Real counts come from provider.countTokens.
+    #tokenize: (text: string) => number;
     // Per-loop transient buffer of actionless failures pending surface in the
     // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
     // Map<loopId, TelemetryError[]>. SPEC §15.1.
@@ -350,13 +356,14 @@ export default class Engine {
     // Per-grammar 0.17.0 protocol — see SPEC §15.1.
     #telemetryEventNotify: TelemetryEventNotify | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, telemetryEventNotify }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         wakeRunNotify?: WakeRunNotify;
         telemetryEventNotify?: TelemetryEventNotify;
+        tokenize?: (text: string) => number;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -371,6 +378,10 @@ export default class Engine {
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
         this.#previewBudget = readBudget();
+        // Tripwire default matches the Mimetypes boot affordance (SPEC §4.5):
+        // the divisor stands in only until the provider-backed tokenizer is
+        // wired by the Daemon. Real counts come from provider.countTokens.
+        this.#tokenize = tokenize ?? ((text) => Math.ceil(text.length / 4));
     }
 
     #pushTelemetry(sessionId: number, loopId: number, event: object): void {
@@ -1059,6 +1070,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             mimetypes: this.#mimetypes,
+            tokenize: this.#tokenize,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
         let result: DispatchResult;
@@ -1167,6 +1179,7 @@ export default class Engine {
                 writer: "model", signal: this.#loopAborts.get(loopId)?.signal,
                 streamEventNotify: this.#streamEventNotify,
                 wakeRunNotify: this.#wakeRunNotify,
+                tokenize: this.#tokenize,
                 pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
             };
             const applyResult = await handler.applyResolution({
@@ -1259,6 +1272,7 @@ export default class Engine {
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
+            tokenize: this.#tokenize,
             pushTelemetry: (event) => this.#pushTelemetry(sessionRow.session_id, loopId, event),
         };
         const entry: EntryData = {
@@ -1594,6 +1608,8 @@ export default class Engine {
             }
         }
         const attrs = JSON.stringify(attrsObj);
+        const txJson = JSON.stringify(statement);
+        const rxJson = JSON.stringify(result);
         const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
             run_id: runId,
             loop_id: loopId,
@@ -1612,11 +1628,12 @@ export default class Engine {
             params: target.params,
             fragment: target.fragment,
             lineMarker: lineMarkerJson,
-            tx: JSON.stringify(statement),
+            tx: txJson,
             mimetype_tx: "application/json",
-            rx: JSON.stringify(result),
+            rx: rxJson,
             mimetype_rx: "application/json",
             status_rx: result.status,
+            tokens: this.#tokenize(txJson) + this.#tokenize(rxJson),
             state: isProposed ? "proposed" : "resolved",
             outcome: null,
             attrs,

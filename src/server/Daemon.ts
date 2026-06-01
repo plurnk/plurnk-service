@@ -101,6 +101,11 @@ export default class Daemon {
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            // Same provider-backed source as the Mimetypes tokenize lambda
+            // above; sync here because countTokens is sync (§2.1) and the
+            // write helpers store the count inline. Divisor tripwire only
+            // until a provider is resolved.
+            tokenize: (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
             streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
             wakeRunNotify: (payload) => { void this.#handleWakeRun(payload); },
             telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),

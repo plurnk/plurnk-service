@@ -126,7 +126,8 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         createdNow = false;
     }
 
-    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype });
+    if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
+    await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
     await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: targetChannel });
 
     if (Array.isArray(statement.signal)) {

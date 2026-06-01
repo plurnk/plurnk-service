@@ -31,7 +31,7 @@ DELETE FROM entry_tags WHERE entry_id = $entry_id;
 
 -- PREP: crud_write_channel
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
-VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
+VALUES ($entry_id, $name, $content, $mimetype, $tokens, $state);
 
 -- PREP: crud_write_visibility
 INSERT OR IGNORE INTO visibility (run_id, entry_id, channel, indexed)

@@ -5,7 +5,7 @@
 -- PREP: ops_upsert_channel
 -- EDIT semantics: replace channel content if it exists.
 INSERT OR REPLACE INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
-VALUES ($entry_id, $name, $content, $mimetype, 0, 'static');
+VALUES ($entry_id, $name, $content, $mimetype, $tokens, 'static');
 
 -- PREP: ops_read_channel
 -- READ targeting a specific channel of a session entry.

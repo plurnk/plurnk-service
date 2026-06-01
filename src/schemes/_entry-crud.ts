@@ -45,7 +45,8 @@ export const readEntry = async (pathname: string, ctx: PlurnkSchemeContext, sche
 };
 
 export const writeEntry = async (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null): Promise<WriteEntryResult> => {
-    const { db, sessionId, runId } = ctx;
+    const { db, sessionId, runId, tokenize } = ctx;
+    if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
     const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
     let entryId: number;
@@ -65,6 +66,7 @@ export const writeEntry = async (pathname: string, entry: EntryData, ctx: Plurnk
     for (const [channelName, channelData] of Object.entries(entry.channels)) {
         await (db.crud_write_channel as PrepMethod).run({
             entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
+            tokens: tokenize(channelData.content),
             state: channelData.state ?? "static",
         });
         await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: channelName });

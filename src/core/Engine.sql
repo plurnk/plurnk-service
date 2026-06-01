@@ -152,14 +152,14 @@ INSERT INTO log_entries (
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, params, fragment, lineMarker,
-    tx, mimetype_tx, rx, mimetype_rx, status_rx,
+    tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
     $run_id, $loop_id, $turn_id, $sequence, $origin,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $params, $fragment, $lineMarker,
-    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx,
+    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens,
     $state, $outcome, $attrs
 )
 RETURNING id;

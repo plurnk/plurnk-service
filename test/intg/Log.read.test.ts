@@ -192,7 +192,7 @@ test("Log.read: matcher-then-<L> composition — pick Nth match from a prior REA
         const Known = (await import("../../src/schemes/Known.ts")).default;
         await new Known().edit(
             { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
-            { db, sessionId, runId, loopId, turnId, writer: "model", signal: undefined },
+            { db, sessionId, runId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
         );
         // Dispatch a matcher READ — captures all three lines.
         await engine.dispatch({
