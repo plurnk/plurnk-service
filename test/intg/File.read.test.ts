@@ -22,6 +22,13 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
     position: { line: 1, column: 1 },
 });
 
+// Seed a file as a member of the session — what a client `add` establishes.
+// File.read gates on membership (SPEC §14.3); a readable file must be added,
+// not merely present on disk.
+const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
+    await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname });
+};
+
 // Set up a session whose project_root points at a fresh temp directory,
 // build a real PlurnkSchemeContext against it, run the test, clean up.
 // Workspace root is now per-session (F.1 + F.5) — sourced from
@@ -69,6 +76,7 @@ test("File.read: read existing file inside workspace → 200 + content + text/ma
     // valid markdown; auto-derived text mimetype is never text/plain).
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "hello.txt"), "Paris is the capital of France.\n");
+        await addMember(ctx, "hello.txt");
         const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris is the capital of France.\n");
@@ -80,6 +88,7 @@ test("File.read: nested path inside workspace works", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
+        await addMember(ctx, "docs/readme.md");
         const result = await new File().read(readStmt(urlPath("file", "docs/readme.md")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "# Doc\n");
@@ -135,6 +144,7 @@ test("File.read: null path → 400", async () => {
 test("File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
+        await addMember(ctx, "f.txt");
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "beta");
@@ -145,6 +155,7 @@ test("File.read: lineMarker <N> selects line N as raw content with startLine=N",
 test("File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
+        await addMember(ctx, "f.txt");
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "b\nc");
@@ -155,6 +166,7 @@ test("File.read: lineMarker <N,M> selects inclusive range as raw content with st
 test("File.read: lineMarker out of range returns 416", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
+        await addMember(ctx, "f.txt");
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 99, last: null } }), ctx);
         assert.equal(r.status, 416);
     });
@@ -163,6 +175,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
 test("File.read: regex body matcher returns JSON array of match rows", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
+        await addMember(ctx, "f.txt");
         const r = await new File().read(
             readStmt(urlPath("file", "f.txt"), { body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" } }),
             ctx,
@@ -180,6 +193,7 @@ test("File.read: regex body matcher returns JSON array of match rows", async () 
 test("File.read: <L> + body matcher composes — slice first, match within, source lines preserved", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nfoo bar foo\ngamma\n");
+        await addMember(ctx, "f.txt");
         const r = await new File().read(
             readStmt(urlPath("file", "f.txt"), {
                 lineMarker: { first: 2, last: 2 },
@@ -207,6 +221,7 @@ test("File.read: long content round-trips", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
+        await addMember(ctx, "big.txt");
         const result = await new File().read(readStmt(urlPath("file", "big.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content?.length, big.length);
@@ -217,6 +232,7 @@ test("File.read: absolute path inside workspace resolves correctly", async () =>
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
+        await addMember(ctx, "abs.txt");
         const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "abs content");

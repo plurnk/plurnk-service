@@ -185,6 +185,8 @@ test("file.read: still works alongside the new edit path", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "read-me.txt";
         await writeFile(join(root, target), "content\n", "utf8");
+        // File.read now gates on membership (SPEC §14.3) — add the file first.
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({
