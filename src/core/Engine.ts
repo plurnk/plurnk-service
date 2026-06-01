@@ -52,8 +52,11 @@ const readCeiling = (): number => {
 };
 
 export const computeCeiling = (contextSize: number | null, config: number): number | null => {
-    if (contextSize === null) return null;
-    return config <= 1 ? Math.floor(contextSize * config) : Math.min(Math.floor(config), contextSize);
+    // Absolute wall (config > 1) is window-independent — the point of the >1
+    // mode is to pin a ceiling even when the provider reports no window; cap at
+    // the real window when one is known. Ratio mode needs a window to scale.
+    if (config > 1) return contextSize === null ? Math.floor(config) : Math.min(Math.floor(config), contextSize);
+    return contextSize === null ? null : Math.floor(contextSize * config);
 };
 
 const readMaxStrikes = (): number => {

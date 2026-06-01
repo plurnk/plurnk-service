@@ -13,7 +13,8 @@ test("computeCeiling: dual-mode — <=1 is a window ratio, >1 an absolute wall c
     assert.equal(computeCeiling(32768, 0.9), 29491, "ratio, floored");
     assert.equal(computeCeiling(32768, 1500), 1500, "absolute wall under the window");
     assert.equal(computeCeiling(1000, 1500), 1000, "absolute wall capped at the real window");
-    assert.equal(computeCeiling(null, 0.9), null, "no reported window → no ceiling");
+    assert.equal(computeCeiling(null, 1500), 1500, "absolute wall holds with no reported window");
+    assert.equal(computeCeiling(null, 0.9), null, "ratio mode needs a window");
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
