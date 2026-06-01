@@ -69,6 +69,8 @@ export const packetToWireMessages = (packet) => [
 // Number each line of body as `<N>:\t<line>` — mirrors rummy
 // plugins/helpers.js numberLines. The leading digit prevents column-zero
 // fence collisions and gives the model line refs for free (`READ<42-46>`).
+// Used for READ@200 content; index-preview numbering is the framework's
+// job now (baked into the preview string — see renderHeredoc).
 const numberLines = (body, start = 1) => {
     if (!body) return "";
     const trailingNewline = body.endsWith("\n");
@@ -114,10 +116,15 @@ const wrapHeredocBody = (fence, body) => {
 // When `channel` is null/empty the fence is path-only —
 // this is the default-channel convention: the absence of `#channel` is
 // the addressing of the scheme's default channel, not a missing field.
-// Body is line-numbered.
+// Body is a mimetypes preview, rendered VERBATIM — the framework owns its
+// formatting (N:\t line numbers for text, source-annotated outline for
+// symbols, correct start-line for tail slices) and bakes it into the
+// preview string as of mimetypes 0.7.3, so the service must not re-number
+// it (re-numbering would double-prefix text and mis-number symbol
+// outlines — plurnk-mimetypes#8).
 const renderHeredoc = (uri, channel, body) => {
     const fence = channel ? `${uri}#${channel}` : uri;
-    return wrapHeredocBody(fence, numberLines(body));
+    return wrapHeredocBody(fence, body);
 };
 
 // Re-render a plurnk statement (from log_entries.tx) as the heredoc form

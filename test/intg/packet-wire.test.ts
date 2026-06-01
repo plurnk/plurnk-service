@@ -86,8 +86,8 @@ test("index entry: multi-channel entry omits suffix on default, keeps it on othe
         log: [],
     };
     const out = renderSystemContent(system);
-    assert.match(out, /<<:::exec:\/\/run\n1:\tok\n:::exec:\/\/run/, "stdout fence is path-only");
-    assert.match(out, /<<:::exec:\/\/run#stderr\n1:\twarn\n:::exec:\/\/run#stderr/, "stderr fence keeps #stderr");
+    assert.match(out, /<<:::exec:\/\/run\nok\n:::exec:\/\/run/, "stdout fence is path-only");
+    assert.match(out, /<<:::exec:\/\/run#stderr\nwarn\n:::exec:\/\/run#stderr/, "stderr fence keeps #stderr");
 });
 
 test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
@@ -325,10 +325,9 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
 });
 
 test("index entry: body ending in newline does NOT produce a doubled trailing newline", () => {
-    // Shell streams (ls, find, etc.) end with \n. Without the fix,
-    // numberLines preserves the trailing \n and the heredoc wrapper
-    // adds another, producing a blank line before the closing fence
-    // that looks like the content has a trailing blank line.
+    // Shell streams (ls, find, etc.) end with \n. The preview renders
+    // verbatim; wrapHeredocBody must not add a second \n before the closing
+    // fence (a doubled \n\n reads as a trailing blank line that isn't there).
     const system = {
         system_definition: "SD",
         persona: "",
@@ -342,8 +341,28 @@ test("index entry: body ending in newline does NOT produce a doubled trailing ne
     };
     const out = renderSystemContent(system);
     // Expect exactly one newline between `src/` and the closing fence.
-    assert.match(out, /4:\tsrc\/\n:::exec:\/\/1\/2\/1\/EXEC/);
-    assert.doesNotMatch(out, /4:\tsrc\/\n\n:::exec:\/\/1\/2\/1\/EXEC/);
+    assert.match(out, /src\/\n:::exec:\/\/1\/2\/1\/EXEC/);
+    assert.doesNotMatch(out, /src\/\n\n:::exec:\/\/1\/2\/1\/EXEC/);
+});
+
+test("[regression] index preview renders verbatim — service does not re-number (mime owns preview formatting)", () => {
+    // mimetypes 0.7.3 bakes line numbers / symbol outlines into the preview
+    // string (plurnk-mimetypes#8). The service renders it as-is; re-applying
+    // numberLines would double-prefix (`1:\t1:\tfoo`) and mis-number outlines.
+    const system = {
+        system_definition: "SD",
+        persona: "",
+        index: [{
+            scheme: "file",
+            pathname: "a.ts",
+            defaultChannel: "content",
+            channels: { content: { content: "1:\tclass Foo\n2:\t  bar()", mimetype: "text/typescript", tokens: 5 } },
+        }],
+        log: [],
+    };
+    const out = renderSystemContent(system);
+    assert.match(out, /<<:::file:\/\/a\.ts\n1:\tclass Foo\n2:\t  bar\(\)\n:::file:\/\/a\.ts/);
+    assert.doesNotMatch(out, /1:\t1:\t/, "no double-numbering");
 });
 
 test("telemetry render: parse_error with snippet → meta line followed by N:\\t-prefixed snippet body", () => {
