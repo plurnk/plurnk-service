@@ -72,7 +72,12 @@ const readPacket = async (db: Db, turnId: number): Promise<{
 }> => {
     const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
     if (row === undefined) throw new Error("readPacket: turn not found");
-    return JSON.parse(row.packet);
+    const packet = JSON.parse(row.packet);
+    // plurnk://manifest.json is a real, always-present entry the engine writes
+    // every turn; these tests assert #buildIndex's per-channel plumbing on the
+    // seeded entries, so drop the catalog row to keep the assertions focused.
+    packet.system.index = packet.system.index.filter((e: { pathname: string }) => e.pathname !== "manifest.json");
+    return packet;
 };
 
 const runTurnOnce = async (db: Db, env: { sessionId: number; runId: number; loopId: number }, engine: Engine) => {
@@ -248,7 +253,10 @@ test("[§4-handlers-fire-render-time] custom mimetype handler is invoked at rend
         const result = await runTurnOnce(db, env, engine);
         const packet = await readPacket(db, result.turnId);
 
-        assert.equal(calls.length, 1, "handler preview invoked exactly once at render");
+        // Fires for both render paths: #buildIndex's preview, and
+        // #buildManifestBody re-processing each entry for mimetypes' totalLines
+        // — the content's extent is the daughter's to compute, not ours.
+        assert.equal(calls.length, 2, "handler preview invoked at render — index + manifest");
         assert.equal(calls[0], "hello-world-and-beyond");
         // Framework renders the returned SymbolPreview into a tree-shaped
         // string: `<kind> <name> [<line>]`. The stub returned one symbol

@@ -652,6 +652,26 @@ export default class Engine {
             }
         }
 
+        // plurnk://manifest.json — rewritten EVERY turn (a live view of the
+        // entry set + token math, both of which change each turn). It's a
+        // derived view like the index, NOT an action — so it's written directly
+        // (Engine.inject's path): no log entry, no sequence slot, not dispatched
+        // like the prompt foist. Written after the prompt so the catalog
+        // reflects this turn's entries; it lists itself (one turn's lag).
+        const manifestCtx: PlurnkSchemeContext = {
+            db: this.#db, sessionId, runId, loopId, turnId,
+            writer: "system",
+            signal: this.#loopAborts.get(loopId)?.signal,
+            streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
+            tokenize: this.#tokenize,
+            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
+        };
+        await writeEntry("manifest.json", {
+            channels: { body: { content: await this.#buildManifestBody(sessionId), mimetype: "application/json" } },
+            tags: [],
+        }, manifestCtx, "plurnk");
+
         // Build the spec'd packet (Packet.json) request half. #buildLog
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
@@ -852,10 +872,7 @@ export default class Engine {
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
-        const baseIndex = await this.#buildIndex(runId, loopId);
-        const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
-        const manifest = sessionRow !== undefined ? await this.#buildManifest(sessionRow.session_id) : null;
-        const index = manifest !== null ? [manifest, ...baseIndex] : baseIndex;
+        const index = await this.#buildIndex(runId, loopId);
         const log = await this.#buildLog(runId);
         const telemetryErrors = await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
@@ -1081,28 +1098,24 @@ export default class Engine {
         return [...entries.values()];
     }
 
-    // plurnk://manifest.json — the session's file-membership table of contents,
-    // prepended to the index. Gives the model a sanctioned discovery surface
-    // (no fs-walk — SPEC §14.3 D4) and keeps the index non-empty so its heading
-    // always renders. Each row carries depth (tokens) and the addressable
-    // extent (lines) so a READ can be weighed against budget before it's
-    // committed. Workspace sessions only (project_root set); empty membership
-    // renders as an empty list, not absence.
-    async #buildManifest(sessionId: number): Promise<object | null> {
-        const session = await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
-        if (session?.project_root === undefined || session.project_root === null) return null;
-        const members = await (this.#db.engine_list_session_members as PrepMethod).all<{ pathname: string; content: string; mimetype: string; tokens: number }>({ session_id: sessionId });
-        const files: { path: string; mimetype: string; tokens: number; lines: number }[] = [];
-        for (const m of members) {
-            const result = await this.#mimetypes.process({ content: m.content, hint: m.mimetype }, { budget: this.#previewBudget });
-            files.push({ path: m.pathname, mimetype: m.mimetype, tokens: m.tokens, lines: result.totalLines });
+    // The body of plurnk://manifest.json — the flat catalog of every entry the
+    // session holds, across all schemes (itself included; it's in the DB). Each
+    // element: the entry's path + per-channel { mimetype, tokens (depth), lines
+    // (extent) }. tokens is the provider's count, stored at write; lines is the
+    // content's extent, which mimetypes owns — so we process each channel for
+    // totalLines (the same call that yields the index preview). The engine never
+    // counts lines itself.
+    async #buildManifestBody(sessionId: number): Promise<string> {
+        const rows = await (this.#db.engine_list_session_entries as PrepMethod).all<{ scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number }>({ session_id: sessionId });
+        const byEntry = new Map<string, { path: string; channels: Record<string, { mimetype: string; tokens: number; lines: number }> }>();
+        for (const r of rows) {
+            const path = r.scheme === null ? r.pathname : `${r.scheme}://${r.pathname}`;
+            let entry = byEntry.get(path);
+            if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
+            const result = await this.#mimetypes.process({ content: r.content, hint: r.mimetype }, { budget: this.#previewBudget });
+            entry.channels[r.channel] = { mimetype: r.mimetype, tokens: r.tokens, lines: result.totalLines };
         }
-        const json = JSON.stringify({ files }, null, 2);
-        return {
-            scheme: "plurnk", pathname: "manifest.json", defaultChannel: "content",
-            attributes: {}, tags: [],
-            channels: { content: { content: json, mimetype: "application/json", tokens: this.#tokenize(json), lines: json.split("\n").length } },
-        };
+        return JSON.stringify([...byEntry.values()], null, 2);
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
