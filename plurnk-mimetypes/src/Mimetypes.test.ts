@@ -183,7 +183,7 @@ describe("Mimetypes — process", () => {
     it("returns ok:false with null mimetype when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
-        assert.deepEqual(result, { mimetype: null, preview: "", ok: false });
+        assert.deepEqual(result, { mimetype: null, preview: "", previewTokens: 0, ok: false });
     });
 
     it("processes inline content (no fs read) when content is provided", async () => {
@@ -325,6 +325,72 @@ describe("Mimetypes — process", () => {
         });
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.ok, true);
+    });
+});
+
+describe("Mimetypes — process: previewTokens (#7)", () => {
+    it("returns previewTokens 0 when detection fails", async () => {
+        const m = new Mimetypes({ discovery: makeDiscovery([]) });
+        const r = await m.process({ path: "foo.unknown", content: "x" });
+        assert.equal(r.previewTokens, 0);
+    });
+
+    it("returns previewTokens 0 when content read fails", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "/nonexistent.txt" });
+        assert.equal(r.previewTokens, 0);
+    });
+
+    it("returns previewTokens 0 when handler is missing", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: undefined }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "raw" });
+        assert.equal(r.previewTokens, 0);
+    });
+
+    it("returns previewTokens 0 for empty preview without paying a tokenize call", async () => {
+        let tokenizeCalls = 0;
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakeNullHandler }),
+            tokenize: async (text) => { tokenizeCalls += 1; return text.length; },
+        });
+        const r = await m.process({ path: "foo.txt", content: "anything" });
+        assert.equal(r.previewTokens, 0);
+        // FakeNullHandler.preview returns null → fitPreview returns "" → we
+        // short-circuit. fitSymbols/fitContent never run, tokenize never runs.
+        assert.equal(tokenizeCalls, 0);
+    });
+
+    it("returns the token count of the fitted preview", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+            tokenize: async (text) => text.length,
+        });
+        const r = await m.process({ path: "foo.txt", content: "anything" });
+        // FakePlainHandler emits one symbol; preview is "module Plain [1]".
+        assert.equal(r.previewTokens, r.preview.length);
+        assert.equal(r.previewTokens, "module Plain [1]".length);
+    });
+
+    it("matches the count a consumer would compute by tokenizing the returned preview", async () => {
+        // The whole point of #7: consumer skips re-tokenize. Verify the
+        // surfaced number is what they'd otherwise have to compute.
+        const tokenize = async (text: string) => text.length;
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+            tokenize,
+        });
+        const r = await m.process({ path: "foo.txt", content: "anything" });
+        const consumerWouldGet = await tokenize(r.preview);
+        assert.equal(r.previewTokens, consumerWouldGet);
     });
 });
 

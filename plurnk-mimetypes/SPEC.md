@@ -214,7 +214,9 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
-`ProcessResult = { mimetype, preview, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+`ProcessResult = { mimetype, preview, previewTokens, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+
+`previewTokens` is the token count of the returned `preview` string, measured with the same `tokenize` function the orchestrator was constructed with. Exposed so consumers (notably plurnk-service's tokenomics ledger) don't have to re-tokenize the preview to recover its render cost. Always present; `0` for empty previews (every error path, plus the `null` handler return). Empty previews short-circuit without paying a `tokenize` call.
 
 | Failure | Behavior |
 |---|---|

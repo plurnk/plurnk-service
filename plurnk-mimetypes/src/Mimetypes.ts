@@ -62,6 +62,12 @@ export interface ProcessOptions {
 export interface ProcessResult {
     mimetype: string | null;
     preview: string;
+    // Token count of `preview` measured by the same `tokenize` function the
+    // orchestrator was constructed with. Exposed so consumers (notably
+    // plurnk-service's tokenomics ledger — see #7) don't have to re-tokenize
+    // the returned preview to recover its render cost. Always present; 0 for
+    // empty previews (every error path, plus `null` handler returns).
+    previewTokens: number;
     ok: boolean;
 }
 
@@ -154,7 +160,7 @@ export default class Mimetypes {
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
-            return { mimetype: null, preview: "", ok: false };
+            return { mimetype: null, preview: "", previewTokens: 0, ok: false };
         }
 
         // Look up the handler's binary flag before reading content, so we read
@@ -164,12 +170,12 @@ export default class Mimetypes {
 
         const content = await this.#resolveContent(input, isBinary);
         if (content === null) {
-            return { mimetype, preview: "", ok: false };
+            return { mimetype, preview: "", previewTokens: 0, ok: false };
         }
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            return { mimetype, preview: "", ok: false };
+            return { mimetype, preview: "", previewTokens: 0, ok: false };
         }
 
         // Validate errors propagate per error policy — caller's contract.
@@ -178,8 +184,13 @@ export default class Mimetypes {
 
         const material = await handler.preview(content);
         const preview = await fitPreview(material, budget, this.#tokenize);
+        // Tokenize the final preview once and expose the count so consumers
+        // (plurnk-service tokenomics ledger — see #7) don't have to repeat
+        // the work. Empty preview short-circuits to 0 without paying a
+        // tokenize call for the trivial case.
+        const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
 
-        return { mimetype, preview, ok: true };
+        return { mimetype, preview, previewTokens, ok: true };
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
