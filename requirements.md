@@ -1,3 +1,4 @@
+YOU MUST use SHOW and HIDE to keep your `tokensFree` context budget healthy.
 YOU MUST ONLY populate known entries with source entry information, never with model training.
 YOU SHOULD hide all index and log entries if they are irrelevant, resolved, or already distilled into known entries.
 YOU SHOULD leverage taxonomic path names and folksonomic tagging on operations and entries when appropriate.
