@@ -44,7 +44,7 @@ test("Engine.runTurn: budget readout — ratio-derived ceiling, free reconciles 
         const packet = JSON.parse(row.packet) as { system: { tokens: number }; user: { tokens: number; telemetry: { budget: string } } };
         const budget = packet.user.telemetry.budget;
         // default ratio 0.9 → floor(1000 × 0.9) = 900
-        assert.match(budget, /ceiling 900 · usage \d+ · free \d+/, "headline carries the ratio-derived ceiling, usage, and free");
+        assert.match(budget, /ceiling 900 · usage \d+ \(\d+%\) · free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
         const free = Number(/free (\d+)/.exec(budget)?.[1]);
         const total = packet.system.tokens + packet.user.tokens;
         assert.ok(free > 0 && free < 900, `free ${free} within (0, 900)`);

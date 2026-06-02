@@ -34,6 +34,7 @@ const DEFAULT_BUDGET_CEILING = 0.9;
 // (the figure depends on the packet's own rendered size — chicken/egg).
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
+const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 
 const readBudget = (): number => {
     const raw = process.env.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS;
@@ -910,10 +911,12 @@ export default class Engine {
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
         const total = countTokens(renderSystemContent(scratch.system)) + countTokens(renderUserContent(scratch.user));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total);
+        const percent = ceiling === null ? null : Math.round((total / ceiling) * 100);
         const budget = tokensFree === null
             ? scratch.user.telemetry.budget
             : scratch.user.telemetry.budget
                 .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
+                .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, persona, index, log };
         const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors }, system_requirements: requirements };
@@ -934,7 +937,7 @@ export default class Engine {
         ceiling: number | null,
     ): string {
         const lines: string[] = [];
-        if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} · free ${TOKENS_FREE_PLACEHOLDER}`);
+        if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · free ${TOKENS_FREE_PLACEHOLDER}`);
         if (sections.index.channels > 0) lines.push(`Index previews: ${sections.index.channels} channels, ${sections.index.tokens} tokens`);
         if (sections.log.entries > 0) {
             lines.push(`Log entries: ${sections.log.entries} entries, ${sections.log.tokens} tokens`);
