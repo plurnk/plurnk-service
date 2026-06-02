@@ -711,7 +711,7 @@ registry.register("loop.run", {
 - `description`: one-liner surfaced by `discover`.
 - `params`: `"type — meaning"` per param; `?` suffix = optional. Self-documenting, not enforced.
 - `requiresInit`: rejects until a session is attached.
-- `longRunning`: exempt from `PLURNK_RPC_TIMEOUT`.
+- `longRunning`: exempt from `PLURNK_RPC_TIMEOUT`. {§13.3-register}
 
 ### §13.4 Discovery
 
@@ -737,7 +737,7 @@ registry.register("loop.run", {
 }
 ```
 
-`capabilities` lists registered plug-ins by `(kind, name)`. Cold clients call `discover` first. No hardcoded method names or capability lists in any client.
+`capabilities` lists registered plug-ins by `(kind, name)`. Cold clients call `discover` first. No hardcoded method names or capability lists in any client. {§13.4-discover}
 
 ### §13.5 Core method set
 
@@ -754,18 +754,18 @@ registry.register("loop.run", {
 |------------------------|---------------------|-------------------|-------|
 | `session.create`       | `name?: string`, `projectRoot?: string`, `persona?: string` | `{ id, name, projectRoot, persona }` | Creates new session; auto-name if unprovided. Optional `projectRoot` pins the workspace (null/omitted = headless). Optional `persona` sets the session-level persona override. |
 | `session.list`         | none                | `{ sessions: Session[] }` | Lists all sessions. |
-| `session.attach`       | `id: number`, `runId?: number`, `runName?: string`, `persona?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. Optional `persona` sets run-level persona only when a NEW run is created. |
+| `session.attach`       | `id: number`, `runId?: number`, `runName?: string`, `persona?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. Optional `persona` sets run-level persona only when a NEW run is created. {§13.5-session-attach} |
 | `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
 | `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
 | `session.set_persona`  | `persona: string \| null` | `{ persona }`  | Update the session-level persona. Null clears the override (falls through to PLURNK_PERSONA file). |
 
-**Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint.
+**Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint. {§13.5-auto-envelope}
 
 **Loops (model-driven)**
 
 | Method            | Params                              | Result                 | Notes |
 |-------------------|-------------------------------------|------------------------|-------|
-| `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags`, `persona?: string` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §0.5). Optional `persona` sets the loop-level persona (highest precedence in the cascade). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. |
+| `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags`, `persona?: string` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §0.5). Optional `persona` sets the loop-level persona (highest precedence in the cascade). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. {§13.5-loop-run} |
 | `loop.resolve`    | `logEntryId: number`, `decision: "accept" \| "reject" \| "cancel"`, `body?: string`, `outcome?: string` | `{ status, logEntryId }` | Resolve a pending proposal (status=202 log entry). Engine.dispatch unpauses on resolution. |
 | `providers.list`  | none                                | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
 
@@ -773,12 +773,12 @@ registry.register("loop.run", {
 
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
-| `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. |
-| `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. |
+| `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. {§13.5-entry-read} |
+| `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. {§13.5-log-read} |
 
 **DSL operations (client-driven, mirror grammar)**
 
-Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
+Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. {§13.5-op-mirror} Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
 
 Each `op.*` call creates a turn in the connection's client loop (§13.7), dispatches, fires `log/entry`, returns the dispatch result.
 
@@ -808,7 +808,7 @@ Server-initiated events on the same WebSocket.
 
 | Notification       | Params                              | When fired |
 |--------------------|-------------------------------------|------------|
-| `log/entry`        | `{ entry: LogEntry }`               | Every `log_entries` write. |
+| `log/entry`        | `{ entry: LogEntry }`               | Every `log_entries` write. {§13.6-log-entry-notify} |
 | `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | Loop reaches terminal status. |
 | `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so server-YOLO clients can suppress review UI. Client responds with `loop.resolve` (or `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
 | `session/created`  | `{ id, name, projectRoot, persona }` | Any client creates a session. |
@@ -874,7 +874,7 @@ Plurnk-specific (`-32000` to `-32099`):
 | -32006 | Mimetype unavailable                               |
 | -32007 | Timeout                                            |
 
-Error responses MAY include `data: {…}` with structured context (404'd path, timed-out method, etc.).
+Error responses MAY include `data: {…}` with structured context (404'd path, timed-out method, etc.). {§13.8-error-codes}
 
 ### §13.9 Versioning
 

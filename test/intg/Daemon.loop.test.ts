@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
-test("loop.run with mock provider runs a model turn and persists entries", async () => {
+test("[§13.5-loop-run] loop.run with mock provider runs a model turn and persists entries", async () => {
     const dsl = "<<EDIT(known://france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 142)] });
 

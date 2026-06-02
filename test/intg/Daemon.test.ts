@@ -28,7 +28,7 @@ test("Daemon: ping returns empty result without requiring init", async () => {
     });
 });
 
-test("Daemon: discover returns catalog", async () => {
+test("[§13.4-discover] Daemon: discover returns catalog", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -45,7 +45,7 @@ test("Daemon: discover returns catalog", async () => {
     });
 });
 
-test("Daemon: unknown method returns -32601 method-not-found", async () => {
+test("[§13.8-error-codes] Daemon: unknown method returns -32601 method-not-found", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -143,7 +143,7 @@ test("session.list returns sessions most-recent-first", async () => {
     });
 });
 
-test("session.attach binds to existing session", async () => {
+test("[§13.5-session-attach] session.attach binds to existing session", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const existing = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "existing" });
 
