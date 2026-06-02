@@ -101,7 +101,7 @@ test("Known.show: xpath body matcher → 501 (pending plurnk-mimetypes#3)", asyn
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: nonexistent entry returns 404", async () => {
+test("[§6.3-absent-404] Known.show: nonexistent entry returns 404", async () => {
     const ctx = await setup();
     try {
         const r = await new Known().show(showStmt({ target: urlPath("known", "/nope") }), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
@@ -109,7 +109,7 @@ test("Known.show: nonexistent entry returns 404", async () => {
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: archived entry → 200, flips indexed from 0 to 1", async () => {
+test("[§6.3-flip-200] Known.show: archived entry → 200, flips indexed from 0 to 1", async () => {
     const ctx = await setup();
     try {
         const k = new Known();
@@ -122,7 +122,7 @@ test("Known.show: archived entry → 200, flips indexed from 0 to 1", async () =
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: already-indexed entry returns 304 without write", async () => {
+test("[§6.3-noop-304] Known.show: already-indexed entry returns 304 without write", async () => {
     const ctx = await setup();
     try {
         const k = new Known();

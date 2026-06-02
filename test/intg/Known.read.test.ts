@@ -40,7 +40,7 @@ const setupContext = async () => {
     return { db, sessionId, runId };
 };
 
-test("Known.read: existing entry — returns body content and mimetype with status 200", async () => {
+test("[§6.2-read-content] Known.read: existing entry — returns body content and mimetype with status 200", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -52,7 +52,7 @@ test("Known.read: existing entry — returns body content and mimetype with stat
     } finally { db.close(); }
 });
 
-test("Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
+test("[§6.2-read-404] Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, sessionId } = await setupContext();
     try {
         const result = await new Known().read(readStatement({ target: urlPath("known", "/nope") }), makeSchemeCtx({ db, sessionId }));

@@ -68,7 +68,7 @@ test("Known.edit: new entry — inserts entries row, body channel, tags, visibil
     } finally { await db.close(); }
 });
 
-test("Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
+test("[§6.1-status-201-200] Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -82,7 +82,7 @@ test("Known.edit: second EDIT against same path — same entry id, body replaced
     } finally { await db.close(); }
 });
 
-test("Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
+test("[§6.1-null-clears] Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -95,7 +95,7 @@ test("Known.edit: empty body clears the channel content (does not delete the ent
     } finally { await db.close(); }
 });
 
-test("Known.edit: tags merge additively across multiple EDITs", async () => {
+test("[§6.1-tags-additive] Known.edit: tags merge additively across multiple EDITs", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -197,7 +197,7 @@ test("Known.edit: null path returns 400", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit: visibility rows idempotent across multiple EDITs of same path", async () => {
+test("[§6.1-indexed] Known.edit: visibility rows idempotent across multiple EDITs of same path", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();

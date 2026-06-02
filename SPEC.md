@@ -413,16 +413,16 @@ Per-op semantics. AST shapes from `@plurnk/plurnk-grammar`'s `PlurnkStatement`. 
 AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker? }`.
 
 - Resolves target channel from fragment (§5.5); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
-- Writes body; `body: null` clears.
-- Sets `indexed=1` for written channel in current run.
-- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates.
-- Tags from `signal[]` apply additively via `entry_tags` (scheme may vary).
+- Writes body; `body: null` clears. {§6.1-null-clears}
+- Sets `indexed=1` for written channel in current run. {§6.1-indexed}
+- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates. {§6.1-status-201-200}
+- Tags from `signal[]` apply additively via `entry_tags` (scheme may vary). {§6.1-tags-additive}
 
 ### §6.2 READ
 
 AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
-- Returns channel content + mimetype, or 404.
+- Returns channel content + mimetype {§6.2-read-content}, or 404 {§6.2-read-404}.
 - `lineMarker` slices per §16.3.
 - `body` matcher dispatches through `Mimetypes.query` per §16.1 (all four dialects wired).
 
@@ -431,7 +431,7 @@ AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineM
 AST: `{ op: "SHOW"|"HIDE", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
 - Flips `visibility.indexed` for the targeted channel(s) per §5.5 rules.
-- Returns 200 on transition, 304 on no-op, 404 if entry absent.
+- Returns 200 on transition {§6.3-flip-200}, 304 on no-op {§6.3-noop-304}, 404 if entry absent {§6.3-absent-404}.
 
 ### §6.4 COPY (engine-orchestrated)
 
