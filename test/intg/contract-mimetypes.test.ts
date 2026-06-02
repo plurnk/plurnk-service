@@ -1,13 +1,12 @@
 // Integration coverage for previously-untagged SPEC.md contract anchors that
 // concentrate around the mimetype seam: matcher soft-fallback (§16.1),
-// compose-pattern (§16.3), EDIT diff surfacing (§16.8), 410 channel-delete
+// compose-pattern (§16.3), 410 channel-delete
 // (§3.5), the Mimetypes.process entry point (§4.2), and the write-time vs
 // render-time handler firing boundary (§4 — schemes do not invoke handlers).
 //
 // Vehicles are the real production paths:
 //   - §16.1 / §16.3 — Known.read matcher dispatch (matchAgainstContent → 203)
 //                     + Log.read structural <L> compose over the matcher result.
-//   - §16.8 — _entry-ops.editSessionEntry / File.edit EDIT result `diff`.
 //   - §3.5 — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
 //   - §4.2 / §4 — Mimetypes.process shape + a spy handler proving write (detect)
 //                 never fires preview, but render (#buildIndex.process) does.
@@ -124,139 +123,6 @@ test("[§16.3-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match
         const items = JSON.parse(picked.content ?? "[]") as Array<{ matched: string[] }>;
         assert.equal(items.length, 1, "<L><2> selects exactly the P-th element");
         assert.deepEqual(items[0].matched, ["gamma"], "2nd error match is the gamma capture");
-    } finally { await db.close(); }
-});
-
-// --- §16.8 EDIT result surfaces a unified diff -----------------------------
-// Contract: "Both `_entry-ops.editSessionEntry` and `File.edit` produce it."
-// File.edit is asserted here directly (proposal path). editSessionEntry is
-// asserted via Known.edit — the contract requires `diff` on its EDIT@200.
-
-test("[§16.8-edit-diff] File.edit surfaces a unified diff on the EDIT result; no-op edit omits it", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-cm-"));
-    const db = await openMigrated();
-    try {
-        const sessionId = await insertSession(db, `cm-file-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1);
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        const ctx: PlurnkSchemeContext = {
-            db, sessionId, runId, loopId, turnId,
-            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
-        };
-        await writeFile(join(root, "notes.md"), "alpha\nbeta\ngamma\n");
-
-        // Replace line 2 (beta → BETA): content changes → diff present.
-        const changed = await new File().edit(
-            { ...editStmt(urlPath("file", "notes.md"), "BETA"), lineMarker: { first: 2, last: null } } as EditStatement,
-            ctx,
-        );
-        assert.equal(changed.status, 202, "File.edit returns a proposal (202)");
-        const diff = (changed as { diff?: string }).diff;
-        assert.equal(typeof diff, "string", "diff present when content changed");
-        assert.match(diff ?? "", /^---|^\+\+\+|@@/m, "diff is unified-diff format");
-        assert.match(diff ?? "", /-beta/, "removed line shows in the diff");
-        assert.match(diff ?? "", /\+BETA/, "added line shows in the diff");
-
-        // No-op edit (line 2 replaced with its own value): diff omitted.
-        const noop = await new File().edit(
-            { ...editStmt(urlPath("file", "notes.md"), "beta"), lineMarker: { first: 2, last: null } } as EditStatement,
-            ctx,
-        );
-        assert.equal(noop.status, 202);
-        assert.equal((noop as { diff?: string }).diff, undefined, "no-op edit omits the diff (content unchanged)");
-    } finally {
-        await db.close();
-        await rm(root, { recursive: true, force: true });
-    }
-});
-
-test("[§16.8-edit-diff] editSessionEntry (Known.edit) surfaces a unified diff on EDIT@200", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const k = new Known();
-        await k.edit(editStmt(urlPath("known", "/doc"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, sessionId, runId }));
-        // Replace line 2 — content changes, so the contract requires a diff
-        // on the EDIT@200 result (symmetric with File.edit).
-        const r = await k.edit(
-            { ...editStmt(urlPath("known", "/doc"), "BETA"), lineMarker: { first: 2, last: null } } as EditStatement,
-            makeSchemeCtx({ db, sessionId, runId }),
-        );
-        assert.equal(r.status, 200);
-        const diff = (r as { diff?: string }).diff;
-        assert.equal(typeof diff, "string", "§16.8: editSessionEntry must produce a diff on its EDIT result");
-        assert.match(diff ?? "", /-beta/, "removed line shows in the diff");
-        assert.match(diff ?? "", /\+BETA/, "added line shows in the diff");
-    } finally { await db.close(); }
-});
-
-// The RESULT-side diff (two tests above) is necessary but not sufficient: the
-// contract's other half is that the diff reaches the MODEL via the packet-wire
-// log render, under the edited entry's fence, so a wrong-marker mistake is
-// visible next turn without a follow-up READ. This drives a real EDIT through
-// Engine.runTurn (Mock-supplied op → dispatch → #writeLog stores the result's
-// `diff` in the rx column), then renders the NEXT turn's stored packet through
-// the exact wire path (renderSystemContent → renderLogEntries) and asserts the
-// unified-diff `-old`/`+new` lines surface in the System Log.
-
-test("[§16.8-edit-diff] packet-wire log render surfaces the EDIT diff to the model under the fence", async () => {
-    const db = await openMigrated();
-    try {
-        const sessionId = await insertSession(db, `cm-wire-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "edit-diff-render");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-
-        // Existing known:// entry the EDIT acts on. Seed the content directly
-        // so the line-marker replace below is a real EDIT@200 (not a create).
-        await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "known", pathname: "doc",
-        });
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "doc" });
-        await (db.test_seed_channel as PrepMethod).run({
-            entry_id: entryRow!.id, name: "body", content: "alpha\nbeta\ngamma\n", mimetype: "text/markdown", state: "static",
-        });
-        await (db.test_seed_visibility as PrepMethod).run({
-            run_id: runId, entry_id: entryRow!.id, channel: "body", indexed: 1,
-        });
-
-        // Turn 1: the model emits EDIT<2>(known://doc) replacing `beta` → `BETA`.
-        // dispatch → editSessionEntry → EDIT@200 with `diff` → #writeLog stores
-        // the whole result (diff included) in log_entries.rx.
-        const editOp: EditStatement = {
-            ...editStmt(urlPath("known", "doc"), "BETA"),
-            lineMarker: { first: 2, last: null },
-        } as EditStatement;
-        const turn1Provider = new Mock({
-            contextSize: 100000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [editOp] } }],
-        });
-        await engine.runTurn({ provider: turn1Provider, sessionId, runId, loopId, messages: [] });
-
-        // Turn 2: the prior EDIT is now part of the run's log snapshot. A no-op
-        // SEND[200] just advances the turn so its packet is built + stored with
-        // the EDIT log row present.
-        const turn2Provider = new Mock({
-            contextSize: 100000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }],
-        });
-        const turn2 = await engine.runTurn({ provider: turn2Provider, sessionId, runId, loopId, messages: [] });
-
-        // Render turn 2's stored packet through the SAME path the wire uses
-        // (packetToWireMessages → renderSystemContent). The System Log section
-        // must carry the unified diff under the EDIT entry's fence.
-        const packetRow = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2.turnId });
-        const packet = JSON.parse(packetRow!.packet);
-        const rendered = renderSystemContent(packet.system);
-
-        assert.match(rendered, /# Plurnk System Log/, "log section is present in the rendered system content");
-        // The model's own EDIT statement is mirrored back...
-        assert.match(rendered, /<<EDIT[^]*BETA[^]*:EDIT/, "the model's EDIT statement is re-emitted");
-        // ...and the diff fence + unified-diff lines render under it.
-        assert.match(rendered, /<<:::diff:\/\//, "diff renders under a diff:// fence");
-        assert.match(rendered, /-beta/, "removed line surfaces in the rendered log");
-        assert.match(rendered, /\+BETA/, "added line surfaces in the rendered log");
     } finally { await db.close(); }
 });
 

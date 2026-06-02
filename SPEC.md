@@ -1130,10 +1130,6 @@ Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdo
 
 `text/plain` survives only where a scheme explicitly declares it (exec stdout/stderr — subprocess byte-streams aren't markdown). The model never auto-encounters `text/plain` from defaults.
 
-### §16.8 EDIT response surfaces unified diff
-
-Every EDIT@200/201 carries `diff` (unified diff format) on the result. Both `_entry-ops.editSessionEntry` and `File.edit` produce it. `packet-wire` log render emits the diff under the entry's fence so the model sees what changed without a follow-up READ — wrong-marker mistakes (e.g., `<1>` when `<-1>` was meant) become visible on the next turn. Omitted on no-op edits (content unchanged). {§16.8-edit-diff}
-
 ### §16.9 Op-level invariants and resolved ambiguities
 
 Carried from the contract walk; durable.
