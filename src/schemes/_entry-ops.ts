@@ -114,6 +114,22 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         newContent = body;
     }
 
+    // 304 no-op (SPEC §6.1): an existing entry whose write would change nothing —
+    // identical content and no new tag. Mirrors SHOW/HIDE's 304 on no-op; hands the
+    // model a "you already did this" signal instead of a phantom 200 it can't
+    // distinguish from a real update.
+    if (existing !== undefined && newContent === originalContent) {
+        const signalTags = Array.isArray(statement.signal) ? statement.signal : [];
+        let addsTag = false;
+        if (signalTags.length > 0) {
+            const have = new Set(
+                (await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: existing.id })).map((r) => r.tag),
+            );
+            addsTag = signalTags.some((t) => !have.has(t));
+        }
+        if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };
+    }
+
     let entryId: number;
     let createdNow: boolean;
     if (existing === undefined) {

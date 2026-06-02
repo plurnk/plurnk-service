@@ -82,6 +82,25 @@ test("[§6.1-status-201-200] Known.edit: second EDIT against same path — same 
     } finally { await db.close(); }
 });
 
+test("[§6.1-noop-304] EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const k = new Known();
+        const target = urlPath("known", "/noop");
+        const first = await k.edit(editStatement({ target, body: "same" }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(first.status, 201);
+        const reWrite = await k.edit(editStatement({ target, body: "same" }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(reWrite.status, 304, "identical content, no tag → no-op");
+        assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
+        const changed = await k.edit(editStatement({ target, body: "different" }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(changed.status, 200, "content change is a real update");
+        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"] }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(newTag.status, 200, "same content but a new tag is a real update");
+        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"] }), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal(sameTag.status, 304, "same content and an already-present tag → no-op");
+    } finally { await db.close(); }
+});
+
 test("[§6.1-null-clears] Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {

@@ -415,7 +415,8 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
 - Resolves target channel from fragment (§5.5); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
 - Writes body; `body: null` clears. {§6.1-null-clears}
 - Sets `indexed=1` for written channel in current run. {§6.1-indexed}
-- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for updates. {§6.1-status-201-200}
+- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for content updates. {§6.1-status-201-200}
+- A write that changes nothing — identical content and no new tag — returns `{ status: 304, entryId }`, mirroring SHOW/HIDE's no-op (§6.3). {§6.1-noop-304}
 - Tags from `signal[]` apply additively via `entry_tags` (scheme may vary). {§6.1-tags-additive}
 
 ### §6.2 READ
