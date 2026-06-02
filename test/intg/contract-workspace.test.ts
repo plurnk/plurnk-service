@@ -7,14 +7,14 @@
 //       path is a FUTURE `packet.augment` hook that does not exist yet.
 //       Asserted positively below. EXPECTED: PASS.
 //
-//   §14.3-workspace-phase-f  — workspace membership decision lattice. D4:
-//       "git present → ls-files + constraint overlay; git absent → effect='add'
-//       constraints only." A git-tracked file inside the session's project_root
-//       MUST be a member even when no client `add` (crud_insert_session_entry)
-//       was issued for it. This is UNBUILT (no `git ls-files` call, no
-//       `session_constraints` table anywhere in src/ or migrations/). The test
-//       asserts the real promised behaviour and is EXPECTED TO FAIL — the red
-//       documents exactly the missing git-ls-files membership.
+//   §14.3-git-membership  — git-substrate workspace membership. git-tracked
+//       files are members with no client `add`; active members are indexed +
+//       materialized into packet.system.index. BUILT — the two tests below pass.
+//
+//   §14.3-constraint-overlay / §14.3-emi-divergence-signal  — the client
+//       supersede (add/ignore/read-only) and the out-of-band divergence signal.
+//       DEFERRED; the two red tests at the bottom are the deferral ledger,
+//       EXPECTED TO FAIL until built. Do not weaken them to green.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -118,8 +118,8 @@ test("[§14.1-engine-direct-assembly] Engine assembles packet.system.index direc
 
 // ───────────────────────────── §14.3 ─────────────────────────────
 //
-// EXPECTED RED. Documents the unbuilt git-ls-files membership (D4). Do not
-// weaken to make it pass — the failure IS the coverage of the gap.
+// git-substrate membership (§14.3-git-membership) is BUILT — these two pass.
+// The two deferred reds (overlay, divergence signal) follow at the bottom.
 
 // Set up a session whose project_root is a freshly `git init`'d repo holding
 // one COMMITTED, git-tracked file that is NEVER added via
@@ -166,7 +166,7 @@ const withGitWorkspace = async (
     }
 };
 
-test("[§14.3-workspace-phase-f] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
+test("[§14.3-git-membership] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO crud_insert_session_entry was
         // issued for it. Under §14.3 D4 (git present → ls-files membership),
@@ -176,7 +176,7 @@ test("[§14.3-workspace-phase-f] git-tracked file (never client-added) is a work
         });
         assert.notEqual(
             member, undefined,
-            "git-tracked file must be a session member via `git ls-files` (SPEC §14.3 D4) — UNBUILT today",
+            "git-tracked file must be a session member via `git ls-files` (SPEC §14.3)",
         );
 
         // And the membership gate in File.read must therefore admit it (200),
@@ -190,13 +190,12 @@ test("[§14.3-workspace-phase-f] git-tracked file (never client-added) is a work
     });
 });
 
-test("[§14.3-workspace-phase-f] active git members get indexed + materialized into packet.system.index", async () => {
+test("[§14.3-git-membership] active git members get indexed + materialized into packet.system.index", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        // Per §14.3 D4/D5, git members of the workspace are indexed and
-        // materialized so the model sees them — without any client `add`.
-        // Drive a real turn and assert the tracked file appears in the
-        // engine-assembled index. UNBUILT: nothing seeds git members into
-        // entries/visibility, so the index will not contain it.
+        // Per §14.3, git members of the workspace are indexed and materialized
+        // so the model sees them — without any client `add`. Drive a real turn
+        // and assert the tracked file appears in the engine-assembled index;
+        // git members are seeded into entries/visibility, so the index has it.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextSize: 100000, responses: [mockResponse([sendStmt(200)])] });
         const result = await engine.runTurn({
@@ -209,7 +208,56 @@ test("[§14.3-workspace-phase-f] active git members get indexed + materialized i
         const pathnames = packet.system.index.map((e) => e.pathname);
         assert.ok(
             pathnames.includes(trackedPath),
-            `git-tracked member must be indexed + materialized into packet.system.index (SPEC §14.3 D4/D5); got ${JSON.stringify(pathnames)} — UNBUILT`,
+            `git-tracked member must be indexed + materialized into packet.system.index (SPEC §14.3); got ${JSON.stringify(pathnames)}`,
+        );
+    });
+});
+
+// ───────────── §14.3 deferred — red until built ─────────────
+// The deferral ledger. Each asserts the promised behaviour and is EXPECTED TO
+// FAIL until the feature lands; the red IS the coverage. Do not weaken to green.
+
+test("[§14.3-constraint-overlay] client supersede (add/ignore/read-only) overrides git membership", async () => {
+    const db = await openMigrated();
+    try {
+        // DEFERRED (SPEC §14.3). The constraint overlay is the client's supersede
+        // over git membership — add (members git misses), ignore (drop tracked
+        // ones), read-only (member for read, writes rejected) — and the SOLE
+        // membership source when there is no git (D4). No substrate exists yet;
+        // assert its CRUD foundation, since there is no behavioural surface to
+        // drive until it lands. Flips green when session_constraints is built.
+        assert.notEqual(
+            (db as unknown as Record<string, unknown>).crud_insert_session_constraint, undefined,
+            "session_constraints CRUD must exist for the client-supersede overlay (SPEC §14.3) — DEFERRED/UNBUILT",
+        );
+    } finally { await db.close(); }
+});
+
+test("[§14.3-emi-divergence-signal] out-of-band change to a member emits a synthetic log entry", async () => {
+    await withGitWorkspace(async (root, ctx, db, trackedPath) => {
+        // DEFERRED (SPEC §14.3). EMI re-reads disk (built), but emits no synthetic
+        // log entry when a member diverges out-of-band, so the model never learns
+        // it changed. Materialize the member, mutate it on disk behind the model's
+        // back, run again, and assert the second turn's log carries a system-origin
+        // signal naming the file. Red until the divergence signal is built.
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [mockResponse([sendStmt(200)]), mockResponse([sendStmt(200)])],
+        });
+
+        await engine.runTurn({ provider, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, messages: [] });
+
+        await writeFile(join(root, trackedPath), "# Tracked by git\n\nEDITED OUT OF BAND.\n");
+
+        const t2 = await engine.runTurn({ provider, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, messages: [] });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        if (row === undefined) throw new Error("turn packet not found");
+        const packet = JSON.parse(row.packet) as { system: { log: Array<{ origin?: string }> } };
+        const signalled = packet.system.log.some((r) => r.origin === "system" && JSON.stringify(r).includes(trackedPath));
+        assert.ok(
+            signalled,
+            "EMI must emit a synthetic log entry naming the out-of-band-changed member (SPEC §14.3) — DEFERRED/UNBUILT",
         );
     });
 });

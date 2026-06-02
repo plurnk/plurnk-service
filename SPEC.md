@@ -919,17 +919,21 @@ Lattice:
 
 **Question.** How does plurnk represent the project a session works on? Where does file membership come from? Does writing an entry imply writing to disk?
 
-**Decision lattice.** {§14.3-workspace-phase-f}
+**The boundary is the client's.** The client owns the model's filesystem access in both directions: reads are membership-gated (a file is invisible to the model unless it is a member), and writes are proposals the client accepts or rejects (`yolo` auto-accepts). Writing an entry never implies writing to disk — entries are canonical in the store; disk only moves when the client accepts a side-effecting proposal, and only where `project_root` is set (null = headless, client owns materialization).
 
-- **D1. Workspace identity lives on the session.** No `projects` table. `sessions.project_root TEXT` (nullable = headless). Constraints scoped via `session_constraints`. plurnk has no users/auth/multi-tenant; workspace = session.
-- **D2. No new `entries.scope` value.** Stays `∈ {'agent', 'session'}`.
-- **D3. Disk co-location optional.** `sessions.project_root` set → disk side-effects on accept; null → canonical entries land, no disk write (client owns materialization).
-- **D4. Membership without git: no fs-walk.** git present → ls-files + constraint overlay. git absent → `effect='add'` constraints only.
-- **D5. EMI is eager + relevance-bounded.** Fires at prompt-composition time; checks only entries the current run will include (`visibility.indexed=1`). Divergent → re-read disk + emit synthetic log entry.
-- **D6. Edit-on-untouched-file: disk-read-first.** EDIT targeting a member with no existing entry reads disk first to populate canonical baseline, then diffs. Prevents silent overwrite.
-- **D7. Constraint pattern matching via `node:path.matchesGlob`.** No dep. Helper wrapper for swap-out optionality.
+**Built — git-substrate membership.** {§14.3-git-membership}
 
-**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale previews without per-turn full-repo cost.
+- **Identity on the session.** No `projects` table; `sessions.project_root TEXT` (nullable = headless). `entries.scope` unchanged (`∈ {'agent','session'}`). Workspace = session; no users/auth/multi-tenant.
+- **git-ls-files membership.** git present → tracked files (`git ls-files`) are members with no explicit `add` — channel-less markers, disk is truth. git absent → no fs-walk (non-git/headless get no substrate membership).
+- **EMI eager + relevance-bounded.** Materializes only the run's indexed members (`visibility.indexed=1`) at prompt-composition, re-reading disk so a divergent member reflects current content.
+- **Disk-read-first edits.** Disk writes route through `File.edit`, which reads disk before diffing — an untouched member's baseline is its real content, never empty. Silent overwrite is structurally prevented.
+
+**Deferred — promised, not yet built.** Each carries an anchor with a deliberately-red test so the deferral is tracked, never silently covered.
+
+- **Constraint overlay — the client supersede.** {§14.3-constraint-overlay} A `session_constraints` table layering *add* (members git misses), *ignore* (drop ones it tracks), and *read-only* (member for read, writes rejected) over the git substrate; glob matching via `node:path.matchesGlob`. git-absent, these `effect='add'` constraints are the *sole* membership source — so this overlay is not merely the override knob, it is the entire membership mechanism without git.
+- **EMI divergence signal.** {§14.3-emi-divergence-signal} When EMI re-reads a member whose disk content changed out-of-band, emit a synthetic log entry so the model sees the change (the re-read is built; only the signal is deferred).
+
+**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps the model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale previews without per-turn full-repo cost.
 
 **Migration path.** Tenancy / cross-session shared workspaces require a `workspaces` table joining sessions to workspace id, with constraints lifted off `session_constraints`. Disk co-location semantics unchanged.
 
