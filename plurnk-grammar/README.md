@@ -179,6 +179,20 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 [SPEC.md](SPEC.md) — full grammar specification: canonical form, per-OP semantics, matcher dialects, path decomposition, error model, whitespace rules, implementation notes.
 
+## ecosystem
+
+The `@plurnk/*` ecosystem pins peer versions exactly — no caret, no tilde, no ranges:
+
+```json
+"@plurnk/plurnk-grammar": "0.18.0"
+```
+
+Greenfield, single-orchestrator-per-repo, closed ecosystem. Determinism beats flexibility at this stage: when versions drift, the npm install error tells you which package needs a release. Silent semver wiggling masks coordination gaps that surface as mystery failures later.
+
+Every grammar release cascades: every consuming package (`plurnk-providers`, `plurnk-schemes`, `plurnk-execs`, `plurnk-mimetypes`, `plurnk-service`, ...) bumps its pin and publishes a patch, then top-level consumers (`plurnk-service`, `plurnk`) bump theirs. Skipping a step = broken install downstream.
+
+Not permanent — at v1 stabilization the policy widens back to semver ranges.
+
 ## license
 
 MIT.
