@@ -54,8 +54,10 @@ export const moveStmt = (src: ParsedPath, dst: ParsedPath | null, tags: string[]
     position: { line: 1, column: 1 },
 });
 
-export const execStmt = (target: ParsedPath | null, body: string | null = null): ExecStatement => ({
-    op: "EXEC", suffix: "", signal: null, target, lineMarker: null, body,
+// EXEC carries its runtime in `signal` (Exec.ts: signal=runtime, target=cwd,
+// body=command); cwd is an optional local/file ParsedPath.
+export const execStmt = (runtime: string, body: string | null = null, cwd: ParsedPath | null = null): ExecStatement => ({
+    op: "EXEC", suffix: "", signal: runtime, target: cwd, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

@@ -13,7 +13,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { SendStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -28,22 +28,7 @@ import {
     insertSession, insertRun, insertLoop, insertTurn,
 } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-
-const url = (scheme: string, pathname: string): UrlPath => ({
-    kind: "url", raw: `${scheme}://${pathname}`, scheme,
-    username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
-});
-
-const sendStmt = (status: number, recipient: UrlPath | null): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, target: recipient, lineMarker: null,
-    body: null, position: { line: 1, column: 1 },
-});
-
-const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", suffix: "", signal: runtime,
-    target: null, lineMarker: null, body, position: { line: 1, column: 1 },
-});
+import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -106,7 +91,7 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
         const engine = new Engine({ db, schemes });
 
         const result = await engine.dispatch({
-            statement: sendStmt(499, url("fakestream", "feed/x")),
+            statement: sendStmt(499, urlPath("fakestream", "feed/x")),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "client",
         });
 
@@ -196,12 +181,9 @@ test("[§7.8-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine
             "104857601-char body rejected by the 100 MiB cap",
         );
 
-        // Well under the cap → stored verbatim. Engine does not throttle/truncate
-        // anything below 100 MiB (the body channel of a known entry already exists).
+        // Well under the cap → stored verbatim. The engine throttles/truncates
+        // nothing below 100 MiB. Seed an empty channel and append into it.
         const oneMiB = "x".repeat(1024 * 1024);
-        await appendToChannel(db, { entryId, channel: "toobig", chunk: oneMiB });
-        // The over-cap insert failed, so "toobig" wasn't created — append is a
-        // no-op there (changes=0). Seed a real channel and append into it.
         await (db.test_seed_channel as PrepMethod).run({
             entry_id: entryId, name: "under", content: "", mimetype: "text/plain", state: "active",
         });
