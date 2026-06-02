@@ -896,24 +896,28 @@ Each entry: question, answer, rationale, migration path.
 
 **Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildIndex`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
 
-### §14.2 Tokenomics: real provider tokens, stored at write, summed at render
+### §14.2 Tokenomics: real provider tokens, render-weight budget, per-scheme balance
 
-**Question.** How does plurnk track token costs accurately enough for model SHOW/HIDE/compose decisions, without re-tokenizing every turn?
+**Question.** How does plurnk track token costs accurately enough to ground the model's SHOW/HIDE/compose decisions? Accuracy is the whole game — a budget that smells wrong is one the model stops trusting and curating against.
 
-**Decision.** Provider tokenizers authoritative; counts computed at write time and stored; render-time accounting is SQL `SUM` plus tokenization of a small set of wrapper strings. {§14.2-tokenomics-v0}
+**Two measures, never conflated:**
 
-Lattice:
+- **render-weight** — the tokens the model actually processes this turn (rendered previews + meta + fences). The budget is about this.
+- **content-depth** — an entry's full content size (`entry_channels.tokens`). The manifest's `tokens` is this.
 
-- **`provider.countTokens` is the source of truth.** No chars/DIVISOR approximation. Per-provider tokenizer (§2) is the foundation.
-- **Stored at write time.** `entry_channels.tokens` populated by `_entry-crud.ts` on INSERT/UPDATE. `log_entries.tokens` populated by `Engine.#writeLog`. Write helper IS the contract sister modules see.
-- **Render-time SUM.** `Engine.#buildIndex` adds per-scheme `SUM(tokens)`. Only wrapper strings re-tokenize each render — bounded.
-- **Hot model switch is a feature.** Session model change walks `entry_channels` + `log_entries` and recomputes against new tokenizer. One-time cost at switch boundary.
-- **Budget table self-reference via placeholder substitution.** Render with `{{tokenUsage}}`/`{{tokensFree}}`, measure, substitute. ±1–2 token drift accepted.
-- **Telemetry shape.** Per-scheme breakdown table in `packet.user.telemetry.budget` with `tokenCeiling`/`tokenUsage`/`tokensFree` headline; markdown table groups by scheme with indexed-count, archived-count, tokens.
+**Built.**
 
-**Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT because its sync-only SQL function couldn't call provider tokenizers. plurnk's async `countTokens` is potentially expensive; pay once at write, never re-pay at render. Approximation can't ground SHOW/HIDE decisions — the model curating its own context only works if numbers are accurate.
+- **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Engine.#writeLog`) are populated at write — content is never re-tokenized at render. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§14.2-tokens-stored-at-write}
+- **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price previews; render-weight is the accurate measure. {§14.2-render-weight-budget}
+- **Per-scheme balance.** A markdown table groups the model's context by scheme — `indexed`/`archived` counts and render-weight `tokens` — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§14.2-per-scheme-balance}
 
-**Migration path.** If `countTokens` cost becomes prohibitive, retreat to chars/DIVISOR per provider, async-refined to real count when budget permits. Schema unchanged.
+**Deferred.**
+
+- **Hot model-switch recompute.** A session model change should walk `entry_channels` + `log_entries` and recompute against the new tokenizer — a one-time cost at the switch boundary. Unbuilt. {§14.2-hot-switch-recompute}
+
+**Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT only because its sync-only SQL couldn't call a tokenizer. plurnk has real `countTokens`: store content tokens once at write (the depth), measure the small rendered output for the budget (the weight). Approximation can't ground curation — the model only curates against numbers it trusts.
+
+**Migration path.** None on cost — SQLite, JS, and a local tokenizer are negligible against the model's token budget, the only thing worth economizing. The fallback divisor is a correctness tripwire (no provider tokenizer wired), not a performance retreat. Schema unchanged.
 
 ### §14.3 Workspace identity, membership, disk co-location
 

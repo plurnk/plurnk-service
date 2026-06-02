@@ -87,6 +87,19 @@ export const measureBudgetSections = (packet, countTokens) => {
         ).length,
         0,
     );
+    // Per-scheme log breakdown (§14.2 {§14.2-per-scheme-balance}): each entry's
+    // render-weight grouped by the scheme it acted on, heaviest first — the
+    // model's "what's eating my window" signal and its HIDE target. Render-
+    // weight (not stored depth), consistent with the headline; tokenizing per
+    // entry is free.
+    const byScheme = new Map();
+    for (const e of logEntries) {
+        const scheme = e.target?.scheme ?? "—";
+        const acc = byScheme.get(scheme) ?? { scheme, entries: 0, tokens: 0 };
+        acc.entries += 1;
+        acc.tokens += countTokens(renderLogEntries([e]));
+        byScheme.set(scheme, acc);
+    }
     return {
         index: {
             channels: indexChannels,
@@ -95,6 +108,7 @@ export const measureBudgetSections = (packet, countTokens) => {
         log: {
             entries: logEntries.length,
             tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
+            byScheme: [...byScheme.values()].toSorted((a, b) => b.tokens - a.tokens),
         },
         total: countTokens(renderSystemContent(system)) + countTokens(renderUserContent(user)),
     };
