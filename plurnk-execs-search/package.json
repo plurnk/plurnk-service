@@ -1,0 +1,64 @@
+{
+    "name": "@plurnk/plurnk-execs-search",
+    "version": "0.1.0",
+    "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
+    "keywords": ["plurnk", "exec", "runtime", "executor", "search", "searxng", "web"],
+    "homepage": "https://github.com/plurnk/plurnk-execs-search#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-search/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-search.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            { "name": "search", "glyph": "🔎" },
+            { "name": "images", "glyph": "🖼" },
+            { "name": "videos", "glyph": "🎬" },
+            { "name": "news", "glyph": "📰" },
+            { "name": "map", "glyph": "🗺" },
+            { "name": "music", "glyph": "🎵" },
+            { "name": "it", "glyph": "💻" },
+            { "name": "science", "glyph": "🔬" },
+            { "name": "social", "glyph": "💬" },
+            { "name": "downloadable", "glyph": "📥" }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs": "0.2.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
