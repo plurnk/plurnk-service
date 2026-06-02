@@ -914,6 +914,8 @@ Each entry: question, answer, rationale, migration path.
 **Deferred.**
 
 - **Hot model-switch recompute.** A session model change should walk `entry_channels` + `log_entries` and recompute against the new tokenizer — a one-time cost at the switch boundary. Unbuilt. {§14.2-hot-switch-recompute}
+- **Reasoning tokens, surfaced.** `ProviderUsage.reasoning` (providers 0.1.2+) is billed but invisible — the budget doesn't break thinking tokens out from visible output, so the model can't see what its own deliberation costs. Unbuilt. {§14.2-reasoning-line}
+- **Context-window percent.** The budget shows an absolute ceiling; `provider.getContextSize(model)` would let it render usage as a percent of the real window. No `getContextSize` exists. Unbuilt. {§14.2-context-percent}
 
 **Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT only because its sync-only SQL couldn't call a tokenizer. plurnk has real `countTokens`: store content tokens once at write (the depth), measure the small rendered output for the budget (the weight). Approximation can't ground curation — the model only curates against numbers it trusts.
 

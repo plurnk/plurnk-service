@@ -142,3 +142,32 @@ test("[§14.2-hot-switch-recompute] a session model change recomputes stored tok
         );
     } finally { await db.close(); }
 });
+
+test("[§14.2-reasoning-line] budget breaks reasoning (thinking) tokens out as their own line", async () => {
+    const db = await openMigrated();
+    try {
+        // DEFERRED (§14.2): ProviderUsage carries `reasoning` (providers 0.1.2+),
+        // billed but not surfaced. The budget readout should break thinking tokens
+        // out from visible output so the model sees what its deliberation costs.
+        // No such line is rendered yet — this red flips green when it lands.
+        const sessionId = await insertSession(db, `tok-reason-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: "deliberating", ops: [sendStmt(200)], usage: { prompt: 0, completion: 10, reasoning: 50, cached: 0, total: 60 } } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        assert.match(budget, /reasoning/i, "budget surfaces reasoning tokens as a distinct line — DEFERRED/UNBUILT");
+    } finally { await db.close(); }
+});
+
+test("[§14.2-context-percent] provider exposes getContextSize for a percent-of-window budget column", () => {
+    // DEFERRED (§14.2): the budget shows an absolute ceiling, not usage as a percent
+    // of the real window. That needs provider.getContextSize(model), which doesn't
+    // exist yet — this red flips green when it lands.
+    const provider = new Mock({ contextSize: 100000, responses: [] });
+    assert.notEqual(
+        (provider as unknown as Record<string, unknown>).getContextSize, undefined,
+        "provider.getContextSize for the %-of-window column — DEFERRED/UNBUILT",
+    );
+});
