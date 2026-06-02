@@ -3,9 +3,11 @@
 // entries is not visibility-filtered, so the model sees what it could pull in).
 // Each item: { path, shown, channels: { <name>: { mimetype, tokens, lines } } }.
 // `shown` = the entry is in this run's index — the curation filter (jsonpath
-// shown==false for the hidden inventory). `tokens` is the provider's count,
-// stored at write; `lines` is the content's extent from mimetypes' process()
-// totalLines. The engine counts neither, and the catalog never lists itself.
+// shown==false for the hidden inventory). `tokens` is the live provider's count,
+// re-counted at render — the write-time snapshot is NOT trusted, since the model
+// can change between loops and a stale tokenizer would make the catalog lie;
+// `lines` is the content's extent from mimetypes' process() totalLines. The
+// catalog never lists itself.
 //
 // Lives in the schemes/entry layer, not the engine: building a plurnk:// entry's
 // content is the schemes' job; the engine only orchestrates the per-turn write
@@ -23,8 +25,9 @@ type CatalogEntry = { path: string; shown: boolean; channels: Record<string, { m
 const toPath = (scheme: string | null, pathname: string): string => scheme === null ? pathname : `${scheme}://${pathname}`;
 
 export const buildManifestBody = async (ctx: PlurnkSchemeContext, previewBudget: number): Promise<string> => {
-    const { db, sessionId, runId, mimetypes } = ctx;
+    const { db, sessionId, runId, mimetypes, tokenize } = ctx;
     if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
+    if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
     const shownRows = await (db.engine_shown_entries as PrepMethod).all<ShownRow>({ run_id: runId, session_id: sessionId });
     const shown = new Set(shownRows.map((r) => toPath(r.scheme, r.pathname)));
     const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
@@ -35,7 +38,7 @@ export const buildManifestBody = async (ctx: PlurnkSchemeContext, previewBudget:
         let entry = byEntry.get(path);
         if (entry === undefined) { entry = { path, shown: shown.has(path), channels: {} }; byEntry.set(path, entry); }
         const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { budget: previewBudget });
-        entry.channels[r.channel] = { mimetype: r.mimetype, tokens: r.tokens, lines: result.totalLines };
+        entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
     }
     return JSON.stringify([...byEntry.values()], null, 2);
 };

@@ -129,20 +129,6 @@ test("[§14.2-per-scheme-balance] budget breaks the log down by scheme, render-w
     } finally { await db.close(); }
 });
 
-test("[§14.2-hot-switch-recompute] a session model change recomputes stored tokens against the new tokenizer", async () => {
-    const db = await openMigrated();
-    try {
-        // DEFERRED (§14.2): switching the session's model should walk entry_channels
-        // + log_entries and recompute tokens against the new tokenizer. No recompute
-        // path exists; this red flips green when it lands.
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        assert.notEqual(
-            (engine as unknown as Record<string, unknown>).recomputeTokens, undefined,
-            "engine must expose a token-recompute path for hot model switch (§14.2) — DEFERRED/UNBUILT",
-        );
-    } finally { await db.close(); }
-});
-
 test("[§14.2-context-percent] budget headline shows usage as a percent of the ceiling", async () => {
     const db = await openMigrated();
     try {
@@ -157,5 +143,25 @@ test("[§14.2-context-percent] budget headline shows usage as a percent of the c
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const percent = Number(m![3]);
         assert.equal(percent, Math.round((usage / ceiling) * 100), "percent reconciles to usage/ceiling");
+    } finally { await db.close(); }
+});
+
+test("[§14.2-over-budget-floor] over budget, free floors at 0 and percent passes 100 — the overshoot is honest", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `tok-over-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        // Tiny window → ceiling 9; the packet's own scaffolding alone blows past it.
+        const provider = new Mock({ contextSize: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const m = budget.match(/ceiling (\d+) · usage (\d+) \((\d+)%\) · free (\d+)/);
+        assert.ok(m, `headline present; got: ${budget}`);
+        const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
+        assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
+        assert.equal(free, 0, "free floors at 0 — never negative");
+        assert.ok(percent > 100, `percent ${percent} honestly passes 100 when over budget`);
     } finally { await db.close(); }
 });

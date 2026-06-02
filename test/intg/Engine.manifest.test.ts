@@ -56,6 +56,24 @@ const runTurns = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId:
     return packet;
 };
 
+test("[§14.2-depth-render-fresh] manifest re-tokenizes each entry's depth at render — the write-time snapshot is not trusted", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `cat-fresh-${crypto.randomUUID()}`);
+        // Stored token count is deliberately bogus — as if written under a
+        // different model's tokenizer. The manifest must ignore it and re-count
+        // the content through the live provider (here the divisor) at build.
+        const content = "alpha beta gamma delta epsilon";
+        await seedChannel(db, sessionId, "known", "stale", "body", content, "text/markdown", 99999);
+        await runTurns(db, sessionId, 1);
+        const stored = await storedCatalog(db, sessionId);
+        assert.ok(stored, "manifest built");
+        const entry = stored!.catalog.find((e) => e.path === "known://stale");
+        assert.ok(entry, "seeded entry is in the catalog");
+        assert.equal(entry!.channels.body.tokens, Math.ceil(content.length / 4), "re-counted via the live tokenizer, not the stored 99999");
+    } finally { await db.close(); }
+});
+
 test("[§15-manifest-catalog] manifest: a real plurnk://manifest.json entry — flat catalog of every entry across schemes, application/json, in the index", async () => {
     const db = await openMigrated();
     try {
