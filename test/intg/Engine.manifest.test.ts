@@ -24,7 +24,7 @@ const manifestTile = (packetJson: string): IndexEntry | undefined => {
     const packet = JSON.parse(packetJson) as { system: { index: IndexEntry[] } };
     return packet.system.index.find((e) => e.pathname === "manifest.json");
 };
-type CatalogEntry = { path: string; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
+type CatalogEntry = { path: string; shown: boolean; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 // The full catalog as stored on the plurnk://manifest.json entry's body — the
 // same content engine_list_session_entries (the catalog's own source) reads.
@@ -34,9 +34,10 @@ const storedCatalog = async (db: Awaited<ReturnType<typeof openMigrated>>, sessi
     return m === undefined ? null : { mimetype: m.mimetype, catalog: JSON.parse(m.content) as CatalogEntry[] };
 };
 
-const seedChannel = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId: number, scheme: string | null, pathname: string, channel: string, content: string, mimetype: string, tokens: number): Promise<void> => {
+const seedChannel = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId: number, scheme: string | null, pathname: string, channel: string, content: string, mimetype: string, tokens: number): Promise<number> => {
     const e = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     await (db.crud_write_channel as PrepMethod).run({ entry_id: e!.id, name: channel, content, mimetype, tokens, state: "static" });
+    return e!.id;
 };
 
 // Run n turns in one run/loop; return the LAST turn's packet json.
@@ -55,7 +56,7 @@ const runTurns = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId:
     return packet;
 };
 
-test("manifest: a real plurnk://manifest.json entry — flat catalog of every entry across schemes, application/json, in the index", async () => {
+test("[§15-manifest-catalog] manifest: a real plurnk://manifest.json entry — flat catalog of every entry across schemes, application/json, in the index", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `cat-${crypto.randomUUID()}`);
@@ -80,15 +81,40 @@ test("manifest: a real plurnk://manifest.json entry — flat catalog of every en
     } finally { await db.close(); }
 });
 
-test("manifest: lists itself — an entry in the DB like any other (one turn's lag on its own row)", async () => {
+test("[§15-manifest-catalog] manifest: does NOT list itself — no recursive manifest.json row", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `self-${crypto.randomUUID()}`);
-        // Turn 1 writes the manifest; turn 2's catalog (built from the DB before
-        // its own write) therefore carries the manifest entry from turn 1.
+        // The catalog is built from the DB, where the manifest is a row like any
+        // other — but it filters itself out: a recursive self-listing buys nothing.
         await runTurns(db, sessionId, 2);
         const stored = await storedCatalog(db, sessionId);
         const paths = stored!.catalog.map((e) => e.path);
-        assert.ok(paths.includes("plurnk://manifest.json"), `catalog lists itself; got ${paths.join(", ")}`);
+        assert.ok(!paths.includes("plurnk://manifest.json"), `catalog must not list itself; got ${paths.join(", ")}`);
+    } finally { await db.close(); }
+});
+
+test("[§15-manifest-catalog] manifest: `shown` reflects the run's index (visibility)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `shown-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        // Two entries; index exactly one for this run (visibility.indexed=1). The
+        // catalog lists both — `shown` is the curation filter that distinguishes
+        // what's in view from the hidden inventory the model could SHOW.
+        const visId = await seedChannel(db, sessionId, "known", "in-view", "body", "x\n", "text/markdown", 1);
+        await seedChannel(db, sessionId, "known", "out-of-view", "body", "y\n", "text/markdown", 1);
+        await (db.test_seed_visibility as PrepMethod).run({ run_id: runId, entry_id: visId, channel: "body", indexed: 1 });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 8192, responses: [response([sendStmt(200, "done")])] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+
+        const stored = await storedCatalog(db, sessionId);
+        const inView = stored!.catalog.find((e) => e.path === "known://in-view");
+        const outOfView = stored!.catalog.find((e) => e.path === "known://out-of-view");
+        assert.equal(inView?.shown, true, "indexed entry → shown:true (the model is seeing it)");
+        assert.equal(outOfView?.shown, false, "un-indexed entry → shown:false (hidden inventory to SHOW)");
     } finally { await db.close(); }
 });

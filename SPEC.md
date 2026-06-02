@@ -966,6 +966,8 @@ type Packet = {
 
 **Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's entry is foisted out of `packet.system.index` into `packet.user.prompt` — no duplicate rendering. Previous loops' prompts remain in the index, addressable for READ/HIDE. {§15-current-prompt-foist}
 
+**The entry catalog.** `plurnk://manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's indexed, READable, and queryable. Body is `application/json`: a flat array, one item per entry across all schemes (hidden ones included — the model sees what it could pull in), each `{ path, shown, channels: { <name>: { mimetype, tokens, lines } } }`. `shown` is whether the entry is in this turn's index — `[?(@.shown==false)]` gives the hidden inventory to SHOW; `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself. {§15-manifest-catalog}
+
 ### §15.1 user.telemetry — model-facing runtime telemetry
 
 Slot for telemetry the model MUST react to immediately. Rendered at the bottom of the user section. Errors are transient — appear on the turn AFTER the failure, clear once seen. `packet.system.log[]` is the durable audit; `telemetry.errors[]` is the **alert**.

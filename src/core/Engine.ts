@@ -10,6 +10,7 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { writeEntry } from "../schemes/_entry-crud.ts";
+import { buildManifestBody } from "../schemes/_entry-manifest.ts";
 import { indexGitMembership } from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -654,11 +655,11 @@ export default class Engine {
         }
 
         // plurnk://manifest.json — rewritten EVERY turn (a live view of the
-        // entry set + token math, both of which change each turn). It's a
-        // derived view like the index, NOT an action — so it's written directly
-        // (Engine.inject's path): no log entry, no sequence slot, not dispatched
-        // like the prompt foist. Written after the prompt so the catalog
-        // reflects this turn's entries; it lists itself (one turn's lag).
+        // entry set, which changes each turn). A derived view like the index,
+        // NOT an action — written directly (Engine.inject's path): no log entry,
+        // no sequence slot, not dispatched. The catalog body is built in the
+        // schemes layer (_entry-manifest); the engine only orchestrates the
+        // per-turn write. Does not list itself.
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "system",
@@ -679,7 +680,7 @@ export default class Engine {
         await indexGitMembership(systemCtx);
 
         await writeEntry("manifest.json", {
-            channels: { body: { content: await this.#buildManifestBody(sessionId), mimetype: "application/json" } },
+            channels: { body: { content: await buildManifestBody(systemCtx, this.#previewBudget), mimetype: "application/json" } },
             tags: [],
         }, systemCtx, "plurnk");
 
@@ -1107,26 +1108,6 @@ export default class Engine {
         }
 
         return [...entries.values()];
-    }
-
-    // The body of plurnk://manifest.json — the flat catalog of every entry the
-    // session holds, across all schemes (itself included; it's in the DB). Each
-    // element: the entry's path + per-channel { mimetype, tokens (depth), lines
-    // (extent) }. tokens is the provider's count, stored at write; lines is the
-    // content's extent, which mimetypes owns — so we process each channel for
-    // totalLines (the same call that yields the index preview). The engine never
-    // counts lines itself.
-    async #buildManifestBody(sessionId: number): Promise<string> {
-        const rows = await (this.#db.engine_list_session_entries as PrepMethod).all<{ scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number }>({ session_id: sessionId });
-        const byEntry = new Map<string, { path: string; channels: Record<string, { mimetype: string; tokens: number; lines: number }> }>();
-        for (const r of rows) {
-            const path = r.scheme === null ? r.pathname : `${r.scheme}://${r.pathname}`;
-            let entry = byEntry.get(path);
-            if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
-            const result = await this.#mimetypes.process({ content: r.content, hint: r.mimetype }, { budget: this.#previewBudget });
-            entry.channels[r.channel] = { mimetype: r.mimetype, tokens: r.tokens, lines: result.totalLines };
-        }
-        return JSON.stringify([...byEntry.values()], null, 2);
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
