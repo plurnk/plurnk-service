@@ -659,13 +659,14 @@ export default class Engine {
         // (Engine.inject's path): no log entry, no sequence slot, not dispatched
         // like the prompt foist. Written after the prompt so the catalog
         // reflects this turn's entries; it lists itself (one turn's lag).
-        const manifestCtx: PlurnkSchemeContext = {
+        const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "system",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             tokenize: this.#tokenize,
+            mimetypes: this.#mimetypes,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
         // SPEC §14.3 D4/D5 — git-ls-files workspace membership, resolved at
@@ -675,12 +676,12 @@ export default class Engine {
         // (disk → body channel + visibility) so they surface in the index
         // below. No-ops on headless / non-git sessions. Runs BEFORE the
         // manifest + index build so this turn's packet reflects them.
-        await indexGitMembership(this.#db, sessionId, runId, this.#loopAborts.get(loopId)?.signal, this.#tokenize, this.#mimetypes);
+        await indexGitMembership(systemCtx);
 
         await writeEntry("manifest.json", {
             channels: { body: { content: await this.#buildManifestBody(sessionId), mimetype: "application/json" } },
             tags: [],
-        }, manifestCtx, "plurnk");
+        }, systemCtx, "plurnk");
 
         // Build the spec'd packet (Packet.json) request half. #buildLog
         // queries log_entries scoped to the run — the prompt entry just

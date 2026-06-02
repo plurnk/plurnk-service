@@ -28,6 +28,8 @@ import { resolve } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { isBinaryMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
 import type { Db, PrepMethod } from "./Db.ts";
+import type { PlurnkSchemeContext } from "./scheme-types.ts";
+import { writeEntry } from "../schemes/_entry-crud.ts";
 
 const execFileP = promisify(execFile);
 
@@ -72,8 +74,8 @@ const detectMimetype = async (canonical: string, mimetypes: Mimetypes | undefine
 
 // Register every git-tracked file as a bare session member (scheme=null),
 // idempotently. Channel-less — disk is the truth (D3); the row is the
-// membership marker File.read gates on. Returns the set of (entry_id,
-// pathname) for tracked members so the caller can materialize them.
+// membership marker File.read gates on. Returns the tracked pathnames so the
+// caller can materialize them through writeEntry.
 //
 // signal-respecting: the git shell-outs honor `signal`; on a non-git or
 // headless root nothing is touched.
@@ -81,38 +83,31 @@ export const resolveGitMembership = async (
     db: Db,
     sessionId: number,
     signal: AbortSignal | undefined,
-): Promise<Array<{ entryId: number; pathname: string }>> => {
+): Promise<string[]> => {
     const root = await loadSessionRoot(db, sessionId);
     if (root === null) return [];
     if (!await isGitWorkTree(root, signal)) return [];
 
     const tracked = await gitTrackedFiles(root, signal);
-    const members: Array<{ entryId: number; pathname: string }> = [];
     for (const pathname of tracked) {
         await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname });
-        // ON CONFLICT DO NOTHING returns no row when the member already
-        // existed; re-query to get the entry id for materialization.
-        const row = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname });
-        if (row !== undefined) members.push({ entryId: row.id, pathname });
     }
-    return members;
+    return tracked;
 };
 
 // Materialize a member's disk content into a body channel + visibility for the
-// run, so it surfaces in packet.system.index (D4/D5). Re-reads disk each call
-// (eager + relevance-bounded). Binary files are members but never materialized
-// into a text channel. Missing-on-disk (tracked but deleted in the working
-// tree) is skipped — membership stands, no channel.
+// run via writeEntry (the entry-write paradigm) — so it surfaces in
+// packet.system.index (D4/D5). Re-reads disk each call (eager + relevance-
+// bounded). Binary files are members but never materialized into a text
+// channel. Missing-on-disk (tracked but deleted in the working tree) is
+// skipped — membership stands, no channel.
 const materializeMember = async (
-    db: Db,
-    runId: number,
-    member: { entryId: number; pathname: string },
+    pathname: string,
     root: string,
-    tokenize: (text: string) => number,
-    mimetypes: Mimetypes | undefined,
+    ctx: PlurnkSchemeContext,
 ): Promise<void> => {
-    const canonical = resolve(root, member.pathname);
-    const mimetype = await detectMimetype(canonical, mimetypes);
+    const canonical = resolve(root, pathname);
+    const mimetype = await detectMimetype(canonical, ctx.mimetypes);
     if (isBinaryMimetype(mimetype)) return;
     let content: string;
     try {
@@ -121,33 +116,21 @@ const materializeMember = async (
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
         throw err;
     }
-    // Refresh the body channel each turn so a divergent member (disk edited
-    // out-of-band) reflects current content (D5). Delete-then-write keeps the
-    // single body channel canonical.
-    await (db.crud_delete_channels as PrepMethod).run({ entry_id: member.entryId });
-    await (db.crud_write_channel as PrepMethod).run({
-        entry_id: member.entryId, name: "body", content, mimetype,
-        tokens: tokenize(content), state: "static",
-    });
-    await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: member.entryId, channel: "body" });
+    // writeEntry finds the registered member (scheme=null) and refreshes its
+    // body channel each turn, so a member edited out-of-band reflects current
+    // disk content (D5) — tokenization + visibility flow through the paradigm.
+    await writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
 };
 
 // Full membership + materialization pass for a run. Registers git members,
-// then materializes each active (on-disk, non-binary) member into the index.
-// Called at packet-composition time (Engine.runTurn) per D5. No-ops on
-// headless / non-git sessions.
-export const indexGitMembership = async (
-    db: Db,
-    sessionId: number,
-    runId: number,
-    signal: AbortSignal | undefined,
-    tokenize: (text: string) => number,
-    mimetypes: Mimetypes | undefined,
-): Promise<void> => {
-    const root = await loadSessionRoot(db, sessionId);
+// then materializes each active (on-disk, non-binary) member into the index
+// through writeEntry. Called at packet-composition time (Engine.runTurn) per
+// D5. No-ops on headless / non-git sessions.
+export const indexGitMembership = async (ctx: PlurnkSchemeContext): Promise<void> => {
+    const root = await loadSessionRoot(ctx.db, ctx.sessionId);
     if (root === null) return;
-    const members = await resolveGitMembership(db, sessionId, signal);
-    for (const member of members) {
-        await materializeMember(db, runId, member, root, tokenize, mimetypes);
+    const tracked = await resolveGitMembership(ctx.db, ctx.sessionId, ctx.signal);
+    for (const pathname of tracked) {
+        await materializeMember(pathname, root, ctx);
     }
 };
