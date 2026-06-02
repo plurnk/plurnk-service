@@ -19,12 +19,18 @@ const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockR
     assistant: { content, ops, reasoning: null },
 });
 
-test("Mock.provider: contextSize exposed", () => {
+test("[§2.1-identity] Mock.provider: contextSize exposed", () => {
     const mock = new Mock({ contextSize: 200000, responses: [] });
     assert.equal(mock.contextSize, 200000);
 });
 
-test("Mock.provider: returns queued responses in order", async () => {
+test("[§2.1-counttokens] Mock.provider: countTokens returns a non-negative integer", () => {
+    const mock = new Mock({ contextSize: 200000, responses: [] });
+    const n = mock.countTokens("alpha beta gamma");
+    assert.ok(Number.isInteger(n) && n >= 0, `countTokens returns a non-negative integer; got ${n}`);
+});
+
+test("[§2.4-mock-fixture] Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
     const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
@@ -40,7 +46,7 @@ test("Mock.provider: exhausted queue throws", async () => {
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
-test("Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
+test("[§2.1-generate] Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
     const r: MockResponse = {
         assistant: {
             content: "<<SEND[200]:done:SEND",
@@ -84,7 +90,7 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
     assert.equal(b.assistant.content, "alpha");
 });
 
-test("Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
+test("[§2.2-assistantraw-opaque] Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
     const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
     const mock = new Mock({ contextSize: 100, responses: [r1, r2] });

@@ -134,23 +134,23 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- `provider.generate({messages, signal})` — once per turn; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`.
-- `provider.countTokens(text)` — synchronous, called at write-time (§14.2) and render-time. Non-negative integer.
-- `provider.costFor(usage)` — once per completed turn; pico-USD. Engine writes to `turns.usage_cost_pico`; triggers cascade to `runs.cost_pico` / `sessions.cost_pico`.
+- `provider.generate({messages, signal})` — once per turn; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`. {§2.1-generate}
+- `provider.countTokens(text)` — synchronous, called at write-time (§14.2) and render-time. Non-negative integer. {§2.1-counttokens}
+- `provider.costFor(usage)` — once per completed turn; pico-USD. Engine writes to `turns.usage_cost_pico`; triggers cascade to `runs.cost_pico` / `sessions.cost_pico`. {§2.1-costfor}
 
-Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info") and `provider.model`.
+Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info"), read by the budget {§2.1-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§14.2-hot-switch-recompute), exposed but not yet consumed here.
 
 ### §2.2 Engine → provider guarantees
 
 - `messages` is a complete prompt (`system_definition`, `persona`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` pre-assembled). Provider does not reorder.
-- `signal` is wired to the run's AbortController.
-- `generate` is single-call per turn. No parallel calls on the same instance.
-- `assistantRaw` is opaque to the engine (forensics-only).
+- `signal` is wired to the run's AbortController. {§2.2-signal-wired}
+- `generate` is single-call per turn. No parallel calls on the same instance. {§2.2-single-call}
+- `assistantRaw` is opaque to the engine (forensics-only). {§2.2-assistantraw-opaque}
 - `countTokens` is cheap by contract; engine calls frequently.
 
 ### §2.3 Provider instantiation
 
-Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
+Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). {§2.3-alias-resolution} Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
 
 ```
 PLURNK_MODEL_gemma=openai/macher.gguf
@@ -160,9 +160,9 @@ PLURNK_MODEL=gemma
 
 First path segment = provider plugin; rest = provider's own model id.
 
-### §2.4 In-tree Mock provider
+### §2.4 Mock provider (sibling fixture)
 
-`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextSize, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this.
+`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextSize, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this. {§2.4-mock-fixture}
 
 ---
 

@@ -106,7 +106,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
+test("[§2.2-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
     // Turn-as-container model, 1-based. Turn 1 opens with sequence=1
     // reserved for the prompt (system-origin EDIT against
     // plurnk://prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
