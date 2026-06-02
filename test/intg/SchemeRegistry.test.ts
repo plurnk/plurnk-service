@@ -70,7 +70,7 @@ test("SchemeRegistry.resolveForLoop: default flags include all bundled schemes",
     assert.deepEqual([...active].toSorted(), ["exec", "file", "known", "log", "plurnk", "skill", "unknown"]);
 });
 
-test("SchemeRegistry.resolveForLoop: mode=ask excludes exec (excludedInAsk)", () => {
+test("[§3.1-manifest] SchemeRegistry.resolveForLoop: mode=ask excludes exec (excludedInAsk)", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, mode: "ask" });
     assert.equal(active.has("exec"), false);

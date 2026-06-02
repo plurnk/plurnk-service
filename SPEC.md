@@ -172,15 +172,15 @@ Author-facing contract: [plurnk-schemes#1](https://github.com/plurnk/plurnk-sche
 
 ### §3.1 Manifest
 
-Per author contract. Each scheme declares a `static manifest: SchemeManifest` with `name`, `channels`, `defaultChannel`, `category`, `scope`, `writableBy`, `volatile`, `modelVisible`, optional `flags`. Identity match enforced at plugin load: `manifest.name` must equal `package.json#plurnk.name`.
+Per author contract. Each scheme declares a `static manifest: SchemeManifest` with `name`, `channels`, `defaultChannel`, `category`, `scope`, `writableBy`, `volatile`, `modelVisible`, optional `flags`. {§3.1-manifest} Identity match enforced at plugin load: `manifest.name` must equal `package.json#plurnk.name`.
 
 ### §3.2 CRUD primitives
 
-Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives cross-scheme COPY/MOVE/SEND[410] through these. Each method is one SQL transaction; engine owns the outer transaction for orchestrations.
+Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives cross-scheme COPY/MOVE/SEND[410] through these — the orchestration and its 404/409/415 semantics are anchored under §6.4/§6.5. Each method is one SQL transaction; engine owns the outer transaction for orchestrations.
 
 ### §3.3 Op methods
 
-Per author contract (`edit`/`read`/`show`/`hide`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives.
+Per author contract (`edit`/`read`/`show`/`hide`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. {§3.3-op-dispatch} COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives (§6.4/§6.5).
 
 ### §3.4 Cross-scheme orchestration
 
@@ -200,7 +200,7 @@ move(source_path, dest_path, signal_tags, ctx):
     src_scheme.deleteEntry(source_pathname, ctx)
 ```
 
-Same- and cross-scheme operations share the orchestrator. Same-scheme COPY is not a special case.
+Same- and cross-scheme operations share the orchestrator. Same-scheme COPY is not a special case. Orchestration behavior — 404/409/415, `move` = `copy` + `deleteEntry` — is anchored under §6.4/§6.5.
 
 ### §3.5 SEND dispatch (status-code-as-verb)
 
@@ -240,11 +240,11 @@ Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
 - `ctx.writer` reflects the actual writer at this dispatch.
-- `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion.
-- `ctx.signal` is wired to the run's AbortController.
-- Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `packet.user.telemetry.errors[]` (§15.1).
+- `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion. {§3.6-writableby-403}
+- `ctx.signal` is wired to the run's AbortController (§2.2-signal-wired).
+- Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `packet.user.telemetry.errors[]` (§15.1). {§3.6-exception-500}
 
-**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.provider.countTokens`. Raw DB writes bypass tokenization — out of API scope.
+**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.provider.countTokens` (§14.2-tokens-stored-at-write). Raw DB writes bypass tokenization — out of API scope.
 
 ---
 
