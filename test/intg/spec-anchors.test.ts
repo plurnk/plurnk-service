@@ -1,10 +1,12 @@
 // Spec-test alignment via per-promise anchors.
 //
-// PURPOSE: signal against drift. NOT a forcing function or development driver.
-// When a test verifies a spec promise, the test name carries the anchor; this
-// file fails if a test cites an anchor that no longer exists in SPEC.md
-// (orphan — typo or stale reference). Anchors with no tests are gaps; we
-// surface them informationally without blocking.
+// PURPOSE: enforce spec<->test alignment in BOTH directions. The test name
+// carries the anchor of the promise it verifies; this file fails if a test
+// cites an anchor that no longer exists in SPEC.md (orphan — typo or stale
+// reference), AND fails if a SPEC promise has no test citing its anchor
+// (uncovered — the contract isn't pinned by any test, the failure mode that
+// let §14.3 membership ship as a façade). A red test for an unbuilt contract
+// still counts as cited; the anchor must simply exist in a test name.
 //
 // Conventions:
 //   In SPEC.md:  trailing `{§<id>}` at the end of each promise bullet.
@@ -64,18 +66,18 @@ test("spec anchors: no orphan test references (test cites anchor not in SPEC.md)
     }
 });
 
-test("spec anchors: gap report (informational; does not fail)", async () => {
+test("spec anchors: every SPEC promise is cited by a test (coverage enforced)", async () => {
     const spec = await readFile(resolve(REPO_ROOT, "SPEC.md"), "utf8");
     const specAnchors = extractSpecAnchors(spec);
     const testAnchors = await collectTestAnchorsFromDir(resolve(REPO_ROOT, "test"));
 
     const gaps = [...specAnchors].filter((a) => !testAnchors.has(a)).toSorted();
     const covered = specAnchors.size - gaps.length;
-    const pct = specAnchors.size === 0 ? 0 : Math.round((covered / specAnchors.size) * 100);
-
+    const pct = specAnchors.size === 0 ? 100 : Math.round((covered / specAnchors.size) * 100);
     process.stdout.write(`\n  spec-anchor coverage: ${covered}/${specAnchors.size} (${pct}%)\n`);
+
     if (gaps.length > 0) {
-        process.stdout.write(`  uncovered (gap) anchors:\n`);
-        for (const a of gaps) process.stdout.write(`    ${a}\n`);
+        const list = gaps.map((a) => `  ${a}`).join("\n");
+        assert.fail(`${gaps.length} SPEC promise(s) cited by NO test — coverage regressed:\n${list}\n\nFix: add a test named "[§<id>] …" that exercises the contract. A red test for an unbuilt contract is acceptable — the anchor must simply be cited.`);
     }
 });
