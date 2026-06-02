@@ -8,6 +8,7 @@ export type { ValidationResult } from "./Validator.ts";
 
 export type { ErrorSource } from "./PlurnkParseError.ts";
 export type {
+    ContentOffset,
     CopyStatement,
     EditStatement,
     ExecStatement,
@@ -15,6 +16,7 @@ export type {
     HideStatement,
     LineMarker,
     LocalPath,
+    LogCoordinate,
     MatcherBody,
     MoveStatement,
     ParseItem,
@@ -27,5 +29,6 @@ export type {
     SendBody,
     SendStatement,
     ShowStatement,
+    TelemetryEvent,
     UrlPath,
 } from "./types.ts";
