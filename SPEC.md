@@ -1083,12 +1083,12 @@ Body: JSON array of `{line, matched, matching?}`. Empty → 204. Mimetype = `app
 
 ### §16.4 Structural EDIT on JSON
 
-When effective mimetype is `application/json`, EDIT dispatches through `applyJsonItemEdit`. Body shape rule (parse-then-discriminate):
+When effective mimetype is `application/json`, EDIT dispatches through `applyJsonItemEdit`. {§16.4-structural-json-edit} Body shape rule (parse-then-discriminate):
 
 - Body parses as JSON array → items to splice
 - Body parses as non-array JSON → single item to splice
 - Empty body → delete the selection
-- Body fails JSON parse → 400 (path-extension declares intent; honor strictly)
+- Body fails JSON parse → 400 (path-extension declares intent; honor strictly) {§16.4-json-parse-fail-400}
 
 **Array source marker × body:**
 
@@ -1119,14 +1119,14 @@ When effective mimetype is `application/json`, EDIT dispatches through `applyJso
 - `known://config.yaml` → `application/yaml`
 - `known://users` (no suffix) → `text/markdown` (Known manifest default)
 
-Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype is stored in `entry_channels.mimetype` on write and drives `<L>` and matcher dispatch on read.
+Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype is stored in `entry_channels.mimetype` on write and drives `<L>` and matcher dispatch on read. {§16.5-extension-mimetype}
 
 ### §16.6 Render rule (mimetype-driven)
 
 `packet-wire` log render branches on `isLineNavigableMimetype`:
 
-- **Line-navigable** (text/markdown, text/plain, csv, source code, yaml, toml) → `N:\t` line-number prefix per line
-- **Tree-navigable** (application/json, application/xml, text/html, +json/+xml suffixes) → verbatim body (no `N:\t` — outer line numbers would collide with structural navigation like jsonpath/xpath)
+- **Line-navigable** (text/markdown, text/plain, csv, source code, yaml, toml) → `N:\t` line-number prefix per line {§16.6-line-navigable-prefix}
+- **Tree-navigable** (application/json, application/xml, text/html, +json/+xml suffixes) → verbatim body (no `N:\t` — outer line numbers would collide with structural navigation like jsonpath/xpath) {§16.6-tree-navigable-verbatim}
 
 The `N:\t` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 
@@ -1134,7 +1134,7 @@ The `N:\t` prefix is presentation/reference per plurnk.md ("not part of the sour
 
 Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdown`:
 
-- `<L>` slice on line-navigable source → `text/markdown`
+- `<L>` slice on line-navigable source → `text/markdown` {§16.7-text-markdown-normalize}
 - File scheme extension fallback → `text/markdown`
 - `Mimetypes.detect()` returning `text/plain` → normalized via `normalizeAutoTextMimetype`
 

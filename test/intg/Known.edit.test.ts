@@ -236,7 +236,7 @@ test("Known.edit: bare local path is treated as the raw pathname", async () => {
 
 // --- Structural <L> EDIT on JSON (M.8 / grammar 0.13.0 + 0.14.0) ---
 
-test("Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
+test("[§16.4-structural-json-edit] Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
     await mimetypes.ready();
@@ -309,7 +309,7 @@ test("Known.edit: <L> on no-suffix path is line-based; .json siblings get struct
     } finally { await db.close(); }
 });
 
-test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
+test("[§16.4-json-parse-fail-400] Known.edit: <L> on JSON path with malformed body → 400", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
     await mimetypes.ready();

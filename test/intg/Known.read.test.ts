@@ -72,7 +72,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
+test("[§16.7-text-markdown-normalize] Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -228,7 +228,7 @@ test("Known.read: read against session A doesn't surface session B's entry", asy
 
 // --- Extension-based mimetype (plurnk-grammar 0.14.0) ---------------
 
-test("Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("[§16.5-extension-mimetype] Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
     await mimetypes.ready();

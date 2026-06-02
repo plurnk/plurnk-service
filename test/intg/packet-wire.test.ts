@@ -108,7 +108,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
 
-test("log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
+test("[§16.6-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -127,7 +127,7 @@ test("log render: READ@200 with text/markdown rx body → line-numbered heredoc"
     assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
 });
 
-test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
+test("[§16.6-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
     const system = {
         system_definition: "SD",
         persona: "",
