@@ -225,7 +225,7 @@ test("[§15.1-telemetry-event-notify] every pushed event broadcasts live with th
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
-            telemetryEventNotify: (sid, payload) => { broadcasts.push({ sessionId: sid, payload }); },
+            telemetryEventNotify: (sid, payload) => { broadcasts.push({ sessionId: sid, payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
 
         const provider = new Mock({

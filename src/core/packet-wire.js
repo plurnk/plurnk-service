@@ -338,6 +338,24 @@ const renderLogEntries = (entries) =>
         // its own actions by inference (see reasoning.md trace from the
         // pre-fix count-files run).
         const heredoc = renderStatementHeredoc(e.tx);
+        // EDIT@200/201: surface the unified diff (SPEC §16.8). The diff is
+        // the EDIT result's `diff`, carried back through the rx column (the
+        // whole DispatchResult is JSON-serialized into rx, parsed into e.rx
+        // by Engine.#buildLog — same channel READ uses for rx.content). The
+        // model sees what its EDIT actually changed without a follow-up READ,
+        // so wrong-marker mistakes (`<1>` for `<-1>`) become visible next
+        // turn. Rendered verbatim under a `diff://<coordinate>` fence —
+        // createPatch already emits `---`/`+++`/`@@`/`-old`/`+new` lines, so
+        // re-numbering would corrupt the markers (cf. the error:// snippet).
+        if (op === "EDIT" && (e.status === 200 || e.status === 201)) {
+            const rx = typeof e.rx === "string" ? safeParse(e.rx) : e.rx;
+            const diff = rx !== null && typeof rx === "object" && typeof rx.diff === "string" ? rx.diff : null;
+            if (diff !== null && diff.length > 0) {
+                const diffBlock = wrapHeredocBody(`diff://${coordinate}`, diff);
+                if (heredoc !== null) return `${metaLine}\n${heredoc}\n${diffBlock}`;
+                return `${metaLine}\n${diffBlock}`;
+            }
+        }
         if (heredoc !== null) return `${metaLine}\n${heredoc}`;
         return metaLine;
     }).join("\n");

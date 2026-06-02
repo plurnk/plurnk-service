@@ -5,6 +5,7 @@ import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plur
 import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "@plurnk/plurnk-schemes";
 import { matchAgainstContent } from "@plurnk/plurnk-schemes";
 import { resolveEntryMimetype } from "@plurnk/plurnk-schemes";
+import { createPatch } from "diff";
 
 // Shared free functions for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -15,7 +16,7 @@ import { resolveEntryMimetype } from "@plurnk/plurnk-schemes";
 // log render (which re-emits the source EditStatement from log_entries.tx),
 // not via a rx-side diff. Same syntax both directions — the most honest
 // signal for the model to reason about its own state changes.
-export type EditResult = { status: number; entryId: number | null; channel: string | null };
+export type EditResult = { status: number; entryId: number | null; channel: string | null; diff?: string };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -136,7 +137,12 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
         }
     }
 
-    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
+    // §16.8: EDIT@200/201 carries a unified diff so the model sees what
+    // changed without a follow-up READ. Omitted on no-op (content unchanged).
+    const diff = originalContent !== newContent
+        ? createPatch(pathname, originalContent, newContent, "current", "proposed")
+        : undefined;
+    return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, diff };
 };
 
 export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> => {
