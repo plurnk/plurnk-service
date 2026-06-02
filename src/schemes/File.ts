@@ -98,11 +98,12 @@ export default class File {
             if (resolved.error === "not-found") return { status: 404, content: null, mimetype: null };
             return { status: 403, content: null, mimetype: null };
         }
-        // Membership gate (SPEC §14.3 D4: "Membership without git: no fs-walk").
-        // The model reads only members — entries the client added (git later).
-        // Keyed on the canonical relpath (how members are stored) AFTER the
-        // containment resolve, so a non-member is 404 (indistinguishable from
-        // not-found) and never reaches the content read below.
+        // Membership gate (SPEC §14.3 D4). The model reads only members:
+        // entries the client added, OR git-tracked files registered as members
+        // by resolveGitMembership at workspace setup (D1/D4) and refreshed at
+        // prompt-composition (D5). Keyed on the canonical relpath (how members
+        // are stored) AFTER the containment resolve, so a non-member is 404
+        // (indistinguishable from not-found) and never reaches the read below.
         const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: relative(resolved.root, resolved.canonical) });
         if (member === undefined) return { status: 404, content: null, mimetype: null };
 

@@ -28,6 +28,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
+import { updateSessionProjectRoot } from "../../src/server/envelope.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
@@ -145,7 +146,12 @@ const withGitWorkspace = async (
         ], { cwd: root });
 
         const sessionId = await insertSession(db, `git-ws-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
+        // Set the workspace pointer through the production session-root setter
+        // (the session.set_root backend) so git-ls-files membership (SPEC §14.3
+        // D4) is established at workspace setup — exactly what a real client's
+        // session.create({projectRoot}) / set_root does. This is the workspace
+        // identity assignment (D1); a raw UPDATE here would skip it.
+        await updateSessionProjectRoot(db, sessionId, root);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);

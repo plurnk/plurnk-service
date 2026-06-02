@@ -10,6 +10,7 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { writeEntry } from "../schemes/_entry-crud.ts";
+import { indexGitMembership } from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
@@ -667,6 +668,15 @@ export default class Engine {
             tokenize: this.#tokenize,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
+        // SPEC §14.3 D4/D5 — git-ls-files workspace membership, resolved at
+        // prompt-composition (EMI is eager + relevance-bounded). When the
+        // session's project_root is a git working tree, tracked files are
+        // members without a client `add`; active members are materialized
+        // (disk → body channel + visibility) so they surface in the index
+        // below. No-ops on headless / non-git sessions. Runs BEFORE the
+        // manifest + index build so this turn's packet reflects them.
+        await indexGitMembership(this.#db, sessionId, runId, this.#loopAborts.get(loopId)?.signal, this.#tokenize, this.#mimetypes);
+
         await writeEntry("manifest.json", {
             channels: { body: { content: await this.#buildManifestBody(sessionId), mimetype: "application/json" } },
             tags: [],

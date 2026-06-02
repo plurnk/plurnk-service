@@ -19,6 +19,18 @@ INSERT INTO entries (scope, session_id, scheme, pathname)
 VALUES ('session', $session_id, $scheme, $pathname)
 RETURNING id;
 
+-- PREP: crud_register_session_member
+-- Idempotent bare-membership insert (SPEC §14.3 D4 — git ls-files membership).
+-- A git-tracked file is a session member by virtue of being tracked; the row
+-- is the membership marker the File read-gate checks and FIND globs by path.
+-- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
+-- re-resolving membership each turn never duplicates or churns rows.
+INSERT INTO entries (scope, session_id, scheme, pathname)
+VALUES ('session', $session_id, $scheme, $pathname)
+ON CONFLICT (session_id, scheme, pathname) WHERE scope = 'session'
+DO NOTHING
+RETURNING id;
+
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;
 
