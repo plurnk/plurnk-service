@@ -42,9 +42,9 @@ describe("TextPlain — text/plain (head-oriented prose)", () => {
         assert.deepEqual(h.extractRaw("any content"), []);
     });
 
-    it("symbolsRaw is empty (no structural symbols in plain text)", () => {
+    it("symbolsRaw is empty (no structural symbols in plain text)", async () => {
         const h = new TextPlain(plainMetadata);
-        assert.equal(h.symbolsRaw("any content"), "");
+        assert.equal(await h.symbolsRaw("any content"), "");
     });
 
     it("validate is a no-op (any content is valid plain text)", () => {
