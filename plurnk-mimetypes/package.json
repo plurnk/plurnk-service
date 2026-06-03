@@ -81,7 +81,11 @@
     "antlr-ng": "^1.0.10",
     "antlr4": "^4.13.2",
     "antlr4ng": "^3.0.0",
+    "tree-sitter-bash": "^0.25.1",
+    "tree-sitter-haskell": "^0.23.1",
+    "tree-sitter-ocaml": "^0.24.2",
     "tree-sitter-python": "^0.25.0",
+    "tree-sitter-ruby": "^0.23.1",
     "typescript": "^6.0.3",
     "web-tree-sitter": "^0.25.10"
   },

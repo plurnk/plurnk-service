@@ -18,6 +18,7 @@ export interface TreeSitterNode {
     readonly startPosition: { row: number; column: number };
     readonly endPosition: { row: number; column: number };
     readonly childCount: number;
+    readonly namedChildCount: number;
     child(index: number): TreeSitterNode | null;
     namedChild(index: number): TreeSitterNode | null;
     childForFieldName(name: string): TreeSitterNode | null;

@@ -48,6 +48,38 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         wasmFile: "tree-sitter-python.wasm",
         importMapping: () => import("./python.ts"),
     },
+    {
+        mimetype: "text/x-haskell",
+        glyph: "λ",
+        extensions: [".hs", ".lhs"],
+        wasmPackage: "tree-sitter-haskell",
+        wasmFile: "tree-sitter-haskell.wasm",
+        importMapping: () => import("./haskell.ts"),
+    },
+    {
+        mimetype: "text/x-ruby",
+        glyph: "💎",
+        extensions: [".rb", ".rake", ".gemspec", "Rakefile", "Gemfile"],
+        wasmPackage: "tree-sitter-ruby",
+        wasmFile: "tree-sitter-ruby.wasm",
+        importMapping: () => import("./ruby.ts"),
+    },
+    {
+        mimetype: "text/x-shellscript",
+        glyph: "🐚",
+        extensions: [".sh", ".bash", ".zsh", ".bashrc", ".zshrc"],
+        wasmPackage: "tree-sitter-bash",
+        wasmFile: "tree-sitter-bash.wasm",
+        importMapping: () => import("./bash.ts"),
+    },
+    {
+        mimetype: "text/x-ocaml",
+        glyph: "🐫",
+        extensions: [".ml", ".mli"],
+        wasmPackage: "tree-sitter-ocaml",
+        wasmFile: "tree-sitter-ocaml.wasm",
+        importMapping: () => import("./ocaml.ts"),
+    },
 ];
 
 // Look up a registry entry by mimetype. Returns null if the mimetype
