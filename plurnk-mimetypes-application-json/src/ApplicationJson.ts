@@ -13,6 +13,7 @@ import {
     findNodeAtLocation,
     getNodeValue,
     type Node,
+    parse as parseJsonc,
     type ParseError,
     parseTree,
     printParseErrorCode,
@@ -58,6 +59,28 @@ export default class ApplicationJson extends BaseHandler {
         const symbols: MimeSymbol[] = [];
         collectKeys(tree, content, symbols);
         return symbols;
+    }
+
+    // Deep-channel (issue #10). For JSON, the deep-json IS the parsed value
+    // tree — users writing jsonpath like `$.server.host` expect the actual
+    // parsed value back, not a transformation. The framework's
+    // projectJsonToXml renders this directly into deep-xml.
+    //
+    // jsonc relaxations are applied per mimetype. Malformed content returns
+    // null (parse failure is non-fatal here; validate() is the strict gate).
+    override deepJson(content: HandlerContent): unknown {
+        if (typeof content !== "string") return null;
+        const allowsRelaxation = this.mimetype === "application/jsonc";
+        // jsonc-parser's `parse` returns plain-prototype objects (unlike
+        // parseTree+getNodeValue which returns null-prototype objects that
+        // confuse downstream consumers' structural comparisons).
+        const errors: ParseError[] = [];
+        const value = parseJsonc(content, errors, {
+            allowTrailingComma: allowsRelaxation,
+            disallowComments: !allowsRelaxation,
+        });
+        if (errors.length > 0) return null;
+        return value ?? null;
     }
 
     // Override jsonpath dispatch so queries hit the parsed JSON value (the

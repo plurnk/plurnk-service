@@ -202,9 +202,9 @@ describe("ApplicationJson — extract", () => {
 });
 
 describe("ApplicationJson — framework integration via BaseHandler", () => {
-    it("symbolsRaw renders extracted fields via format()", () => {
+    it("symbolsRaw renders extracted fields via format()", async () => {
         const h = new ApplicationJson(jsonMetadata);
-        const out = h.symbolsRaw(`{"a":1,"b":2}`);
+        const out = await h.symbolsRaw(`{"a":1,"b":2}`);
         assert.ok(out.includes("field a"));
         assert.ok(out.includes("field b"));
     });
@@ -216,6 +216,30 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         if (preview?.kind !== "symbols") return;
         const names = [...preview.symbols].map((s) => s.name);
         assert.deepEqual(names, ["a", "b"]);
+    });
+});
+
+describe("ApplicationJson — deepJson (issue #10 channel)", () => {
+    it("returns the parsed JSON value tree", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        const tree = await h.deepJson(`{"name":"Alice","age":30,"tags":["a","b"]}`);
+        assert.deepEqual(tree, { name: "Alice", age: 30, tags: ["a", "b"] });
+    });
+
+    it("returns null for binary content", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
+    });
+
+    it("returns null on malformed JSON without throwing", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        assert.equal(await h.deepJson("not json {{{"), null);
+    });
+
+    it("application/jsonc deepJson tolerates comments and trailing commas", async () => {
+        const h = new ApplicationJson(jsoncMetadata);
+        const tree = await h.deepJson(`{ /* a */ "x": 1, "y": 2, }`);
+        assert.deepEqual(tree, { x: 1, y: 2 });
     });
 });
 
