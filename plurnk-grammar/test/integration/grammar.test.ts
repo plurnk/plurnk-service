@@ -330,20 +330,32 @@ test("valid regex body accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("regex body missing closing slash produces visitor error", () => {
+test("regex body missing closing slash falls back to glob, not error", () => {
     const result = PlurnkParser.parse("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
+    assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
-test("invalid regex pattern (unterminated character class) produces visitor error", () => {
+test("invalid regex pattern (unterminated character class) falls back to glob, not error", () => {
     const result = PlurnkParser.parse("<<FIND(log://x):/[abc/:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
+    assert.equal(stmt.statement.body?.dialect, "glob");
+});
+
+test("MatcherBody: /path/-shaped literal falls back to glob", () => {
+    const result = PlurnkParser.parse("<<READ(host.conf):/etc/hosts:READ");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
+    const b = stmt.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "glob");
+    assert.equal(b.raw, "/etc/hosts");
 });
 
 test("valid xpath body (//user[@role='admin']) accepted", () => {
@@ -388,13 +400,15 @@ test("valid jsonpath body with descendant and wildcard accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("invalid jsonpath body (unclosed paren) produces visitor error", () => {
+test("invalid jsonpath body (unclosed paren) falls back to glob, not error", () => {
     const result = PlurnkParser.parse("<<READ(books.json):$[(:READ");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
+    assert.equal(stmt.statement.body?.dialect, "glob");
 });
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parse("<<FIND(known://**):Paris*:FIND");

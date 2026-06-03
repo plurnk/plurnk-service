@@ -371,57 +371,36 @@ export default class AstBuilder {
         return params;
     }
 
-    static #detectMatcherDialect(body: string): "xpath" | "regex" | "jsonpath" | "glob" {
+    // Matcher dispatch: try the prefix-indicated dialect; if it doesn't parse cleanly,
+    // fall through to glob. Same robustness principle for every prefix — dispatch is a
+    // hint, not a gate. Lets literal `//`-comments, `/path/`-strings, and `$`-prefixed
+    // shell-ish text reach the model as glob matches instead of hard-erroring.
+    static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
-            try { xpath.parse(body); return "xpath"; }
-            catch { return "glob"; }
+            try { xpath.parse(body); return { dialect: "xpath", raw: body }; }
+            catch { /* fall through to glob */ }
+        } else if (body.startsWith("/")) {
+            const regex = AstBuilder.#tryParseRegex(body);
+            if (regex !== null) return { dialect: "regex", raw: body, ...regex };
+        } else if (body.startsWith("$")) {
+            try { JSONPath({ path: body, json: {} }); return { dialect: "jsonpath", raw: body }; }
+            catch { /* fall through to glob */ }
         }
-        if (body.startsWith("/")) return "regex";
-        if (body.startsWith("$")) return "jsonpath";
-        return "glob";
+        return { dialect: "glob", raw: body };
     }
 
-    static #parseRegexLiteral(body: string, pos: Position): { pattern: string; flags: string } {
+    static #tryParseRegex(body: string): { pattern: string; flags: string } | null {
         let i = 1;
         while (i < body.length) {
             if (body[i] === "\\") { i += 2; continue; }
             if (body[i] === "/") break;
             i++;
         }
-        if (i >= body.length) {
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", "regex body missing closing /");
-        }
-        return { pattern: body.slice(1, i), flags: body.slice(i + 1) };
-    }
-
-    static #parseMatcherBody(body: string, pos: Position): MatcherBody {
-        const dialect = AstBuilder.#detectMatcherDialect(body);
-        if (dialect === "regex") {
-            const { pattern, flags } = AstBuilder.#parseRegexLiteral(body, pos);
-            try {
-                new RegExp(pattern, flags);
-            } catch (e: any) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid regex: ${e?.message ?? body}`);
-            }
-            return { dialect: "regex", raw: body, pattern, flags };
-        }
-        if (dialect === "xpath") {
-            try {
-                xpath.parse(body);
-            } catch (e: any) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid xpath: ${e?.message ?? body}`);
-            }
-            return { dialect: "xpath", raw: body };
-        }
-        if (dialect === "jsonpath") {
-            try {
-                JSONPath({ path: body, json: {} });
-            } catch (e: any) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid jsonpath: ${e?.message ?? body}`);
-            }
-            return { dialect: "jsonpath", raw: body };
-        }
-        return { dialect: "glob", raw: body };
+        if (i >= body.length) return null;
+        const pattern = body.slice(1, i);
+        const flags = body.slice(i + 1);
+        try { new RegExp(pattern, flags); } catch { return null; }
+        return { pattern, flags };
     }
 
     static #parseSendBody(raw: string): SendBody {
