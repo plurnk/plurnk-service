@@ -27,6 +27,21 @@ READ output prefixes every line with line numbers, `N:\t`. The prefix is not par
 SEND broadcasts to uri when a path is included and messages the user when no path is included.
 EXEC defaults to `sh`; override with an optional executor (`node`, `python`, `search`, etc.).
 
+## Context
+
+The agent maintains two contexts for budgeting tokens for working memory and available storage:
+
+- **Index** — entries listed in the active index.
+- **Archive** — entries archived; out of working memory (HIDE), but promotable (SHOW) by path or pattern lookup.
+
+Index entries are previews; READ pulls the body (full, ranged, or matcher-filtered). `plurnk://manifest.json` is the full directory across both contexts.
+
+`SHOW` promotes matching entries to the active index and spends tokens.
+`HIDE` demotes matching entries to archive and saves tokens.
+
+YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
+YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
+
 ## `<L>`
 
 `<N>` selects position N.
@@ -66,21 +81,6 @@ Internal schemes:
 - `log://` — record of operations performed.
 - `plurnk://` — internal agent entries.
 - `error://` — rendered telemetry locator, not addressable.
-
-## Context
-
-The agent maintains two contexts for budgeting tokens for working memory and available storage:
-
-- **Index** — entries listed in the active index.
-- **Archive** — entries archived; out of working memory (HIDE), but promotable (SHOW) by path or pattern lookup.
-
-Index entries are previews; READ pulls the body (full, ranged, or matcher-filtered). `plurnk://manifest.json` is the full directory across both contexts.
-
-`SHOW` promotes matching entries to the active index and spends tokens.
-`HIDE` demotes matching entries to archive and saves tokens.
-
-YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
-YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
 
 ## Suffix
 
