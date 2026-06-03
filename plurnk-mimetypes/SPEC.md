@@ -509,6 +509,72 @@ The deep channels are **never model-visible**. They don't appear in the preview,
 
 Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so plurnk-service's index tile can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
 
-## 13. Public API stability
+## 13. Per-grammar package architecture (framework v0.11.0)
+
+### 13.1 The split
+
+Tree-sitter grammars (Tier 1 in §9.1) are no longer pulled from upstream `tree-sitter-{lang}` packages. Each grammar lives in its own plurnk package shipping only the pre-built WASM:
+
+```
+@plurnk/plurnk-mimetypes                          (framework, slim)
+@plurnk/plurnk-mimetypes-grammar-{slug}           (per-grammar, one each)
+@plurnk/plurnk-mimetypes-grammars-all             (kitchen-sink meta)
+```
+
+The framework's `TreeSitterLanguageHandler.loadParser()` resolves WASMs by trying `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm` first, falling back to the legacy upstream `{wasmPackage}/{wasmFile}` for compatibility with consumers mid-transition. Neither resolved → throws `GrammarNotInstalledError` (exported from `index.ts`) with the plurnk package name as the install hint.
+
+### 13.2 Why
+
+The previous architecture depended on upstream `tree-sitter-{lang}` packages, each of which declared `peerOptional tree-sitter@^X.Y` for the native node-gyp binding. Two consequences:
+
+1. **Peer-dep conflicts** when multiple grammars with mismatched peer ranges were installed together (forced `--legacy-peer-deps` everywhere).
+2. **Implicit invitation to install native tree-sitter**, dragging node-gyp + Python + a C compiler into the build chain — breaks Alpine, Lambda, Cloudflare Workers, the original portability premise.
+
+Our grammar packages declare only `web-tree-sitter` as a peer. No conflicts. No node-gyp. Ever.
+
+### 13.3 What each grammar package contains
+
+Just data:
+
+```
+@plurnk/plurnk-mimetypes-grammar-{slug}/
+├── package.json              # peerDeps: { web-tree-sitter, @plurnk/plurnk-mimetypes }
+├── index.js                  # exports wasmPath (absolute path to the WASM)
+├── {slug}.wasm               # pre-built from a pinned upstream commit
+├── .grammar-pin              # the commit SHA
+└── scripts/
+    ├── build-wasm.mjs        # reproducible rebuild from pinned source
+    └── verify-wasm.mjs       # CI byte-identical check
+```
+
+No handler code, no mapping. The framework's `TREE_SITTER_REGISTRY` owns those. The grammar package is interchangeable plumbing.
+
+### 13.4 Registry entry shape
+
+```ts
+interface TreeSitterLanguageEntry {
+    readonly mimetype: string;
+    readonly glyph: string;
+    readonly extensions: readonly string[];
+    readonly slug: string;                           // → @plurnk/.../grammar-{slug}/{slug}.wasm
+    readonly wasmPackage: string | null;             // legacy upstream fallback
+    readonly wasmFile: string | null;                // legacy upstream fallback path
+    readonly importMapping: () => Promise<TreeSitterLanguageMapping>;
+}
+```
+
+The legacy `wasmPackage`/`wasmFile` fields are deprecated but kept populated for the transition. New languages can set both to null — the framework will resolve exclusively via the plurnk grammar package.
+
+### 13.5 Install patterns
+
+- **Slim:** `npm i @plurnk/plurnk-mimetypes` plus only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
+- **Kitchen sink:** `npm i @plurnk/plurnk-mimetypes-grammars-all` — pulls every published grammar.
+- **Coverage discovery:** `Mimetypes.detect()` returns `null` (or routes to default) for mimetypes whose grammar isn't installed; `Mimetypes.process()` will throw `GrammarNotInstalledError` (or surface it on `ProcessResult.ok = false`) so consumers can show an actionable install hint.
+
+### 13.6 Reproducibility
+
+Each grammar package's `scripts/build-wasm.mjs` rebuilds the WASM from the pinned upstream commit using `tree-sitter-cli`'s bundled wasi-sdk. CI runs `scripts/verify-wasm.mjs` to confirm the committed WASM is byte-identical to a fresh rebuild — this catches tampering and forces grammar updates through pin bumps rather than ad-hoc rebuilds.
+
+## 14. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.
