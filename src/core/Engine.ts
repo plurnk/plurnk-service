@@ -1550,11 +1550,12 @@ export default class Engine {
         if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };
         const entry = srcResult.entry;
 
-        // Conflict check on destination
-        if (typeof dstHandler.readEntry === "function") {
-            const dstExists = await dstHandler.readEntry(dstPathname, ctx);
-            if (dstExists.status === 200) return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
-        }
+        // Destination read — the conflict/no-op verdict is deferred until the
+        // to-be-written content is known (after <L> slice + tag resolution below),
+        // so an identical re-copy resolves to 304 instead of a phantom 409.
+        const dstExisting = typeof dstHandler.readEntry === "function"
+            ? await dstHandler.readEntry(dstPathname, ctx)
+            : null;
 
         // Mimetype compatibility check against the destination scheme's manifest
         const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
@@ -1589,6 +1590,21 @@ export default class Engine {
         const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
             ? statement.signal
             : entry.tags;
+
+        // 304/409 on an existing destination (SPEC §6.4): a re-copy that would write
+        // exactly what's already there — same channel contents, same tags — is a no-op
+        // (304), mirroring EDIT's 304-on-noop (§6.1). A divergent destination is a real
+        // collision (409); COPY/MOVE never clobbers.
+        if (dstExisting !== null && dstExisting.status === 200 && dstExisting.entry !== null) {
+            const dstChannels = dstExisting.entry.channels;
+            const writeNames = Object.keys(channels).sort();
+            const dstNames = Object.keys(dstChannels).sort();
+            const sameContent = writeNames.length === dstNames.length
+                && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
+            const sameTags = [...tags].sort().join(" ") === [...dstExisting.entry.tags].sort().join(" ");
+            if (sameContent && sameTags) return { status: 304 };
+            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
+        }
 
         const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };

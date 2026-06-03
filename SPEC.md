@@ -441,7 +441,7 @@ AST: `{ op: "COPY", target (source), body (destination), signal: tags | null, li
 Engine orchestrates over CRUD primitives (§3.2, §3.4):
 
 1. `src_scheme.readEntry` → 404 if missing. {§6.4-missing-source-404}
-2. `dst_scheme.readEntry` → if exists, 409 (no overwrite). {§6.4-conflict-409}
+2. `dst_scheme.readEntry` → conflict verdict, deferred until the written content is known (step 5): exists with identical content + tags → 304 (no-op, mirrors EDIT §6.1) {§6.4-noop-304}; exists with different content → 409 (no overwrite) {§6.4-conflict-409}; absent → proceed.
 3. Mimetype compat — channels' mimetypes must be accepted by `dst_scheme.manifest.channels`. Mismatch → 415.
 4. Tags: `signal` non-null replaces source tags {§6.4-signal-replaces-source-tags}; null/empty carries source tags {§6.4-no-signal-carries-source-tags}.
 5. `dst_scheme.writeEntry({channels, tags})`.

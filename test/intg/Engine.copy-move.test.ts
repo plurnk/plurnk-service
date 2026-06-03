@@ -78,6 +78,25 @@ test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", asy
     } finally { await db.close(); }
 });
 
+test("[§6.4-noop-304] Engine.copy to a destination already holding identical content returns 304", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        const k = new Known();
+        await k.edit(editStmt(urlPath("known", "src"), "same body"), makeSchemeCtx({ db, sessionId, runId }));
+        // Three dispatches in one turn → distinct sequences (log_entries is unique on turn_id+sequence).
+        const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("known", "src"), urlPath("known", "dst")), sessionId, runId, loopId, turnId, sequence, origin: "client" });
+
+        assert.equal((await copy(1)).status, 201, "first copy creates the destination");
+        assert.equal((await copy(2)).status, 304, "identical re-copy is a no-op, not a 409");
+
+        // Divergent destination is still a real collision; it stays untouched.
+        await k.edit(editStmt(urlPath("known", "src"), "changed body"), makeSchemeCtx({ db, sessionId, runId }));
+        assert.equal((await copy(3)).status, 409, "divergent content is a collision");
+        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "dst", name: "body" }))?.content;
+        assert.equal(dstBody, "same body", "collision leaves the destination untouched");
+    } finally { await db.close(); }
+});
+
 test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
