@@ -156,25 +156,26 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
     } finally { await db.close(); }
 });
 
-test("jsonpath on text/markdown picks heading nodes from the outline", async () => {
-    // plurnk-mimetypes 0.6.0: the outline shape is bare-leaves nested by
-    // structural depth. For markdown, headings ARE the structure — the model
-    // can use `$['Installation']` etc. to jump straight to a section line.
+test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
+    // mimetypes 0.10.0: jsonpath dispatches against deepJson — the marked
+    // document AST — not the old heading outline. `$..text` walks the tree,
+    // surfacing every text node (headings included), so the model addresses
+    // real structure instead of a flat heading index.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/doc.md",
             "# Intro\n\nopening\n\n# Installation\n\nrun npm install\n\n# Usage\n\nhello world\n");
         const r = await new Known().read(
-            readStmt(urlPath("known", "/doc.md"), { dialect: "jsonpath", raw: "$.Installation" } as MatcherBody),
+            readStmt(urlPath("known", "/doc.md"), { dialect: "jsonpath", raw: "$..text" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as Array<{ line: number; matched: unknown }>;
-        assert.equal(rows.length, 1);
-        // Leaf is the heading's source line; the bare-leaves outline collapses
-        // a section with no sub-headings to its top line.
-        assert.ok(rows[0].line >= 1);
+        const matched = (JSON.parse(r.content ?? "[]") as Array<{ matched: unknown }>).map((m) => m.matched);
+        // Heading text nodes are reachable by walking the AST.
+        assert.ok(matched.includes("Intro"), `headings surfaced via deepJson; got ${JSON.stringify(matched).slice(0, 120)}`);
+        assert.ok(matched.includes("Installation"));
+        assert.ok(matched.includes("Usage"));
     } finally { await db.close(); }
 });
 

@@ -220,7 +220,7 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
                 registry: { byExtension: new Map([[".spy", "text/x-spy"]]), byFilename: new Map() },
                 handlers: new Map([["text/x-spy", {
                     mimetype: "text/x-spy", glyph: "🕵️", extensions: ["spy"],
-                    packageName: "stub://spy", binary: false,
+                    packageName: "stub://spy", binary: false, source: "package",
                 }]]),
             },
             loader: async () => ({ default: SpyHandler }),

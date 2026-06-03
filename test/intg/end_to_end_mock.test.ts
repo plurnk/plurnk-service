@@ -44,7 +44,7 @@ const dispatchTurn = async (
     const { assistant } = await provider.generate({ messages: [] });
     const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: ctx.loopId });
     if (seqRow === undefined) throw new Error("seq query returned no row");
-    const ops = assistant.ops ?? [];
+    const ops = (assistant.ops ?? []) as PlurnkStatement[];
     const sendOp = ops.find((o): o is SendStatement => o.op === "SEND");
     const turnStatus = sendOp?.signal ?? 200;
     const turnId = await insertTurn(db, ctx.loopId, seqRow.next, turnStatus);

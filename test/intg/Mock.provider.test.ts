@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 
@@ -67,7 +67,7 @@ test("[§2.1-generate] Mock.provider: assistant shape carries content + ops + re
     assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
     assert.equal(result.assistant.ops?.length, 1);
-    assert.equal(result.assistant.ops?.[0]?.op, "SEND");
+    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "SEND");
 });
 
 test("Mock.provider: defaults fill when test omits usage/finishReason/model", async () => {
@@ -129,5 +129,5 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
     const mock = new Mock({ contextSize: 100, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);
-    assert.deepEqual(result.assistant.ops?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
+    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);
 });

@@ -9,6 +9,12 @@
 // Per-handler behavioral tests live in each sibling's repo. This file
 // is the plurnk-service-side integration check: "the handler exists,
 // the framework finds it, our path through it works."
+//
+// NOTE: tree-sitter-backed languages (python, typescript, toml, yaml, …) are
+// NOT standalone deps — the 0.10.0 framework absorbed them into its internal
+// TREE_SITTER_REGISTRY (SPEC §9 Tier 1), so they're covered by
+// @plurnk/plurnk-mimetypes' own suite, not here. Only bespoke standalone
+// handlers (json/html/markdown/csv/plain/pdf) belong in CASES.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -26,20 +32,6 @@ interface Case {
 }
 
 const CASES: Case[] = [
-    {
-        label: "text/python",
-        ext: ".py",
-        sampleContent: "def greet(name):\n    return f\"hello {name}\"\n\nclass Greeter:\n    pass\n",
-        expectedMimetype: "text/python",
-        previewIncludes: "greet",
-    },
-    {
-        label: "text/typescript",
-        ext: ".ts",
-        sampleContent: "export function greet(name: string): string {\n    return `hello ${name}`;\n}\n",
-        expectedMimetype: "text/typescript",
-        previewIncludes: "greet",
-    },
     {
         label: "text/markdown",
         ext: ".md",
@@ -69,20 +61,6 @@ const CASES: Case[] = [
         sampleContent: "{\"name\":\"Alice\",\"age\":30}",
         expectedMimetype: "application/json",
         previewIncludes: "name",
-    },
-    {
-        label: "application/yaml",
-        ext: ".yaml",
-        sampleContent: "name: Alice\nage: 30\n",
-        expectedMimetype: "application/yaml",
-        previewIncludes: "name",
-    },
-    {
-        label: "application/toml",
-        ext: ".toml",
-        sampleContent: "[user]\nname = \"Alice\"\nage = 30\n",
-        expectedMimetype: "application/toml",
-        previewIncludes: "user",
     },
     {
         label: "text/plain",

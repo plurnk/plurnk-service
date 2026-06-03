@@ -45,9 +45,10 @@ const okEdit = parseDsl("<<EDIT(known://ok):v:EDIT");
 const sendDone = parseDsl("<<SEND[200]:done:SEND");
 const sendGoing = parseDsl("<<SEND[102]:going:SEND");
 
-// Canonical edit-todo malformation: a READ body opening with `//` gets
-// xpath-dispatched and rejected by the grammar visitor at 1:0.
-const BROKEN_READ = "<<READ(known://app.js):// TODO: add error handling:READ";
+// Actionless malformation: a SEND with a non-integer signal — the lexer
+// rejects 'x' in the signal slot at 1:7. (The former `//`-xpath trigger now
+// degrades to glob in grammar 0.20.0, so it no longer errors.)
+const BROKEN_STMT = "<<SEND[x]:y:SEND";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -116,7 +117,7 @@ test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t s
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                contentResponse(BROKEN_READ),                 // turn 1: real parse_error
+                contentResponse(BROKEN_STMT),                 // turn 1: real parse_error
                 opsResponse([...okEdit, ...sendDone]),        // turn 2: clean — drains the buffer
             ],
         });
@@ -127,11 +128,11 @@ test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t s
         const parseErr = p2.user.telemetry.errors.find((e) => e.kind === "parse_error");
         assert.ok(parseErr !== undefined, "parse_error surfaced on the next packet");
         // Real content-offset position from the grammar visitor (1:0).
-        assert.deepEqual(parseErr.position, { type: "content-offset", line: 1, column: 0 });
+        assert.deepEqual(parseErr.position, { type: "content-offset", line: 1, column: 7 });
         // Snippet is the model's own offending bytes, N:\t-prefixed by #extractSnippet.
         assert.equal(parseErr.source, "grammar");
-        assert.equal(parseErr.parserSource, "visitor");
-        assert.equal(parseErr.snippet, `1:\t${BROKEN_READ}`);
+        assert.equal(parseErr.parserSource, "lexer");
+        assert.equal(parseErr.snippet, `1:\t${BROKEN_STMT}`);
 
         // Render the wire the model actually receives and assert the layout:
         // meta line (no snippet key) immediately followed by the error://<line>
@@ -141,7 +142,7 @@ test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t s
         // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
         // error://1 fence carrying the verbatim N:\t snippet, line 1, immediately after meta.
-        const fenced = `<<:::error://1\n1:\t${BROKEN_READ}\n:::error://1`;
+        const fenced = `<<:::error://1\n1:\t${BROKEN_STMT}\n:::error://1`;
         assert.ok(wire.includes(fenced), "snippet rendered under error://<line> fence with N:\\t prefix");
         // Meta line precedes the fence (event meta, then locator block).
         const metaIdx = wire.indexOf('"kind":"parse_error"');
@@ -156,7 +157,7 @@ test("[§15.1-drain-on-read] telemetry buffer drains — parse_error appears on 
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                contentResponse(BROKEN_READ),                 // turn 1: parse_error pushed to buffer
+                contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed to buffer
                 opsResponse([...okEdit, ...sendGoing]),       // turn 2: reads (drains) the buffer
                 opsResponse([...okEdit, ...sendDone]),        // turn 3: buffer already empty
             ],
@@ -184,7 +185,7 @@ test("[§15.1-no-error-scheme] actionless parse failures route to telemetry, not
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                contentResponse(BROKEN_READ),                 // actionless failure (no op dispatched)
+                contentResponse(BROKEN_STMT),                 // actionless failure (no op dispatched)
                 opsResponse([...okEdit, ...sendDone]),
             ],
         });
@@ -231,7 +232,7 @@ test("[§15.1-telemetry-event-notify] every pushed event broadcasts live with th
         const provider = new Mock({
             contextSize: 100000,
             responses: [
-                contentResponse(BROKEN_READ),                 // turn 1: parse_error pushed + broadcast live
+                contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed + broadcast live
                 opsResponse([...okEdit, ...sendDone]),        // turn 2: model drains it on read
             ],
         });
@@ -246,7 +247,7 @@ test("[§15.1-telemetry-event-notify] every pushed event broadcasts live with th
         const liveEvent = liveParse[0].payload.event;
         assert.equal(liveEvent.source, "grammar");
         assert.equal(liveEvent.kind, "parse_error");
-        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 1, column: 0 });
+        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 1, column: 7 });
 
         // Model side: the SAME envelope drains onto the next packet's
         // telemetry.errors[]. Same source/kind/message/position on both sides.

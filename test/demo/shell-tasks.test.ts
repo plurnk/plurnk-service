@@ -31,6 +31,8 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
+const PERSONA = await readFile(PATHS.defaultPersona, "utf8");
+const REQUIREMENTS = await readFile(PATHS.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
@@ -69,6 +71,7 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId,
+            persona: PERSONA, requirements: REQUIREMENTS,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: prompt },
