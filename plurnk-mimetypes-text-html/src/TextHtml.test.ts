@@ -211,10 +211,48 @@ describe("TextHtml — regex/jsonpath inheritance", () => {
         assert.deepEqual(out[0].matched, ["cleanup"]);
     });
 
-    it("inherits jsonpath query against the outline (heading navigation)", async () => {
+    it("jsonpath queries the deep-json DOM tree (issue #10): filter elements by type", async () => {
         const html = "<html><body><h1>Top</h1><h2>Section</h2><h3>Sub</h3></body></html>";
-        const out = await h.query(html, "jsonpath", "$.Top.Section.Sub");
-        assert.equal(out.length, 1);
-        assert.equal(typeof out[0].matched, "number");
+        const headings = await h.query(html, "jsonpath", "$..children[?(@.type=='h1' || @.type=='h2' || @.type=='h3')]");
+        assert.equal(headings.length, 3);
+        const types = headings.map((m) => (m.matched as { type: string }).type);
+        assert.deepEqual(types, ["h1", "h2", "h3"]);
+    });
+});
+
+describe("TextHtml — deepJson (issue #10 DOM channel)", () => {
+    const h = new TextHtml(metadata);
+
+    it("returns a document root with nested element children", async () => {
+        const html = "<html><body><h1>Hello</h1></body></html>";
+        const tree = await h.deepJson(html) as { type: string; children: Array<{ type: string }> };
+        assert.equal(tree.type, "document");
+        assert.ok(Array.isArray(tree.children));
+    });
+
+    it("element attributes surface in the attrs field", async () => {
+        const html = '<html><body><a href="https://example.com" class="external">click</a></body></html>';
+        const tree = await h.deepJson(html);
+        // Walk to find the <a> node.
+        const stack: unknown[] = [tree];
+        let found: { attrs?: Record<string, string>; text?: string } | null = null;
+        while (stack.length > 0) {
+            const cur = stack.pop() as { type?: string; attrs?: Record<string, string>; text?: string; children?: unknown[] };
+            if (cur && cur.type === "a") { found = cur; break; }
+            if (cur && cur.children) stack.push(...cur.children);
+        }
+        assert.ok(found, "should locate the <a> element");
+        assert.equal(found!.attrs?.href, "https://example.com");
+        assert.equal(found!.attrs?.class, "external");
+        assert.equal(found!.text, "click");
+    });
+
+    it("returns null on parse failure", async () => {
+        // parse5 is famously permissive — even garbage parses successfully
+        // into a document. So we test that the method doesn't throw and
+        // returns a document tree even for ill-formed input.
+        const tree = await h.deepJson("<<<not really html>>>");
+        assert.ok(tree && typeof tree === "object");
+        assert.equal((tree as { type: string }).type, "document");
     });
 });

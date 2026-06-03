@@ -65,6 +65,33 @@ export default class TextHtml extends BaseHandler {
         return symbols;
     }
 
+    // Deep-channel (issue #10). Re-parses with parse5 and serializes the DOM
+    // as nested objects: { type: tagName, line, endLine, attrs: {...},
+    // children: [...] } per element; text nodes flatten into a `text` field
+    // on the parent when the parent has no mixed content, else surface as
+    // { type: "#text", text } in the children array. The framework's
+    // projectJsonToXml() with the attrs convention renders this back to
+    // clean HTML-shaped XML — xpath queries like //a[@href] or //h1 work
+    // naturally against the deep-xml channel.
+    override deepJson(content: HandlerContent): unknown {
+        const html = typeof content === "string"
+            ? content
+            : new TextDecoder("utf-8").decode(content);
+        let doc;
+        try {
+            doc = parse(html, { sourceCodeLocationInfo: true });
+        } catch {
+            return null;
+        }
+        const root: Record<string, unknown> = {
+            type: "document",
+            line: 1,
+            endLine: 1,
+            children: collectChildren(doc),
+        };
+        return root;
+    }
+
     // Hybrid preview: SymbolPreview when headings (h1-h6) or a <title>
     // surface, head-oriented TextPreview over the raw HTML otherwise. The
     // fallback handles pages without structural markup — login forms, single
@@ -252,4 +279,54 @@ function isTextNode(node: ChildNode | ParentNode): node is DefaultTreeAdapterMap
 
 function hasChildNodes(node: unknown): node is ParentNode {
     return Array.isArray((node as { childNodes?: unknown }).childNodes);
+}
+
+// Recursively serialize parse5 children into deep-json nodes. Text nodes are
+// preserved as { type: "#text", text } when interleaved with elements; when a
+// parent has only text children, they collapse into the parent's `text` field
+// (kept separate so the projection produces clean XML like <h1>Top</h1> rather
+// than <h1><_text>Top</_text></h1>).
+function collectChildren(parent: ParentNode): unknown[] {
+    const out: unknown[] = [];
+    if (!hasChildNodes(parent)) return out;
+    for (const child of parent.childNodes) {
+        if (isTextNode(child)) {
+            const text = child.value;
+            if (text.length === 0) continue;
+            out.push({ type: "#text", text });
+            continue;
+        }
+        if (isElement(child)) {
+            out.push(elementToDeep(child));
+            continue;
+        }
+        // Comment / doctype / etc — skip; not queryable structure.
+    }
+    return out;
+}
+
+function elementToDeep(el: Element): Record<string, unknown> {
+    const loc = el.sourceCodeLocation;
+    const node: Record<string, unknown> = {
+        type: el.tagName,
+        line: loc?.startLine ?? 1,
+        endLine: loc?.endLine ?? loc?.startLine ?? 1,
+    };
+    if (el.attrs && el.attrs.length > 0) {
+        const attrs: Record<string, string> = {};
+        for (const a of el.attrs) attrs[a.name] = a.value;
+        node.attrs = attrs;
+    }
+    const children = collectChildren(el);
+    // Collapse text-only children into the `text` field — produces cleaner
+    // XML when projected.
+    if (children.length === 1
+        && typeof children[0] === "object"
+        && children[0] !== null
+        && (children[0] as { type: string }).type === "#text") {
+        node.text = (children[0] as { text: string }).text;
+    } else if (children.length > 0) {
+        node.children = children;
+    }
+    return node;
 }
