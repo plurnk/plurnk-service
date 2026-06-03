@@ -8,11 +8,17 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 
 export interface DemoFixture {
     workspace: string;
     cleanup: () => Promise<void>;
+    addToCatalog: (db: Db, sessionId: number) => Promise<void>;
 }
+
+// The files seedDemoFixture writes — the set the client registers as session
+// members (the catalog) so File.read, which is membership-gated, can serve them.
+const FILES = ["package.json", "src/app.js", "src/config.json", "notes.md", "data/users.json", "data/users.html"];
 
 // Seed: small node-style project with a few files the model can read,
 // edit, query, and run. Mirrors the rummy fixture shape (config.json
@@ -90,5 +96,14 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
     return {
         workspace,
         cleanup: async () => { await rm(workspace, { recursive: true, force: true }); },
+        // The fixture owns catalog membership: register each seeded file as a
+        // session entry (scheme=null, the file-routing internal) so the model
+        // may READ it. Channel-less — disk stays the truth; the entry is the
+        // membership marker the read gate checks and FIND globs by path.
+        addToCatalog: async (db, sessionId) => {
+            for (const rel of FILES) {
+                await (db.crud_insert_session_entry as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: rel });
+            }
+        },
     };
 };
