@@ -64,7 +64,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         const info: HandlerInfo = {
             mimetype: entry.mimetype,
             glyph: entry.glyph,
-            packageName: entry.wasmPackage,
+            packageName: entry.wasmPackage ?? `@plurnk/plurnk-mimetypes-grammar-${entry.slug}`,
             extensions: entry.extensions,
             binary: false,
             source: "treesitter",

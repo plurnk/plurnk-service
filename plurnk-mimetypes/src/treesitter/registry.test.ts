@@ -36,14 +36,20 @@ describe("TreeSitter registry", () => {
         assert.equal(entry, null);
     });
 
-    it("every registry entry has a non-empty mimetype, glyph, wasmPackage, wasmFile", () => {
+    it("every registry entry has a non-empty mimetype, glyph, slug, extensions", () => {
         for (const entry of TREE_SITTER_REGISTRY) {
             assert.ok(entry.mimetype.length > 0, `mimetype empty: ${JSON.stringify(entry)}`);
             assert.ok(entry.glyph.length > 0, `glyph empty: ${entry.mimetype}`);
-            assert.ok(entry.wasmPackage.length > 0, `wasmPackage empty: ${entry.mimetype}`);
-            assert.ok(entry.wasmFile.length > 0, `wasmFile empty: ${entry.mimetype}`);
+            assert.ok(entry.slug.length > 0, `slug empty: ${entry.mimetype}`);
             assert.ok(entry.extensions.length > 0, `extensions empty: ${entry.mimetype}`);
             assert.equal(typeof entry.importMapping, "function");
+            // wasmPackage / wasmFile are optional legacy fallback fields;
+            // either both are populated or both are null (matched-pair invariant).
+            assert.equal(
+                entry.wasmPackage === null,
+                entry.wasmFile === null,
+                `wasmPackage/wasmFile null mismatch: ${entry.mimetype}`,
+            );
         }
     });
 

@@ -55,6 +55,7 @@ export {
     QueryParseFailureError,
     UnsupportedDialectError,
 } from "./QueryError.ts";
+export { GrammarNotInstalledError } from "./treesitter/handler.ts";
 export type {
     ContentOffset,
     LogCoordinate,
