@@ -128,7 +128,7 @@ describe("AntlrExtractor", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.equal(e.symbolsRaw("anything"), "class Foo [1-10]");
+        assert.equal(await e.symbolsRaw("anything"), "class Foo [1-10]");
         const preview = (await e.preview("anything")) as SymbolPreview;
         assert.equal(preview.kind, "symbols");
         assert.deepEqual(

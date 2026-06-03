@@ -12,6 +12,12 @@ export type {
 export { default as BaseHandler } from "./BaseHandler.ts";
 export { default } from "./BaseHandler.ts";
 export { default as AntlrExtractor } from "./AntlrExtractor.ts";
+export { default as TreeSitterExtractor } from "./TreeSitterExtractor.ts";
+export type {
+    TreeSitterTree,
+    TreeSitterNode,
+    TreeSitterParser,
+} from "./TreeSitterExtractor.ts";
 export { withExtractor } from "./withExtractor.ts";
 export type { HandlerContent } from "./BaseHandler.ts";
 

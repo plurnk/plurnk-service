@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-mimetypes",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
   "keywords": [
     "plurnk",
@@ -62,13 +62,17 @@
   },
   "peerDependencies": {
     "antlr-ng": "^1.0.10",
-    "antlr4ng": "^3.0.0"
+    "antlr4ng": "^3.0.0",
+    "web-tree-sitter": "^0.25.0"
   },
   "peerDependenciesMeta": {
     "antlr-ng": {
       "optional": true
     },
     "antlr4ng": {
+      "optional": true
+    },
+    "web-tree-sitter": {
       "optional": true
     }
   },
@@ -77,7 +81,8 @@
     "antlr-ng": "^1.0.10",
     "antlr4": "^4.13.2",
     "antlr4ng": "^3.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "web-tree-sitter": "^0.25.10"
   },
   "dependencies": {
     "jsonpath-plus": "^10.4.0"

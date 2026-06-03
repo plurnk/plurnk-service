@@ -27,9 +27,9 @@ describe("BaseHandler", () => {
         assert.deepEqual(h.extractRaw("anything"), []);
     });
 
-    it("returns an empty string from symbolsRaw when extractRaw is empty", () => {
+    it("returns an empty string from symbolsRaw when extractRaw is empty", async () => {
         const h = new BaseHandler(metadata);
-        assert.equal(h.symbolsRaw("anything"), "");
+        assert.equal(await h.symbolsRaw("anything"), "");
     });
 
     it("treats validate as a no-op by default", () => {
@@ -44,14 +44,14 @@ describe("BaseHandler", () => {
         assert.deepEqual([...preview.symbols], []);
     });
 
-    it("renders symbolsRaw from a subclass's extractRaw via format", () => {
+    it("renders symbolsRaw from a subclass's extractRaw via format", async () => {
         class TestHandler extends BaseHandler {
-            extractRaw(_content: string): MimeSymbol[] {
+            override extractRaw(_content: string): MimeSymbol[] {
                 return [{ name: "Foo", kind: "class", line: 1, endLine: 10 }];
             }
         }
         const h = new TestHandler(metadata);
-        assert.equal(h.symbolsRaw("anything"), "class Foo [1-10]");
+        assert.equal(await h.symbolsRaw("anything"), "class Foo [1-10]");
     });
 
     it("returns a symbols Preview carrying the extractRaw output", async () => {

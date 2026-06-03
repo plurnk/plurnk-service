@@ -37,8 +37,11 @@ export default class BaseHandler {
     }
 
     // Raw structural extraction. Default returns []. Subclasses override for
-    // mimetypes with structural content.
-    extractRaw(_content: HandlerContent): MimeSymbol[] {
+    // mimetypes with structural content. Return type is a union so synchronous
+    // handlers (AntlrExtractor, hand-rolled scanners) stay correct without
+    // ceremony; tree-sitter-backed handlers return a Promise to honor WASM
+    // grammar init. Consumers must `await` unconditionally.
+    extractRaw(_content: HandlerContent): MimeSymbol[] | Promise<MimeSymbol[]> {
         return [];
     }
 
@@ -48,21 +51,27 @@ export default class BaseHandler {
         // Default: anything is valid.
     }
 
-    // Unbudgeted structural rendering — `format(extractRaw(content))` by
-    // default. Diagnostic access; not the primary surface (see preview).
-    symbolsRaw(content: HandlerContent): string {
-        return format(this.extractRaw(content));
+    // Unbudgeted structural rendering — `format(await extractRaw(content))`
+    // by default. Diagnostic access; not the primary surface (see preview).
+    async symbolsRaw(content: HandlerContent): Promise<string> {
+        return format(await this.extractRaw(content));
     }
 
     // The handler's preview policy. Returns:
     //   - SymbolPreview: structural outline (framework fits via fit())
     //   - null:          no preview (handler explicitly declines)
     //
-    // Default: SymbolPreview wrapping extractRaw output. Handlers whose
+    // Default: SymbolPreview wrapping awaited extractRaw output. Handlers whose
     // structure isn't reachable through extractRaw (notably async ones like
-    // application-pdf) override preview directly.
+    // application-pdf) override preview directly. Return type stays a union
+    // so sync handlers can return Preview directly without ceremony; the
+    // default impl is async to handle async extractRaw transparently.
     preview(content: HandlerContent): Preview | Promise<Preview> {
-        return { kind: "symbols", symbols: this.extractRaw(content) };
+        const raw = this.extractRaw(content);
+        if (raw instanceof Promise) {
+            return raw.then((symbols) => ({ kind: "symbols" as const, symbols }));
+        }
+        return { kind: "symbols", symbols: raw };
     }
 
     // Body-matcher query. Plurnk-service calls this through Mimetypes.query
@@ -94,7 +103,7 @@ export default class BaseHandler {
                 return queryGlob(text, pattern);
             }
             case "jsonpath": {
-                const outline = buildJsonOutline(this.extractRaw(content));
+                const outline = buildJsonOutline(await this.extractRaw(content));
                 return queryJsonpathObject(outline, pattern);
             }
             case "xpath":
