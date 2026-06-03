@@ -45,6 +45,20 @@ export default class TextCsv extends BaseHandler {
         }));
     }
 
+    // Deep-channel (issue #10). CSV's natural deep-json IS the parsed value:
+    // an array of row objects keyed by header column. Same shape the custom
+    // jsonpath dispatch already uses — consistent across channels. The
+    // framework projects this to deep-xml via projectJsonToXml; rows render
+    // as repeated sibling elements.
+    override deepJson(content: HandlerContent): unknown {
+        if (typeof content !== "string") return null;
+        try {
+            return parseToRowObjects(content);
+        } catch {
+            return null;
+        }
+    }
+
     // Override jsonpath dispatch to query against the row objects
     // ([{header1: value, header2: value, ...}, ...]) shaped from the parsed
     // CSV — the natural model for "find rows where X" queries.
