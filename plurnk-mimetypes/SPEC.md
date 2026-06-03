@@ -289,9 +289,29 @@ Returns the resolved mimetype string or `null`.
 
 `Mimetypes.detect()` (the orchestrator method) wraps the pure `detect()` and additionally applies an optional **default fallback** from `MimetypesOptions.defaultMimetype`. When all four lanes above miss but a default is configured, the orchestrator returns the default — never `null`. plurnk-service sets `defaultMimetype: "text/markdown"` because LLM output is overwhelmingly markdown; standalone consumers omit the option to preserve strict null-on-miss behavior. The default only affects the orchestrator's resolution; downstream handler discovery still applies normally (an unknown default mimetype falls into the raw-content fallback path per §7).
 
-## 9. ANTLR extractor
+## 9. Parser backends
 
-For grammar-backed handlers:
+### 9.1 Backend selection hierarchy
+
+Handler authors choose a parser backend in this order:
+
+1. **`web-tree-sitter` (WASM)** — first preference. Lean on the most battle-tested parser ecosystem (GitHub Code Search, VS Code, Helix, Neovim, atom-ide). Tree-sitter grammars are widely maintained, error-recovery is designed-in, and the WASM distribution is fully portable (no native deps, no install-time build tools).
+2. **`antlr4ng` + grammars-v4** — second preference. When tree-sitter doesn't have the language, has only an incomplete grammar, or when the grammar quality is meaningfully better in grammars-v4. Pure JS, no native deps.
+3. **Hand-rolled scanner** — third preference. For syntactically simple formats (S-expressions, line-oriented configs, Dockerfile-style instruction streams) where a focused 100–300-line scanner beats depending on a generated parser. Zero deps.
+
+**Forbidden backends:**
+- Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
+- Any package requiring native FFI bindings or platform-specific binaries at install.
+
+The portability rule preserves the original premise of the ecosystem: every handler installs cleanly with `npm install` on any platform Node runs on.
+
+### 9.2 Existing handlers
+
+ANTLR-backed handlers shipped at 0.1.x stay on ANTLR. The hierarchy applies forward — new handlers default to tree-sitter unless they fall through. Existing handlers may migrate to tree-sitter only when a specific limitation justifies the work (e.g., known grammar bugs in graphql/zig/scala2/php where the tree-sitter version handles the case correctly). Wholesale rewrites are out of scope.
+
+### 9.3 ANTLR extractor
+
+For ANTLR-backed handlers (existing pattern, still supported):
 
 1. Vendor `.g4` files in `grammar/` at the handler repo root.
 2. Add the compiler and runtime to your own devDependencies (the framework declares both as optional peer deps; only ANTLR-backed handlers need them):
@@ -304,6 +324,19 @@ For grammar-backed handlers:
 6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
 
 Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`. The default `preview` then returns a `SymbolPreview` with an empty `symbols` array, which the framework fits to an empty string — there is no substitution to text content.
+
+### 9.4 Tree-sitter extractor (planned)
+
+Open design question: tree-sitter grammars require async WASM init, while `BaseHandler.extractRaw` is currently sync. Two viable paths:
+
+1. **Lazy-init with primed cache.** First `extractRaw` call returns `[]` while the WASM grammar initializes in the background; subsequent calls return real symbols. Pros: keeps `extractRaw` sync. Cons: silent first-call miss is surprising. Could be mitigated by exposing `await handler.ready()` or having the framework pre-warm on construction.
+2. **Promote `extractRaw` to `string | Promise<MimeSymbol[]>`.** Make the async-ness explicit in the contract. Pros: honest. Cons: ripples through every consumer.
+
+To be decided when the first tree-sitter handler is built. Until then, defer tree-sitter for languages currently shippable via ANTLR or hand-roll.
+
+### 9.5 Hand-rolled extractor
+
+Extend `BaseHandler` directly and implement `extractRaw(content)`. No framework support beyond the symbol type. Used for: text-common-lisp (S-expression scanner) and future text-dockerfile, text-makefile.
 
 ## 10. Tokenization architecture
 
