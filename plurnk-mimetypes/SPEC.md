@@ -293,17 +293,25 @@ Returns the resolved mimetype string or `null`.
 
 ### 9.1 Backend selection hierarchy
 
-Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists for the language, use it. Skipping a tier requires written justification in the handler README.**
+Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists and meets the quality bar, use it.**
 
-1. **`web-tree-sitter` (WASM)** — **always wins when a WASM grammar exists.** Tree-sitter parsers are battle-tested at GitHub Code Search / VS Code / Helix / Neovim / atom-ide scale, designed for editor-grade error recovery, and the WASM distribution is fully portable (no native deps, no install-time build tools). The rule of "no daylight": when the community maintains a grammar, we use it so we inherit their fixes and effectively disown future grammar concerns.
-2. **`antlr4ng` + grammars-v4** — when no tree-sitter WASM grammar exists for the language. Pure JS, no native deps.
-3. **Hand-rolled scanner** — true last resort, only when neither tree-sitter nor grammars-v4 has the language and the syntax is simple enough that a focused scanner is honestly cleaner than vendoring an alternative grammar. Zero deps.
+1. **Tier 1 — clean WASM in framework registry.** Languages whose upstream `tree-sitter-{lang}` package on npm ships a pre-built `.wasm` at the package root. These live in `TREE_SITTER_REGISTRY` inside `@plurnk/plurnk-mimetypes` itself (`src/treesitter/{lang}.ts`). Zero per-language package needed. Mechanical qualifying check: after `npm install tree-sitter-{lang}`, `find node_modules/tree-sitter-{lang} -name "*.wasm"` returns the file at package root.
+2. **Tier 2 — dirty WASM in `@plurnk/plurnk-mimetypes-{lang}` package.** Languages where a complete, faithful tree-sitter grammar exists upstream but the npm distribution does not ship `.wasm`. The handler package owns a reproducible build step (pinned source-grammar commit + `tree-sitter build --wasm` in CI via emscripten) and commits the resulting `.wasm` into its own source tree. Consumer-side install remains pure WASM, no toolchain. Quality bar matches Tier 1: we only promote a language to Tier 2 when the upstream grammar is itself faithful — building a half-grammar to WASM does not earn registry inclusion.
+3. **Tier 3 — `antlr4ng` + grammars-v4 in `@plurnk/plurnk-mimetypes-{lang}` package.** When no tree-sitter grammar exists at all (Tier 1 and Tier 2 both unavailable). Pure JS, no native deps. Follows the existing AntlrExtractor pattern.
+4. **Tier 4 — hand-rolled scanner in `@plurnk/plurnk-mimetypes-{lang}` package.** True last resort, only when none of the above has the language and the syntax is simple enough that a focused scanner is honestly cleaner than vendoring an alternative grammar. Handler README must justify why Tiers 1–3 weren't viable. Zero deps.
 
-**Forbidden backends:**
+**Forbidden backends (apply across all tiers):**
 - Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
 - Any package requiring native FFI bindings or platform-specific binaries at install.
+- Pushing emscripten/toolchain requirements onto the consumer at install time. Tier 2's emscripten dependency lives in the handler package's CI / publish pipeline; what ships to npm is pre-built `.wasm`.
 
-The portability rule preserves the original premise of the ecosystem: every handler installs cleanly with `npm install` on any platform Node runs on.
+**Coverage breadth is not a goal that overrides extraction quality.** If the best available backend for a language can't produce a complete, faithful extraction (correct symbol kinds across the language's full surface, no silent corruption on common idioms, no whole-class gaps like "we don't handle classes with type parameters"), the language **defers** — it stays out of the registry and out of `@plurnk` packages until a proper solution is available. We do not ship marquee-language handlers that document known limitations as caveats; if the implementation isn't enterprise-grade, the absence is more honest than the half-measure.
+
+Examples of legitimate deferrals: a language whose tree-sitter grammar (whether clean-WASM or build-from-source) lacks an idiomatic construct that real-world code uses heavily; a language where the grammar exists but parses 70% of typical files. These wait for the right backend rather than getting a partial handler with a README disclaimer. **The decision rule for promoting a deferred language *to* Tier 2 is "would we be embarrassed not to ship this language."** Marquee languages (Swift, Dockerfile) qualify; obscure DSLs typically don't.
+
+**Dispatch precedence at runtime:** `@plurnk/plurnk-mimetypes-{lang}` packages (Tiers 2/3/4) win conflicts against the Tier 1 registry. This lets a Tier 1 entry get promoted to Tier 2 (e.g., to override a buggy upstream grammar with a forked build) without ceremony — the package's presence in node_modules takes precedence.
+
+The portability rule preserves the original premise of the ecosystem: every handler installs cleanly with `npm install` on any platform Node runs on. The quality rule preserves the credibility of the registry as a coverage claim. The four-tier model means coverage can grow without sacrificing either.
 
 ### 9.2 Existing handlers
 
