@@ -119,3 +119,40 @@ describe("projectJsonToXml — convention parity with jsonpath shape", () => {
         );
     });
 });
+
+describe("projectJsonToXml — attrs convention for HTML/XML", () => {
+    it("renders attrs object entries as XML attributes", () => {
+        const json = {
+            type: "a",
+            attrs: { href: "https://example.com", class: "external" },
+            text: "click",
+        };
+        const xml = projectJsonToXml(json);
+        assert.ok(xml.includes('href="https://example.com"'));
+        assert.ok(xml.includes('class="external"'));
+        assert.ok(xml.includes(">click</a>"));
+    });
+
+    it("combines ATTRIBUTE_FIELDS + attrs entries on the same element", () => {
+        const json = {
+            type: "div",
+            line: 5,
+            attrs: { id: "main" },
+            text: "x",
+        };
+        const xml = projectJsonToXml(json);
+        assert.ok(xml.includes('line="5"'));
+        assert.ok(xml.includes('id="main"'));
+    });
+
+    it("skips non-primitive attr values", () => {
+        const json = {
+            type: "n",
+            attrs: { good: "ok", bad: { nested: 1 } },
+            text: "x",
+        };
+        const xml = projectJsonToXml(json);
+        assert.ok(xml.includes('good="ok"'));
+        assert.ok(!xml.includes("bad"));
+    });
+});

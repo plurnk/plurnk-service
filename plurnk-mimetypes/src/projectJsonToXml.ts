@@ -15,6 +15,12 @@
 //      elements): line, endLine, column, endColumn, level. They're rendered
 //      only when their value is a number or a non-empty string.
 //
+//   2b. An `attrs` field whose value is an object renders its entries as
+//       additional XML attributes. Used by HTML/XML handlers where the source
+//       algebra has its own attribute concept that the model writes xpath
+//       against (`//a[@href]`, `//div[@class='nav']`). Attribute values that
+//       aren't string/number/boolean primitives are skipped.
+//
 //   3. The `text` field on a leaf-shaped node becomes the element's text
 //      content. Used for tree-sitter terminal nodes (identifiers, literals).
 //      If both `text` and `children` are present, both are emitted: text
@@ -49,7 +55,7 @@ const ATTRIBUTE_FIELDS = new Set([
 ]);
 
 const RESERVED_FIELDS = new Set([
-    "type", "text", ...ATTRIBUTE_FIELDS,
+    "type", "text", "attrs", ...ATTRIBUTE_FIELDS,
 ]);
 
 export function projectJsonToXml(json: unknown, rootName = "root"): string {
@@ -88,6 +94,18 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string): strin
         if (v === null || v === undefined) continue;
         if (typeof v === "number" || (typeof v === "string" && v.length > 0)) {
             attrs += ` ${key}="${escapeAttr(String(v))}"`;
+        }
+    }
+    // Additional attrs from the optional `attrs` object — HTML/XML
+    // convention for source-algebra attributes.
+    const extraAttrs = obj.attrs;
+    if (extraAttrs !== null && typeof extraAttrs === "object" && !Array.isArray(extraAttrs)) {
+        for (const [k, v] of Object.entries(extraAttrs as Record<string, unknown>)) {
+            if (v === null || v === undefined) continue;
+            if (typeof v === "number" || typeof v === "boolean"
+                || (typeof v === "string" && v.length > 0)) {
+                attrs += ` ${sanitizeElementName(k)}="${escapeAttr(String(v))}"`;
+            }
         }
     }
 
