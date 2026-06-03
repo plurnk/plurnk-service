@@ -1,0 +1,134 @@
+// SPEC §14.4 — the budget grinder. The model "behaves" here (a clean SEND each
+// turn); these tests exercise the engine's enforcement, not the model. An
+// absolute ceiling far below any real packet forces overflow deterministically.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import type { MockResponse } from "@plurnk/plurnk-providers";
+import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
+
+const sendStmt = (status: number, body: string): SendStatement => ({
+    op: "SEND", suffix: "", signal: status, target: null,
+    lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
+});
+const response = (ops: PlurnkStatement[]): MockResponse => ({
+    assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+});
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(200, "ok")]));
+
+const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
+const TINY = 2;          // absolute wall far below any real packet → forces overflow
+const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
+
+// Construct an engine pinned to an absolute budget ceiling (>1 = absolute).
+// Set → construct (reads env) → delete is synchronous, so no cross-test race.
+const engineAt = (db: Db, ceiling: number): Engine => {
+    process.env.PLURNK_BUDGET_CEILING = String(ceiling);
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    delete process.env.PLURNK_BUDGET_CEILING;
+    return engine;
+};
+
+const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loopId: number }> => {
+    const sessionId = await insertSession(db, `ge-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1, "go");
+    return { sessionId, runId, loopId };
+};
+
+const indexedOf = async (db: Db, runId: number, entryId: number): Promise<number | undefined> =>
+    (await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: entryId, channel: "body" }))?.indexed;
+
+test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothing is hidden", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const entryId = await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "hello", indexed: 1 });
+        const engine = engineAt(db, WIDE);
+        await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES });
+        assert.equal(await indexedOf(db, runId, entryId), 1, "no overflow → catalog entry still shown, grinder inert");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-layer2-index-collapse] on overflow, catalog entries are hidden except the manifest lifeline", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const entryId = await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "x".repeat(200), indexed: 1 });
+        const engine = engineAt(db, TINY);
+        await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES });
+        assert.equal(await indexedOf(db, runId, entryId), 0, "overflow → catalog entry hidden");
+        const manifest = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ pathname: "manifest.json", scheme: "plurnk" });
+        assert.equal(await indexedOf(db, runId, manifest!.id), 1, "manifest lifeline preserved");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are hidden from the render", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ run_id: runId });
+        assert.ok(before.some((r) => r.turn_seq === 1), "turn 1 left a shown log entry");
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ run_id: runId });
+        assert.ok(!after.some((r) => r.turn_seq === 1), "prior turn's logs hidden from the render (not deleted — only indexed=0)");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-hard-413-abort] when even the manifest won't fit, the loop abandons at 499 (budget_overflow)", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: okSends(3) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.finalStatus, 499, "hard-stop abandons the loop");
+        assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-strike-coupling] a grinder fire past the first turn counts toward the strike streak", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        const t2 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        assert.equal(t2.budgetStruck, true, "overflow on turn 2 strikes (model over-subscribed)");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-soft-turn-0-1] the first turn's overflow is soft — no strike (the environment, not the model)", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        const t1 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        assert.equal(t1.budgetStruck, false, "turn-1 overflow does not strike");
+        assert.equal(t1.budgetHardStop, true, "but it still hard-stops (env wall too low)");
+    } finally { await db.close(); }
+});
+
+test("[§14.4-event-model-terms] the overflow event names hidden entries by scheme, no mechanism vocabulary", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "x".repeat(200), indexed: 1 });
+        const engine = engineAt(db, TINY);
+        const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });   // emits → buffer
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // drains into its packet
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row!.packet) as { user: { telemetry: { errors: Array<Record<string, unknown>> } } };
+        const evt = packet.user.telemetry.errors.find((e) => e.kind === "budget_overflow");
+        assert.ok(evt, "budget_overflow event surfaced to the model");
+        assert.ok(Array.isArray(evt!.hidden), "carries hidden-by-scheme facts");
+        assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");
+    } finally { await db.close(); }
+});

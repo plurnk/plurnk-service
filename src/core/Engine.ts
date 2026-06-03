@@ -477,7 +477,7 @@ export default class Engine {
         origin?: Origin;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "external" | null }> {
         const turnIds: number[] = [];
         const suddenDeathThreshold = maxTurns - maxStrikes;
 
@@ -532,6 +532,13 @@ export default class Engine {
             });
             turnIds.push(turn.turnId);
 
+            // SPEC §14.4: budget hard-stop — packet won't fit even collapsed → abandon.
+            if (turn.budgetHardStop) {
+                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
+                cleanup("forceful", "budget_overflow");
+                return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "budget_overflow" };
+            }
+
             // Rail #39: cycle detection. Push this turn's fingerprint to
             // history, scan for repetition patterns. Detection bumps
             // turnErrors so the strike system handles abandonment
@@ -544,6 +551,8 @@ export default class Engine {
             state.history.push(turn.fingerprint);
             const cycle = detectCycle(state.history, minCycles, maxCyclePeriod);
             if (cycle.detected) state.turnErrors++;
+            // SPEC §14.4: a non-soft grinder fire counts toward the strike streak.
+            if (turn.budgetStruck) state.turnErrors++;
             this.#strikeState.set(loopId, state);
 
             // Rail #38: strike accounting. Three sources strike a turn:
@@ -603,7 +612,7 @@ export default class Engine {
         // are augmented with the durable state (index/log/telemetry).
         turnNumber?: number;
         maxTurns?: number;
-    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string }> {
+    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string; budgetStruck: boolean; budgetHardStop: boolean }> {
         // === Turn-as-container model ===
         //
         // Turn rows are created at runTurn OPEN (status=102, placeholder
@@ -689,10 +698,30 @@ export default class Engine {
         // Build the spec'd packet (Packet.json) request half. #buildLog
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
-        const requestPacket = await this.#buildRequestPacket({
+        let requestPacket = await this.#buildRequestPacket({
             initialMessages: messages, persona, requirements, runId, loopId,
             currentTurnSeq: seq, provider,
         });
+        // SPEC §14.4 — budget grinder, pre-LLM: reclaim window on actual overflow.
+        const enforced = await this.#enforceBudget({
+            packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
+            rebuild: (telemetryErrors) => this.#buildRequestPacket({
+                initialMessages: messages, persona, requirements, runId, loopId,
+                currentTurnSeq: seq, provider, telemetryErrors,
+            }),
+        });
+        requestPacket = enforced.packet;
+        if (!enforced.fit) {
+            // Hard 413: won't fit even with only the manifest left. Skip the LLM,
+            // close the turn, and let runLoop abandon (499).
+            const hardPacket = this.#completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
+            await (this.#db.engine_close_turn as PrepMethod).run({
+                id: turnId, status: 413, packet: JSON.stringify(hardPacket),
+                usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
+                finish_reason: "budget_hard_stop", model: provider.model,
+            });
+            return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true };
+        }
         const modelMessages = this.#packetToWireMessages(requestPacket);
         const response = await provider.generate({ messages: modelMessages, signal });
 
@@ -791,7 +820,7 @@ export default class Engine {
         // struck turn; the model just sees an empty packet next turn.
         // Per SPEC §15.1 gamification policy.
 
-        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops) };
+        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false };
     }
 
     // Split the wire-level ProviderResponse into the two destinations:
@@ -852,7 +881,7 @@ export default class Engine {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async #buildRequestPacket({
-        initialMessages, persona: defaultPersona, requirements, runId, loopId, currentTurnSeq, provider,
+        initialMessages, persona: defaultPersona, requirements, runId, loopId, currentTurnSeq, provider, telemetryErrors: presetTelemetry,
     }: {
         initialMessages: ChatMessage[];
         // Fallback persona content — used only when no per-loop, per-run, or
@@ -868,6 +897,9 @@ export default class Engine {
         // (e.g. telemetry errors).
         currentTurnSeq: number;
         provider: Provider;
+        // Pre-drained telemetry — the grinder passes the first build's errors
+        // through its rebuilds so a destructive re-drain can't swallow them.
+        telemetryErrors?: object[];
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -888,7 +920,7 @@ export default class Engine {
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
         const index = await this.#buildIndex(runId, loopId);
         const log = await this.#buildLog(runId);
-        const telemetryErrors = await this.#buildTelemetryErrors(loopId, currentTurnSeq);
+        const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
         // Engine approximates each section by tokenizing its serialized
         // form — wire-payload tokens may differ slightly because chat-
@@ -947,6 +979,60 @@ export default class Engine {
             }
         }
         return lines.join("\n");
+    }
+
+    // SPEC §14.4 — the budget grinder. Runs pre-LLM (in runTurn, after the packet
+    // is built, before provider.generate); fires only on actual overflow. Two
+    // passes, re-measuring between. Hides (never deletes) — the prior turn's logs,
+    // then the catalog except the manifest lifeline. The strike it raises and the
+    // hard-stop it can signal are returned to runLoop, which owns abandonment.
+    async #enforceBudget({ packet, provider, runId, loopId, turnId, sessionId, turnNumber, rebuild }: {
+        packet: RequestPacket; provider: Provider;
+        runId: number; loopId: number; turnId: number; sessionId: number;
+        turnNumber: number; rebuild: (telemetryErrors: object[]) => Promise<RequestPacket>;
+    }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
+        const ceiling = computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const measure = (p: RequestPacket): number => p.system.tokens + p.user.tokens;
+        if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
+
+        const hidden = new Map<string, number>();
+        const note = (scheme: string): void => { hidden.set(scheme, (hidden.get(scheme) ?? 0) + 1); };
+
+        // Pass 1 — prior-turn rollback: hide the latest emissions (the ones that
+        // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
+        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+        for (const le of priorLogs) {
+            await (this.#db.engine_grinder_hide_log as PrepMethod).run({ id: le.id });
+            note(le.scheme ?? "log");
+        }
+        const errors = packet.user.telemetry.errors;
+        let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
+        if (measure(current) <= ceiling) {
+            this.#emitBudgetOverflow(sessionId, loopId, hidden);
+            return { packet: current, fit: true, struck: turnNumber > 1 };
+        }
+
+        // Pass 2 — index collapse: hide every catalog entry except the manifest.
+        const catalog = await (this.#db.engine_grinder_catalog as PrepMethod).all<{ entry_id: number; channel: string; scheme: string }>({ run_id: runId, session_id: sessionId });
+        for (const c of catalog) {
+            await (this.#db.ops_upsert_visibility as PrepMethod).run({ run_id: runId, entry_id: c.entry_id, channel: c.channel, indexed: 0 });
+            note(c.scheme);
+        }
+        current = catalog.length > 0 ? await rebuild(errors) : current;
+        this.#emitBudgetOverflow(sessionId, loopId, hidden);
+        return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
+    }
+
+    // The model-facing budget event (SPEC §14.4, §15.1): which entries left the
+    // window, by scheme — the model's own terms, no mechanism vocabulary. The
+    // strike this overflow triggers stays engine-internal (gamification policy).
+    #emitBudgetOverflow(sessionId: number, loopId: number, hidden: Map<string, number>): void {
+        if (hidden.size === 0) return;
+        this.#pushTelemetry(sessionId, loopId, {
+            source: "engine:rail",
+            kind: "budget_overflow",
+            hidden: [...hidden.entries()].map(([scheme, count]) => ({ scheme, count })),
+        });
     }
 
     // Wire projection lives in ./packet-wire.js (plain JS) so Engine and

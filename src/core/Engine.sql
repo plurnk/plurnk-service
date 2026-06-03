@@ -133,6 +133,31 @@ WHERE le.loop_id = $loop_id
   AND t.sequence = $current_turn_seq - 1
 ORDER BY le.sequence;
 
+-- PREP: engine_grinder_prior_turn_logs
+-- §14.4 pass 1 (prior-turn rollback): the immediately-prior turn's still-shown
+-- log entries — the latest emissions that pushed the packet over. Hiding them
+-- (not deleting) reverts the render; the rows + bodies persist, re-SHOWable.
+SELECT le.id, le.scheme
+FROM log_entries le
+WHERE le.loop_id = $loop_id AND le.indexed = 1
+  AND le.turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
+
+-- PREP: engine_grinder_hide_log
+-- §14.4 pass 1: hide one log entry from the render; its row + body stay.
+UPDATE log_entries SET indexed = 0 WHERE id = $id;
+
+-- PREP: engine_grinder_catalog
+-- §14.4 pass 2 (index collapse): indexed catalog entries eligible to hide — all
+-- run-visible session entries except the plurnk://manifest.json lifeline.
+SELECT v.entry_id, v.channel, e.scheme, ec.tokens
+FROM visibility v
+JOIN entries e ON e.id = v.entry_id
+JOIN entry_channels ec ON ec.entry_id = v.entry_id AND ec.name = v.channel
+WHERE v.run_id = $run_id AND v.indexed = 1
+  AND e.scope = 'session' AND e.session_id = $session_id
+  AND NOT (e.scheme = 'plurnk' AND e.pathname = 'manifest.json')
+ORDER BY ec.tokens DESC;
+
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §15 packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working

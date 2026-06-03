@@ -946,6 +946,24 @@ Each entry: question, answer, rationale, migration path.
 
 **Migration path.** Tenancy / cross-session shared workspaces require a `workspaces` table joining sessions to workspace id, with constraints lifted off `session_constraints`. Disk co-location semantics unchanged.
 
+### §14.4 Budget enforcement: the grinder
+
+**Question.** §14.2 surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Three states defeat self-regulation, none of them the model's doing: a jumbo prompt, a jumbo repo (the index overflows before the model acts), an unexpectedly large read. What enforces the ceiling when the signal isn't enough?
+
+**Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`#buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§14.2) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§14.4-overflow-only} On overflow it reclaims window in two passes, re-measuring between:
+
+- **Prior-turn rollback.** The immediately-prior turn's log entries — the latest emissions, the ones that pushed the packet over — are hidden (`indexed=0`, the same flag the model's own HIDE uses); the prior turn fit by induction, so reverting it usually lands back under. Hidden, not deleted: rows and bodies persist and are re-SHOWable, so log *history* is preserved while the render shrinks. {§14.4-layer1-rollback}
+- **Index collapse.** If clearing replays isn't enough, every catalog entry except `plurnk://manifest.json` is hidden (`indexed=0`); the manifest stays as the lifeline the model reads to pull anything back by path. The index is engine-built scaffolding — a derived, previews-only view regenerated each turn — never the model's context, so collapsing it removes no capability. {§14.4-layer2-index-collapse}
+- **Hard stop.** If the packet still overflows with only the manifest left, the loop abandons at 499 (`engine_loop_cancel`) — the path `maxTurns` and the strike threshold already use. No third pass. {§14.4-hard-413-abort}
+
+**Strike coupling.** A grinder fire bumps the engine's `turnErrors` — the same internal counter cycle detection feeds — so an overflow counts toward the strike streak that ends a runaway loop at 499. This is the pressure that keeps self-curation the path of least resistance. {§14.4-strike-coupling} **Turn 0/1 is exempt:** the first turn's overflow precedes any model action — it's the environment, not the model — so it never strikes. {§14.4-soft-turn-0-1}
+
+**What the model sees.** A `budget_overflow` telemetry event (§15.1), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the per-scheme budget table (§14.2) is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§14.4-event-model-terms} Per the gamification policy (§15.1), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
+
+**Rationale.** The model owns curation (§14.2); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render, then the index scaffolding; nothing is deleted, so the model can SHOW any of it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it (and the §1316 index-collapse pass that doc never caught up to).
+
+**Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
+
 ---
 
 ## §15 Packet shape
@@ -1001,6 +1019,7 @@ Slot for telemetry the model MUST react to immediately. Rendered at the bottom o
 | `parse_error` | Grammar parser failed mid-statement | `source: "grammar"`, `kind`, `message`, `position` (content-offset), `snippet` (model's offending line, N:\t-prefixed), `parserSource` (`lexer`/`parser`/`visitor`) |
 | `action_failure` | Log entry with `status_rx ≥ 400` from previous turn | `kind`, `coordinate` (`<L>/<T>/<S>`), `op`, `status`, `target` (URI or null). May carry scheme-emitted `error` (a terse fact, not guidance). |
 | `max_commands_exceeded` | Single emission exceeded `PLURNK_MAX_COMMANDS` cap; overflow ops dropped without dispatch | `source: "engine:rail"`, `kind`, `emitted`, `dropped` |
+| `budget_overflow` | Assembled packet exceeded the budget ceiling; entries moved out of the window to fit | `source: "engine:rail"`, `kind`, `hidden` (per-scheme `[{scheme, count}]` — entries removed from the window) |
 
 Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping are all engine-internal — they drive abandonment silently per the gamification policy above. Action-bound failures (handler returned 4xx/5xx or threw) mirror as `action_failure` kind on the next packet. Full detail queryable via `log://`. {§15.1-no-error-scheme}
 
