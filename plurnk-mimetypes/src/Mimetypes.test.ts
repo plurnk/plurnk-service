@@ -59,6 +59,7 @@ const plainInfo: HandlerInfo = {
     packageName: "@plurnk/plurnk-mimetypes-text-plain",
     extensions: [".txt"],
     binary: false,
+    source: "package",
 };
 
 const strictInfo: HandlerInfo = {
@@ -67,6 +68,7 @@ const strictInfo: HandlerInfo = {
     packageName: "@plurnk/plurnk-mimetypes-application-strict",
     extensions: [".strict"],
     binary: false,
+    source: "package",
 };
 
 describe("Mimetypes — detection + discovery", () => {
@@ -278,6 +280,7 @@ describe("Mimetypes — process", () => {
             packageName: "@plurnk/plurnk-mimetypes-text-sample",
             extensions: [".sample"],
             binary: false,
+    source: "package",
         };
         const m = new Mimetypes({
             discovery: makeDiscovery([nullInfo]),
@@ -500,6 +503,7 @@ describe("Mimetypes — process: totalLines (#9)", () => {
             packageName: "@plurnk/plurnk-mimetypes-application-octet-stream",
             extensions: [".bin"],
             binary: true,
+    source: "package",
         };
         class BinaryHandler extends BaseHandler {
             override preview(): Preview {

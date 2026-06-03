@@ -129,27 +129,50 @@ export default class Mimetypes {
         const info = this.#discovery!.handlers.get(mimetype);
         if (info === undefined) return null;
 
-        let mod: unknown;
-        try {
-            mod = await this.#loader(info.packageName);
-        } catch {
-            return null;
-        }
-
-        if (typeof mod !== "object" || mod === null) return null;
-        const HandlerClass = (mod as { default?: unknown }).default;
-        if (typeof HandlerClass !== "function") return null;
-
         const metadata: HandlerMetadata = {
             mimetype: info.mimetype,
             glyph: info.glyph,
             extensions: info.extensions,
         };
-        const Ctor = HandlerClass as new (m: HandlerMetadata) => BaseHandler;
-        const handler = new Ctor(metadata);
+
+        let handler: BaseHandler | null;
+        if (info.source === "treesitter") {
+            handler = await this.#instantiateTreeSitterHandler(metadata, info.mimetype);
+        } else {
+            handler = await this.#instantiatePackageHandler(metadata, info.packageName);
+        }
+        if (handler === null) return null;
 
         this.#handlerInstances.set(mimetype, handler);
         return handler;
+    }
+
+    async #instantiatePackageHandler(
+        metadata: HandlerMetadata,
+        packageName: string,
+    ): Promise<BaseHandler | null> {
+        let mod: unknown;
+        try {
+            mod = await this.#loader(packageName);
+        } catch {
+            return null;
+        }
+        if (typeof mod !== "object" || mod === null) return null;
+        const HandlerClass = (mod as { default?: unknown }).default;
+        if (typeof HandlerClass !== "function") return null;
+        const Ctor = HandlerClass as new (m: HandlerMetadata) => BaseHandler;
+        return new Ctor(metadata);
+    }
+
+    async #instantiateTreeSitterHandler(
+        metadata: HandlerMetadata,
+        mimetype: string,
+    ): Promise<BaseHandler | null> {
+        const { lookupTreeSitterLanguage } = await import("./treesitter/registry.ts");
+        const entry = lookupTreeSitterLanguage(mimetype);
+        if (entry === null) return null;
+        const { default: TreeSitterLanguageHandler } = await import("./treesitter/handler.ts");
+        return new TreeSitterLanguageHandler(metadata, entry);
     }
 
     // The pipeline. Detection → content read → handler resolve → validate →

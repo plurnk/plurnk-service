@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
     DiscoverOptions,
@@ -40,6 +41,42 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
                 } else {
                     byFilename.set(entry, info.mimetype);
                 }
+            }
+        }
+    }
+
+    // Seed tree-sitter registry entries. @plurnk packages win on conflicts —
+    // we only set a mimetype/extension when no @plurnk handler has already
+    // claimed it. This means during the deprecation transition, a user with
+    // an old @plurnk/plurnk-mimetypes-text-python installed continues to use
+    // that handler; once they uninstall it, the framework's built-in tree-
+    // sitter entry takes over.
+    //
+    // Opt-out via `includeTreeSitter: false` — primarily for tests that need
+    // a clean baseline. Production code never disables this.
+    if (options.includeTreeSitter === false) {
+        const registry: Registry = { byExtension, byFilename };
+        return { registry, handlers };
+    }
+
+    for (const entry of TREE_SITTER_REGISTRY) {
+        if (handlers.has(entry.mimetype)) continue;
+        const info: HandlerInfo = {
+            mimetype: entry.mimetype,
+            glyph: entry.glyph,
+            packageName: entry.wasmPackage,
+            extensions: entry.extensions,
+            binary: false,
+            source: "treesitter",
+        };
+        handlers.set(entry.mimetype, info);
+        for (const ext of entry.extensions) {
+            if (ext.startsWith(".")) {
+                if (!byExtension.has(ext.toLowerCase())) {
+                    byExtension.set(ext.toLowerCase(), entry.mimetype);
+                }
+            } else {
+                if (!byFilename.has(ext)) byFilename.set(ext, entry.mimetype);
             }
         }
     }
@@ -103,6 +140,7 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
             packageName,
             extensions: filterExtensions(e.extensions),
             binary,
+            source: "package",
         });
     }
 

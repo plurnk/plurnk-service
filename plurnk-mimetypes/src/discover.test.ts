@@ -28,7 +28,7 @@ describe("discover", () => {
     });
 
     it("returns empty registry and handlers when no packages found", async () => {
-        const result = await discover({ packageDirs: [] });
+        const result = await discover({ packageDirs: [], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
         assert.equal(result.registry.byExtension.size, 0);
         assert.equal(result.registry.byFilename.size, 0);
@@ -37,7 +37,7 @@ describe("discover", () => {
     it("returns empty when default cwd has no node_modules/@plurnk", async () => {
         const empty = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-empty-"));
         try {
-            const result = await discover({ cwd: empty });
+            const result = await discover({ cwd: empty, includeTreeSitter: false });
             assert.equal(result.handlers.size, 0);
         } finally {
             await fs.rm(empty, { recursive: true, force: true });
@@ -54,7 +54,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 1);
         const info = result.handlers.get("text/x-python");
         assert.ok(info);
@@ -79,7 +79,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.registry.byExtension.get(".dockerfile"), "text/x-dockerfile");
         assert.equal(result.registry.byFilename.get("Dockerfile"), "text/x-dockerfile");
         assert.equal(result.registry.byFilename.get("Containerfile"), "text/x-dockerfile");
@@ -95,7 +95,7 @@ describe("discover", () => {
                 handlers: [{ name: "text/cased", extensions: [".CAPS"] }],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.registry.byExtension.get(".caps"), "text/cased");
     });
 
@@ -107,7 +107,7 @@ describe("discover", () => {
                 handlers: [{ name: "text/x-makefile", extensions: ["Makefile"] }],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.registry.byFilename.get("Makefile"), "text/x-makefile");
         assert.equal(result.registry.byFilename.get("makefile"), undefined);
     });
@@ -116,7 +116,7 @@ describe("discover", () => {
         const dir = await makePackage(tmpRoot, "pkg-noplurnk", {
             name: "@plurnk/plurnk-mimetypes-unrelated",
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -125,7 +125,7 @@ describe("discover", () => {
             name: "@plurnk/plurnk-providers-openai",
             plurnk: { kind: "provider", name: "openai" },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -134,7 +134,7 @@ describe("discover", () => {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype" },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -143,7 +143,7 @@ describe("discover", () => {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype", handlers: "not an array" },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -159,7 +159,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 1);
         assert.ok(result.handlers.has("text/valid"));
     });
@@ -177,7 +177,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 1);
         assert.ok(result.handlers.has("text/valid"));
     });
@@ -185,7 +185,7 @@ describe("discover", () => {
     it("skips directories without a package.json", async () => {
         const dir = path.join(tmpRoot, "pkg-empty-dir");
         await fs.mkdir(dir, { recursive: true });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -193,7 +193,7 @@ describe("discover", () => {
         const dir = path.join(tmpRoot, "pkg-bad-json");
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(path.join(dir, "package.json"), "{ not valid json");
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
@@ -207,7 +207,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         const info = result.handlers.get("text/mixed");
         assert.ok(info);
         assert.deepEqual([...info.extensions], [".js", ".ts"]);
@@ -228,7 +228,7 @@ describe("discover", () => {
                 handlers: [{ name: "text/conflict", glyph: "B", extensions: [".c"] }],
             },
         });
-        const result = await discover({ packageDirs: [dirA, dirB] });
+        const result = await discover({ packageDirs: [dirA, dirB], includeTreeSitter: false });
         assert.equal(result.handlers.size, 1);
         const info = result.handlers.get("text/conflict");
         assert.equal(info?.glyph, "B");
@@ -242,7 +242,7 @@ describe("discover", () => {
                 handlers: [{ name: "text/noglyph", extensions: [".n"] }],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         const info = result.handlers.get("text/noglyph");
         assert.equal(info?.glyph, "");
     });
@@ -258,7 +258,7 @@ describe("discover", () => {
                 ],
             },
         });
-        const result = await discover({ packageDirs: [dir] });
+        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 2);
         const json = result.handlers.get("application/json");
         const jsonc = result.handlers.get("application/jsonc");
@@ -283,7 +283,7 @@ describe("discover", () => {
                     handlers: [{ name: "text/plain", glyph: "📄", extensions: [".txt"] }],
                 },
             });
-            const result = await discover({ cwd: sandbox });
+            const result = await discover({ cwd: sandbox, includeTreeSitter: false });
             assert.equal(result.handlers.size, 1);
             assert.ok(result.handlers.has("text/plain"));
             assert.equal(result.registry.byExtension.get(".txt"), "text/plain");

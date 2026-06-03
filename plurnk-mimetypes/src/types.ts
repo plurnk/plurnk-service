@@ -98,6 +98,14 @@ export interface HandlerInfo {
     // at the top of the package's plurnk block — applies to all handler
     // entries in the package.
     binary: boolean;
+    // Where this handler came from. "package" → discovered from a @plurnk/*
+    // npm package via discover(); resolved by importing packageName.
+    // "treesitter" → built into the framework's tree-sitter registry
+    // (SPEC §9.5); resolved by looking up TREE_SITTER_REGISTRY by mimetype
+    // and instantiating TreeSitterLanguageHandler with the registry entry.
+    // @plurnk packages take precedence — tree-sitter entries only fill in
+    // mimetypes that no @plurnk package claims.
+    source: "package" | "treesitter";
 }
 
 export interface Discovery {
@@ -108,6 +116,11 @@ export interface Discovery {
 export interface DiscoverOptions {
     packageDirs?: string[];
     cwd?: string;
+    // When false, skip seeding the framework's built-in tree-sitter
+    // language registry. Default true. Tests that need a clean baseline
+    // (only @plurnk handler discovery, no tree-sitter defaults) pass
+    // false. Production code should leave it default.
+    includeTreeSitter?: boolean;
 }
 
 // Body matcher dialects, dispatched by leading-prefix from plurnk-grammar's
