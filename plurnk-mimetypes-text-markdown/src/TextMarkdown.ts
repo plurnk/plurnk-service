@@ -1,5 +1,5 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
 
 // text/markdown handler. Replaces the legacy regex heading scanner with
@@ -49,6 +49,66 @@ export default class TextMarkdown extends BaseHandler {
         }
         return { kind: "text", text, orientation: "head" };
     }
+
+    // Deep-channel (issue #10). The markdown AST as nested objects — heading,
+    // paragraph, list, code block, blockquote, etc. — preserves enough
+    // structure for jsonpath like `$..code[?(@.lang=='ts')]` or
+    // `$..heading[?(@.depth==1)]`. Each node carries `type`, `line`, `endLine`,
+    // plus its native marked fields (depth/text/lang/items/etc.).
+    //
+    // Returned as `{ type: "document", children: [...] }` so it presents as a
+    // single rooted tree (matches the deep-xml projection: <document>...</document>).
+    override deepJson(content: HandlerContent): unknown {
+        if (typeof content !== "string") return null;
+        let tokens: Token[];
+        try {
+            tokens = new Lexer().lex(content);
+        } catch {
+            return null;
+        }
+        const children: unknown[] = [];
+        let currentLine = 1;
+        for (const token of tokens) {
+            const raw = token.raw ?? "";
+            const startLine = currentLine;
+            const linesSpanned = countLinesSpanned(raw);
+            const endLine = linesSpanned > 0 ? startLine + linesSpanned - 1 : startLine;
+            children.push(tokenToDeep(token, startLine, endLine));
+            currentLine += countNewlines(raw);
+        }
+        return { type: "document", line: 1, endLine: currentLine, children };
+    }
+}
+
+// Convert one marked token into a deep-tree node. Pulls the fields jsonpath
+// users actually want to query (type, depth, text, lang, items) into named
+// properties; drops parser-internal cursors that aren't queryable.
+function tokenToDeep(token: Token, line: number, endLine: number): Record<string, unknown> {
+    const t = token as Token & {
+        depth?: number;
+        text?: string;
+        lang?: string;
+        items?: Token[];
+        tokens?: Token[];
+        ordered?: boolean;
+        href?: string;
+        title?: string;
+    };
+    const node: Record<string, unknown> = { type: t.type, line, endLine };
+    if (typeof t.depth === "number") node.level = t.depth;
+    if (typeof t.text === "string" && t.text.length > 0) node.text = t.text;
+    if (typeof t.lang === "string" && t.lang.length > 0) node.lang = t.lang;
+    if (typeof t.href === "string") node.href = t.href;
+    if (typeof t.title === "string") node.title = t.title;
+    if (typeof t.ordered === "boolean") node.ordered = t.ordered;
+
+    // Recurse into nested token trees (list items, paragraph inlines).
+    // We don't track precise inner line ranges — parent's range covers them.
+    const innerSource = t.items ?? t.tokens;
+    if (Array.isArray(innerSource) && innerSource.length > 0) {
+        node.children = innerSource.map((child) => tokenToDeep(child, line, endLine));
+    }
+    return node;
 }
 
 function emitFor(

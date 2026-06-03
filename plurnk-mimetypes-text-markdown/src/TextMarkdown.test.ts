@@ -135,7 +135,7 @@ describe("TextMarkdown", () => {
         assert.deepEqual(h.extractRaw(""), []);
     });
 
-    it("symbolsRaw() renders heading hierarchy via format()", () => {
+    it("symbolsRaw() renders heading hierarchy via format()", async () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "# Top",
@@ -144,7 +144,7 @@ describe("TextMarkdown", () => {
             "",
             "### Subsection",
         ].join("\n");
-        const out = h.symbolsRaw(src);
+        const out = await h.symbolsRaw(src);
         assert.ok(out.includes("# Top"));
         assert.ok(out.includes("## Section"));
         assert.ok(out.includes("### Subsection"));
@@ -177,18 +177,41 @@ describe("TextMarkdown", () => {
         assert.equal(preview?.kind, "symbols");
     });
 
-    it("inherits jsonpath query against the bare-leaves outline tree", async () => {
+    it("deepJson returns the marked AST as a document tree with line annotations", async () => {
+        const h = new TextMarkdown(metadata);
+        const tree = await h.deepJson("# Top\n\nA paragraph.\n\n```ts\nconst x = 1;\n```\n") as {
+            type: string;
+            children: Array<{ type: string; level?: number; text?: string; lang?: string }>;
+        };
+        assert.equal(tree.type, "document");
+        const heading = tree.children.find((c) => c.type === "heading");
+        assert.ok(heading);
+        assert.equal(heading!.level, 1);
+        assert.equal(heading!.text, "Top");
+        const code = tree.children.find((c) => c.type === "code");
+        assert.ok(code);
+        assert.equal(code!.lang, "ts");
+    });
+
+    it("deepJson returns null for binary content", async () => {
+        const h = new TextMarkdown(metadata);
+        assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
+    });
+
+    it("inherits jsonpath query against the deep-json markdown AST (issue #10)", async () => {
         const h = new TextMarkdown(metadata);
         const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");
-        // Navigate via heading names.
-        const sub = await h.query(src, "jsonpath", "$.Top.Section.Sub");
-        assert.equal(sub.length, 1);
-        assert.equal(sub[0].matched, 5);
-        assert.equal(sub[0].line, 5);
+        // Find all heading nodes via filter expression — full-tree reach per
+        // the deep-json contract.
+        const headings = await h.query(src, "jsonpath", "$..children[?(@.type=='heading')]");
+        assert.equal(headings.length, 3);
+        const names = headings.map((m) => (m.matched as { text: string }).text);
+        assert.deepEqual(names, ["Top", "Section", "Sub"]);
 
-        const sectionSubtree = await h.query(src, "jsonpath", "$.Top.Section");
-        assert.equal(sectionSubtree.length, 1);
-        assert.deepEqual(sectionSubtree[0].matched, { Sub: 5 });
+        // Filter by level — possible because the deep tree preserves it.
+        const h1s = await h.query(src, "jsonpath", "$..children[?(@.type=='heading' && @.level==1)]");
+        assert.equal(h1s.length, 1);
+        assert.equal((h1s[0].matched as { text: string }).text, "Top");
     });
 
     it("inherits regex query against the raw markdown body", async () => {
