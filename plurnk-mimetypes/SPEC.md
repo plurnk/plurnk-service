@@ -293,11 +293,11 @@ Returns the resolved mimetype string or `null`.
 
 ### 9.1 Backend selection hierarchy
 
-Handler authors choose a parser backend in this order:
+Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists for the language, use it. Skipping a tier requires written justification in the handler README.**
 
-1. **`web-tree-sitter` (WASM)** — first preference. Lean on the most battle-tested parser ecosystem (GitHub Code Search, VS Code, Helix, Neovim, atom-ide). Tree-sitter grammars are widely maintained, error-recovery is designed-in, and the WASM distribution is fully portable (no native deps, no install-time build tools).
-2. **`antlr4ng` + grammars-v4** — second preference. When tree-sitter doesn't have the language, has only an incomplete grammar, or when the grammar quality is meaningfully better in grammars-v4. Pure JS, no native deps.
-3. **Hand-rolled scanner** — third preference. For syntactically simple formats (S-expressions, line-oriented configs, Dockerfile-style instruction streams) where a focused 100–300-line scanner beats depending on a generated parser. Zero deps.
+1. **`web-tree-sitter` (WASM)** — **always wins when a WASM grammar exists.** Tree-sitter parsers are battle-tested at GitHub Code Search / VS Code / Helix / Neovim / atom-ide scale, designed for editor-grade error recovery, and the WASM distribution is fully portable (no native deps, no install-time build tools). The rule of "no daylight": when the community maintains a grammar, we use it so we inherit their fixes and effectively disown future grammar concerns.
+2. **`antlr4ng` + grammars-v4** — when no tree-sitter WASM grammar exists for the language. Pure JS, no native deps.
+3. **Hand-rolled scanner** — true last resort, only when neither tree-sitter nor grammars-v4 has the language and the syntax is simple enough that a focused scanner is honestly cleaner than vendoring an alternative grammar. Zero deps.
 
 **Forbidden backends:**
 - Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
@@ -325,18 +325,26 @@ For ANTLR-backed handlers (existing pattern, still supported):
 
 Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`. The default `preview` then returns a `SymbolPreview` with an empty `symbols` array, which the framework fits to an empty string — there is no substitution to text content.
 
-### 9.4 Tree-sitter extractor (planned)
+### 9.4 Async `extractRaw` contract (framework v0.8.0)
 
-Open design question: tree-sitter grammars require async WASM init, while `BaseHandler.extractRaw` is currently sync. Two viable paths:
+`BaseHandler.extractRaw(content)` returns `MimeSymbol[] | Promise<MimeSymbol[]>`. Existing synchronous handlers (all AntlrExtractor- and hand-roll-based handlers shipped at v0.1.x–v0.2.x) continue to return `MimeSymbol[]` directly — that's assignable to the union and no handler-side change is needed. New tree-sitter-based handlers return `Promise<MimeSymbol[]>` to honor WASM grammar init.
 
-1. **Lazy-init with primed cache.** First `extractRaw` call returns `[]` while the WASM grammar initializes in the background; subsequent calls return real symbols. Pros: keeps `extractRaw` sync. Cons: silent first-call miss is surprising. Could be mitigated by exposing `await handler.ready()` or having the framework pre-warm on construction.
-2. **Promote `extractRaw` to `string | Promise<MimeSymbol[]>`.** Make the async-ness explicit in the contract. Pros: honest. Cons: ripples through every consumer.
+**Consumer-side breaking change:** all consumers of `extractRaw` (including `Mimetypes.process`, `symbolsRaw`, `preview()`, query routes) must `await` the result. The framework's internal call sites are updated in v0.8.0; external consumers of the diagnostic `extractRaw` / `symbolsRaw` surfaces need their call sites updated when they move to ≥0.8.0.
 
-To be decided when the first tree-sitter handler is built. Until then, defer tree-sitter for languages currently shippable via ANTLR or hand-roll.
+### 9.5 Tree-sitter extractor (framework v0.8.0)
 
-### 9.5 Hand-rolled extractor
+For tree-sitter-backed handlers:
 
-Extend `BaseHandler` directly and implement `extractRaw(content)`. No framework support beyond the symbol type. Used for: text-common-lisp (S-expression scanner) and future text-dockerfile, text-makefile.
+1. Add `web-tree-sitter` to your devDependencies (framework declares it as optional peer; only tree-sitter-backed handlers need it).
+2. Add the language's WASM grammar to your `dependencies` (e.g. `tree-sitter-haskell`, `tree-sitter-ruby`, `tree-sitter-commonlisp`). These ship the prebuilt `.wasm` file.
+3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
+4. Implement `grammarPath()` (return the path to the language's `.wasm` file) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles WASM init, parser lifecycle, and async coordination via a primed-promise cache.
+
+Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy.
+
+### 9.6 Hand-rolled extractor
+
+For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.5 nor §9.3 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
 
 ## 10. Tokenization architecture
 
