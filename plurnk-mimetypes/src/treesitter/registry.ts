@@ -168,6 +168,46 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         wasmFile: "tree-sitter-elixir.wasm",
         importMapping: () => import("./elixir.ts"),
     },
+    {
+        mimetype: "text/x-dart",
+        glyph: "🎯",
+        extensions: [".dart"],
+        wasmPackage: "tree-sitter-dart",
+        wasmFile: "tree-sitter-dart.wasm",
+        importMapping: () => import("./dart.ts"),
+    },
+    {
+        mimetype: "text/x-julia",
+        glyph: "🟣",
+        extensions: [".jl"],
+        wasmPackage: "tree-sitter-julia",
+        wasmFile: "tree-sitter-julia.wasm",
+        importMapping: () => import("./julia.ts"),
+    },
+    {
+        mimetype: "text/x-fsharp",
+        glyph: "♯",
+        extensions: [".fs", ".fsx"],
+        wasmPackage: "tree-sitter-fsharp",
+        wasmFile: "tree-sitter-fsharp.wasm",
+        importMapping: () => import("./fsharp.ts"),
+    },
+    {
+        mimetype: "text/x-fsharp-signature",
+        glyph: "♯",
+        extensions: [".fsi"],
+        wasmPackage: "tree-sitter-fsharp",
+        wasmFile: "tree-sitter-fsharp_signature.wasm",
+        importMapping: () => import("./fsharp.ts"),
+    },
+    {
+        mimetype: "text/x-makefile",
+        glyph: "🔨",
+        extensions: [".mk", "Makefile", "makefile", "GNUmakefile"],
+        wasmPackage: "tree-sitter-make",
+        wasmFile: "tree-sitter-make.wasm",
+        importMapping: () => import("./make.ts"),
+    },
 ];
 
 // Look up a registry entry by mimetype. Returns null if the mimetype
