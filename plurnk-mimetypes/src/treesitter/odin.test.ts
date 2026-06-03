@@ -1,0 +1,29 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import TreeSitterLanguageHandler from "./handler.ts";
+import { lookupTreeSitterLanguage } from "./registry.ts";
+
+const entry = lookupTreeSitterLanguage("text/x-odin")!;
+const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
+const h = () => new TreeSitterLanguageHandler(md, entry);
+
+describe("text/x-odin via tree-sitter registry", () => {
+    it("package + proc + struct + enum + const", async () => {
+        const src = "package main\nadd :: proc(a, b: int) -> int { return a + b }\nPoint :: struct { x, y: int }\nColor :: enum { Red, Green }\nMAX :: 100\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "main")?.kind, "module");
+        assert.equal(syms.find((s) => s.name === "add")?.kind, "function");
+        assert.equal(syms.find((s) => s.name === "Point")?.kind, "class");
+        assert.equal(syms.find((s) => s.name === "Color")?.kind, "enum");
+        assert.equal(syms.find((s) => s.name === "Red")?.kind, "constant");
+        assert.equal(syms.find((s) => s.name === "MAX")?.kind, "constant");
+    });
+
+    it("returns [] for empty input", async () => {
+        assert.deepEqual(await h().extractRaw(""), []);
+    });
+
+    it("does not throw on malformed source", async () => {
+        await assert.doesNotReject(h().extractRaw("proc ((( broken"));
+    });
+});
