@@ -442,6 +442,73 @@ interface QueryMatch {
 
 All three error classes expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar 0.17.0. Consumers can route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`) surface as additional properties so consumers don't need to re-parse the message.
 
-## 12. Public API stability
+## 12. Three-channel architecture (framework v0.9.0)
+
+Per plurnk-mimetypes#10, every `ProcessResult` carries three channels of structural information about the entry — one model-facing, two tool-facing — built eagerly on every `process()` call. Plurnk-service persists all three in sqlite; the framework's job is to produce them.
+
+### 12.1 The three channels
+
+| Channel | Field on `ProcessResult` | Visibility | Purpose | Authored by |
+|---|---|---|---|---|
+| `symbols` | `preview` (string) | Model-facing | Comprehension surface — the coarse, legibility-optimized outline the model sees in the index tile. Source for "what is this entry about?" reasoning. | Handler via `extractRaw()` → `MimeSymbol[]`; framework renders via `format.ts` and fits to budget. |
+| `deep-json` | `deepJson` (unknown) | Tool-facing | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. The model never sees this directly; it issues jsonpath queries that the tool evaluates against the tree. | Handler via `deepJson()`. |
+| `deep-xml` | `deepXml` (string) | Tool-facing | Query target for the xpath body-matcher tool. Mechanical projection of `deep-json` via the framework's `projectJsonToXml()`. Same conceptual tree, different syntax — drift-impossible by construction. | Framework; handlers never write XML serialization logic. |
+
+Different masters, different fidelity, different visibility. The `symbols` channel is comprehension-optimized; the deep channels are extraction-optimized.
+
+### 12.2 `deep-json` conventions
+
+Native vocabulary per algebra — we lean on community conventions rather than inventing a normalized "code tree" schema. Each algebra's deep-json shape:
+
+- **Tree-sitter-backed handlers** — full named-children walk of the AST, native tree-sitter node types (`function_definition`, `class_declaration`, etc.). Default walker provided by `TreeSitterExtractor.deepJson()`; per-language overrides only when a language needs custom shaping.
+- **JSON / YAML / TOML / CSV** — the parsed value directly; deep-json IS the data tree.
+- **HTML / XML / SVG** — the parsed DOM rendered as nested objects (DOM element name → node `type`; attributes and children preserved).
+- **Markdown** — the markdown AST (heading, paragraph, link, code_block, etc.).
+- **ANTLR / hand-rolled handlers** — handler authors as appropriate for the algebra.
+
+Node-shape convention used by the tree-sitter walker (other handlers should follow analogously):
+
+```ts
+interface DeepTreeNode {
+    type: string;          // native node type per algebra
+    line: number;          // 1-indexed source line
+    endLine: number;       // 1-indexed inclusive
+    text?: string;         // present on leaves (no children); source slice
+    children?: DeepTreeNode[];
+}
+```
+
+### 12.3 `deep-xml` projection rule
+
+The framework's `projectJsonToXml()` applies these rules (in priority order):
+
+1. A JSON object whose `type` field is a non-empty string becomes an element named after that type. Otherwise, the element name comes from the parent key, falling back to `<root>` at the document root.
+2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** when their value is a number or non-empty string. Positional metadata is more useful at the element header than as nested children.
+3. A leaf's `text` field becomes the element's text content.
+4. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
+5. `null` / `undefined` values are skipped.
+6. Top-level arrays / primitives wrap in `<root>`.
+
+Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", params: ["x", "y"] }` →
+
+```xml
+<function_definition line="5" endLine="10">
+  <name>greet</name>
+  <params>x</params>
+  <params>y</params>
+</function_definition>
+```
+
+### 12.4 Materialization policy
+
+Deep channels are built **eagerly** on every `process()` call. Lazy materialization would turn every bulk search across persisted entries into a custodial mission of re-parsing on demand. Eager build cost is paid once at index time; subsequent queries are O(scan of pre-built trees).
+
+The deep channels are **never model-visible**. They don't appear in the preview, the index tile, or any `READ` output. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
+
+### 12.5 Addressable extent (`extent` on `ProcessResult`)
+
+Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so plurnk-service's index tile can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
+
+## 13. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.

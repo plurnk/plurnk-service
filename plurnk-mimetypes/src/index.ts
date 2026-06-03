@@ -14,10 +14,12 @@ export { default } from "./BaseHandler.ts";
 export { default as AntlrExtractor } from "./AntlrExtractor.ts";
 export { default as TreeSitterExtractor } from "./TreeSitterExtractor.ts";
 export type {
+    DeepTreeNode,
     TreeSitterTree,
     TreeSitterNode,
     TreeSitterParser,
 } from "./TreeSitterExtractor.ts";
+export { walkDeepNode } from "./TreeSitterExtractor.ts";
 export { withExtractor } from "./withExtractor.ts";
 export type { HandlerContent } from "./BaseHandler.ts";
 
@@ -47,6 +49,7 @@ export type { ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 export { buildJsonOutline } from "./buildJsonOutline.ts";
 export type { JsonOutline } from "./buildJsonOutline.ts";
 export { queryGlob, queryJsonpathObject, queryRegex } from "./query.ts";
+export { projectJsonToXml } from "./projectJsonToXml.ts";
 export {
     InvalidExpressionError,
     QueryParseFailureError,

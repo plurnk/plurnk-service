@@ -1,4 +1,4 @@
-import TreeSitterExtractor from "../TreeSitterExtractor.ts";
+import TreeSitterExtractor, { walkDeepNode } from "../TreeSitterExtractor.ts";
 import type { TreeSitterParser, TreeSitterTree } from "../TreeSitterExtractor.ts";
 import type { HandlerMetadata, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
@@ -82,6 +82,33 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
             return mapping.extract(tree.rootNode, content);
         } catch {
             return [];
+        } finally {
+            tree.delete?.();
+        }
+    }
+
+    // Deep-channel walk. Reuses the same primed-promise parser cache so we
+    // don't reload WASM per channel; the symbols + deep paths each parse the
+    // content once on first invocation, then share the parser.
+    override async deepJson(content: import("../BaseHandler.ts").HandlerContent): Promise<unknown> {
+        if (typeof content !== "string") return null;
+        let parser: TreeSitterParser;
+        try {
+            parser = await this.#getParserCached();
+        } catch {
+            return null;
+        }
+        let tree: TreeSitterTree | null;
+        try {
+            tree = parser.parse(content) as TreeSitterTree | null;
+            if (!tree) return null;
+        } catch {
+            return null;
+        }
+        try {
+            return walkDeepNode(tree.rootNode);
+        } catch {
+            return null;
         } finally {
             tree.delete?.();
         }

@@ -185,7 +185,16 @@ describe("Mimetypes — process", () => {
     it("returns ok:false with null mimetype when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
-        assert.deepEqual(result, { mimetype: null, preview: "", previewTokens: 0, totalLines: 0, ok: false });
+        assert.deepEqual(result, {
+            mimetype: null,
+            preview: "",
+            previewTokens: 0,
+            totalLines: 0,
+            extent: 0,
+            ok: false,
+            deepJson: null,
+            deepXml: "",
+        });
     });
 
     it("processes inline content (no fs read) when content is provided", async () => {
@@ -197,6 +206,44 @@ describe("Mimetypes — process", () => {
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.preview, "module Plain [1]");
         assert.equal(result.ok, true);
+    });
+
+    it("populates extent on the ok path (default: line count)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const result = await m.process({ path: "anything.txt", content: "one\ntwo\nthree" });
+        assert.equal(result.extent, 3);
+        assert.equal(result.totalLines, 3);
+    });
+
+    it("deepJson default is null; deepXml is empty string when handler doesn't supply a tree", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const result = await m.process({ path: "anything.txt", content: "hello" });
+        assert.equal(result.deepJson, null);
+        assert.equal(result.deepXml, "");
+    });
+
+    it("populates deepJson and deepXml when handler supplies a tree (projection by framework)", async () => {
+        class WithDeepTree extends BaseHandler {
+            override extractRaw(): MimeSymbol[] {
+                return [{ name: "Plain", kind: "module", line: 1, endLine: 1 }];
+            }
+            override deepJson(): unknown {
+                return { type: "root", line: 1, endLine: 1, name: "Plain" };
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: WithDeepTree }),
+        });
+        const result = await m.process({ path: "anything.txt", content: "hello" });
+        assert.deepEqual(result.deepJson, { type: "root", line: 1, endLine: 1, name: "Plain" });
+        assert.equal(result.deepXml, '<root line="1" endLine="1"><name>Plain</name></root>');
     });
 
     it("reads content from disk when only path is provided", async () => {

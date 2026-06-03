@@ -71,6 +71,35 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         }
     }
 
+    // Deep-channel walk per issue #10. Returns the full named-children tree of
+    // the parsed AST with native tree-sitter node types. Each node carries
+    // `type`, `line`, `endLine`. Leaves (no named children) additionally carry
+    // `text` — the source slice for that node. Internal nodes have `children`.
+    // Failures route to null (empty deep-json) matching extractRaw's policy.
+    override async deepJson(content: HandlerContent): Promise<unknown> {
+        if (typeof content !== "string") return null;
+        let parser: TreeSitterParser;
+        try {
+            parser = await this.#getParser();
+        } catch {
+            return null;
+        }
+        let tree: TreeSitterTree | null;
+        try {
+            tree = parser.parse(content);
+            if (!tree) return null;
+        } catch {
+            return null;
+        }
+        try {
+            return walkDeepNode(tree.rootNode);
+        } catch {
+            return null;
+        } finally {
+            tree?.delete?.();
+        }
+    }
+
     // Primed-promise cache: subsequent calls reuse the parser. The parser
     // owns the WASM grammar; we keep it alive for the handler's lifetime.
     async #getParser(): Promise<TreeSitterParser> {
@@ -85,4 +114,37 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
 // which accepts a string (or callback) and returns Tree | null.
 export interface TreeSitterParser {
     parse(content: string): TreeSitterTree | null;
+}
+
+// Shape of a node in the deep-json tree returned by deepJson(). One per
+// tree-sitter node walked via namedChild traversal.
+export interface DeepTreeNode {
+    type: string;
+    line: number;
+    endLine: number;
+    text?: string;
+    children?: DeepTreeNode[];
+}
+
+// Public so handlers can call it from a custom deepJson override (e.g. to walk
+// a fragment of the tree, or to combine the AST with additional metadata).
+export function walkDeepNode(node: TreeSitterNode): DeepTreeNode {
+    const out: DeepTreeNode = {
+        type: node.type,
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+    };
+    if (node.namedChildCount === 0) {
+        // Leaf — preserve source text so jsonpath can match against identifier
+        // / literal content. Skip empty strings to avoid noise.
+        if (node.text.length > 0) out.text = node.text;
+        return out;
+    }
+    const children: DeepTreeNode[] = [];
+    for (let i = 0; i < node.namedChildCount; i += 1) {
+        const child = node.namedChild(i);
+        if (child) children.push(walkDeepNode(child));
+    }
+    if (children.length > 0) out.children = children;
+    return out;
 }

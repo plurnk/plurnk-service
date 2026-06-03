@@ -4,6 +4,7 @@ import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
 import { fitPreview } from "./fit.ts";
 import { parseBodyMatcher } from "./parseBodyMatcher.ts";
+import { projectJsonToXml } from "./projectJsonToXml.ts";
 import type BaseHandler from "./BaseHandler.ts";
 import type {
     DetectInput,
@@ -78,7 +79,22 @@ export interface ProcessResult {
     // should reason about size differently for them (e.g., pages for PDF).
     // 0 on every error path.
     totalLines: number;
+    // Addressable extent of the content for the model's navigation bounds
+    // (issue #9). Per plurnk-grammar's `<L>` convention: line count for text
+    // entries, item count for structured entries (handlers like text-csv
+    // override extent() to return rows; future content-type-specific units
+    // similarly). Equal to totalLines for the default text path; handlers
+    // that override extent() may differ.
+    extent: number;
     ok: boolean;
+    // Deep-channel projections (issue #10). The full structural tree of the
+    // entry in both algebras. Hidden from the model — these are the query
+    // targets for the jsonpath and xpath tools, not preview material.
+    // Persisted by plurnk-service in sqlite; the framework's job is to
+    // produce them eagerly on every process() call. Empty string / null on
+    // every error path (consistent with preview).
+    deepJson: unknown;
+    deepXml: string;
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -193,7 +209,7 @@ export default class Mimetypes {
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
-            return { mimetype: null, preview: "", previewTokens: 0, totalLines: 0, ok: false };
+            return errorResult(null);
         }
 
         // Look up the handler's binary flag before reading content, so we read
@@ -203,19 +219,27 @@ export default class Mimetypes {
 
         const content = await this.#resolveContent(input, isBinary);
         if (content === null) {
-            return { mimetype, preview: "", previewTokens: 0, totalLines: 0, ok: false };
+            return errorResult(mimetype);
         }
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            return { mimetype, preview: "", previewTokens: 0, totalLines: 0, ok: false };
+            return errorResult(mimetype);
         }
 
         // Validate errors propagate per error policy — caller's contract.
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
 
-        const material = await handler.preview(content);
+        // Build all three channels and the metadata in parallel. The handler
+        // owns extractRaw caching (or its parser cache) so symbols + deepJson
+        // typically share work. Deep channels are eager per #10: every
+        // process() call materializes them for plurnk-service to persist.
+        const [material, deepJsonValue, extentValue] = await Promise.all([
+            handler.preview(content),
+            handler.deepJson(content),
+            handler.extent(content),
+        ]);
         const fitted = await fitPreview(material, budget, this.#tokenize);
         // Pre-format the preview for verbatim rendering downstream (#8). Text
         // previews get `N:\t` line prefixes per plurnk-grammar's plurnk.md
@@ -229,12 +253,26 @@ export default class Mimetypes {
         // repeat the work. Empty preview short-circuits without paying.
         const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
         // Total source-line count for the model's context-management
-        // reasoning (#9). Editor-convention count for text content; 0 for
-        // binary content (PDF etc.) since lines aren't a meaningful unit
-        // there and service reasons about size differently.
+        // reasoning. Editor-convention count for text content; 0 for binary
+        // content (PDF etc.) since lines aren't a meaningful unit there.
         const totalLines = typeof content === "string" ? countLines(content) : 0;
+        // Deep-XML projection (issue #10). The framework owns this projection
+        // so handlers never write XML serialization logic — guarantees the
+        // two views can't drift.
+        const deepXml = deepJsonValue === null || deepJsonValue === undefined
+            ? ""
+            : projectJsonToXml(deepJsonValue);
 
-        return { mimetype, preview, previewTokens, totalLines, ok: true };
+        return {
+            mimetype,
+            preview,
+            previewTokens,
+            totalLines,
+            extent: extentValue,
+            ok: true,
+            deepJson: deepJsonValue,
+            deepXml,
+        };
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
@@ -331,6 +369,22 @@ function prefixLinesWithSourceNumbers(text: string, startLine: number): string {
         out += `${startLine + i}:\t${lines[i]}`;
     }
     return out;
+}
+
+// Error-path result. Centralized so every error route returns the same shape
+// (avoids the bug of forgetting to populate a new field when ProcessResult
+// grows).
+function errorResult(mimetype: string | null): ProcessResult {
+    return {
+        mimetype,
+        preview: "",
+        previewTokens: 0,
+        totalLines: 0,
+        extent: 0,
+        ok: false,
+        deepJson: null,
+        deepXml: "",
+    };
 }
 
 // Editor-convention line count: `abc\ndef` → 2, `abc\ndef\n` → 2 (trailing

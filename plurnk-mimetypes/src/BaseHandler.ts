@@ -45,6 +45,33 @@ export default class BaseHandler {
         return [];
     }
 
+    // Full structural tree used as the jsonpath query target by the framework's
+    // deep-channel pipeline (issue #10). The framework projects the returned
+    // value to deep-xml via projectJsonToXml() — handlers never write XML
+    // serialization logic. Returns null when the handler has no faithful tree
+    // to expose (default).
+    //
+    // Per-algebra conventions:
+    //   - tree-sitter handlers: full named-children walk of the AST, native
+    //     node types. TreeSitterExtractor provides a default walker.
+    //   - JSON / YAML / TOML / CSV: the parsed value directly.
+    //   - HTML / XML / SVG: the parsed DOM serialized as nested objects.
+    //   - Markdown: the markdown AST.
+    //   - ANTLR / hand-rolled: handler authors as appropriate.
+    deepJson(_content: HandlerContent): unknown | Promise<unknown> {
+        return null;
+    }
+
+    // Addressable extent of the content in the unit the model navigates by
+    // (issue #9). For text content the default is line count; binary content
+    // returns 0 (the handler should override with a meaningful unit like
+    // pages for PDF, items for structured archives). Surfaced on
+    // ProcessResult so index tiles can hand the model navigation bounds.
+    extent(content: HandlerContent): number | Promise<number> {
+        if (typeof content !== "string") return 0;
+        return countLines(content);
+    }
+
     // Throw on malformed content. Default no-op. Sync or async; the framework
     // awaits the result either way.
     validate(_content: HandlerContent): void | Promise<void> {
@@ -126,4 +153,17 @@ export default class BaseHandler {
             reason: "binary content has no text projection for this mimetype",
         });
     }
+}
+
+// Editor-convention line count. `abc\ndef` → 2; `abc\ndef\n` → 2 (trailing
+// newline is a terminator, not a new line); empty string → 0. Mirrors the
+// computation in Mimetypes.ts; lives here so the default extent() can use it
+// without importing the orchestrator.
+function countLines(text: string): number {
+    if (text.length === 0) return 0;
+    let newlines = 0;
+    for (let i = 0; i < text.length; i += 1) {
+        if (text.charCodeAt(i) === 0x0a) newlines += 1;
+    }
+    return text.charCodeAt(text.length - 1) === 0x0a ? newlines : newlines + 1;
 }
