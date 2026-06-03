@@ -86,6 +86,7 @@
     "antlr-ng": "^1.0.10",
     "antlr4": "^4.13.2",
     "antlr4ng": "^3.0.0",
+    "smol-toml": "^1.6.1",
     "tree-sitter-bash": "^0.25.1",
     "tree-sitter-c": "^0.24.1",
     "tree-sitter-cpp": "^0.23.4",
@@ -107,7 +108,8 @@
     "tree-sitter-scala": "^0.24.0",
     "tree-sitter-typescript": "^0.23.2",
     "typescript": "^6.0.3",
-    "web-tree-sitter": "^0.25.10"
+    "web-tree-sitter": "^0.25.10",
+    "yaml": "^2.9.0"
   },
   "dependencies": {
     "jsonpath-plus": "^10.4.0"

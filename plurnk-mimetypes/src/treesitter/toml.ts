@@ -3,10 +3,21 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // TOML SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-toml.
 //
-//   table       → module (key is bare_key or dotted_key)
-//   table_array → module (key)
-//   pair        → field (key + value, value not recursed since TOML values
-//                 are scalars or inline tables/arrays)
+// Two channels:
+//   - symbols (extract): tree-sitter walk surfacing tables/keys as a
+//     module/field outline. Coarse, for the model's preview.
+//   - deep-json (deepJson): the parsed TOML value via `smol-toml`. This is
+//     what jsonpath queries against — users writing `$.server.host` want
+//     the parsed value tree.
+export async function deepJson(content: string): Promise<unknown> {
+    const { parse } = await import("smol-toml" as string) as { parse(text: string): unknown };
+    try {
+        return parse(content);
+    } catch {
+        return null;
+    }
+}
+
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {

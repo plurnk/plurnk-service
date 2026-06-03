@@ -34,6 +34,14 @@ export interface TreeSitterLanguageEntry {
 
 export interface TreeSitterLanguageMapping {
     extract(root: TreeSitterNode, content: string): MimeSymbol[];
+    // Optional override for the deep-json channel (issue #10). When present,
+    // TreeSitterLanguageHandler.deepJson() bypasses the default tree-sitter
+    // AST walker and uses this function instead. Used by languages where the
+    // algebra-natural deep-json shape is the parsed value rather than the
+    // AST — YAML, TOML, JSON, CSV. The default walker (walkDeepNode) is the
+    // right answer for code-shaped languages where the AST IS what users
+    // want to query.
+    deepJson?(content: string): unknown | Promise<unknown>;
 }
 
 // Built-in tree-sitter language registry. Order is not significant; lookup

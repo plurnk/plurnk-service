@@ -3,9 +3,23 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // YAML SPEC §3 mapping via @tree-sitter-grammars/tree-sitter-yaml.
 //
-// YAML has no functions/classes/etc — symbols are mapping keys at any
-// nesting depth. We emit each `block_mapping_pair` key as a field-like
-// outline entry. Nested values may be sub-mappings; we recurse.
+// Two channels:
+//   - symbols (extract): tree-sitter walk surfacing every mapping key as a
+//     field-like outline entry. Coarse but useful for the model's preview.
+//   - deep-json (deepJson): the parsed YAML value via the `yaml` library —
+//     this is the jsonpath query target. Users writing `$.server.host`
+//     expect the parsed value tree, not the AST. The framework projects
+//     this to deep-xml.
+export async function deepJson(content: string): Promise<unknown> {
+    const { parse } = await import("yaml" as string) as { parse(text: string): unknown };
+    try {
+        const value = parse(content);
+        return value ?? null;
+    } catch {
+        return null;
+    }
+}
+
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     walk(root, out);

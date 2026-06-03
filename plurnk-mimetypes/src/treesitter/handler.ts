@@ -90,8 +90,21 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     // Deep-channel walk. Reuses the same primed-promise parser cache so we
     // don't reload WASM per channel; the symbols + deep paths each parse the
     // content once on first invocation, then share the parser.
+    //
+    // When the mapping module exports its own deepJson() function, we delegate
+    // to it instead of walking the AST — used for data formats (YAML, TOML,
+    // JSON-shaped) where the algebra-natural deep-json is the parsed value
+    // rather than the parse tree.
     override async deepJson(content: import("../BaseHandler.ts").HandlerContent): Promise<unknown> {
         if (typeof content !== "string") return null;
+        const mapping = await this.#getMappingCached();
+        if (typeof mapping.deepJson === "function") {
+            try {
+                return await mapping.deepJson(content);
+            } catch {
+                return null;
+            }
+        }
         let parser: TreeSitterParser;
         try {
             parser = await this.#getParserCached();
