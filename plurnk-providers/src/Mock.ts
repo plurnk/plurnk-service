@@ -5,7 +5,6 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { ChatMessage, FinishReason, Provider, ProviderAssistant, ProviderUsage } from "./types.ts";
 
 export type MockAssistant = {
@@ -15,9 +14,11 @@ export type MockAssistant = {
     usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
-    // Pre-parsed ops — intg-only escape hatch. Production providers
-    // never include this field.
-    ops?: PlurnkStatement[];
+    // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
+    // framework carries NO @plurnk/plurnk-grammar dependency; plurnk-service
+    // casts these to PlurnkStatement[] on its side. Production providers never
+    // include this field.
+    ops?: unknown[];
 };
 
 export type MockResponse = {
@@ -26,7 +27,7 @@ export type MockResponse = {
 };
 
 // Returned shape: ProviderAssistant + pre-parsed ops visible for tests.
-export type MockReturnedAssistant = ProviderAssistant & { ops?: PlurnkStatement[] };
+export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
 
 const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
 

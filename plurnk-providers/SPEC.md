@@ -171,7 +171,7 @@ const mock = new Mock({
 const result = await mock.generate({ messages: [] });
 ```
 
-`MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch consumed by plurnk-service intg tests (skips parse roundtrip). Production providers don't expose `ops`.
+`MockResponse.assistant.ops?: unknown[]` is a pre-parsed escape hatch consumed by plurnk-service intg tests (skips parse roundtrip); the consumer casts to `PlurnkStatement[]` on its side. It is typed `unknown[]` deliberately so **this package has no dependency on `@plurnk/plurnk-grammar` at all** — not runtime, not peer, not even a type import — so grammar releases never force a providers re-pin. Production providers don't expose `ops`.
 
 ## §10 Conformance
 

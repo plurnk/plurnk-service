@@ -45,11 +45,7 @@
         "build": "npm run build:dist",
         "prepare": "npm run build"
     },
-    "peerDependencies": {
-        "@plurnk/plurnk-grammar": "0.20.0"
-    },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.20.0",
         "@types/node": "^25.9.1",
         "typescript": "^6.0.3"
     },
