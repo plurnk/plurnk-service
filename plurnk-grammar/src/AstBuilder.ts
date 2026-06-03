@@ -372,7 +372,10 @@ export default class AstBuilder {
     }
 
     static #detectMatcherDialect(body: string): "xpath" | "regex" | "jsonpath" | "glob" {
-        if (body.startsWith("//")) return "xpath";
+        if (body.startsWith("//")) {
+            try { xpath.parse(body); return "xpath"; }
+            catch { return "glob"; }
+        }
         if (body.startsWith("/")) return "regex";
         if (body.startsWith("$")) return "jsonpath";
         return "glob";

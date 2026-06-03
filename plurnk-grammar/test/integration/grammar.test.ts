@@ -357,20 +357,24 @@ test("valid xpath body with complex predicate accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("invalid xpath body (unterminated predicate) produces visitor error", () => {
+test("invalid xpath body (unterminated predicate) falls back to glob, not error", () => {
     const result = PlurnkParser.parse("<<FIND(doc.xml)://book[unterminated:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    assert.ok(stmt && stmt.kind === "statement");
+    if (stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
+    assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
-test("invalid xpath body (stray operators) produces visitor error", () => {
-    const result = PlurnkParser.parse("<<FIND(doc.xml)://**/<<<:FIND");
+test("invalid xpath body (stray operators) falls back to glob, not error", () => {
+    const result = PlurnkParser.parse("<<FIND(doc.xml)://**/foo{bar}:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.ok(errors.length >= 1);
-    if (errors[0].kind !== "error") return;
-    assert.equal(errors[0].error.source, "visitor");
+    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    const stmt = result.items.find((i) => i.kind === "statement");
+    assert.ok(stmt && stmt.kind === "statement");
+    if (stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
+    assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
 test("valid jsonpath body ($.greeting) accepted", () => {
@@ -707,6 +711,36 @@ test("MatcherBody: glob returns dialect + raw (no metacharacters)", () => {
     assert.ok(b);
     assert.equal(b.dialect, "glob");
     assert.equal(b.raw, "Paris*");
+});
+
+test("MatcherBody: //-prefix code comment falls back to glob (xpath disambiguation)", () => {
+    const result = PlurnkParser.parse("<<READ(src/app.js):// TODO: add error handling:READ");
+    const item = result.items[0];
+    assert.equal(item.kind, "statement");
+    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "glob");
+    assert.equal(b.raw, "// TODO: add error handling");
+});
+
+test("MatcherBody: //-prefix string with non-xpath syntax falls back to glob", () => {
+    const result = PlurnkParser.parse("<<READ(file.txt):// foo {bar}:READ");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "glob");
+});
+
+test("MatcherBody: valid xpath still dispatches xpath even after disambiguation", () => {
+    const result = PlurnkParser.parse("<<READ(page.html)://h1/text():READ");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "xpath");
+    assert.equal(b.raw, "//h1/text()");
 });
 
 test("COPY body is a ParsedPath", () => {
