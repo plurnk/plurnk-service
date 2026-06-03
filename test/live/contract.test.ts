@@ -86,14 +86,25 @@ const dumpTurns = async (s: LiveSetup, turnIds: number[], label: string): Promis
     }
 };
 
+// Seed an entry directly. A live test puts ONE op under the model; the precondition
+// state is the test's job to construct, not the model's to stumble through.
+const seed = async (s: LiveSetup, pathname: string, content: string, mimetype = "text/markdown"): Promise<void> => {
+    const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
+    if (e === undefined) throw new Error("seed: insert returned no row");
+    await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
+    await (s.db.crud_write_visibility as PrepMethod).run({ run_id: s.runId, entry_id: e.id, channel: "body" });
+};
+
 test("live: READ <L> — model slices a known:// entry by line range", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("read-L");
     try {
+        await seed(s, "/lines", `alpha
+beta
+gamma`);
         const prompt = [
-            "Two-step probe:",
-            "1) Write the entry: <<EDIT(known:///lines):alpha\\nbeta\\ngamma:EDIT",
-            "2) Then read line 2: <<READ(known:///lines)<2>::READ",
-            "3) Then SEND[200] with whatever the READ returned (a line prefixed `2:\\tbeta`):",
+            "Two-step probe. The entry known:///lines already holds three lines (alpha, beta, gamma).",
+            "1) Read line 2: <<READ(known:///lines)<2>::READ",
+            "2) SEND[200] with whatever the READ returned:",
             "   <<SEND[200]:<your read result>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
@@ -106,11 +117,11 @@ test("live: READ <L> — model slices a known:// entry by line range", { timeout
 test("live: READ regex matcher — model extracts a regex match from a known:// entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("read-regex");
     try {
+        await seed(s, "/doc", "hello world hello again");
         const prompt = [
-            "Two-step probe:",
-            "1) <<EDIT(known:///doc):hello world hello again:EDIT",
-            "2) <<READ(known:///doc):/hello/g:READ",
-            "3) <<SEND[200]:<your read result>:SEND",
+            "Two-step probe. The entry known:///doc already holds `hello world hello again`.",
+            "1) <<READ(known:///doc):/hello/g:READ",
+            "2) <<SEND[200]:<your read result>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         if (!/hello/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "read-regex");
@@ -122,12 +133,13 @@ test("live: READ regex matcher — model extracts a regex match from a known:// 
 test("live: EDIT <L> — model replaces a single line in an existing entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("edit-L");
     try {
+        await seed(s, "/poem", `roses are red
+violets are blue`);
         const prompt = [
-            "Three-step probe:",
-            "1) <<EDIT(known:///poem):roses are red\\nviolets are blue:EDIT",
-            "2) <<EDIT(known:///poem)<2>:violets are bright:EDIT",
-            "3) <<READ(known:///poem)::READ",
-            "4) <<SEND[200]:<your read result>:SEND",
+            "Three-step probe. The entry known:///poem already holds two lines: `roses are red` then `violets are blue`.",
+            "1) Replace line 2: <<EDIT(known:///poem)<2>:violets are bright:EDIT",
+            "2) <<READ(known:///poem)::READ",
+            "3) <<SEND[200]:<your read result>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         if (!/bright/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "edit-L");
@@ -139,13 +151,13 @@ test("live: EDIT <L> — model replaces a single line in an existing entry", { t
 test("live: FIND regex — model filters known entries by pathname regex", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("find-regex");
     try {
+        await seed(s, "/apple", "a");
+        await seed(s, "/apricot", "b");
+        await seed(s, "/banana", "c");
         const prompt = [
-            "Four-step probe. Emit each op on its own turn:",
-            "1) <<EDIT(known:///apple):a:EDIT",
-            "2) <<EDIT(known:///apricot):b:EDIT",
-            "3) <<EDIT(known:///banana):c:EDIT",
-            "4) <<FIND(known:///):/^\\/ap/:FIND",
-            "5) <<SEND[200]:<the FIND result list>:SEND",
+            "Two-step probe. The entries known:///apple, known:///apricot, known:///banana already exist.",
+            "1) <<FIND(known:///):/^\\/ap/:FIND",
+            "2) <<SEND[200]:<the FIND result list>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt, 10);
         if (!/apple|apricot/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "find-regex");
@@ -157,12 +169,15 @@ test("live: FIND regex — model filters known entries by pathname regex", { tim
 test("live: COPY <L> — model copies a line range from src to dst", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("copy-L");
     try {
+        await seed(s, "/src", `one
+two
+three
+four`);
         const prompt = [
-            "Four-step probe:",
-            "1) <<EDIT(known:///src):one\\ntwo\\nthree\\nfour:EDIT",
-            "2) <<COPY(known:///src)<2,3>:known:///slice:COPY",
-            "3) <<READ(known:///slice)::READ",
-            "4) <<SEND[200]:<your read result>:SEND",
+            "Three-step probe. The entry known:///src already holds four lines (one, two, three, four).",
+            "1) <<COPY(known:///src)<2,3>:known:///slice:COPY",
+            "2) <<READ(known:///slice)::READ",
+            "3) <<SEND[200]:<your read result>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         if (!/two/.test(r.lastContent) || !/three/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "copy-L");
@@ -175,12 +190,11 @@ test("live: COPY <L> — model copies a line range from src to dst", { timeout: 
 test("live: SEND[410]#fragment — model deletes one channel of an entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("send-410-frag");
     try {
+        await seed(s, "/doc", "content here");
         const prompt = [
-            "Three-step probe:",
-            "1) <<EDIT(known:///doc):content here:EDIT",
-            "2) <<SEND[410]:gone:SEND with target known:///doc#body. Exact form:",
-            "   <<SEND[410](known:///doc#body)::SEND",
-            "3) <<SEND[200]:deleted body channel:SEND",
+            "Two-step probe. The entry known:///doc already exists with a body channel.",
+            "1) Delete its body channel: <<SEND[410](known:///doc#body)::SEND",
+            "2) <<SEND[200]:deleted body channel:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         if (r.status !== 200) await dumpTurns(s, r.turnIds, "send-410-frag");

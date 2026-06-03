@@ -1,9 +1,7 @@
-// Live xpath/jsonpath coverage. Structural prompts walk the model
-// through the dialect; assertions verify wire-level emission against
-// the matcher contract. Expected to FAIL until plurnk-mimetypes#3
-// lands and matcher.ts wires through — that red is the honest signal
-// that the dialects aren't live yet. When the sibling ships, every
-// test in this file activates with no code change here.
+// Live xpath/jsonpath coverage. Each test SEEDS its entry (the model never writes
+// the JSON/HTML), so a green means the model actually drove the matcher — not that
+// it recited a value it had just authored. As of 2026-06-02 all four pass on
+// localhost: plurnk-mimetypes#3 has landed and the dialects are wired through.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -75,14 +73,24 @@ const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ st
     return { status: result.finalStatus, turnIds: result.turnIds, lastContent };
 };
 
+// Seed an entry directly with its mimetype. Crucially: the model never WRITES the
+// JSON/HTML, so it can't answer from memory — it must actually exercise the matcher
+// to extract a value it never saw. Model-driven setup masked the dialect; this forces it.
+const seed = async (s: LiveSetup, pathname: string, content: string, mimetype: string): Promise<void> => {
+    const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
+    if (e === undefined) throw new Error("seed: insert returned no row");
+    await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
+    await (s.db.crud_write_visibility as PrepMethod).run({ run_id: s.runId, entry_id: e.id, channel: "body" });
+};
+
 test("live: jsonpath $.field on known://config.json extracts a value", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("jsonpath-field");
     try {
+        await seed(s, "/config.json", '{"host":"db.internal","pool":5}', "application/json");
         const prompt = [
-            "Three-step probe:",
-            '1) <<EDIT(known:///config.json):{"host":"db.internal","pool":5}:EDIT',
-            "2) <<READ(known:///config.json):$.host:READ",
-            "3) <<SEND[200]:<the host value>:SEND",
+            "Two-step probe. The entry known:///config.json already holds a JSON object with host and pool fields.",
+            "1) <<READ(known:///config.json):$.host:READ",
+            "2) <<SEND[200]:<the host value>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         assert.equal(r.status, 200);
@@ -93,11 +101,11 @@ test("live: jsonpath $.field on known://config.json extracts a value", { timeout
 test("live: jsonpath $.users[*].name wildcard extracts list", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("jsonpath-wildcard");
     try {
+        await seed(s, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
         const prompt = [
-            "Three-step probe:",
-            '1) <<EDIT(known:///team.json):{"users":[{"name":"Alice"},{"name":"Bob"}]}:EDIT',
-            "2) <<READ(known:///team.json):$.users[*].name:READ",
-            "3) <<SEND[200]:<both names in any form>:SEND",
+            "Two-step probe. The entry known:///team.json already holds a JSON object with a users array.",
+            "1) <<READ(known:///team.json):$.users[*].name:READ",
+            "2) <<SEND[200]:<both names in any form>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         assert.equal(r.status, 200);
@@ -109,11 +117,11 @@ test("live: jsonpath $.users[*].name wildcard extracts list", { timeout: TIMEOUT
 test("live: xpath //h1/text() on known://page.html extracts heading text", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("xpath-h1");
     try {
+        await seed(s, "/page.html", "<html><body><h1>Welcome</h1></body></html>", "text/html");
         const prompt = [
-            "Three-step probe:",
-            "1) <<EDIT(known:///page.html):<html><body><h1>Welcome</h1></body></html>:EDIT",
-            "2) <<READ(known:///page.html)://h1/text():READ",
-            "3) <<SEND[200]:<the h1 text>:SEND",
+            "Two-step probe. The entry known:///page.html already holds an HTML page with an h1 heading.",
+            "1) <<READ(known:///page.html)://h1/text():READ",
+            "2) <<SEND[200]:<the h1 text>:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         assert.equal(r.status, 200);
@@ -126,14 +134,14 @@ test("live: jsonpath compose-chain — extract then pick first via structural <L
     // <L> on the log entry picks the Nth match without jsonpath syntax.
     const s = await liveSetup("compose-jsonpath-L");
     try {
+        await seed(s, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
         const prompt = [
-            "Four-step probe:",
-            '1) <<EDIT(known:///team.json):{"users":[{"name":"Alice"},{"name":"Bob"}]}:EDIT',
-            "2) <<READ(known:///team.json):$.users[*].name:READ",
-            "   (the result lands at log://1/2/1 as a JSON array of match rows)",
-            "3) <<READ(log://1/2/1)<1>::READ",
+            "Three-step probe. The entry known:///team.json already holds a JSON object with a users array.",
+            "1) <<READ(known:///team.json):$.users[*].name:READ",
+            "   (the result lands at log://1/1/2 as a JSON array of match rows)",
+            "2) <<READ(log://1/1/2)<1>::READ",
             "   (structural <L> picks the 1st match; result is [{line,matched:Alice}])",
-            "4) <<SEND[200]:Alice:SEND",
+            "3) <<SEND[200]:Alice:SEND",
         ].join("\n");
         const r = await runLoop(s, prompt);
         assert.equal(r.status, 200);
