@@ -137,3 +137,74 @@ describe("AntlrExtractor", () => {
         );
     });
 });
+
+describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
+    // Mock the antlr4ng parse-tree shape: ParserRuleContext with start/stop
+    // and children; TerminalNode with `symbol`.
+    class Compilation_unitContext {
+        readonly start = { line: 1 };
+        readonly stop = { line: 5 };
+        readonly children: unknown[];
+        constructor(children: unknown[]) { this.children = children; }
+    }
+    class Class_declarationContext {
+        readonly start = { line: 2 };
+        readonly stop = { line: 4 };
+        readonly children: unknown[];
+        constructor(children: unknown[]) { this.children = children; }
+    }
+    function term(text: string, line: number): unknown {
+        return { symbol: { line, text, type: 1 } };
+    }
+
+    it("walks rule contexts emitting type from constructor.name (stripped of Context)", async () => {
+        const fakeTree = new Compilation_unitContext([
+            new Class_declarationContext([term("class", 2), term("Foo", 2)]),
+        ]);
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return fakeTree; }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        const tree = await e.deepJson("anything") as { type: string; line: number; endLine: number; children?: unknown[] };
+        assert.equal(tree.type, "compilation_unit");
+        assert.equal(tree.line, 1);
+        assert.equal(tree.endLine, 5);
+        assert.ok(Array.isArray(tree.children));
+        const classCtx = (tree.children![0] as { type: string });
+        assert.equal(classCtx.type, "class_declaration");
+    });
+
+    it("walks terminal nodes as { type, line, endLine, text }", async () => {
+        const fakeTree = new Compilation_unitContext([term("hello", 3)]);
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return fakeTree; }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        const tree = await e.deepJson("anything") as { children: Array<{ type: string; text: string; line: number }> };
+        const leaf = tree.children[0];
+        assert.equal(leaf.text, "hello");
+        assert.equal(leaf.line, 3);
+        // Short token text becomes the type for jsonpath/xpath filtering ease.
+        assert.equal(leaf.type, "hello");
+    });
+
+    it("returns null when parseTree throws", async () => {
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { throw new Error("parse err"); }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        assert.equal(await e.deepJson("malformed"), null);
+    });
+
+    it("returns null for binary content", async () => {
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return new Compilation_unitContext([]); }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        assert.equal(await e.deepJson(new Uint8Array([1, 2, 3])), null);
+    });
+});
