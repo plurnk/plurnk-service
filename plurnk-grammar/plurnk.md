@@ -99,25 +99,26 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
 <<READ(README.md):$.Installation:READ
+<<READ(docs/api.md)://h2/text():READ
 <<READ(plurnk://manifest.json):$[?(@.shown==false)]:READ
 <<READ(log://1/2/3):$[*].matched.codename:READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
-<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
-<<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
+<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
+<<EDIT[france,geography](unknown://countries/france/capital.md):What is the capital of France?:EDIT
 
-<<EDIT[plan,france,task](known://plan):
+<<EDIT[plan,france,task](known://plan.md):
 - [ ] Decompose prompt into unknowns
 - [ ] Discover capital of France
 - [ ] Deliver
 :EDIT
 
-<<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
-<<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-<<EDIT(known://countries/france/capital)<1,-1>::EDIT
+<<EDIT(known://plan.md)<2>:- [x] Discover capital of France:EDIT
+<<EDIT(known://countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+<<EDIT(known://countries/france/capital.md)<1,-1>::EDIT
 <<EDIT(known://users.json)<-1>:{"name":"Eve"}:EDIT
-<<COPY[archive,2026-05-14](known://draft):known://archive/2026-05-14/draft:COPY
-<<MOVE(known://draft/answer):known://final/answer:MOVE
-<<MOVE(known://obsolete/note):/dev/null:MOVE
+<<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
+<<MOVE(known://draft/answer.md):known://final/answer.md:MOVE
+<<MOVE(known://obsolete/note.md):/dev/null:MOVE
 <<SHOW[france](known://countries/**):Paris*:SHOW
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
