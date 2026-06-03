@@ -130,6 +130,17 @@ export default class BaseHandler {
                 return queryGlob(text, pattern);
             }
             case "jsonpath": {
+                // Per issue #10: jsonpath dispatches against the deep-json
+                // channel, not the bare-leaves symbols outline. Handlers that
+                // implement deepJson() (most should, post-#10) get full-tree
+                // reach. Handlers that haven't migrated yet fall back to the
+                // outline so existing queries keep working through the
+                // transition. The fallback should disappear once every handler
+                // supplies a deep-json shape appropriate to its algebra.
+                const tree = await this.deepJson(content);
+                if (tree !== null && tree !== undefined) {
+                    return queryJsonpathObject(tree, pattern);
+                }
                 const outline = buildJsonOutline(await this.extractRaw(content));
                 return queryJsonpathObject(outline, pattern);
             }
