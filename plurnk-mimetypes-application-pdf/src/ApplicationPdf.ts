@@ -90,6 +90,41 @@ export default class ApplicationPdf extends BaseHandler {
         return null;
     }
 
+    // Deep-channel (issue #10). PDF's structural content is its outline (the
+    // bookmark TOC); pages are the atomic addressable units. We expose:
+    //   { type: 'document', line: 1, endLine: <pageCount>,
+    //     children: [<outline items as nested { type: 'outline_item', name, line, endLine, children? }>] }
+    //
+    // Returns null if the PDF has no outline (which is common — many PDFs
+    // ship without bookmarks). Plurnk-service will see a null deepJson and
+    // not store a deep-channel for those entries; that's the right outcome
+    // since the content isn't xpath-queryable in any meaningful way.
+    override async deepJson(content: HandlerContent): Promise<unknown> {
+        const bytes = toBytes(content);
+        let symbols: MimeSymbol[];
+        try {
+            symbols = await extractStructure(bytes);
+        } catch {
+            return null;
+        }
+        if (symbols.length === 0) return null;
+        // Build a containment-nested tree from the symbol list (the outline
+        // items already carry headings/levels appropriate for jsonpath
+        // navigation by name).
+        return {
+            type: "document",
+            line: 1,
+            endLine: symbols.reduce((m, s) => Math.max(m, s.endLine), 1),
+            children: symbols.map((s) => ({
+                type: "outline_item",
+                name: s.name,
+                level: s.level,
+                line: s.line,
+                endLine: s.endLine,
+            })),
+        };
+    }
+
     protected override async toText(content: string | Uint8Array): Promise<string> {
         if (typeof content === "string") return content;
         try {

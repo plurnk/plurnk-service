@@ -182,9 +182,9 @@ describe("ApplicationPdf — hybrid TextPreview fallback", () => {
 });
 
 describe("ApplicationPdf — escape hatches", () => {
-    it("symbolsRaw returns empty string (PDFs surface structure through preview, not extractRaw)", () => {
+    it("symbolsRaw returns empty string (PDFs surface structure through preview, not extractRaw)", async () => {
         const pdf = buildPdf({ title: "X" });
-        assert.equal(h.symbolsRaw(pdf), "");
+        assert.equal(await h.symbolsRaw(pdf), "");
     });
 
     it("extractRaw returns empty array", () => {
