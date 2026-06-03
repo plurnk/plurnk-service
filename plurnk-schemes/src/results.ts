@@ -19,19 +19,10 @@
 // present iff `status >= 400`. The consumer mirrors it into
 // `packet.user.telemetry.errors[]` unchanged.
 
-// grammar 0.17.0 ships TelemetryEvent in types.generated.d.ts but does NOT
-// re-export it by name from the package index, and its exports map exposes
-// only "." — so neither a named import nor a deep path resolves. Recover the
-// type from PlurnkParseError.toTelemetryEvent()'s return (PlurnkParseError
-// IS index-exported). Upstream gap tracked at plurnk-grammar#22; switch to a
-// named import once it lands.
-import type { PlurnkParseError } from "@plurnk/plurnk-grammar";
-
-type TelemetryEvent = ReturnType<PlurnkParseError["toTelemetryEvent"]>;
-
-// LogCoordinate is the log-coordinate arm of TelemetryEvent's `position`
-// union. Derive it structurally rather than depending on a named export.
-type LogCoordinate = Extract<NonNullable<TelemetryEvent["position"]>, { type: "log-coordinate" }>;
+// grammar 0.20.0 exports TelemetryEvent + LogCoordinate from its index
+// (closed plurnk-grammar#23 — earlier versions only shipped the type in
+// types.generated.d.ts, forcing a ReturnType<PlurnkParseError[...]> recovery).
+import type { LogCoordinate, TelemetryEvent } from "@plurnk/plurnk-grammar";
 
 export type { TelemetryEvent };
 
