@@ -15,30 +15,32 @@ export interface DispatchAsClientResult {
     [key: string]: unknown;
 }
 
-export const dispatchAsClient = async (ctx: HandlerContext, statement: PlurnkStatement): Promise<DispatchAsClientResult> => {
-    if (ctx.session === null) {
-        throw new Error("dispatchAsClient requires an attached session");
+export default class DispatchAsClient {
+    static async dispatch(ctx: HandlerContext, statement: PlurnkStatement): Promise<DispatchAsClientResult> {
+        if (ctx.session === null) {
+            throw new Error("dispatchAsClient requires an attached session");
+        }
+        const { sessionId, runId } = ctx.session;
+        if (ctx.session.clientLoopId === null) {
+            ctx.session.clientLoopId = await ensureClientLoop(ctx.db, runId);
+        }
+        const clientLoopId = ctx.session.clientLoopId;
+        const turnId = await insertClientTurn(ctx.db, clientLoopId);
+        const result = await ctx.engine.dispatch({
+            statement,
+            sessionId,
+            runId,
+            loopId: clientLoopId,
+            turnId,
+            sequence: 1,
+            origin: "client",
+            onDispatch: (logEntryId) => {
+                void (async () => {
+                    const entry = await fetchLogEntry(ctx.db, logEntryId);
+                    ctx.notify({ sessionId }, "log/entry", { entry });
+                })();
+            },
+        });
+        return result as DispatchAsClientResult;
     }
-    const { sessionId, runId } = ctx.session;
-    if (ctx.session.clientLoopId === null) {
-        ctx.session.clientLoopId = await ensureClientLoop(ctx.db, runId);
-    }
-    const clientLoopId = ctx.session.clientLoopId;
-    const turnId = await insertClientTurn(ctx.db, clientLoopId);
-    const result = await ctx.engine.dispatch({
-        statement,
-        sessionId,
-        runId,
-        loopId: clientLoopId,
-        turnId,
-        sequence: 1,
-        origin: "client",
-        onDispatch: (logEntryId) => {
-            void (async () => {
-                const entry = await fetchLogEntry(ctx.db, logEntryId);
-                ctx.notify({ sessionId }, "log/entry", { entry });
-            })();
-        },
-    });
-    return result as DispatchAsClientResult;
-};
+}
