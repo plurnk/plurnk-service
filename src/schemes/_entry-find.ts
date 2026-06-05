@@ -9,7 +9,7 @@
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
 
-import type { FindStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement, HideStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
@@ -21,7 +21,7 @@ export interface FindResult {
 }
 
 export default class EntryFind {
-    static #scopePathnameOf(statement: FindStatement): string | null {
+    static #scopePathnameOf(statement: FindStatement | ShowStatement | HideStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
         if (path.kind === "url") return path.pathname;
@@ -46,8 +46,17 @@ export default class EntryFind {
         return { status: 200, items: items.slice(n - 1, m) };
     }
 
-    static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> {
-        if (statement.target === null) return { status: 400, content: null, mimetype: null, results: [] };
+    // Resolve a matcher-bearing statement (FIND, or multi-entry SHOW/HIDE) to the
+    // matched session pathnames: body-matcher parse (glob/regex → SQL predicates,
+    // xpath/jsonpath → 501), scope + tag filters, then `<L>` pagination. The match
+    // runs entirely in find_session_entries (GLOB / REGEXP / json_each); JS only
+    // validates the regex compiles. Shared with EntryOps's multi-entry visibility.
+    static async matchPathnames(
+        statement: FindStatement | ShowStatement | HideStatement,
+        ctx: PlurnkSchemeContext,
+        scheme: string,
+    ): Promise<{ status: number; pathnames: string[] }> {
+        if (statement.target === null) return { status: 400, pathnames: [] };
 
         let pathnameRegex: string | null = null;
         let pathnameGlob: string | null = null;
@@ -58,11 +67,11 @@ export default class EntryFind {
                 const { pattern, flags } = statement.body;
                 // Validate the pattern compiles; the match itself runs in SQL (REGEXP).
                 try { new RegExp(pattern, flags); }
-                catch { return { status: 400, content: null, mimetype: null, results: [] }; }
+                catch { return { status: 400, pathnames: [] }; }
                 pathnameRegex = flags ? `(?${flags})${pattern}` : pattern;
             } else {
                 // xpath / jsonpath need per-mimetype content matching (plurnk-mimetypes#3).
-                return { status: 501, content: null, mimetype: null, results: [] };
+                return { status: 501, pathnames: [] };
             }
         }
 
@@ -80,16 +89,20 @@ export default class EntryFind {
             pathname_regex: pathnameRegex,
             tags: tagsParam,
         });
-
         let pathnames = rows.map((r) => r.pathname);
 
         if (statement.lineMarker !== null) {
             const page = EntryFind.#paginate(pathnames, statement.lineMarker);
-            if (page.status !== 200) return { status: page.status, content: null, mimetype: null, results: [] };
+            if (page.status !== 200) return { status: page.status, pathnames: [] };
             pathnames = page.items ?? [];
         }
+        return { status: 200, pathnames };
+    }
 
-        const results = pathnames.map((p) => `${scheme}://${p}`);
+    static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> {
+        const match = await EntryFind.matchPathnames(statement, ctx, scheme);
+        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [] };
+        const results = match.pathnames.map((p) => `${scheme}://${p}`);
         return { status: 200, content: results.join("\n"), mimetype: "text/plain", results };
     }
 }

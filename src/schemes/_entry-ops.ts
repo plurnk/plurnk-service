@@ -2,6 +2,7 @@ import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from 
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, Matcher, MimetypeBinary, PathMimetype } from "../content/index.ts";
+import EntryFind from "./_entry-find.ts";
 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -246,26 +247,6 @@ export default class EntryOps {
         return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel, startLine: 1 };
     }
 
-    // Paginate a list of items per a `<L>` results marker. Sentinels <0> and
-    // <-1> select empty (insertion points have no result content).
-    static #paginateResults<T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } {
-        const total = items.length;
-        const { first, last } = marker;
-        if (last === null) {
-            if (first === 0 || first === -1) return { status: 200, items: [] };
-            if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
-            return { status: 416 };
-        }
-        let n = first;
-        let m = last;
-        if (n === 0) n = 1;
-        if (m === -1) m = total;
-        if (n < 1 || n > total) return { status: 416 };
-        if (m < 1 || m > total) return { status: 416 };
-        if (n > m) return { status: 416 };
-        return { status: 200, items: items.slice(n - 1, m) };
-    }
-
     static async #setSessionEntryVisibility(
         statement: ShowStatement | HideStatement,
         ctx: PlurnkSchemeContext,
@@ -312,44 +293,11 @@ export default class EntryOps {
             return { status: 200 };
         }
 
-        // Multi-entry path: target is treated as a pathname GLOB scope. Body
-        // matcher (glob/regex) further filters by pathname; xpath/jsonpath
-        // would filter by content (501 pending plurnk-mimetypes#3). Tag
-        // signal filters by tag. <L> paginates the matched results.
-        let pathnameRegex: string | null = null;
-        let pathnameGlob: string | null = null;
-        if (statement.body !== null) {
-            if (statement.body.dialect === "glob") {
-                pathnameGlob = statement.body.raw;
-            } else if (statement.body.dialect === "regex") {
-                const { pattern, flags } = statement.body;
-                // Validate the pattern compiles; the match itself runs in SQL (REGEXP).
-                try { new RegExp(pattern, flags); }
-                catch { return { status: 400 }; }
-                pathnameRegex = flags ? `(?${flags})${pattern}` : pattern;
-            } else {
-                return { status: 501 };
-            }
-        }
-        const scopePathname = EntryOps.#pathnameOf(statement);
-        const scopeGlob = scopePathname.length > 0 ? `${scopePathname}*` : null;
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
-        const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
-
-        const rows = await (db.find_session_entries as PrepMethod).all<{ pathname: string }>({
-            session_id: sessionId, scheme,
-            scope_pathname: scopeGlob,
-            pathname_pattern: pathnameGlob,
-            pathname_regex: pathnameRegex,
-            tags: tagsParam,
-        });
-        let pathnames = rows.map((r) => r.pathname);
-
-        if (statement.lineMarker !== null) {
-            const page = EntryOps.#paginateResults(pathnames, statement.lineMarker);
-            if (page.status !== 200) return { status: page.status };
-            pathnames = page.items ?? [];
-        }
+        // Multi-entry path: the body matcher (glob/regex) + tags + `<L>` resolve
+        // to the matched pathnames in SQL, shared with FIND via matchPathnames.
+        const match = await EntryFind.matchPathnames(statement, ctx, scheme);
+        if (match.status !== 200) return { status: match.status };
+        const pathnames = match.pathnames;
         if (pathnames.length === 0) return { status: 304 };
 
         // Resolve fragment to a target channel (applies uniformly across matches).
