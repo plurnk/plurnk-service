@@ -129,6 +129,11 @@ FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
+-- PREP: test_get_log_rx_by_run_op
+-- Forensic read-back for read-only ops in live tests: the latest rx the engine
+-- recorded for a given op in a run (e.g. what a READ<L> actually sliced).
+SELECT rx FROM log_entries WHERE run_id = $run_id AND op = $op ORDER BY id DESC LIMIT 1;
+
 -- PREP: test_count_log_entries
 SELECT COUNT(*) AS n FROM log_entries;
 

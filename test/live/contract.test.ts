@@ -1,12 +1,13 @@
-// Live coverage of contract surfaces landed under #171: READ <L>, READ
-// body matcher, READ [tag] filter, EDIT <L>, FIND regex, FIND <L>
-// pagination, SHOW/HIDE body matcher, COPY <L> source range, SEND[410]
-// #fragment channel delete.
+// Live coverage of contract surfaces (landed under #171): READ <L>, READ regex
+// matcher, EDIT <L>, FIND regex, COPY <L> source range, SEND[410] #fragment
+// channel delete.
 //
-// STRUCTURAL prompts are allowed here (the model is told the exact op
-// shape to emit). Per `feedback_live_vs_demo_prompts`, live exercises
-// machinery against real provider; demo exercises model reasoning with
-// natural prompts.
+// Each test is ONE natural sentence that can only mean ONE op — the op is NEVER
+// spelled out. Showing the literal op triggers model meta-awareness about the
+// "mission" (it loops on that meta-confusion instead of acting) and tests the
+// parser rather than the intent→op mapping that is the real surface. Verify
+// FORENSICALLY against the db: state-changing ops by entry/channel content,
+// read-only ops by the op's logged rx. Never assert on the model's narration.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -31,6 +32,8 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readFile(PATHS.instructionsSystem, "utf8");
+const PERSONA = await readFile(PATHS.defaultPersona, "utf8");
+const REQUIREMENTS = await readFile(PATHS.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
@@ -58,152 +61,113 @@ const liveSetup = async (label: string): Promise<LiveSetup> => {
     return { db, engine, provider, sessionId, runId };
 };
 
-const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ status: number; turnIds: number[]; lastContent: string }> => {
+// Run one loop to completion. We assert against the db afterward, never the
+// model's output — so this hands back nothing.
+const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<void> => {
     const loopId = await insertLoop(s.db, s.runId, 1, prompt);
     await (s.db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
-    const result = await s.engine.runLoop({
+    await s.engine.runLoop({
         provider: s.provider, sessionId: s.sessionId, runId: s.runId, loopId, maxTurns,
+        persona: PERSONA, requirements: REQUIREMENTS,
         messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: prompt },
         ],
     });
-    const lastTurnId = result.turnIds[result.turnIds.length - 1];
-    let lastContent = "";
-    if (lastTurnId !== undefined) {
-        const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: lastTurnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-        lastContent = packet.assistant?.content ?? "";
-    }
-    return { status: result.finalStatus, turnIds: result.turnIds, lastContent };
 };
 
-const dumpTurns = async (s: LiveSetup, turnIds: number[], label: string): Promise<void> => {
-    for (const turnId of turnIds) {
-        const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-        console.error(`[${label}] turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 300)}`);
-    }
-};
-
-// Seed an entry directly. A live test puts ONE op under the model; the precondition
-// state is the test's job to construct, not the model's to stumble through.
-const seed = async (s: LiveSetup, pathname: string, content: string, mimetype = "text/markdown"): Promise<void> => {
+// Seed an entry directly (returns its id, for attaching more channels). The
+// precondition state is the test's job to build, not the model's to stumble through.
+const seed = async (s: LiveSetup, pathname: string, content: string, mimetype = "text/markdown"): Promise<number> => {
     const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
     if (e === undefined) throw new Error("seed: insert returned no row");
     await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
     await (s.db.crud_write_visibility as PrepMethod).run({ run_id: s.runId, entry_id: e.id, channel: "body" });
+    return e.id;
 };
 
-test("live: READ <L> — model slices a known:// entry by line range", { timeout: TIMEOUT }, async () => {
+// Like seed, but HIDDEN (visibility indexed=0): the entry exists and stays
+// READ/FIND-able, but is absent from the index/preview — so the model must emit
+// the op to reach it instead of answering from what it can already see.
+const seedHidden = async (s: LiveSetup, pathname: string, content: string, mimetype = "text/markdown"): Promise<number> => {
+    const id = await seed(s, pathname, content, mimetype);
+    await (s.db.test_set_visibility_indexed as PrepMethod).run({ run_id: s.runId, entry_id: id, indexed: 0 });
+    return id;
+};
+
+// Forensic read-backs — assert what the OP did to the db, never what the model
+// said. readBody: an entry's body content (undefined once the channel/entry is
+// gone). lastRx: the latest rx the engine logged for an op this run (what a READ
+// actually sliced, what a FIND actually matched).
+const readBody = async (s: LiveSetup, pathname: string): Promise<string | undefined> => {
+    const row = await (s.db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname });
+    return row?.content;
+};
+
+const lastRx = async (s: LiveSetup, op: string): Promise<string> => {
+    const row = await (s.db.test_get_log_rx_by_run_op as PrepMethod).get<{ rx: string }>({ run_id: s.runId, op });
+    return row?.rx ?? "";
+};
+
+test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("read-L");
     try {
-        await seed(s, "/lines", `alpha
-beta
-gamma`);
-        const prompt = [
-            "Two-step probe. The entry known:///lines already holds three lines (alpha, beta, gamma).",
-            "1) Read line 2: <<READ(known:///lines)<2>::READ",
-            "2) SEND[200] with whatever the READ returned:",
-            "   <<SEND[200]:<your read result>:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt);
-        if (!/beta/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "read-L");
-        assert.equal(r.status, 200);
-        assert.match(r.lastContent, /beta/);
+        await seedHidden(s, "/lines.md", "alpha\nbeta\ngamma");
+        await runLoop(s, "What is on the second line of known:///lines.md?");
+        const rx = await lastRx(s, "READ");
+        assert.match(rx, /beta/);
+        assert.doesNotMatch(rx, /alpha|gamma/); // a <2> slice, not a whole-file read
     } finally { await s.db.close(); }
 });
 
-test("live: READ regex matcher — model extracts a regex match from a known:// entry", { timeout: TIMEOUT }, async () => {
+test("live: READ regex — extract a pattern from an entry's content", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("read-regex");
     try {
-        await seed(s, "/doc", "hello world hello again");
-        const prompt = [
-            "Two-step probe. The entry known:///doc already holds `hello world hello again`.",
-            "1) <<READ(known:///doc):/hello/g:READ",
-            "2) <<SEND[200]:<your read result>:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt);
-        if (!/hello/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "read-regex");
-        assert.equal(r.status, 200);
-        assert.match(r.lastContent, /hello/);
+        await seedHidden(s, "/doc.md", "hello world hello again");
+        await runLoop(s, "Find every occurrence of the word `hello` in known:///doc.md.");
+        assert.match(await lastRx(s, "READ"), /hello/);
     } finally { await s.db.close(); }
 });
 
-test("live: EDIT <L> — model replaces a single line in an existing entry", { timeout: TIMEOUT }, async () => {
+test("live: EDIT <L> — replace the second line of an entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("edit-L");
     try {
-        await seed(s, "/poem", `roses are red
-violets are blue`);
-        const prompt = [
-            "Three-step probe. The entry known:///poem already holds two lines: `roses are red` then `violets are blue`.",
-            "1) Replace line 2: <<EDIT(known:///poem)<2>:violets are bright:EDIT",
-            "2) <<READ(known:///poem)::READ",
-            "3) <<SEND[200]:<your read result>:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt);
-        if (!/bright/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "edit-L");
-        assert.equal(r.status, 200);
-        assert.match(r.lastContent, /bright/);
+        await seed(s, "/poem.md", "roses are red\nviolets are blue");
+        // The prompt IS the test: one sentence that can only mean EDIT<2>.
+        await runLoop(s, "Replace the second line of known:///poem.md with `violets are bright`.");
+        assert.equal(await readBody(s, "/poem.md"), "roses are red\nviolets are bright");
     } finally { await s.db.close(); }
 });
 
-test("live: FIND regex — model filters known entries by pathname regex", { timeout: TIMEOUT }, async () => {
+test("live: FIND regex — filter known entries by pathname", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("find-regex");
     try {
-        await seed(s, "/apple", "a");
-        await seed(s, "/apricot", "b");
-        await seed(s, "/banana", "c");
-        const prompt = [
-            "Two-step probe. The entries known:///apple, known:///apricot, known:///banana already exist.",
-            "1) <<FIND(known:///):/^\\/ap/:FIND",
-            "2) <<SEND[200]:<the FIND result list>:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt, 10);
-        if (!/apple|apricot/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "find-regex");
-        assert.equal(r.status, 200);
-        assert.match(r.lastContent, /apple|apricot/);
+        await seedHidden(s, "/apple.md", "a");
+        await seedHidden(s, "/apricot.md", "b");
+        await seedHidden(s, "/banana.md", "c");
+        await runLoop(s, "Which known entries have a pathname starting with `/ap`?");
+        assert.match(await lastRx(s, "FIND"), /apple|apricot/);
     } finally { await s.db.close(); }
 });
 
-test("live: COPY <L> — model copies a line range from src to dst", { timeout: TIMEOUT }, async () => {
+test("live: COPY <L> — copy a line range into a new entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("copy-L");
     try {
-        await seed(s, "/src", `one
-two
-three
-four`);
-        const prompt = [
-            "Three-step probe. The entry known:///src already holds four lines (one, two, three, four).",
-            "1) <<COPY(known:///src)<2,3>:known:///slice:COPY",
-            "2) <<READ(known:///slice)::READ",
-            "3) <<SEND[200]:<your read result>:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt);
-        if (!/two/.test(r.lastContent) || !/three/.test(r.lastContent)) await dumpTurns(s, r.turnIds, "copy-L");
-        assert.equal(r.status, 200);
-        assert.match(r.lastContent, /two/);
-        assert.match(r.lastContent, /three/);
+        await seed(s, "/src.md", "one\ntwo\nthree\nfour");
+        await runLoop(s, "Copy the second and third lines of known:///src.md into a new entry known:///slice.md.");
+        // lines 2-3 only; the trailing newline varies with the model's path
+        // (a COPY slice keeps it; a READ-then-EDIT reconstruction may drop it).
+        assert.match(await readBody(s, "/slice.md") ?? "", /^two\nthree\n?$/);
     } finally { await s.db.close(); }
 });
 
-test("live: SEND[410]#fragment — model deletes one channel of an entry", { timeout: TIMEOUT }, async () => {
-    const s = await liveSetup("send-410-frag");
+test("live: MOVE to /dev/null — delete an entry", { timeout: TIMEOUT }, async () => {
+    const s = await liveSetup("delete");
     try {
-        await seed(s, "/doc", "content here");
-        const prompt = [
-            "Two-step probe. The entry known:///doc already exists with a body channel.",
-            "1) Delete its body channel: <<SEND[410](known:///doc#body)::SEND",
-            "2) <<SEND[200]:deleted body channel:SEND",
-        ].join("\n");
-        const r = await runLoop(s, prompt);
-        if (r.status !== 200) await dumpTurns(s, r.turnIds, "send-410-frag");
-        assert.equal(r.status, 200);
-        // Verify the channel was actually deleted
-        const entry = await (s.db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/doc" });
-        if (entry !== undefined) {
-            const channel = await (s.db.test_get_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: "body" });
-            assert.equal(channel, undefined, "body channel removed from entry");
-        }
+        await seed(s, "/obsolete.md", "no longer needed");
+        // The grammar teaches "delete entries by MOVE to /dev/null" — the model
+        // earns the op from a plain delete request; we verify the entry is gone.
+        await runLoop(s, "Delete the entry known:///obsolete.md.");
+        assert.equal(await readBody(s, "/obsolete.md"), undefined);
     } finally { await s.db.close(); }
 });

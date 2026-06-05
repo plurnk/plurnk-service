@@ -207,9 +207,9 @@ Same- and cross-scheme operations share the orchestrator. Same-scheme COPY is no
 Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
-- `SEND[410](path)` — delete the resource. {§3.5-410-deletes-resource}
-- `SEND[410](path#fragment)` — delete the named channel only. {§3.5-410-fragment-channel-delete}
 - `SEND[499](path)` — cancel active subscription (§7).
+
+`SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is MOVE to `/dev/null` (§6.5).
 
 Other status codes return 501 from entry-bearing schemes by default. {§3.5-entry-schemes-501-on-non-410}
 
@@ -454,7 +454,7 @@ Returns 201 on success. Same- and cross-scheme COPY share the orchestrator. {§6
 AST: `{ op: "MOVE", target (source), body: dest | null, signal: tags | null, lineMarker? }`.
 
 - **Relocation** (`body` non-null): COPY (§6.4) + `src_scheme.deleteEntry` in one transaction. 201 on success. {§6.5-relocation-deletes-source} Cross-scheme same as same-scheme. {§6.5-cross-scheme-move}
-- **Deletion** (`body: null`): `src_scheme.deleteEntry` directly. {§6.5-null-body-deletes} 200 on success, 404 if absent. {§6.5-missing-source-404}
+- **Deletion** (`body: null`, or `body` = `/dev/null`): `src_scheme.deleteEntry` directly. {§6.5-null-body-deletes} 200 on success, 404 if absent. {§6.5-missing-source-404} `/dev/null` is the model-facing delete idiom the grammar teaches; a null body is its programmatic equivalent. {§6.5-dev-null-deletes}
 
 Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 
@@ -632,7 +632,7 @@ Plugin discovery (§9) registers whatever's in `node_modules/@plurnk/*`.
 - Render budget per channel — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (§12); tokenization per §14.2.
 - Backpressure caps — none (§7.8).
 - Stream cancel — `SEND[499]` (§7.7).
-- Delete — `SEND[410]` (§3.5, §6.5).
+- Delete — MOVE to `/dev/null` (§6.5); `SEND[410]` also deletes as a side-effect (§3.5).
 - Per-loop flags — `loops.flags` JSON column; `yolo` end-to-end today, others scheduled.
 - Default-channel wire rendering — §5.5.
 
@@ -1175,7 +1175,7 @@ Carried from the contract walk; durable.
 - **READ rx** prefixes each line with `N:\t` per §16.6. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
 - **FIND body matcher** applies to pathname. xpath/jsonpath content matchers dispatch through `Mimetypes.query`.
 - **SHOW/HIDE** has a single-entry path (exact pathname, no slots) and a multi-entry path (any of body/signal/`<L>` present). Multi-entry path treats target as pathname glob scope, applies body matcher to pathnames (regex/glob), filters by `signal` tags, paginates with `<L>`, and flips visibility on the resulting set.
-- **SEND[410]** with `#fragment` deletes that channel only; without fragment, deletes the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
+- **SEND[410]** deletes as a side-effect (not the model idiom; §6.5): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
 
 ### §16.10 Directed-SEND status code policy

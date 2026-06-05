@@ -1598,8 +1598,9 @@ export default class Engine {
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
 
-        // Null-body MOVE = delete the source entry (per SPEC §6.5)
-        if (dstPath === null) {
+        // MOVE to /dev/null (the grammar's idiomatic delete) or a null-body
+        // MOVE deletes the source entry. SPEC §6.5.
+        if (dstPath === null || pathnameFromPath(dstPath) === "/dev/null") {
             const srcPathname = pathnameFromPath(srcPath);
             const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
             return { status: delResult.status };

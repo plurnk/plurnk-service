@@ -4,7 +4,7 @@
 import type {
     EditStatement, ReadStatement, SendStatement, ShowStatement, HideStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    UrlPath, ParsedPath, MatcherBody,
+    LocalPath, UrlPath, ParsedPath, MatcherBody,
 } from "@plurnk/plurnk-grammar";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
@@ -12,6 +12,8 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
     scheme, username: null, password: null, hostname: null, port: null,
     pathname, params: {}, fragment,
 });
+
+export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
 export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body,

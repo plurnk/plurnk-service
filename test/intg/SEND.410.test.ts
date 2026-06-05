@@ -20,7 +20,9 @@ const setup = async () => {
 const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopId: number; turnId: number }, statement: SendStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 
-test("[§3.5-410-deletes-resource] SEND[410](known://x) deletes the entry", async () => {
+// De-anchored: SEND[410]-delete is an implemented side-effect, not a model-facing
+// promise (delete idiom is MOVE to /dev/null, §6.5). Kept as engine regression coverage.
+test("SEND[410](known://x) deletes the entry (side-effect; not model-facing)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "doomed"), "tomorrow"), makeSchemeCtx({ db, sessionId, runId }));

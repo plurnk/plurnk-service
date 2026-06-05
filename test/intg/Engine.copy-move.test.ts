@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -148,6 +148,19 @@ test("[§6.5-null-body-deletes] Engine.move null body = delete source", async ()
         assert.equal(r.status, 200);
 
         const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "trash-me" });
+        assert.equal(remaining, undefined);
+    } finally { await db.close(); }
+});
+
+test("[§6.5-dev-null-deletes] Engine.move to /dev/null = delete source", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await new Known().edit(editStmt(urlPath("known", "obsolete"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
+
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "obsolete"), localPath("/dev/null")));
+        assert.equal(r.status, 200);
+
+        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "obsolete" });
         assert.equal(remaining, undefined);
     } finally { await db.close(); }
 });

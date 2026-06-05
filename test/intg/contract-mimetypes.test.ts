@@ -130,7 +130,7 @@ test("[§16.3-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 
-test("[§3.5-410-fragment-channel-delete] SEND[410](path#fragment) deletes only the named channel; siblings remain", async () => {
+test("SEND[410](path#fragment) deletes only the named channel; siblings remain (side-effect; not model-facing)", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`);

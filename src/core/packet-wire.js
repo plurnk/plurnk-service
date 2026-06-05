@@ -31,7 +31,7 @@ export const renderSystemContent = (system) => {
     if (Array.isArray(system.log) && system.log.length > 0) {
         parts.push(`# Plurnk System Log\n\n${renderLogEntries(system.log)}`);
     }
-    return parts.join("\n\n");
+    return parts.map((p) => p.replace(/\n+$/, "")).join("\n\n");
 };
 
 // Render packet.user → user message content (markdown string).
@@ -56,7 +56,7 @@ export const renderUserContent = (user) => {
     if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
         parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
     }
-    return parts.join("\n\n");
+    return parts.map((p) => p.replace(/\n+$/, "")).join("\n\n");
 };
 
 // Project the full request half of a packet to ChatMessage[] for the wire.
