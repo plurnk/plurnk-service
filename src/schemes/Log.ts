@@ -1,9 +1,7 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { sliceLines, sliceJsonItems } from "../content/index.ts";
-import { matchAgainstContent } from "../content/index.ts";
-import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
+import { LineMarkerOps, Matcher, MimetypeBinary } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 type ShowHideResult = { status: number };
@@ -86,21 +84,21 @@ export default class Log {
         }
 
         // `<L>` scopes; body matches within the scope (slice-then-match).
-        // `<L>` dispatches on the unwrapped rx's mimetype: JSON → sliceJsonItems,
-        // line-navigable → sliceLines. This is what makes
+        // `<L>` dispatches on the unwrapped rx's mimetype: JSON → LineMarkerOps.sliceJsonItems,
+        // line-navigable → LineMarkerOps.sliceLines. This is what makes
         // <<READ(log://N/M/K)<1>::READ pick the first item of a matcher result.
         let workingContent = underlyingContent;
         let workingStart: number | null = 1;
-        let workingMimetypeForSlice = TEXT_PRIMITIVE_MIMETYPE;
+        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
         if (statement.lineMarker !== null) {
-            if (isJsonMimetype(underlyingMimetype)) {
-                const sliced = sliceJsonItems(underlyingContent, statement.lineMarker);
+            if (MimetypeBinary.isJsonMimetype(underlyingMimetype)) {
+                const sliced = LineMarkerOps.sliceJsonItems(underlyingContent, statement.lineMarker);
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
                 workingContent = sliced.body ?? "[]";
                 workingStart = null;
                 workingMimetypeForSlice = "application/json";
             } else {
-                const sliced = sliceLines(underlyingContent, statement.lineMarker);
+                const sliced = LineMarkerOps.sliceLines(underlyingContent, statement.lineMarker);
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
                 workingContent = sliced.text ?? "";
                 workingStart = sliced.startLine ?? null;
@@ -110,15 +108,15 @@ export default class Log {
             if (ctx.mimetypes === undefined) {
                 return { status: 500, content: null, mimetype: underlyingMimetype };
             }
-            const matched = await matchAgainstContent(statement.body, workingContent, underlyingMimetype, ctx.mimetypes, workingStart ?? 1);
+            const matched = await Matcher.matchAgainstContent(statement.body, workingContent, underlyingMimetype, ctx.mimetypes, workingStart ?? 1);
             if (matched.status === 204) {
-                return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+                return { status: 204, content: "", mimetype: "text/markdown", startLine: null, matches: 0 };
             }
             if (matched.status === 203) {
                 return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
             }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype: underlyingMimetype };
-            return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
+            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches };
         }
         if (statement.lineMarker !== null) {
             const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";

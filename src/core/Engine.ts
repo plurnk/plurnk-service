@@ -15,7 +15,7 @@ import { indexGitMembership } from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
-import { sliceLinesRaw, isBinaryMimetype } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
@@ -1663,10 +1663,10 @@ export default class Engine {
         if (lineMarker !== null) {
             const sliced: typeof entry.channels = {};
             for (const [channelName, channelData] of Object.entries(entry.channels)) {
-                if (isBinaryMimetype(channelData.mimetype)) {
+                if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
                     return { status: 415, error: `cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype})` };
                 }
-                const r = sliceLinesRaw(channelData.content ?? "", lineMarker);
+                const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
                 if (r.status !== 200) return { status: r.status, error: r.error };
                 sliced[channelName] = { ...channelData, content: r.text ?? "" };
             }

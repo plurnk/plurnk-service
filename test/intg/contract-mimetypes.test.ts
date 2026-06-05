@@ -5,7 +5,7 @@
 // render-time handler firing boundary (§4 — schemes do not invoke handlers).
 //
 // Vehicles are the real production paths:
-//   - §16.1 / §16.3 — Known.read matcher dispatch (matchAgainstContent → 203)
+//   - §16.1 / §16.3 — Known.read matcher dispatch (Matcher.matchAgainstContent → 203)
 //                     + Log.read structural <L> compose over the matcher result.
 //   - §3.5 — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
 //   - §4.2 / §4 — Mimetypes.process shape + a spy handler proving write (detect)
@@ -46,7 +46,7 @@ const setup = async () => {
 
 // --- §16.1 matcher 203 soft-fallback ---------------------------------------
 // jsonpath against a `.json` entry whose body is malformed JSON: the json
-// handler's parseTree fails → QueryParseFailureError → matchAgainstContent
+// handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
 test("[§16.1-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
@@ -107,22 +107,20 @@ test("[§16.3-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match
         // Sanity: the full matcher result has both error matches as JSON.
         const whole = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(whole.status, 200);
-        assert.equal(whole.mimetype, "application/json");
-        const all = JSON.parse(whole.content ?? "[]") as Array<{ matched: string }>;
-        assert.equal(all.length, 2, "two error lines matched");
+        assert.equal(whole.mimetype, "text/markdown");
+        assert.equal((whole.content ?? "").split("\n").length, 2, "two error lines matched");
 
-        // Compose: structural <L><2> over the matcher result → 2nd match only.
+        // Compose: structural <L><2> over the matcher result → 2nd match line only.
         const picked = await new Log().read(
             { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 2, last: null } },
             makeSchemeCtx({ db, runId, mimetypes }),
         );
         assert.equal(picked.status, 200);
-        assert.equal(picked.mimetype, "application/json", "<L> on a JSON matcher result preserves structure");
+        assert.equal((picked.content ?? "").split("\n").length, 1, "<L><2> selects exactly the P-th line");
         // §16.2: a single anonymous capture group extracts as a one-element
-        // array `[c1]`, so the 2nd match's `matched` is ["gamma"].
-        const items = JSON.parse(picked.content ?? "[]") as Array<{ matched: string[] }>;
-        assert.equal(items.length, 1, "<L><2> selects exactly the P-th element");
-        assert.deepEqual(items[0].matched, ["gamma"], "2nd error match is the gamma capture");
+        // array, JSON-encoded as ["gamma"] for the 2nd match.
+        assert.match(picked.content ?? "", /\["gamma"\]/);
+        assert.doesNotMatch(picked.content ?? "", /alpha/);
     } finally { await db.close(); }
 });
 
@@ -212,9 +210,9 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
             }
         }
         // Bind the spy handler to a `.spy` extension so write-time
-        // resolveEntryMimetype({ ext }) → detect resolves text/x-spy and the
+        // PathMimetype.resolveEntryMimetype({ ext }) → detect resolves text/x-spy and the
         // entry's stored mimetype routes render through the spy. text/* keeps
-        // the write off the binary 415 gate (isBinaryMimetype).
+        // the write off the binary 415 gate (MimetypeBinary.isBinaryMimetype).
         const mimetypes = new Mimetypes({
             discovery: {
                 registry: { byExtension: new Map([[".spy", "text/x-spy"]]), byFilename: new Map() },

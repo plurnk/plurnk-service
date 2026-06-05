@@ -26,7 +26,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { isBinaryMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
+import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { writeEntry } from "../schemes/_entry-crud.ts";
@@ -67,9 +67,9 @@ const gitTrackedFiles = async (root: string, signal: AbortSignal | undefined): P
 const detectMimetype = async (canonical: string, mimetypes: Mimetypes | undefined): Promise<string> => {
     if (mimetypes !== undefined) {
         const detected = await mimetypes.detect({ path: canonical });
-        return normalizeAutoTextMimetype(detected);
+        return MimetypeBinary.normalizeAutoTextMimetype(detected);
     }
-    return TEXT_PRIMITIVE_MIMETYPE;
+    return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
 };
 
 // Register every git-tracked file as a bare session member (scheme=null),
@@ -108,7 +108,7 @@ const materializeMember = async (
 ): Promise<void> => {
     const canonical = resolve(root, pathname);
     const mimetype = await detectMimetype(canonical, ctx.mimetypes);
-    if (isBinaryMimetype(mimetype)) return;
+    if (MimetypeBinary.isBinaryMimetype(mimetype)) return;
     let content: string;
     try {
         content = await readFile(canonical, "utf8");

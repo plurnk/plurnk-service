@@ -1,10 +1,7 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { isBinaryMimetype, isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../content/index.ts";
-import { matchAgainstContent } from "../content/index.ts";
-import { resolveEntryMimetype } from "../content/index.ts";
+import { LineMarkerOps, Matcher, MimetypeBinary, PathMimetype } from "../content/index.ts";
 
 // Shared free functions for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -70,18 +67,18 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
     // `known://users.json` → application/json (extension wins).
     // `known://users`      → text/markdown (scheme manifest default).
     const channelManifestDefault = channels[targetChannel];
-    const effectiveMimetype = await resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
+    const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
     // 415 on binary entries (SPEC.md §16.9).
     if (existing !== undefined) {
         const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
             session_id: sessionId, scheme, pathname, channel: targetChannel,
         });
-        if (channel !== undefined && isBinaryMimetype(channel.mimetype)) {
+        if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
             return { status: 415, entryId: existing.id, channel: targetChannel };
         }
     }
-    if (isBinaryMimetype(effectiveMimetype)) {
+    if (MimetypeBinary.isBinaryMimetype(effectiveMimetype)) {
         return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
     }
 
@@ -98,16 +95,16 @@ export const editSessionEntry = async (statement: EditStatement, ctx: PlurnkSche
     }
 
     // `<L>` line marker EDIT semantics. Dispatch on effective mimetype:
-    // JSON → applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
-    // otherwise → applyLineMarkerEdit (line edit, original semantics).
+    // JSON → LineMarkerOps.applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
+    // otherwise → LineMarkerOps.applyLineMarkerEdit (line edit, original semantics).
     // On a non-existent entry, body becomes the content regardless of marker
     // (per "Resolved ambiguities" §3 — sentinels/positions only apply to
     // existing content).
     let newContent: string;
     if (statement.lineMarker !== null && existing !== undefined) {
-        const result = isJsonMimetype(effectiveMimetype)
-            ? applyJsonItemEdit(originalContent, statement.lineMarker, body)
-            : applyLineMarkerEdit(originalContent, statement.lineMarker, body);
+        const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
+            ? LineMarkerOps.applyJsonItemEdit(originalContent, statement.lineMarker, body)
+            : LineMarkerOps.applyLineMarkerEdit(originalContent, statement.lineMarker, body);
         if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel };
         newContent = result.result ?? "";
     } else {
@@ -171,7 +168,7 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     });
     if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
 
-    if (isBinaryMimetype(row.mimetype)) {
+    if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
         return { status: 415, content: null, mimetype: row.mimetype, channel: targetChannel };
     }
 
@@ -190,21 +187,21 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
     // `<L>` scopes; body matches within the scope. Slot order in plurnk.md
     // is `<L>?:body?`, so the natural composition is slice-then-match.
     // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
-    //   line-navigable (text/markdown, source) → sliceLines (line index)
-    //   JSON                                   → sliceJsonItems (item index)
-    //   XML/HTML                               → sliceLines (defer XML structural)
+    //   line-navigable (text/markdown, source) → LineMarkerOps.sliceLines (line index)
+    //   JSON                                   → LineMarkerOps.sliceJsonItems (item index)
+    //   XML/HTML                               → LineMarkerOps.sliceLines (defer XML structural)
     let workingContent = row.content;
     let workingStart: number | null = 1;
-    let workingMimetypeForSlice = TEXT_PRIMITIVE_MIMETYPE;
+    let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
     if (statement.lineMarker !== null) {
-        if (isJsonMimetype(row.mimetype)) {
-            const sliced = sliceJsonItems(row.content, statement.lineMarker);
+        if (MimetypeBinary.isJsonMimetype(row.mimetype)) {
+            const sliced = LineMarkerOps.sliceJsonItems(row.content, statement.lineMarker);
             if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
             workingContent = sliced.body ?? "[]";
             workingStart = null;
             workingMimetypeForSlice = "application/json";
         } else {
-            const sliced = sliceLines(row.content, statement.lineMarker);
+            const sliced = LineMarkerOps.sliceLines(row.content, statement.lineMarker);
             if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
             workingContent = sliced.text ?? "";
             workingStart = sliced.startLine ?? null;
@@ -215,9 +212,9 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
         if (ctx.mimetypes === undefined) {
             return { status: 500, content: null, mimetype: row.mimetype, channel: targetChannel };
         }
-        const matched = await matchAgainstContent(statement.body, workingContent, row.mimetype, ctx.mimetypes, workingStart ?? 1);
+        const matched = await Matcher.matchAgainstContent(statement.body, workingContent, row.mimetype, ctx.mimetypes, workingStart ?? 1);
         if (matched.status === 204) {
-            return { status: 204, content: "", mimetype: "application/json", channel: targetChannel, startLine: null, matches: 0 };
+            return { status: 204, content: "", mimetype: "text/markdown", channel: targetChannel, startLine: null, matches: 0 };
         }
         if (matched.status === 203) {
             // Dialect-parse-failure fallback: raw source as text/markdown,
@@ -225,7 +222,7 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
             return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", channel: targetChannel, startLine: 1, reason: matched.reason };
         }
         if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-        return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", channel: targetChannel, startLine: null, matches: matched.matches };
+        return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", channel: targetChannel, startLine: null, matches: matched.matches };
     }
 
     if (statement.lineMarker !== null) {
@@ -233,7 +230,7 @@ export const readSessionEntry = async (statement: ReadStatement, ctx: PlurnkSche
         //   line-navigable source → text/markdown (text primitive)
         //   JSON source           → application/json (preserve structure for compose)
         // Workspace `<L>` empty case (sentinel <0>/<-1>) is 204.
-        // For JSON sources sliceJsonItems returns body="[]" on sentinels;
+        // For JSON sources LineMarkerOps.sliceJsonItems returns body="[]" on sentinels;
         // we treat empty array as 204 here for shape consistency.
         const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
         if (workingContent === "" || isEmptyJsonArray) {

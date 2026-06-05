@@ -172,7 +172,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("File.read: regex body matcher returns JSON array of match rows", async () => {
+test("File.read: regex body matcher returns N:\\t<value> rows", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
@@ -181,12 +181,8 @@ test("File.read: regex body matcher returns JSON array of match rows", async () 
             ctx,
         );
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
-        assert.deepEqual(rows, [
-            { line: 1, matched: "foo" },
-            { line: 2, matched: "foo" },
-        ]);
+        assert.equal(r.mimetype, "text/markdown");
+        assert.equal(r.content, "1:\tfoo\n2:\tfoo");
     });
 });
 
@@ -202,10 +198,8 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
             ctx,
         );
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
-        // Both matches were on source line 2 (after slice); baseLine=2 preserved.
-        assert.deepEqual(rows.map((r) => r.line), [2, 2]);
-        assert.deepEqual(rows.map((r) => r.matched), ["foo", "foo"]);
+        // Both matches on source line 2 (after slice); baseLine=2 preserved.
+        assert.equal(r.content, "2:\tfoo\n2:\tfoo");
     });
 });
 

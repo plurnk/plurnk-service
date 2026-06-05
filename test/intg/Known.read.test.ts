@@ -86,7 +86,7 @@ test("[§16.7-text-markdown-normalize] Known.read: lineMarker <N> on text source
     } finally { db.close(); }
 });
 
-test("Known.read: regex body matcher returns JSON array of match rows", async () => {
+test("Known.read: regex body matcher returns N:\\t<value> rows", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -94,12 +94,8 @@ test("Known.read: regex body matcher returns JSON array of match rows", async ()
         const matcher: MatcherBody = { dialect: "regex", raw: "/alpha/g", pattern: "alpha", flags: "g" };
         const result = await k.read(readStatement({ target: urlPath("known", "/match"), body: matcher }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        assert.equal(result.mimetype, "application/json");
-        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
-        assert.deepEqual(rows, [
-            { line: 1, matched: "alpha" },
-            { line: 1, matched: "alpha" },
-        ]);
+        assert.equal(result.mimetype, "text/markdown");
+        assert.equal(result.content, "1:\talpha\n1:\talpha");
     } finally { db.close(); }
 });
 
@@ -111,12 +107,8 @@ test("Known.read: glob body matcher returns matching lines (line-filter primitiv
         const matcher: MatcherBody = { dialect: "glob", raw: "TODO*" };
         const result = await k.read(readStatement({ target: urlPath("known", "/g"), body: matcher }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        assert.equal(result.mimetype, "application/json");
-        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
-        assert.deepEqual(rows, [
-            { line: 1, matched: "TODO: one" },
-            { line: 3, matched: "TODO: two" },
-        ]);
+        assert.equal(result.mimetype, "text/markdown");
+        assert.equal(result.content, "1:\tTODO: one\n3:\tTODO: two");
     } finally { db.close(); }
 });
 
@@ -152,9 +144,8 @@ test("Known.read: <L> + body matcher composes — slice first, match within, sou
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
-        const rows = JSON.parse(result.content ?? "") as { line: number; matched: string }[];
-        // Match was on source line 2 (after slice); baseLine preserved.
-        assert.deepEqual(rows, [{ line: 2, matched: "foo" }]);
+        // Match on source line 2 (after slice); baseLine preserved.
+        assert.equal(result.content, "2:\tfoo");
     } finally { db.close(); }
 });
 

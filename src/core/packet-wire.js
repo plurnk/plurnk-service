@@ -13,7 +13,7 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
-import { isLineNavigableMimetype } from "../content/index.ts";
+import { MimetypeBinary } from "../content/index.ts";
 
 // Render packet.system → system message content (markdown string).
 //   {system_definition verbatim}
@@ -338,7 +338,7 @@ const renderLogEntries = (entries) =>
                 // navigation (jsonpath/xpath) used on these formats.
                 // Classifier is consumer-side in this repo (SPEC.md §16.6).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                if (isLineNavigableMimetype(mimetype)) {
+                if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
                     const start = typeof rx.startLine === "number" ? rx.startLine : 1;
                     return `${metaLine}\n${wrapHeredocBody(fence, numberLines(rx.content, start))}`;
                 }

@@ -134,7 +134,7 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
     } finally { db.close(); }
 });
 
-test("Log.read: regex body matcher on rx returns JSON array of match rows", async () => {
+test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/y", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
@@ -146,10 +146,8 @@ test("Log.read: regex body matcher on rx returns JSON array of match rows", asyn
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
-        assert.equal(rows.length, 1);
-        assert.equal(rows[0].matched, "\"status\"");
+        assert.equal(r.mimetype, "text/markdown");
+        assert.match(r.content ?? "", /^\d+:\t"status"$/);
     } finally { db.close(); }
 });
 
@@ -177,9 +175,7 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as { line: number; matched: string }[];
-        assert.equal(rows.length, 1);
-        assert.equal(rows[0].matched, "201");
+        assert.match(r.content ?? "", /^\d+:\t201$/);
     } finally { db.close(); }
 });
 
@@ -210,11 +206,10 @@ test("Log.read: matcher-then-<L> composition — pick Nth match from a prior REA
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 2, last: null } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        // Result is the 2nd match row wrapped in a single-element array.
-        const items = JSON.parse(r.content ?? "") as Array<{ line: number; matched: string }>;
-        assert.equal(items.length, 1);
-        assert.equal(items[0].matched, "beta");
+        assert.equal(r.mimetype, "text/markdown");
+        // Result is the 2nd match line (beta).
+        assert.match(r.content ?? "", /:\tbeta/);
+        assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
     } finally { db.close(); }
 });
 

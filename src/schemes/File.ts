@@ -5,9 +5,7 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
-import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../content/index.ts";
-import { matchAgainstContent } from "../content/index.ts";
+import { LineMarkerOps, Matcher, MimetypeBinary } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
@@ -33,15 +31,15 @@ type ContainmentResult =
 // path on success; classified error on absence/traversal. Used by read.
 // Detect mimetype from a file's path. Routes through the Mimetypes service
 // when available; falls back to the text primitive (text/markdown). The
-// `normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
+// `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
 // service is normalized to text/markdown — plurnk-service never auto-
-// derives text/plain (see mimetype-binary.ts TEXT_PRIMITIVE_MIMETYPE).
+// derives text/plain (see mimetype-binary.ts MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE).
 const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): Promise<string> => {
     if (ctx.mimetypes !== undefined) {
         const detected = await ctx.mimetypes.detect({ path: canonical });
-        return normalizeAutoTextMimetype(detected);
+        return MimetypeBinary.normalizeAutoTextMimetype(detected);
     }
-    return TEXT_PRIMITIVE_MIMETYPE;
+    return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
 };
 
 const resolveContained = async (pathname: string, root: string): Promise<ContainmentResult> => {
@@ -103,26 +101,26 @@ export default class File {
         if (member === undefined) return { status: 404, content: null, mimetype: null };
 
         const mimetype = await detectFileMimetype(resolved.canonical, ctx);
-        if (isBinaryMimetype(mimetype)) return { status: 415, content: null, mimetype };
+        if (MimetypeBinary.isBinaryMimetype(mimetype)) return { status: 415, content: null, mimetype };
 
         const content = await readFile(resolved.canonical, "utf8");
 
         // `<L>` scopes; body matches within the scope (slice-then-match).
         // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
-        //   JSON → sliceJsonItems (item index)
-        //   line-navigable → sliceLines (line index)
+        //   JSON → LineMarkerOps.sliceJsonItems (item index)
+        //   line-navigable → LineMarkerOps.sliceLines (line index)
         let workingContent = content;
         let workingStart: number | null = 1;
-        let workingMimetypeForSlice = TEXT_PRIMITIVE_MIMETYPE;
+        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
         if (statement.lineMarker !== null) {
-            if (isJsonMimetype(mimetype)) {
-                const sliced = sliceJsonItems(content, statement.lineMarker);
+            if (MimetypeBinary.isJsonMimetype(mimetype)) {
+                const sliced = LineMarkerOps.sliceJsonItems(content, statement.lineMarker);
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
                 workingContent = sliced.body ?? "[]";
                 workingStart = null;
                 workingMimetypeForSlice = "application/json";
             } else {
-                const sliced = sliceLines(content, statement.lineMarker);
+                const sliced = LineMarkerOps.sliceLines(content, statement.lineMarker);
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
                 workingContent = sliced.text ?? "";
                 workingStart = sliced.startLine ?? null;
@@ -132,15 +130,15 @@ export default class File {
             if (ctx.mimetypes === undefined) {
                 return { status: 500, content: null, mimetype };
             }
-            const matched = await matchAgainstContent(statement.body, workingContent, mimetype, ctx.mimetypes, workingStart ?? 1);
+            const matched = await Matcher.matchAgainstContent(statement.body, workingContent, mimetype, ctx.mimetypes, workingStart ?? 1);
             if (matched.status === 204) {
-                return { status: 204, content: "", mimetype: "application/json", startLine: null, matches: 0 };
+                return { status: 204, content: "", mimetype: "text/markdown", startLine: null, matches: 0 };
             }
             if (matched.status === 203) {
                 return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
             }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
-            return { status: 200, content: matched.body ?? "[]", mimetype: "application/json", startLine: null, matches: matched.matches };
+            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches };
         }
         if (statement.lineMarker !== null) {
             const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
@@ -192,19 +190,19 @@ export default class File {
         // Existing file's mimetype takes precedence; for new files, derive
         // from the proposed path so we don't accept binary writes via edit.
         const mimetype = await detectFileMimetype(canonical, ctx);
-        if (isBinaryMimetype(mimetype)) return { status: 415, error: `cannot EDIT binary mimetype \`${mimetype}\`` };
+        if (MimetypeBinary.isBinaryMimetype(mimetype)) return { status: 415, error: `cannot EDIT binary mimetype \`${mimetype}\`` };
 
         // `<L>` line marker dispatches on file mimetype: JSON →
-        // applyJsonItemEdit (structural item edit); otherwise →
-        // applyLineMarkerEdit (line edit). On a non-existent file,
+        // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
+        // LineMarkerOps.applyLineMarkerEdit (line edit). On a non-existent file,
         // body becomes content regardless of marker (per "Resolved
         // ambiguities" §3).
         const body = statement.body ?? "";
         let patched: string;
         if (statement.lineMarker !== null && fileExists) {
-            const result = isJsonMimetype(mimetype)
-                ? applyJsonItemEdit(original, statement.lineMarker, body)
-                : applyLineMarkerEdit(original, statement.lineMarker, body);
+            const result = MimetypeBinary.isJsonMimetype(mimetype)
+                ? LineMarkerOps.applyJsonItemEdit(original, statement.lineMarker, body)
+                : LineMarkerOps.applyLineMarkerEdit(original, statement.lineMarker, body);
             if (result.status !== 200) return { status: result.status, error: result.error };
             patched = result.result ?? "";
         } else {

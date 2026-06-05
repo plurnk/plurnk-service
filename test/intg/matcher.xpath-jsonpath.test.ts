@@ -1,9 +1,8 @@
-// xpath / jsonpath matcher coverage — asserts the EXPECTED behavior
-// against the matcher contract. These tests are expected to FAIL until
-// plurnk-mimetypes#3 lands and matcher.ts wires the dialect dispatch
-// through; the suite carrying red here is the honest signal that the
-// dialects aren't wired yet. When the sibling lands, every test in this
-// file activates with no code change here.
+// xpath / jsonpath matcher coverage — asserts the matcher contract: status
+// mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
+// result shape. Results render as `N:\t<value>` lines (text/markdown) — one
+// match per line, value bare for a single-line string and JSON-encoded
+// otherwise; the resolved-path is internal and not surfaced to the model.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,6 +27,10 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
+
+// Split a `N:\t<value>` result into its values (text after each tab).
+const rxValues = (content: string | null | undefined): string[] =>
+    (content ?? "").split("\n").map((line) => line.replace(/^\d+:\t/, ""));
 
 const setup = async () => {
     const db = await openMigrated();
@@ -62,14 +65,12 @@ test("jsonpath: $.field extracts a scalar value from a JSON entry", async () => 
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: unknown }>;
-        assert.equal(rows.length, 1);
-        assert.equal(rows[0].matched, "db.internal");
+        assert.equal(r.mimetype, "text/markdown");
+        assert.match(r.content ?? "", /^\d+:\tdb\.internal$/);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*].name wildcard extracts multiple values with `matching` paths", async () => {
+test("jsonpath: $.users[*].name wildcard extracts multiple values, one per line", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
@@ -80,17 +81,12 @@ test("jsonpath: $.users[*].name wildcard extracts multiple values with `matching
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: unknown; matching?: string }>;
-        assert.equal(rows.length, 2);
-        assert.deepEqual(rows.map((r) => r.matched), ["Alice", "Bob"]);
-        // Wildcard paths resolve in `matching` (jsonpath-plus bracket form).
-        assert.equal(rows[0].matching, "$['users'][0]['name']");
-        assert.equal(rows[1].matching, "$['users'][1]['name']");
+        assert.equal(r.mimetype, "text/markdown");
+        assert.deepEqual(rxValues(r.content), ["Alice", "Bob"]);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*] returns object values; `matched` holds the JSON shape", async () => {
+test("jsonpath: $.users[*] returns object values JSON-encoded on one line each", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
@@ -101,10 +97,10 @@ test("jsonpath: $.users[*] returns object values; `matched` holds the JSON shape
         );
 
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: { name: string; role: string } }>;
-        assert.equal(rows.length, 2);
-        assert.deepEqual(rows[0].matched, { name: "Alice", role: "admin" });
-        assert.deepEqual(rows[1].matched, { name: "Bob", role: "viewer" });
+        assert.deepEqual(rxValues(r.content), [
+            '{"name":"Alice","role":"admin"}',
+            '{"name":"Bob","role":"viewer"}',
+        ]);
     } finally { await db.close(); }
 });
 
@@ -119,9 +115,10 @@ test("jsonpath: filter expression `$.users[?(@.role==\"admin\")]` selects matchi
         );
 
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: { name: string } }>;
-        assert.equal(rows.length, 2);
-        assert.deepEqual(rows.map((r) => r.matched.name), ["Alice", "Carol"]);
+        const values = rxValues(r.content);
+        assert.equal(values.length, 2);
+        assert.match(values[0], /"name":"Alice"/);
+        assert.match(values[1], /"name":"Carol"/);
     } finally { await db.close(); }
 });
 
@@ -140,10 +137,6 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
 });
 
 test("jsonpath on text/markdown applies against the heading outline (no headings → 204)", async () => {
-    // plurnk-mimetypes 0.6.0: jsonpath on non-JSON mimetypes operates against
-    // the bare-leaves outline (e.g. markdown heading tree). A plain-text
-    // markdown body has an empty outline, so `$.field` resolves to no
-    // matches → 204. No 415 — outline jsonpath is well-defined for markdown.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/notes", "not actually json");
@@ -158,9 +151,7 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
 
 test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
     // mimetypes 0.10.0: jsonpath dispatches against deepJson — the marked
-    // document AST — not the old heading outline. `$..text` walks the tree,
-    // surfacing every text node (headings included), so the model addresses
-    // real structure instead of a flat heading index.
+    // document AST. `$..text` walks the tree, surfacing every text node.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/doc.md",
@@ -170,12 +161,11 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const matched = (JSON.parse(r.content ?? "[]") as Array<{ matched: unknown }>).map((m) => m.matched);
-        // Heading text nodes are reachable by walking the AST.
-        assert.ok(matched.includes("Intro"), `headings surfaced via deepJson; got ${JSON.stringify(matched).slice(0, 120)}`);
-        assert.ok(matched.includes("Installation"));
-        assert.ok(matched.includes("Usage"));
+        assert.equal(r.mimetype, "text/markdown");
+        const content = r.content ?? "";
+        assert.match(content, /Intro/);
+        assert.match(content, /Installation/);
+        assert.match(content, /Usage/);
     } finally { await db.close(); }
 });
 
@@ -184,7 +174,6 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 test("xpath: //h1/text() extracts text content from HTML entries", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
-        // .html suffix → text/html (tree-navigable, supports xpath).
         await seedJson(db, sessionId, runId, mimetypes, "/page.html",
             "<html><body><h1>Welcome</h1><p>intro</p><h1>About</h1></body></html>");
         const r = await new Known().read(
@@ -193,9 +182,8 @@ test("xpath: //h1/text() extracts text content from HTML entries", async () => {
         );
 
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: string; matching?: string }>;
-        assert.deepEqual(rows.map((r) => r.matched), ["Welcome", "About"]);
+        assert.equal(r.mimetype, "text/markdown");
+        assert.deepEqual(rxValues(r.content), ["Welcome", "About"]);
     } finally { await db.close(); }
 });
 
@@ -210,12 +198,11 @@ test("xpath: //element/@attr extracts attribute values", async () => {
         );
 
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
-        assert.deepEqual(rows.map((r) => r.matched), ["alice@x.com", "bob@x.com"]);
+        assert.deepEqual(rxValues(r.content), ["alice@x.com", "bob@x.com"]);
     } finally { await db.close(); }
 });
 
-test("xpath: //element node selection serializes XML into `matched`", async () => {
+test("xpath: //element node selection serializes XML into the value", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/page.html",
@@ -226,13 +213,10 @@ test("xpath: //element node selection serializes XML into `matched`", async () =
         );
 
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: string; matching?: string }>;
-        assert.equal(rows.length, 2);
-        assert.match(rows[0].matched, /<user>Alice<\/user>/);
-        assert.match(rows[1].matched, /<user>Bob<\/user>/);
-        // Per-instance discriminator on multi-match xpath.
-        assert.equal(rows[0].matching, "(//user)[1]");
-        assert.equal(rows[1].matching, "(//user)[2]");
+        const values = rxValues(r.content);
+        assert.equal(values.length, 2);
+        assert.match(values[0], /<user>Alice<\/user>/);
+        assert.match(values[1], /<user>Bob<\/user>/);
     } finally { await db.close(); }
 });
 
@@ -247,8 +231,7 @@ test("xpath with predicate: //user[@role='admin']", async () => {
         );
 
         assert.equal(r.status, 200);
-        const rows = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
-        assert.deepEqual(rows.map((r) => r.matched), ["Alice", "Carol"]);
+        assert.deepEqual(rxValues(r.content), ["Alice", "Carol"]);
     } finally { await db.close(); }
 });
 
@@ -268,9 +251,9 @@ test("xpath on a non-XML mimetype (text/markdown) → 415", async () => {
 // --- Composition with structural <L> on log:// ----------------------
 
 test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://", async () => {
-    // End-to-end the killer composition: dispatch a jsonpath matcher
-    // READ through the engine, then dispatch <<READ(log://N/M/K)<2>::READ
-    // to pick the 2nd match. Mirrors the regex version in Log.read.test.ts.
+    // End-to-end the killer composition: dispatch a jsonpath matcher READ
+    // through the engine, then <<READ(log://N/M/K)<2>::READ to pick the 2nd
+    // match line. One match per line is what makes <L> paging work.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, runId, 1, "compose-jsonpath");
@@ -293,17 +276,14 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://",
             sequence: 1, origin: "model",
         });
 
-        // Now structural <L><2> on the log entry — should return the 2nd
-        // match (Bob) as a single-element JSON array.
+        // Structural <L><2> on the log entry — picks the 2nd match line (Bob).
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "1/1/1")),
             lineMarker: { first: 2, last: null },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "application/json");
-        const items = JSON.parse(r.content ?? "") as Array<{ matched: string }>;
-        assert.equal(items.length, 1);
-        assert.equal(items[0].matched, "Bob");
+        assert.match(r.content ?? "", /Bob/);
+        assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
     } finally { await db.close(); }
 });
