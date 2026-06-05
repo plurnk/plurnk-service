@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { renderSystemContent, renderUserContent } from "../src/core/packet-wire.js";
+import PacketWire from "../src/core/packet-wire.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -310,8 +310,8 @@ const writePacketFiles = () => {
     for (const t of turns) {
         const packet = parseJson(t.packet, {});
         const padded = String(t.id).padStart(3, "0");
-        const systemMd = renderSystemContent(packet.system ?? {});
-        const userMd = renderUserContent(packet.user ?? {});
+        const systemMd = PacketWire.renderSystemContent(packet.system ?? {});
+        const userMd = PacketWire.renderUserContent(packet.user ?? {});
         const assistantText = packet.assistant?.content ?? "";
         const assistantRawJson = JSON.stringify(packet.assistantRaw ?? null, null, 2);
         const files = [

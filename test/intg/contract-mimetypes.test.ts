@@ -23,7 +23,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { renderSystemContent } from "../../src/core/packet-wire.js";
+import PacketWire from "../../src/core/packet-wire.ts";
 import Known from "../../src/schemes/Known.ts";
 import Log from "../../src/schemes/Log.ts";
 import File from "../../src/schemes/File.ts";

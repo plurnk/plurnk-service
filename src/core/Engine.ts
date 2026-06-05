@@ -19,7 +19,7 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.
-import { packetToWireMessages, measureBudgetSections, renderSystemContent, renderUserContent } from "./packet-wire.js";
+import PacketWire from "./packet-wire.ts";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
 // SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
@@ -939,9 +939,9 @@ export default class Engine {
             system: { system_definition, persona, index, log },
             user: { prompt, telemetry: { budget: "", errors: telemetryErrors }, system_requirements: requirements },
         };
-        const sections = measureBudgetSections(scratch, countTokens);
+        const sections = PacketWire.measureBudgetSections(scratch, countTokens);
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
-        const total = countTokens(renderSystemContent(scratch.system)) + countTokens(renderUserContent(scratch.user));
+        const total = countTokens(PacketWire.renderSystemContent(scratch.system)) + countTokens(PacketWire.renderUserContent(scratch.user));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total);
         const percent = ceiling === null ? null : Math.round((total / ceiling) * 100);
         const budget = tokensFree === null
@@ -952,8 +952,8 @@ export default class Engine {
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, persona, index, log };
         const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors }, system_requirements: requirements };
-        system.tokens = countTokens(renderSystemContent(system));
-        user.tokens = countTokens(renderUserContent(user));
+        system.tokens = countTokens(PacketWire.renderSystemContent(system));
+        user.tokens = countTokens(PacketWire.renderUserContent(user));
         return { system, user };
     }
 
@@ -1040,7 +1040,7 @@ export default class Engine {
     // implementation, no drift between wire and digest possible.
     // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
     #packetToWireMessages(packet: RequestPacket): ChatMessage[] {
-        return packetToWireMessages(packet) as ChatMessage[];
+        return PacketWire.packetToWireMessages(packet) as ChatMessage[];
     }
 
     // Complete the packet by adding the model's response. After this the

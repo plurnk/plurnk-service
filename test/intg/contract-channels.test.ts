@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Known from "../../src/schemes/Known.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { renderSystemContent } from "../../src/core/packet-wire.js";
+import PacketWire from "../../src/core/packet-wire.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, hideStmt } from "./_dsl.ts";
 
@@ -113,7 +113,7 @@ test("[§5.5-fragment-targeted-show-hide] fragment-targeted HIDE flips only the 
 
 test("[§5.5-wire-omits-suffix-on-default-channel] default channel renders path-only; non-default carries #name", () => {
     // Single-channel entry → path-only fence (no #channel suffix at all).
-    const single = renderSystemContent({
+    const single = PacketWire.renderSystemContent({
         system_definition: "SD",
         persona: "",
         index: [{
@@ -128,7 +128,7 @@ test("[§5.5-wire-omits-suffix-on-default-channel] default channel renders path-
     assert.doesNotMatch(single, /#body/, "default channel never carries its #name suffix");
 
     // Multi-channel entry → default (stdout) path-only, non-default (stderr) keeps #stderr.
-    const multi = renderSystemContent({
+    const multi = PacketWire.renderSystemContent({
         system_definition: "SD",
         persona: "",
         index: [{

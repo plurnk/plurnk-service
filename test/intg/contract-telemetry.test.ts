@@ -13,7 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { renderUserContent } from "../../src/core/packet-wire.js";
+import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
@@ -137,7 +137,7 @@ test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t s
         // Render the wire the model actually receives and assert the layout:
         // meta line (no snippet key) immediately followed by the error://<line>
         // fence wrapping the N:\t snippet.
-        const wire = renderUserContent(p2.user);
+        const wire = PacketWire.renderUserContent(p2.user);
         assert.match(wire, /# Plurnk System Errors/);
         // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
@@ -208,7 +208,7 @@ test("[§15.1-no-error-scheme] actionless parse failures route to telemetry, not
 
         // The only `error://` token the model ever sees is the snippet-fence
         // LOCATOR in the rendered telemetry, not an entry it can address.
-        const wire = renderUserContent(p2.user);
+        const wire = PacketWire.renderUserContent(p2.user);
         assert.ok(wire.includes("error://1"), "error://<line> is render-time locator context only");
     } finally { await db.close(); }
 });
