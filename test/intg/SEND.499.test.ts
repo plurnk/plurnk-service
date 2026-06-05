@@ -6,7 +6,7 @@ import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-gramm
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
-import { openSubscription, setChannelState, findActiveSubscription, closeSubscription } from "../../src/core/ChannelWrite.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
@@ -60,7 +60,7 @@ test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", 
     try {
         const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
         const entryId = r.entryId as number;
-        await openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
+        await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
         const cancelResult = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(cancelResult.status, 501);
@@ -84,7 +84,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
 
         const handle = "fake-stream-1";
         handles.set(handle, () => teardownCalls.push(handle));
-        const subId = await openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
 
         class FakeStream {
             static manifest = {
@@ -100,12 +100,12 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                     session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,
                 });
                 if (e === undefined) return { status: 404 };
-                const sub = await findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
+                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
                 if (sub === null) return { status: 404 };
                 const cb = handles.get(sub.handle);
                 if (cb !== undefined) cb();
-                await closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
-                await setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
+                await ChannelWrite.closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
+                await ChannelWrite.setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
                 return { status: 200 };
             }
         }
@@ -130,7 +130,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const channelState = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "closed", "channel state transitioned to closed");
 
-        const active = await findActiveSubscription(db, { runId, entryId });
+        const active = await ChannelWrite.findActiveSubscription(db, { runId, entryId });
         assert.equal(active, null, "no active subscription remaining");
     } finally { await db.close(); }
 });

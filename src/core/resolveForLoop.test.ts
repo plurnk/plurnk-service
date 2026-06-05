@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { resolveForLoop } from "./resolveForLoop.ts";
+import ResolveForLoop from "./resolveForLoop.ts";
 import { DEFAULT_LOOP_FLAGS } from "./types.ts";
 import type { LoopFlags, SchemeManifest } from "./types.ts";
 
@@ -31,7 +31,7 @@ test("resolveForLoop: schemes without manifest.flags are always active", () => {
         ["a", makeScheme("a", baseManifest("a"))],
         ["b", makeScheme("b", baseManifest("b"))],
     ]);
-    const active = resolveForLoop(m, DEFAULT_LOOP_FLAGS);
+    const active = ResolveForLoop.resolveForLoop(m, DEFAULT_LOOP_FLAGS);
     assert.deepEqual([...active].sort(), ["a", "b"]);
 });
 
@@ -39,7 +39,7 @@ test("resolveForLoop: handler without static manifest is always active", () => {
     const m = handlers([
         ["bare", makeScheme("bare")],
     ]);
-    const active = resolveForLoop(m, DEFAULT_LOOP_FLAGS);
+    const active = ResolveForLoop.resolveForLoop(m, DEFAULT_LOOP_FLAGS);
     assert.deepEqual([...active], ["bare"]);
 });
 
@@ -49,9 +49,9 @@ test("resolveForLoop: excludedInAsk filters in ask mode only", () => {
         ["readonly_safe", makeScheme("readonly_safe", baseManifest("readonly_safe", { excludedInAsk: true }))],
     ]);
     const askFlags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, mode: "ask" };
-    const askActive = resolveForLoop(m, askFlags);
+    const askActive = ResolveForLoop.resolveForLoop(m, askFlags);
     assert.deepEqual([...askActive], ["always"]);
-    const actActive = resolveForLoop(m, DEFAULT_LOOP_FLAGS);
+    const actActive = ResolveForLoop.resolveForLoop(m, DEFAULT_LOOP_FLAGS);
     assert.deepEqual([...actActive].sort(), ["always", "readonly_safe"]);
 });
 
@@ -60,7 +60,7 @@ test("resolveForLoop: requiresWeb filters under noWeb", () => {
         ["http", makeScheme("http", baseManifest("http", { requiresWeb: true }))],
     ]);
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noWeb: true };
-    assert.deepEqual([...resolveForLoop(m, flags)], []);
+    assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);
 });
 
 test("resolveForLoop: requiresInteraction filters under noInteraction", () => {
@@ -68,7 +68,7 @@ test("resolveForLoop: requiresInteraction filters under noInteraction", () => {
         ["ask_user", makeScheme("ask_user", baseManifest("ask_user", { requiresInteraction: true }))],
     ]);
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noInteraction: true };
-    assert.deepEqual([...resolveForLoop(m, flags)], []);
+    assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);
 });
 
 test("resolveForLoop: proposes filters under noProposals", () => {
@@ -76,5 +76,5 @@ test("resolveForLoop: proposes filters under noProposals", () => {
         ["exec", makeScheme("exec", baseManifest("exec", { proposes: true }))],
     ]);
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noProposals: true };
-    assert.deepEqual([...resolveForLoop(m, flags)], []);
+    assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);
 });

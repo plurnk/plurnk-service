@@ -5,7 +5,7 @@ import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
-import { resolveForLoop } from "./resolveForLoop.ts";
+import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
 
 type SchemeHandler = object;
@@ -35,8 +35,8 @@ export default class SchemeRegistry {
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
     // Active set under the given loop flags (SPEC §0.5). Delegates to
-    // plurnk-schemes' resolveForLoop utility.
+    // the in-tree ResolveForLoop utility.
     resolveForLoop(flags: LoopFlags): Set<string> {
-        return resolveForLoop(this.#handlers, flags);
+        return ResolveForLoop.resolveForLoop(this.#handlers, flags);
     }
 }

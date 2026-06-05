@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendToChannel, setChannelState } from "../../src/core/ChannelWrite.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
@@ -50,8 +50,8 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
-            await appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
-            await appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
             await flush();
 
             const events = captured() as Array<{ contentLength: number }>;
@@ -71,7 +71,7 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
             const captured = subscribeNotifications(ws, "stream/event");
             const entryId = await seedEntryWithChannel(db, { sessionId, content: "done", state: "active" });
 
-            await setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
+            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
             await flush();
 
             const events = captured() as Array<{ state: string }>;

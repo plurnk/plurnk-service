@@ -6,8 +6,8 @@ import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import Daemon from "../src/server/Daemon.ts";
-import { parseEnvExample, formatFlagsHelp } from "../src/core/EnvFlags.ts";
-import { loadActiveProvider } from "../src/core/ProviderInstantiate.ts";
+import EnvFlags from "../src/core/EnvFlags.ts";
+import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 
 const die = (code, message) => {
@@ -42,7 +42,7 @@ if (configFile !== null) loadEnv(configFile, true);
 loadEnv(".env", false);
 loadEnv(resolve(projectRoot, ".env.example"), false);
 
-const flagDescriptors = await parseEnvExample(resolve(projectRoot, ".env.example"));
+const flagDescriptors = await EnvFlags.parseEnvExample(resolve(projectRoot, ".env.example"));
 const flagOptions = {};
 for (const f of flagDescriptors) {
     flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };
@@ -50,7 +50,7 @@ for (const f of flagDescriptors) {
 
 const USAGE = `usage: plurnk-service [options] [migrate]
 
-${formatFlagsHelp(flagDescriptors)}
+${EnvFlags.formatFlagsHelp(flagDescriptors)}
 
   --config=<path>  layer additional env from <path>
   -h, --help       show this help
@@ -74,7 +74,7 @@ const start = async () => {
 
     const db = await openDb(dbPath);
     const alias = resolveActiveAlias();
-    const provider = alias === null ? null : await loadActiveProvider();
+    const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host, port });
     const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;

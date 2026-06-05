@@ -7,7 +7,7 @@
 // that run; the client loop closes on disconnect.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
-import { resolveGitMembership } from "../core/git-membership.ts";
+import GitMembership from "../core/git-membership.ts";
 
 export interface SessionRow {
     id: number;
@@ -67,7 +67,7 @@ export default class Envelope {
         // SPEC §14.3 D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
-        await resolveGitMembership(db, session.id, undefined);
+        await GitMembership.resolveGitMembership(db, session.id, undefined);
         const runName = Envelope.generateRunName();
         const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: session.id, name: runName, persona: null });
         if (run === undefined) throw new Error("createClientEnvelope: run insert returned no row");
@@ -149,7 +149,7 @@ export default class Envelope {
         if (row === undefined) throw new Error(`session ${sessionId} not found`);
         // SPEC §14.3 D4 — (re)establish git-ls-files membership when the workspace
         // pointer changes. No-op on null (headless) or non-git roots.
-        await resolveGitMembership(db, sessionId, undefined);
+        await GitMembership.resolveGitMembership(db, sessionId, undefined);
         return row.project_root;
     }
 

@@ -15,7 +15,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { readFile as readPath } from "node:fs/promises";
 import { PATHS } from "../../src/index.ts";
@@ -34,7 +34,7 @@ const SYSTEM_PROMPT = await readPath(PATHS.instructionsSystem, "utf8");
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
     if (alias === null) throw new Error("PLURNK_MODEL not set; demo tests require a configured model alias");
-    const provider = await loadActiveProvider();
+    const provider = await ProviderInstantiate.loadActiveProvider();
     if (provider === null) throw new Error("loadActiveProvider returned null");
     return provider;
 };

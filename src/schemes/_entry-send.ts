@@ -6,7 +6,7 @@ import type { SendStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
-import { findActiveSubscription } from "../core/ChannelWrite.ts";
+import ChannelWrite from "../core/ChannelWrite.ts";
 
 export interface SendResult {
     status: number;
@@ -60,7 +60,7 @@ export default class EntrySend {
             const { db, sessionId, runId } = ctx;
             const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
             if (entry === undefined) return { status: 404, error: "no entry at path" };
-            const subscription = await findActiveSubscription(db, { runId, entryId: entry.id });
+            const subscription = await ChannelWrite.findActiveSubscription(db, { runId, entryId: entry.id });
             if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
             return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
         }

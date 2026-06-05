@@ -17,10 +17,7 @@ import type { SendStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import {
-    appendToChannel, setChannelState,
-    openSubscription, closeSubscription, findActiveSubscription,
-} from "../../src/core/ChannelWrite.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
@@ -59,7 +56,7 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
         await (db.test_seed_channel as PrepMethod).run({
             entry_id: entryId, name: "data", content: "partial", mimetype: "text/plain", state: "active",
         });
-        const subId = await openSubscription(db, { runId, entryId, scheme: "fakestream", handle: HANDLE });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fakestream", handle: HANDLE });
 
         class FakeStream {
             static manifest = {
@@ -76,12 +73,12 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
                 });
                 if (e === undefined) return { status: 404 };
                 // Registry lookup — the whole point of §7.1: route by (run, entry) to scheme+handle.
-                const sub = await findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
+                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
                 if (sub === null) return { status: 404 };
                 if (sub.scheme !== "fakestream") return { status: 501 };
                 teardownFns.get(sub.handle)?.();
-                await closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
-                await setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
+                await ChannelWrite.closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
+                await ChannelWrite.setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
                 return { status: 200 };
             }
         }
@@ -101,7 +98,7 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
         const sub = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
         assert.ok(sub?.closed_at !== null, "subscription registry row marked closed");
         assert.equal(sub?.close_status, 499, "registry row closed at 499");
-        assert.equal(await findActiveSubscription(db, { runId, entryId }), null, "no active subscription remains");
+        assert.equal(await ChannelWrite.findActiveSubscription(db, { runId, entryId }), null, "no active subscription remains");
 
         const channel = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" });
         assert.equal(channel?.state, "closed", "channel transitioned active → closed");
@@ -187,8 +184,8 @@ test("[§7.8-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine
         await (db.test_seed_channel as PrepMethod).run({
             entry_id: entryId, name: "under", content: "", mimetype: "text/plain", state: "active",
         });
-        await appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
-        await appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
         const stored = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "under" });
         assert.equal(stored?.content.length, 2 * 1024 * 1024, "2 MiB stored verbatim — no engine cap below 100 MiB");
     } finally { await db.close(); }
@@ -210,9 +207,9 @@ test("[§7.9-stream-event-fires-on-chunk] daemon fires stream/event per chunk wi
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
             // Three separate chunks → three separate events, fired AS content grows.
-            await appendToChannel(db, { entryId, channel: "body", chunk: "aa", notify });
-            await appendToChannel(db, { entryId, channel: "body", chunk: "bbb", notify });
-            await appendToChannel(db, { entryId, channel: "body", chunk: "c", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "aa", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "bbb", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "c", notify });
             await flush();
 
             const events = captured() as Array<{ entryId: number; channel: string; state: string; contentLength: number }>;
@@ -252,8 +249,8 @@ test("[§7-no-engine-transaction-abstraction] engine has no connection/transacti
         // the loop, there is no transaction to open/commit.
         const { sessionId } = await seedEnvelope(db, `no-tx-${crypto.randomUUID()}`);
         const entryId = await seedEntryWithChannel(db, { sessionId, content: "", state: "active" });
-        await appendToChannel(db, { entryId, channel: "body", chunk: "chunk-1" });
-        await appendToChannel(db, { entryId, channel: "body", chunk: "chunk-2" });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-1" });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-2" });
         const row = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "chunk-1chunk-2", "content accumulated by scheme-direct appends, no engine transaction");
         assert.equal(row?.state, "active", "engine treats the growing channel as plain static storage");
@@ -276,7 +273,7 @@ test("[§13.6-stream-event-on-channel-change] state transition fires metadata-on
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
-            await setChannelState(db, { entryId, channel: "body", state: "closed", notify });
+            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify });
             await flush();
 
             const events = captured() as Array<Record<string, unknown>>;

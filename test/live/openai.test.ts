@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { PATHS } from "../../src/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
@@ -33,7 +33,7 @@ const buildProvider = async (): Promise<Provider> => {
             "Plus provider-specific env (OPENAI_BASE_URL etc).",
         );
     }
-    const provider = await loadActiveProvider();
+    const provider = await ProviderInstantiate.loadActiveProvider();
     if (provider === null) throw new Error("loadActiveProvider returned null despite resolveActiveAlias succeeding");
     return provider;
 };

@@ -12,7 +12,7 @@ import { PATHS } from "../index.ts";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { discoverPlugins, loadPlugin } from "../core/PluginLoader.ts";
+import PluginLoader from "../core/PluginLoader.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
@@ -627,10 +627,10 @@ export default class Daemon {
         // bin script). Mimetypes self-discovers — Mimetypes.ready() in start()
         // scans @plurnk/plurnk-mimetypes-* packages via the framework's own
         // discover().
-        const plugins = await discoverPlugins(this.#nodeModulesPath);
+        const plugins = await PluginLoader.discoverPlugins(this.#nodeModulesPath);
         for (const plugin of plugins) {
             if (plugin.manifest.kind !== "scheme") continue;
-            const instance = await loadPlugin(plugin);
+            const instance = await PluginLoader.loadPlugin(plugin);
             this.#schemes.register(plugin.manifest.name, instance as object);
         }
     }

@@ -3,13 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    appendToChannel,
-    setChannelState,
-    openSubscription,
-    closeSubscription,
-    findActiveSubscription,
-} from "../../src/core/ChannelWrite.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun } from "./_helpers.ts";
@@ -31,7 +25,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
 test("appendToChannel: appends chunk to existing channel content", async () => {
     const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "hello");
     try {
-        await appendToChannel(db, { entryId, channel: "body", chunk: " world" });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: " world" });
         const row = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "hello world");
     } finally { await db.close(); }
@@ -40,7 +34,7 @@ test("appendToChannel: appends chunk to existing channel content", async () => {
 test("appendToChannel: no-op on nonexistent channel (silent)", async () => {
     const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "hello");
     try {
-        await appendToChannel(db, { entryId, channel: "nonexistent", chunk: "x" });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "nonexistent", chunk: "x" });
         const count = (await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n;
         assert.equal(count, 1, "no new channel created");
     } finally { await db.close(); }
@@ -50,7 +44,7 @@ test("appendToChannel: invokes notify with current state + content length", asyn
     const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
     try {
         const events: Array<{ sessionId: number; event: StreamEventPayload }> = [];
-        await appendToChannel(db, { entryId, channel: "body", chunk: "!", notify: (sid, ev) => events.push({ sessionId: sid, event: ev }) });
+        await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify: (sid, ev) => events.push({ sessionId: sid, event: ev }) });
         assert.equal(events.length, 1);
         assert.equal(events[0].sessionId, sessionId);
         assert.equal(events[0].event.entryId, entryId);
@@ -64,7 +58,7 @@ test("setChannelState: transitions state and notifies", async () => {
     const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "data", "active");
     try {
         const events: StreamEventPayload[] = [];
-        await setChannelState(db, { entryId, channel: "body", state: "closed", notify: (_sid, ev) => events.push(ev) });
+        await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify: (_sid, ev) => events.push(ev) });
         const state = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "body" }))?.state;
         assert.equal(state, "closed");
         assert.equal(events.length, 1);
@@ -76,7 +70,7 @@ test("setChannelState: accepts all four valid states", async () => {
     const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "x", "active");
     try {
         for (const s of ["static", "active", "closed", "errored"] as const) {
-            await setChannelState(db, { entryId, channel: "body", state: s });
+            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: s });
             const got = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "body" }))?.state;
             assert.equal(got, s);
         }
@@ -86,7 +80,7 @@ test("setChannelState: accepts all four valid states", async () => {
 test("openSubscription: inserts a row and returns its id", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "abc-123" });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "abc-123" });
         assert.ok(subId > 0);
         const row = await (db.test_get_subscription as PrepMethod).get<{ scheme: string; handle: string; closed_at: string | null }>({ id: subId });
         assert.equal(row?.scheme, "sse");
@@ -98,9 +92,9 @@ test("openSubscription: inserts a row and returns its id", async () => {
 test("openSubscription: rejects duplicate active subscription for same (run, entry)", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h1" });
+        await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h1" });
         await assert.rejects(
-            () => openSubscription(db, { runId, entryId, scheme: "sse", handle: "h2" }),
+            () => ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h2" }),
             /UNIQUE constraint/i,
         );
     } finally { await db.close(); }
@@ -109,9 +103,9 @@ test("openSubscription: rejects duplicate active subscription for same (run, ent
 test("openSubscription: allows new subscription after previous one is closed", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const sub1 = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h1" });
-        await closeSubscription(db, { subscriptionId: sub1, status: 200 });
-        const sub2 = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h2" });
+        const sub1 = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h1" });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: sub1, status: 200 });
+        const sub2 = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h2" });
         assert.ok(sub2 > sub1);
     } finally { await db.close(); }
 });
@@ -119,8 +113,8 @@ test("openSubscription: allows new subscription after previous one is closed", a
 test("closeSubscription: sets closed_at + close_status", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
-        await closeSubscription(db, { subscriptionId: subId, status: 499 });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 499 });
         const row = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string; close_status: number }>({ id: subId });
         assert.ok(row?.closed_at !== null);
         assert.equal(row?.close_status, 499);
@@ -130,10 +124,10 @@ test("closeSubscription: sets closed_at + close_status", async () => {
 test("closeSubscription: idempotent — already-closed subscription is a no-op", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
-        await closeSubscription(db, { subscriptionId: subId, status: 200 });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 200 });
         const first = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string }>({ id: subId });
-        await closeSubscription(db, { subscriptionId: subId, status: 499 });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 499 });
         const second = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string; close_status: number }>({ id: subId });
         assert.equal(second?.closed_at, first?.closed_at, "closed_at unchanged");
         assert.equal(second?.close_status, 200, "close_status unchanged");
@@ -143,8 +137,8 @@ test("closeSubscription: idempotent — already-closed subscription is a no-op",
 test("findActiveSubscription: returns active sub for (run, entry)", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h-abc" });
-        const found = await findActiveSubscription(db, { runId, entryId });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h-abc" });
+        const found = await ChannelWrite.findActiveSubscription(db, { runId, entryId });
         assert.ok(found !== null);
         assert.equal(found.id, subId);
         assert.equal(found.scheme, "sse");
@@ -155,9 +149,9 @@ test("findActiveSubscription: returns active sub for (run, entry)", async () => 
 test("findActiveSubscription: returns null when nothing active", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
-        await closeSubscription(db, { subscriptionId: subId, status: 200 });
-        const found = await findActiveSubscription(db, { runId, entryId });
+        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: subId, status: 200 });
+        const found = await ChannelWrite.findActiveSubscription(db, { runId, entryId });
         assert.equal(found, null);
     } finally { await db.close(); }
 });
@@ -165,7 +159,7 @@ test("findActiveSubscription: returns null when nothing active", async () => {
 test("findActiveSubscription: returns null for unknown (run, entry)", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const found = await findActiveSubscription(db, { runId, entryId });
+        const found = await ChannelWrite.findActiveSubscription(db, { runId, entryId });
         assert.equal(found, null);
     } finally { await db.close(); }
 });
@@ -173,7 +167,7 @@ test("findActiveSubscription: returns null for unknown (run, entry)", async () =
 test("subscriptions CASCADE on entry delete", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
         await (db.test_delete_entry as PrepMethod).run({ id: entryId });
         const count = (await (db.test_count_subscriptions_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n;
         assert.equal(count, 0);
@@ -183,7 +177,7 @@ test("subscriptions CASCADE on entry delete", async () => {
 test("subscriptions CASCADE on run delete", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sse", handle: "h" });
         await (db.test_delete_run as PrepMethod).run({ id: runId });
         const count = (await (db.test_count_subscriptions_for_run as PrepMethod).get<{ n: number }>({ run_id: runId }))?.n;
         assert.equal(count, 0);

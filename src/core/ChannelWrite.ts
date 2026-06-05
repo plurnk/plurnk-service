@@ -56,57 +56,59 @@ interface ChannelMetaRow {
     contentLength: number;
 }
 
-const channelMeta = (db: Db) => db.channel_meta as PrepMethod;
-const appendStmt = (db: Db) => db.append_to_channel as PrepMethod;
-const stateStmt = (db: Db) => db.set_channel_state as PrepMethod;
-const openSubStmt = (db: Db) => db.open_subscription as PrepMethod;
-const closeSubStmt = (db: Db) => db.close_subscription as PrepMethod;
-const findActiveStmt = (db: Db) => db.find_active_subscription as PrepMethod;
+export default class ChannelWrite {
+    static #channelMeta(db: Db): PrepMethod { return db.channel_meta as PrepMethod; }
+    static #appendStmt(db: Db): PrepMethod { return db.append_to_channel as PrepMethod; }
+    static #stateStmt(db: Db): PrepMethod { return db.set_channel_state as PrepMethod; }
+    static #openSubStmt(db: Db): PrepMethod { return db.open_subscription as PrepMethod; }
+    static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
+    static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
 
-export const appendToChannel = async (
-    db: Db,
-    { entryId, channel, chunk, notify }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify },
-): Promise<void> => {
-    const result = await appendStmt(db).run({ chunk, entry_id: entryId, channel });
-    if (result.changes === 0) return;
-    if (notify === undefined) return;
-    const meta = await channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
-    if (meta === undefined) return;
-    notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
-};
+    static async appendToChannel(
+        db: Db,
+        { entryId, channel, chunk, notify }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify },
+    ): Promise<void> {
+        const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
+        if (result.changes === 0) return;
+        if (notify === undefined) return;
+        const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
+        if (meta === undefined) return;
+        notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
+    }
 
-export const setChannelState = async (
-    db: Db,
-    { entryId, channel, state, notify }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify },
-): Promise<void> => {
-    const result = await stateStmt(db).run({ state, entry_id: entryId, channel });
-    if (result.changes === 0) return;
-    if (notify === undefined) return;
-    const meta = await channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
-    if (meta === undefined) return;
-    notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
-};
+    static async setChannelState(
+        db: Db,
+        { entryId, channel, state, notify }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify },
+    ): Promise<void> {
+        const result = await ChannelWrite.#stateStmt(db).run({ state, entry_id: entryId, channel });
+        if (result.changes === 0) return;
+        if (notify === undefined) return;
+        const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
+        if (meta === undefined) return;
+        notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
+    }
 
-export const openSubscription = async (
-    db: Db,
-    { runId, entryId, scheme, handle }: { runId: number; entryId: number; scheme: string; handle: string },
-): Promise<number> => {
-    const row = await openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle });
-    if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
-    return row.id;
-};
+    static async openSubscription(
+        db: Db,
+        { runId, entryId, scheme, handle }: { runId: number; entryId: number; scheme: string; handle: string },
+    ): Promise<number> {
+        const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle });
+        if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
+        return row.id;
+    }
 
-export const closeSubscription = async (
-    db: Db,
-    { subscriptionId, status }: { subscriptionId: number; status: number },
-): Promise<void> => {
-    await closeSubStmt(db).run({ status, subscription_id: subscriptionId });
-};
+    static async closeSubscription(
+        db: Db,
+        { subscriptionId, status }: { subscriptionId: number; status: number },
+    ): Promise<void> {
+        await ChannelWrite.#closeSubStmt(db).run({ status, subscription_id: subscriptionId });
+    }
 
-export const findActiveSubscription = async (
-    db: Db,
-    { runId, entryId }: { runId: number; entryId: number },
-): Promise<{ id: number; scheme: string; handle: string } | null> => {
-    const row = await findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ run_id: runId, entry_id: entryId });
-    return row ?? null;
-};
+    static async findActiveSubscription(
+        db: Db,
+        { runId, entryId }: { runId: number; entryId: number },
+    ): Promise<{ id: number; scheme: string; handle: string } | null> {
+        const row = await ChannelWrite.#findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ run_id: runId, entry_id: entryId });
+        return row ?? null;
+    }
+}

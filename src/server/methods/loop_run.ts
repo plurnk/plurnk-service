@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import type MethodRegistry from "../MethodRegistry.ts";
 import { PATHS } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
-import { instantiateProvider } from "../../core/ProviderInstantiate.ts";
+import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
@@ -75,7 +75,7 @@ export default class LoopRunMethod {
                     if (target === undefined) {
                         throw new Error(`loop.run: unknown alias '${p.alias}'; configure PLURNK_MODEL_${p.alias.toUpperCase()}=<provider>/<model>`);
                     }
-                    provider = await instantiateProvider(target);
+                    provider = await ProviderInstantiate.instantiateProvider(target);
                 }
                 if (provider === null) {
                     return { status: 501, error: "no provider configured at the daemon and no alias override supplied" };

@@ -17,7 +17,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { PATHS } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
@@ -38,7 +38,7 @@ const REQUIREMENTS = await readFile(PATHS.defaultRequirements, "utf8");
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
     if (alias === null) throw new Error("PLURNK_MODEL not set; live tests require a configured model alias");
-    const provider = await loadActiveProvider();
+    const provider = await ProviderInstantiate.loadActiveProvider();
     if (provider === null) throw new Error("loadActiveProvider returned null");
     return provider;
 };

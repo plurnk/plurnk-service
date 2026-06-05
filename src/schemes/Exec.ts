@@ -9,10 +9,7 @@ import EntryFind from "./_entry-find.ts";
 import type { ReadResult, ShowHideResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import {
-    appendToChannel, setChannelState,
-    openSubscription, closeSubscription,
-} from "../core/ChannelWrite.ts";
+import ChannelWrite from "../core/ChannelWrite.ts";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
@@ -145,7 +142,7 @@ export default class Exec {
         const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, "exec");
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
-        const subscriptionId = await openSubscription(ctx.db, {
+        const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
             runId: ctx.runId, entryId, scheme: "exec",
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
         });
@@ -194,10 +191,10 @@ export default class Exec {
         try {
             const result = await subprocessExecutor.run({
                 runtime, command, cwd, signal,
-                write: (channel, chunk) => enqueue(() => appendToChannel(db, {
+                write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                     entryId, channel, chunk, notify: ctx.streamEventNotify,
                 })),
-                setState: (channel, state: ChannelState) => enqueue(() => setChannelState(db, {
+                setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
                     entryId, channel, state, notify: ctx.streamEventNotify,
                 })),
                 emit: (event) => {
@@ -213,7 +210,7 @@ export default class Exec {
             exitLabel = closeStatus === 499 ? "aborted"
                 : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
                 : `exit ${exitCode}`;
-            await closeSubscription(db, { subscriptionId, status: closeStatus });
+            await ChannelWrite.closeSubscription(db, { subscriptionId, status: closeStatus });
 
             const stdoutMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
             const stderrMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });

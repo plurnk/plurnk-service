@@ -11,7 +11,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
-import { indexGitMembership } from "./git-membership.ts";
+import GitMembership from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
@@ -688,7 +688,7 @@ export default class Engine {
         // (disk → body channel + visibility) so they surface in the index
         // below. No-ops on headless / non-git sessions. Runs BEFORE the
         // manifest + index build so this turn's packet reflects them.
-        await indexGitMembership(systemCtx);
+        await GitMembership.indexGitMembership(systemCtx);
 
         await EntryCrud.writeEntry("manifest.json", {
             channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx, this.#previewBudget), mimetype: "application/json" } },
