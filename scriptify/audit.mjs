@@ -37,7 +37,8 @@ export default class DirectiveAudit {
 
     static #classifyModule(c) {
         if (/^export default class\b/m.test(c)) return "class";
-        const arrow = /^export const [^=\n]+=\s*(async\s+)?\(?[^=\n]*\)?\s*(:[^=]+)?=>/m.test(c);
+        const arrow = /^export const \w+[^=\n]*=\s*(async\s+)?\(/m.test(c)
+            || /^export const \w+\s*=\s*(async\s+)?[\w$]+\s*=>/m.test(c);
         const fn = /^export (async )?function\b/m.test(c) || /^export default (?!class\b)(async\s+)?function\b/m.test(c);
         const value = /^export (const|function|async function)\b/m.test(c) || /^export default (?!class\b)/m.test(c);
         if (arrow || fn) return "function-module";

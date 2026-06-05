@@ -18,7 +18,7 @@ import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { readFile as readPath } from "node:fs/promises";
-import { PATHS } from "../../src/index.ts";
+import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 import { seedDemoFixture } from "./_fixture.ts";
@@ -29,7 +29,7 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
     return m;
 };
 
-const SYSTEM_PROMPT = await readPath(PATHS.instructionsSystem, "utf8");
+const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();

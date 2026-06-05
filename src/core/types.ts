@@ -37,10 +37,10 @@ export interface LoopFlags {
     readonly noProposals: boolean;
 }
 
-export const DEFAULT_LOOP_FLAGS: LoopFlags = {
+export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
     mode: "act",
     yolo: false,
     noWeb: false,
     noInteraction: false,
     noProposals: false,
-};
+});

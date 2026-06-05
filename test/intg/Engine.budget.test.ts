@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import Engine, { computeCeiling } from "../../src/core/Engine.ts";
+import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
@@ -9,12 +9,12 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
 test("computeCeiling: dual-mode — <=1 is a window ratio, >1 an absolute wall capped at the window", () => {
-    assert.equal(computeCeiling(1000, 0.9), 900, "ratio");
-    assert.equal(computeCeiling(32768, 0.9), 29491, "ratio, floored");
-    assert.equal(computeCeiling(32768, 1500), 1500, "absolute wall under the window");
-    assert.equal(computeCeiling(1000, 1500), 1000, "absolute wall capped at the real window");
-    assert.equal(computeCeiling(null, 1500), 1500, "absolute wall holds with no reported window");
-    assert.equal(computeCeiling(null, 0.9), null, "ratio mode needs a window");
+    assert.equal(Engine.computeCeiling(1000, 0.9), 900, "ratio");
+    assert.equal(Engine.computeCeiling(32768, 0.9), 29491, "ratio, floored");
+    assert.equal(Engine.computeCeiling(32768, 1500), 1500, "absolute wall under the window");
+    assert.equal(Engine.computeCeiling(1000, 1500), 1000, "absolute wall capped at the real window");
+    assert.equal(Engine.computeCeiling(null, 1500), 1500, "absolute wall holds with no reported window");
+    assert.equal(Engine.computeCeiling(null, 0.9), null, "ratio mode needs a window");
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({

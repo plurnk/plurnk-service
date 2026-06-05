@@ -36,50 +36,7 @@ export type {
     ShowHideResult,
 } from "./schemes/_entry-ops.ts";
 
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-
-// Package-relative paths to non-code artifacts.
-//
-// `migrations` ships in this package's tarball.
-// `instructionsSystem` resolves to `plurnk.md` IN THE GRAMMAR PACKAGE — single
-// source of truth lives upstream. Plurnk-service doesn't carry its own copy;
-// the grammar agent owns the prose.
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
-
-// Resolve the default persona file path: PLURNK_PERSONA env (absolute or
-// relative-to-package-root) → `persona.md` in package root as the
-// hardcoded fallback. The env var lets operators point at a custom
-// persona without forking the file in PACKAGE_ROOT.
-const resolveDefaultPersona = (): string => {
-    const env = process.env.PLURNK_PERSONA;
-    if (typeof env === "string" && env.length > 0) {
-        return resolve(PACKAGE_ROOT, env);
-    }
-    return resolve(PACKAGE_ROOT, "persona.md");
-};
-
-// Same shape as resolveDefaultPersona: `PLURNK_REQUIREMENTS` env (absolute
-// or relative-to-package-root) overrides the in-package `requirements.md`.
-const resolveDefaultRequirements = (): string => {
-    const env = process.env.PLURNK_REQUIREMENTS;
-    if (typeof env === "string" && env.length > 0) {
-        return resolve(PACKAGE_ROOT, env);
-    }
-    return resolve(PACKAGE_ROOT, "requirements.md");
-};
-
-export const PATHS = {
-    migrations: resolve(PACKAGE_ROOT, "migrations"),
-    instructionsSystem: resolve(GRAMMAR_ROOT, "plurnk.md"),
-    // packet.system.persona DEFAULT. Cascade at packet-build time is
-    //   loops.persona > runs.persona > sessions.persona > this file
-    // RPC overrides on loop.run / session.attach / session.create populate
-    // the three persistence layers; this file is the final fallback.
-    defaultPersona: resolveDefaultPersona(),
-    // packet.user.system_requirements DEFAULT. Static contract appended at
-    // the end of the user packet — names rules the model has to honor that
-    // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").
-    defaultRequirements: resolveDefaultRequirements(),
-};
+// Package-relative paths to non-code artifacts (migrations, the upstream
+// grammar's plurnk.md, default persona/requirements). Resolution lives in the
+// Paths class so this entry stays a pure re-export barrel.
+export { default as Paths } from "./Paths.ts";

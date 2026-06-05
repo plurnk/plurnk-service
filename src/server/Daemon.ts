@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { WakeRunPayload } from "../core/ChannelWrite.ts";
-import { PATHS } from "../index.ts";
+import { Paths } from "../index.ts";
 import Engine from "../core/Engine.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -565,8 +565,8 @@ export default class Daemon {
         }
 
         try {
-            const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
-            const personaText = await readFile(PATHS.defaultPersona, "utf8");
+            const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+            const personaText = await readFile(Paths.defaultPersona, "utf8");
 
             // Unified path: this.inject decides whether to write a prompt
             // entry for an active drain's next turn (no-op-active-loop) or

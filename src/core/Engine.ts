@@ -55,14 +55,6 @@ const readCeiling = (): number => {
     return n;
 };
 
-export const computeCeiling = (contextSize: number | null, config: number): number | null => {
-    // Absolute wall (config > 1) is window-independent — the point of the >1
-    // mode is to pin a ceiling even when the provider reports no window; cap at
-    // the real window when one is known. Ratio mode needs a window to scale.
-    if (config > 1) return contextSize === null ? Math.floor(config) : Math.min(Math.floor(config), contextSize);
-    return contextSize === null ? null : Math.floor(contextSize * config);
-};
-
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_MAX_STRIKES;
     if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
@@ -134,7 +126,7 @@ type RequestPacket = {
         telemetry: { budget: string; errors: object[] };
         // Static per-turn rules block, rendered at the bottom of the user
         // packet as `# Plurnk System Requirements`. Caller sources from
-        // PATHS.defaultRequirements (PLURNK_REQUIREMENTS env override →
+        // Paths.defaultRequirements (PLURNK_REQUIREMENTS env override →
         // requirements.md package default).
         system_requirements: string;
     };
@@ -305,38 +297,46 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     return base;
 };
 
-// Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
-// within a turn doesn't matter — we want the SET of activities.
-export const fingerprintTurn = (ops: ReadonlyArray<PlurnkStatement>): string => {
-    return ops.map(fingerprintOp).toSorted().join(",");
-};
-
-// Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
-// check whether the last k*minCycles entries form minCycles repetitions of the
-// same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny. Rummy
-// parallel: src/plugins/error/error.js detectCycle.
-export const detectCycle = (
-    history: ReadonlyArray<string>,
-    minCycles: number,
-    maxCyclePeriod: number,
-): { detected: false } | { detected: true; period: number; cycles: number } => {
-    for (let k = 1; k <= maxCyclePeriod; k++) {
-        const needed = k * minCycles;
-        if (history.length < needed) continue;
-        const tail = history.slice(-needed);
-        const cycle = tail.slice(0, k);
-        let match = true;
-        outer: for (let rep = 0; rep < minCycles; rep++) {
-            for (let j = 0; j < k; j++) {
-                if (tail[rep * k + j] !== cycle[j]) { match = false; break outer; }
-            }
-        }
-        if (match) return { detected: true, period: k, cycles: minCycles };
-    }
-    return { detected: false };
-};
-
 export default class Engine {
+    static computeCeiling(contextSize: number | null, config: number): number | null {
+        // Absolute wall (config > 1) is window-independent — the point of the >1
+        // mode is to pin a ceiling even when the provider reports no window; cap at
+        // the real window when one is known. Ratio mode needs a window to scale.
+        if (config > 1) return contextSize === null ? Math.floor(config) : Math.min(Math.floor(config), contextSize);
+        return contextSize === null ? null : Math.floor(contextSize * config);
+    }
+
+    // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
+    // within a turn doesn't matter — we want the SET of activities.
+    static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>): string {
+        return ops.map(fingerprintOp).toSorted().join(",");
+    }
+
+    // Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
+    // check whether the last k*minCycles entries form minCycles repetitions of the
+    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny. Rummy
+    // parallel: src/plugins/error/error.js detectCycle.
+    static detectCycle(
+        history: ReadonlyArray<string>,
+        minCycles: number,
+        maxCyclePeriod: number,
+    ): { detected: false } | { detected: true; period: number; cycles: number } {
+        for (let k = 1; k <= maxCyclePeriod; k++) {
+            const needed = k * minCycles;
+            if (history.length < needed) continue;
+            const tail = history.slice(-needed);
+            const cycle = tail.slice(0, k);
+            let match = true;
+            outer: for (let rep = 0; rep < minCycles; rep++) {
+                for (let j = 0; j < k; j++) {
+                    if (tail[rep * k + j] !== cycle[j]) { match = false; break outer; }
+                }
+            }
+            if (match) return { detected: true, period: k, cycles: minCycles };
+        }
+        return { detected: false };
+    }
+
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
@@ -467,7 +467,7 @@ export default class Engine {
         persona?: string;
         // packet.user.system_requirements content. Rendered at the end of
         // the user packet under `# Plurnk System Requirements`. Caller
-        // sources from PATHS.defaultRequirements.
+        // sources from Paths.defaultRequirements.
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
         maxTurns?: number;
@@ -549,7 +549,7 @@ export default class Engine {
             // reason for treating the turn as a failure, not its own alert.
             const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
             state.history.push(turn.fingerprint);
-            const cycle = detectCycle(state.history, minCycles, maxCyclePeriod);
+            const cycle = Engine.detectCycle(state.history, minCycles, maxCyclePeriod);
             if (cycle.detected) state.turnErrors++;
             // SPEC §14.4: a non-soft grinder fire counts toward the strike streak.
             if (turn.budgetStruck) state.turnErrors++;
@@ -820,7 +820,7 @@ export default class Engine {
         // struck turn; the model just sees an empty packet next turn.
         // Per SPEC §15.1 gamification policy.
 
-        return { turnId, status: turnStatus, statuses, fingerprint: fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false };
+        return { turnId, status: turnStatus, statuses, fingerprint: Engine.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false };
     }
 
     // Split the wire-level ProviderResponse into the two destinations:
@@ -886,11 +886,11 @@ export default class Engine {
         initialMessages: ChatMessage[];
         // Fallback persona content — used only when no per-loop, per-run, or
         // per-session override exists in the database (issue #150 cascade).
-        // Caller sources this from PATHS.defaultPersona (PLURNK_PERSONA env
+        // Caller sources this from Paths.defaultPersona (PLURNK_PERSONA env
         // override → persona.md package default).
         persona: string;
         // Static per-turn requirements block. Caller sources from
-        // PATHS.defaultRequirements. No DB cascade — same string every turn.
+        // Paths.defaultRequirements. No DB cascade — same string every turn.
         requirements: string;
         runId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries
@@ -934,7 +934,7 @@ export default class Engine {
         // included — not a serialized approximation. ceiling is the provider's
         // window × PLURNK_BUDGET_CEILING (null when no window is reported →
         // headline omitted, section lines still shown).
-        const ceiling = computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
             system: { system_definition, persona, index, log },
             user: { prompt, telemetry: { budget: "", errors: telemetryErrors }, system_requirements: requirements },
@@ -991,7 +991,7 @@ export default class Engine {
         runId: number; loopId: number; turnId: number; sessionId: number;
         turnNumber: number; rebuild: (telemetryErrors: object[]) => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
-        const ceiling = computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const measure = (p: RequestPacket): number => p.system.tokens + p.user.tokens;
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 

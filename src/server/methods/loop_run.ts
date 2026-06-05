@@ -4,7 +4,7 @@
 
 import { readFile } from "node:fs/promises";
 import type MethodRegistry from "../MethodRegistry.ts";
-import { PATHS } from "../../index.ts";
+import { Paths } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -82,8 +82,8 @@ export default class LoopRunMethod {
                 }
 
                 const { sessionId, runId } = ctx.session;
-                const systemPrompt = await readFile(PATHS.instructionsSystem, "utf8");
-                const persona = await readFile(PATHS.defaultPersona, "utf8");
+                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+                const persona = await readFile(Paths.defaultPersona, "utf8");
 
                 // Delegate to the daemon's unified inject surface. Active-drain
                 // → write prompt entry for next turn (returns immediately).

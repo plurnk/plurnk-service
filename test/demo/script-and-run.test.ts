@@ -19,7 +19,7 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import { PATHS } from "../../src/index.ts";
+import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
@@ -29,9 +29,9 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
     return m;
 };
 
-const SYSTEM_PROMPT = await readPath(PATHS.instructionsSystem, "utf8");
-const PERSONA = await readPath(PATHS.defaultPersona, "utf8");
-const REQUIREMENTS = await readPath(PATHS.defaultRequirements, "utf8");
+const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
+const PERSONA = await readPath(Paths.defaultPersona, "utf8");
+const REQUIREMENTS = await readPath(Paths.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
