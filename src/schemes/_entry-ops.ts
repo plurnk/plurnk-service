@@ -257,71 +257,47 @@ export default class EntryOps {
 
         const { db, sessionId, runId } = ctx;
         const { name: scheme, channels, defaultChannel } = manifest;
+        const bulkVis = db.bulk_upsert_visibility as PrepMethod;
 
         const fragment = EntryOps.#fragmentOf(statement);
         const isMultiEntry = statement.body !== null
             || (Array.isArray(statement.signal) && statement.signal.length > 0)
             || statement.lineMarker !== null;
 
+        let pathnames: string[];
         if (!isMultiEntry) {
-            // Single-entry path: exact pathname lookup.
+            // Single-entry path: exact pathname lookup gates the 404 (the bulk flip
+            // can't distinguish "no entry" from "no change").
             const pathname = EntryOps.#pathnameOf(statement);
             const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
             if (entry === undefined) return { status: 404 };
+            pathnames = [pathname];
+        } else {
+            // Multi-entry path: body matcher (glob/regex) + tags + `<L>` resolve to
+            // the matched pathnames in SQL, shared with FIND via matchPathnames.
+            const match = await EntryFind.matchPathnames(statement, ctx, scheme);
+            if (match.status !== 200) return { status: match.status };
+            if (match.pathnames.length === 0) return { status: 304 };
+            pathnames = match.pathnames;
+        }
 
-            const upsertVis = db.ops_upsert_visibility as PrepMethod;
-            if (fragment === null) {
-                const existing = await (db.ops_list_visibility_for_entry as PrepMethod).all<{ channel: string; indexed: number }>({
-                    run_id: runId, entry_id: entry.id,
-                });
-                const existingByName = new Map(existing.map((r) => [r.channel, r.indexed]));
-                let changed = 0;
-                for (const channelName of Object.keys(channels)) {
-                    if (existingByName.get(channelName) === target) continue;
-                    await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: channelName, indexed: target });
-                    changed += 1;
-                }
-                return { status: changed === 0 ? 304 : 200 };
-            }
+        // Channels to flip: the fragment's channel, or every channel of the scheme.
+        let channelNames: string[];
+        if (fragment === null) {
+            channelNames = Object.keys(channels);
+        } else {
             const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
             if (targetChannel === null) return { status: 400 };
-            const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
-                run_id: runId, entry_id: entry.id, channel: targetChannel,
-            });
-            if (current?.indexed === target) return { status: 304 };
-            await upsertVis.run({ run_id: runId, entry_id: entry.id, channel: targetChannel, indexed: target });
-            return { status: 200 };
+            channelNames = [targetChannel];
         }
 
-        // Multi-entry path: the body matcher (glob/regex) + tags + `<L>` resolve
-        // to the matched pathnames in SQL, shared with FIND via matchPathnames.
-        const match = await EntryFind.matchPathnames(statement, ctx, scheme);
-        if (match.status !== 200) return { status: match.status };
-        const pathnames = match.pathnames;
-        if (pathnames.length === 0) return { status: 304 };
-
-        // Resolve fragment to a target channel (applies uniformly across matches).
-        let scopeChannel: string | null = null;
-        if (fragment !== null) {
-            scopeChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-            if (scopeChannel === null) return { status: 400 };
-        }
-        const upsertVis = db.ops_upsert_visibility as PrepMethod;
-        let changed = 0;
-        for (const p of pathnames) {
-            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname: p });
-            if (e === undefined) continue;
-            const channelsToFlip = scopeChannel !== null ? [scopeChannel] : Object.keys(channels);
-            for (const channelName of channelsToFlip) {
-                const current = await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({
-                    run_id: runId, entry_id: e.id, channel: channelName,
-                });
-                if (current?.indexed === target) continue;
-                await upsertVis.run({ run_id: runId, entry_id: e.id, channel: channelName, indexed: target });
-                changed += 1;
-            }
-        }
-        return { status: changed === 0 ? 304 : 200 };
+        // One bulk set-op flips (matched entries x channels), skipping rows already
+        // at the target; changes() is the real changed-count -> 304 when nothing moved.
+        const { changes } = await bulkVis.run({
+            run_id: runId, session_id: sessionId, scheme,
+            pathnames: JSON.stringify(pathnames), channels: JSON.stringify(channelNames), indexed: target,
+        });
+        return { status: changes === 0 ? 304 : 200 };
     }
 
     static async showSessionEntry(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> {
