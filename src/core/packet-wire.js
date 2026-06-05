@@ -13,7 +13,7 @@
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
-import { isLineNavigableMimetype } from "@plurnk/plurnk-schemes";
+import { isLineNavigableMimetype } from "../content/index.ts";
 
 // Render packet.system → system message content (markdown string).
 //   {system_definition verbatim}

@@ -15,7 +15,7 @@ import { indexGitMembership } from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
-import { sliceLinesRaw, isBinaryMimetype } from "@plurnk/plurnk-schemes";
+import { sliceLinesRaw, isBinaryMimetype } from "../content/index.ts";
 // Plain JS module shared with bin/digest.js so wire projection and
 // digest projection are structurally one function. tsconfig.build.json
 // has allowJs:true so this gets copied through to dist/.

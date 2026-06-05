@@ -5,9 +5,9 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { writeEntry } from "./_entry-crud.ts";
-import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
-import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "@plurnk/plurnk-schemes";
-import { matchAgainstContent } from "@plurnk/plurnk-schemes";
+import { isBinaryMimetype, isJsonMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
+import { sliceLines, sliceJsonItems, applyLineMarkerEdit, applyJsonItemEdit } from "../content/index.ts";
+import { matchAgainstContent } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };

@@ -5,8 +5,8 @@ import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
-import { resolveForLoop } from "@plurnk/plurnk-schemes";
-import type { LoopFlags } from "@plurnk/plurnk-schemes";
+import { resolveForLoop } from "./resolveForLoop.ts";
+import type { LoopFlags } from "./types.ts";
 
 type SchemeHandler = object;
 

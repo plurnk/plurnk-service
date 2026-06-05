@@ -26,7 +26,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { isBinaryMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
+import { isBinaryMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { writeEntry } from "../schemes/_entry-crud.ts";

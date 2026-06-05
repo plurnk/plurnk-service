@@ -1,9 +1,9 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { sliceLines, sliceJsonItems } from "@plurnk/plurnk-schemes";
-import { matchAgainstContent } from "@plurnk/plurnk-schemes";
-import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
+import { sliceLines, sliceJsonItems } from "../content/index.ts";
+import { matchAgainstContent } from "../content/index.ts";
+import { isJsonMimetype, TEXT_PRIMITIVE_MIMETYPE } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 type ShowHideResult = { status: number };

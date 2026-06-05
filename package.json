@@ -80,7 +80,6 @@
         "@plurnk/plurnk-providers-openai": "0.2.0",
         "@plurnk/plurnk-providers-openrouter": "0.2.4",
         "@plurnk/plurnk-providers-xai": "0.2.4",
-        "@plurnk/plurnk-schemes": "0.2.0",
         "@possumtech/sqlrite": "^4.0.0",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
         "@tree-sitter-grammars/tree-sitter-lua": "^0.4.1",
