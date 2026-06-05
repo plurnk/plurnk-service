@@ -15,10 +15,10 @@
         "./package.json": "./package.json"
     },
     "bin": {
-        "plurnk-service": "./bin/plurnk-service.js"
+        "plurnk-service": "./bin/plurnk-service.ts"
     },
     "files": [
-        "bin/plurnk-service.js",
+        "bin/plurnk-service.ts",
         "dist/**/*",
         "migrations/**/*.sql",
         "persona.md",
@@ -29,7 +29,7 @@
         "access": "public"
     },
     "scripts": {
-        "start": "node bin/plurnk-service.js",
+        "start": "node bin/plurnk-service.ts",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-timeout=30000 src/**/*.test.ts",
         "test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-timeout=30000 test/intg/*.test.ts",
