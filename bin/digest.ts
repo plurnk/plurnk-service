@@ -42,6 +42,13 @@ interface LogRow {
     op: string; scheme: string | null; pathname: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
+interface RunRollupRow {
+    run_id: number; loops: number; turns: number;
+    total_prompt: number; total_completion: number; total_cached: number; total_cost_pico: number;
+    last_status: number | null;
+}
+interface OpMixRow { run_id: number; op: string; n: number }
+
 // The SqlRiteSync handle's type (sync per-PREP accessors) is declared in
 // src/types/sqlrite.d.ts; digest reads each block through its own accessor.
 
@@ -55,11 +62,14 @@ interface DigestModel {
     loops: LoopRow[];
     turns: TurnRow[];
     logEntries: LogRow[];
+    runsBySession: Map<number, RunRow[]>;
     loopsByRun: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
     loopsById: Map<number, LoopRow>;
     runsById: Map<number, RunRow>;
+    runRollups: Map<number, RunRollupRow>;
+    opMixByRun: Map<number, OpMixRow[]>;
 }
 
 export default class Digest {
@@ -114,36 +124,17 @@ export default class Digest {
     }
 
     static #renderRunShape(run: RunRow, m: DigestModel): string {
-        const runLoops = m.loopsByRun.get(run.id) ?? [];
-        const runTurns = runLoops.flatMap((l) => m.turnsByLoop.get(l.id) ?? []);
-        let lastStatus: number | null = null;
-        let totalCost = 0;
-        let totalPrompt = 0;
-        let totalCompletion = 0;
-        let totalCached = 0;
-        const opCounts = new Map<string, number>();
-        for (const t of runTurns) {
-            lastStatus = t.status;
-            totalCost += t.usage_cost_pico ?? 0;
-            totalPrompt += t.usage_prompt ?? 0;
-            totalCompletion += t.usage_completion ?? 0;
-            totalCached += t.usage_cached ?? 0;
-            for (const le of m.logEntriesByTurn.get(t.id) ?? []) {
-                opCounts.set(le.op, (opCounts.get(le.op) ?? 0) + 1);
-            }
-        }
-        const opMix = [...opCounts.entries()]
-            .toSorted((a, b) => b[1] - a[1])
-            .map(([op, n]) => `${op}=${n}`)
-            .join(" ");
-        const costStr = totalCost > 0 ? `$${(totalCost / 1e12).toFixed(6)}` : "$0";
+        // every run has exactly one rollup row — digest_run_rollups is FROM runs
+        const roll = m.runRollups.get(run.id)!;
+        const opMix = (m.opMixByRun.get(run.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
+        const costStr = roll.total_cost_pico > 0 ? `$${(roll.total_cost_pico / 1e12).toFixed(6)}` : "$0";
         return [
-            `Loops:      ${runLoops.length}`,
-            `Turns:      ${runTurns.length}`,
-            `Last turn:  ${lastStatus !== null ? `status=${lastStatus}` : "(none)"}`,
-            `Tokens:     prompt=${totalPrompt} completion=${totalCompletion} cached=${totalCached}`,
+            `Loops:      ${roll.loops}`,
+            `Turns:      ${roll.turns}`,
+            `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
+            `Tokens:     prompt=${roll.total_prompt} completion=${roll.total_completion} cached=${roll.total_cached}`,
             `Cost:       ${costStr} (DB rollup runs.cost_pico=${run.cost_pico})`,
-            `Op mix:     ${opMix || "(no ops)"}`,
+            `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }
 
@@ -156,7 +147,7 @@ export default class Digest {
         for (const session of m.sessions) {
             lines.push("");
             lines.push(`## Session #${session.id} — ${session.name}`);
-            const sessionRuns = m.runs.filter((r) => r.session_id === session.id);
+            const sessionRuns = m.runsBySession.get(session.id) ?? [];
             for (const run of sessionRuns) {
                 lines.push("");
                 lines.push(`### Run #${run.id} — ${run.name}`);
@@ -273,6 +264,8 @@ export default class Digest {
         const loops = db.digest_loops.all<LoopRow>();
         const turns = db.digest_turns.all<TurnRow>();
         const logEntries = db.digest_log_entries.all<LogRow>();
+        const runRollupRows = db.digest_run_rollups.all<RunRollupRow>();
+        const opMixRows = db.digest_run_op_mix.all<OpMixRow>();
         db.close();
 
         // Wipe-then-recreate the digest dir so each run is a clean snapshot —
@@ -280,6 +273,8 @@ export default class Digest {
         rmSync(digestDir, { recursive: true, force: true });
         mkdirSync(digestDir, { recursive: true });
 
+        const runsBySession = new Map<number, RunRow[]>();
+        for (const r of runs) { const arr = runsBySession.get(r.session_id) ?? []; arr.push(r); runsBySession.set(r.session_id, arr); }
         const loopsByRun = new Map<number, LoopRow[]>();
         for (const l of loops) { const arr = loopsByRun.get(l.run_id) ?? []; arr.push(l); loopsByRun.set(l.run_id, arr); }
         const turnsByLoop = new Map<number, TurnRow[]>();
@@ -288,10 +283,14 @@ export default class Digest {
         for (const le of logEntries) { const arr = logEntriesByTurn.get(le.turn_id) ?? []; arr.push(le); logEntriesByTurn.set(le.turn_id, arr); }
         const loopsById = new Map(loops.map((l) => [l.id, l]));
         const runsById = new Map(runs.map((r) => [r.id, r]));
+        const runRollups = new Map(runRollupRows.map((r) => [r.run_id, r]));
+        const opMixByRun = new Map<number, OpMixRow[]>();
+        for (const o of opMixRows) { const arr = opMixByRun.get(o.run_id) ?? []; arr.push(o); opMixByRun.set(o.run_id, arr); }
 
         const m: DigestModel = {
             dbPath, digestDir, sessions, runs, loops, turns, logEntries,
-            loopsByRun, turnsByLoop, logEntriesByTurn, loopsById, runsById,
+            runsBySession, loopsByRun, turnsByLoop, logEntriesByTurn, loopsById, runsById,
+            runRollups, opMixByRun,
         };
 
         writeFileSync(join(digestDir, "digest.md"), Digest.#renderWaterfall(m));
