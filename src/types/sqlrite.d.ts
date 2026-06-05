@@ -26,8 +26,9 @@ declare module "@possumtech/sqlrite" {
     export default SqlRite;
 }
 
-// The sync variant (SqlRiteSync.js) — CLI/scripts. Same dynamic-accessor shape;
-// statement methods are synchronous, plus a transaction([...]) snapshot helper.
+// The sync variant (SqlRiteSync.js) — CLI/scripts. Each `-- PREP:` block becomes
+// a synchronous accessor with run/get/all; `new SqlRiteSync(opts)` constructs
+// directly (no custom functions), `.open()` stays for async function registration.
 // bin/digest.ts is the consumer; src/core/Db.ts stays the precise async handle.
 declare module "@possumtech/sqlrite/sync" {
     interface SqlRiteSyncOpenOptions {
@@ -37,14 +38,19 @@ declare module "@possumtech/sqlrite/sync" {
         params?: Record<string, string | number | null>;
     }
 
-    interface SqlRiteSyncInstance {
-        close(): void;
-        transaction(calls: Array<{ name: string; params?: object; mode?: "all" | "get" | "run" }>): unknown[];
-        [methodName: string]: unknown;
+    interface SqlRiteSyncPrepMethod {
+        run(params?: object): { changes: number; lastInsertRowid: number };
+        get<T = Record<string, unknown>>(params?: object): T | undefined;
+        all<T = Record<string, unknown>>(params?: object): T[];
     }
 
+    type SqlRiteSyncInstance = {
+        close(): void;
+    } & Record<string, SqlRiteSyncPrepMethod>;
+
     interface SqlRiteSyncStatic {
-        open(options: SqlRiteSyncOpenOptions): Promise<SqlRiteSyncInstance>;
+        new (options?: SqlRiteSyncOpenOptions): SqlRiteSyncInstance;
+        open(options?: SqlRiteSyncOpenOptions): Promise<SqlRiteSyncInstance>;
     }
 
     const SqlRiteSync: SqlRiteSyncStatic;

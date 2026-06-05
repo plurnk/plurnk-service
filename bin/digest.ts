@@ -19,7 +19,7 @@
 // digest both project through PacketWire (one renderer, no drift).
 //
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
-// the CLI/script variant). The snapshot read is db.transaction([...]).
+// the sync CLI/script facade). Each PREP block is read through its own accessor.
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -42,11 +42,8 @@ interface LogRow {
     op: string; scheme: string | null; pathname: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
-interface CountRow { n: number }
-
-// The SqlRiteSync handle's type (sync accessors + the transaction snapshot
-// helper) is declared in src/types/sqlrite.d.ts; digest reads through
-// transaction([...]), never the per-PREP accessors.
+// The SqlRiteSync handle's type (sync per-PREP accessors) is declared in
+// src/types/sqlrite.d.ts; digest reads each block through its own accessor.
 
 // Loaded snapshot + derived index maps, threaded through the renderers so the
 // data flow is explicit (no hidden module-level state).
@@ -255,7 +252,7 @@ export default class Digest {
         }, null, 2);
     }
 
-    static async run(): Promise<void> {
+    static run(): void {
         const binDir = dirname(fileURLToPath(import.meta.url));
         const projectRoot = resolve(binDir, "..");
         const digestDir = join(projectRoot, "test", "digest");
@@ -268,32 +265,15 @@ export default class Digest {
         }
 
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
-        // mode) inspect cleanly; this tool only reads. Snapshot consistency is
-        // the transaction below.
-        const db = await SqlRiteSync.open({ path: dbPath, dir: [binDir] });
-
-        // Snapshot read: every query inside one transaction (BEGIN deferred →
-        // read lock on first query → consistent until COMMIT), so a daemon
-        // committing mid-read can't produce inconsistent counts.
-        const [sessions, runs, loops, turns, logEntries, turnsCount, logsCount] = db.transaction([
-            { name: "digest_sessions", mode: "all" },
-            { name: "digest_runs", mode: "all" },
-            { name: "digest_loops", mode: "all" },
-            { name: "digest_turns", mode: "all" },
-            { name: "digest_log_entries", mode: "all" },
-            { name: "digest_turns_count", mode: "get" },
-            { name: "digest_logs_count", mode: "get" },
-        ]) as [SessionRow[], RunRow[], LoopRow[], TurnRow[], LogRow[], CountRow | undefined, CountRow | undefined];
+        // mode) inspect cleanly; this tool only reads. The DB is quiescent at
+        // digest time, so each PREP reads on its own — no cross-query snapshot.
+        const db = new SqlRiteSync({ path: dbPath, dir: [binDir] });
+        const sessions = db.digest_sessions.all<SessionRow>();
+        const runs = db.digest_runs.all<RunRow>();
+        const loops = db.digest_loops.all<LoopRow>();
+        const turns = db.digest_turns.all<TurnRow>();
+        const logEntries = db.digest_log_entries.all<LogRow>();
         db.close();
-
-        // Sanity recount: divergence means the snapshot was inconsistent (a bug).
-        // Hard-fail rather than report stale numbers.
-        if (turnsCount === undefined || turnsCount.n !== turns.length) {
-            throw new Error(`digest: snapshot inconsistency — turns rows ${turns.length} vs recount ${turnsCount?.n}`);
-        }
-        if (logsCount === undefined || logsCount.n !== logEntries.length) {
-            throw new Error(`digest: snapshot inconsistency — log_entries rows ${logEntries.length} vs recount ${logsCount?.n}`);
-        }
 
         // Wipe-then-recreate the digest dir so each run is a clean snapshot —
         // orphaned packet*.* files from a prior run don't linger.
@@ -325,4 +305,4 @@ export default class Digest {
     }
 }
 
-await Digest.run();
+Digest.run();

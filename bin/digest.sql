@@ -1,8 +1,8 @@
 -- Forensic read queries for bin/digest.ts. Opened via SqlRiteSync against an
 -- existing plurnk*.db the daemon already migrated — NO `-- INIT:` blocks, these
--- compile against its schema and never alter it. Snapshot consistency is the
--- caller's `db.transaction([...])` (BEGIN/COMMIT around the whole set, deferred
--- by default in SQLite), so a live daemon committing mid-read can't skew counts.
+-- compile against its schema and never alter it. The digest reads a quiescent
+-- DB (a kept test .db or a post-session plurnk.db), so each PREP is its own read
+-- — sqlrite 5 dropped the JS transaction composer and these never needed it.
 
 -- PREP: digest_sessions
 SELECT * FROM sessions ORDER BY id;
@@ -27,9 +27,3 @@ SELECT id, run_id, loop_id, turn_id, sequence, at, origin,
        tx, rx, status_rx, mimetype_rx,
        state, outcome, attrs
 FROM log_entries ORDER BY loop_id, turn_id, sequence;
-
--- PREP: digest_turns_count
-SELECT COUNT(*) AS n FROM turns;
-
--- PREP: digest_logs_count
-SELECT COUNT(*) AS n FROM log_entries;
