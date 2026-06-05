@@ -49,17 +49,17 @@ export default class EntryFind {
     static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, results: [] };
 
-        let regexFilter: RegExp | null = null;
+        let pathnameRegex: string | null = null;
         let pathnameGlob: string | null = null;
         if (statement.body !== null) {
             if (statement.body.dialect === "glob") {
                 pathnameGlob = statement.body.raw;
             } else if (statement.body.dialect === "regex") {
-                try {
-                    regexFilter = new RegExp(statement.body.pattern, statement.body.flags);
-                } catch {
-                    return { status: 400, content: null, mimetype: null, results: [] };
-                }
+                const { pattern, flags } = statement.body;
+                // Validate the pattern compiles; the match itself runs in SQL (REGEXP).
+                try { new RegExp(pattern, flags); }
+                catch { return { status: 400, content: null, mimetype: null, results: [] }; }
+                pathnameRegex = flags ? `(?${flags})${pattern}` : pattern;
             } else {
                 // xpath / jsonpath need per-mimetype content matching (plurnk-mimetypes#3).
                 return { status: 501, content: null, mimetype: null, results: [] };
@@ -77,13 +77,11 @@ export default class EntryFind {
             scheme,
             scope_pathname: scopeGlob,
             pathname_pattern: pathnameGlob,
+            pathname_regex: pathnameRegex,
             tags: tagsParam,
         });
 
         let pathnames = rows.map((r) => r.pathname);
-        if (regexFilter !== null) {
-            pathnames = pathnames.filter((p) => regexFilter.test(p));
-        }
 
         if (statement.lineMarker !== null) {
             const page = EntryFind.#paginate(pathnames, statement.lineMarker);

@@ -316,14 +316,17 @@ export default class EntryOps {
         // matcher (glob/regex) further filters by pathname; xpath/jsonpath
         // would filter by content (501 pending plurnk-mimetypes#3). Tag
         // signal filters by tag. <L> paginates the matched results.
-        let regexFilter: RegExp | null = null;
+        let pathnameRegex: string | null = null;
         let pathnameGlob: string | null = null;
         if (statement.body !== null) {
             if (statement.body.dialect === "glob") {
                 pathnameGlob = statement.body.raw;
             } else if (statement.body.dialect === "regex") {
-                try { regexFilter = new RegExp(statement.body.pattern, statement.body.flags); }
+                const { pattern, flags } = statement.body;
+                // Validate the pattern compiles; the match itself runs in SQL (REGEXP).
+                try { new RegExp(pattern, flags); }
                 catch { return { status: 400 }; }
+                pathnameRegex = flags ? `(?${flags})${pattern}` : pattern;
             } else {
                 return { status: 501 };
             }
@@ -337,10 +340,10 @@ export default class EntryOps {
             session_id: sessionId, scheme,
             scope_pathname: scopeGlob,
             pathname_pattern: pathnameGlob,
+            pathname_regex: pathnameRegex,
             tags: tagsParam,
         });
         let pathnames = rows.map((r) => r.pathname);
-        if (regexFilter !== null) pathnames = pathnames.filter((p) => regexFilter.test(p));
 
         if (statement.lineMarker !== null) {
             const page = EntryOps.#paginateResults(pathnames, statement.lineMarker);

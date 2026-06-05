@@ -117,6 +117,19 @@ test("Known.find with regex matcher filters by pathname", async () => {
     } finally { db.close(); }
 });
 
+test("Known.find regex honors flags — case-insensitive via SQL REGEXP", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seedEntries(db, sessionId, runId, [["Alpha", "x"], ["alpine", "y"], ["beta", "z"]]);
+        // `(?i)^al` must match "Alpha" (capital A) — only possible if the `i` flag
+        // crosses into SQL REGEXP; without it, `^al` would skip "Alpha".
+        const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
+        const r = await new Known().find(findStmt(url(""), ci), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results.toSorted(), ["known://Alpha", "known://alpine"]);
+    } finally { db.close(); }
+});
+
 test("Known.find with xpath matcher returns 501 (pending plurnk-mimetypes#3)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
