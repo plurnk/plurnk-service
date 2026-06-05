@@ -1001,10 +1001,8 @@ export default class Engine {
         // Pass 1 — prior-turn rollback: hide the latest emissions (the ones that
         // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
         const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
-        for (const le of priorLogs) {
-            await (this.#db.engine_grinder_hide_log as PrepMethod).run({ id: le.id });
-            note(le.scheme ?? "log");
-        }
+        for (const le of priorLogs) note(le.scheme ?? "log");
+        if (priorLogs.length > 0) await (this.#db.engine_grinder_hide_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
         const errors = packet.user.telemetry.errors;
         let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
         if (measure(current) <= ceiling) {
@@ -1014,9 +1012,10 @@ export default class Engine {
 
         // Pass 2 — index collapse: hide every catalog entry except the manifest.
         const catalog = await (this.#db.engine_grinder_catalog as PrepMethod).all<{ entry_id: number; channel: string; scheme: string }>({ run_id: runId, session_id: sessionId });
-        for (const c of catalog) {
-            await (this.#db.ops_upsert_visibility as PrepMethod).run({ run_id: runId, entry_id: c.entry_id, channel: c.channel, indexed: 0 });
-            note(c.scheme);
+        for (const c of catalog) note(c.scheme);
+        if (catalog.length > 0) {
+            const pairs = JSON.stringify(catalog.map((c) => ({ entry_id: c.entry_id, channel: c.channel })));
+            await (this.#db.engine_grinder_hide_catalog as PrepMethod).run({ run_id: runId, pairs });
         }
         current = catalog.length > 0 ? await rebuild(errors) : current;
         this.#emitBudgetOverflow(sessionId, loopId, hidden);

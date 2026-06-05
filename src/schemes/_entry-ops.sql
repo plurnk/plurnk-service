@@ -18,13 +18,6 @@ WHERE e.scope = 'session'
   AND e.pathname = $pathname
   AND ec.name = $channel;
 
--- PREP: ops_upsert_visibility
--- SHOW/HIDE: set indexed bit, upserting on (run_id, entry_id, channel).
-INSERT INTO visibility (run_id, entry_id, channel, indexed)
-VALUES ($run_id, $entry_id, $channel, $indexed)
-ON CONFLICT (run_id, entry_id, channel)
-DO UPDATE SET indexed = excluded.indexed;
-
 -- PREP: bulk_upsert_visibility
 -- SHOW/HIDE over a set: set $indexed for every channel in $channels (JSON array)
 -- of every session entry whose pathname is in $pathnames (JSON array). Entries
