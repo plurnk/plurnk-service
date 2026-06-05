@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { parseAllStatements } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -12,7 +12,7 @@ export default class OpParseMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.text !== "string" || p.text.length === 0) throw new Error("op.parse requires params.text: string");
-                const statements = parseAllStatements(p.text);
+                const statements = Dsl.parseAllStatements(p.text);
                 const results = [];
                 for (const statement of statements) {
                     results.push(await DispatchAsClient.dispatch(ctx, statement));

@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildFind } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpFindMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.scope !== "string" || p.scope.length === 0) throw new Error("op.find requires params.scope: string");
-                const statement = buildFind(p);
+                const statement = Dsl.buildFind(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "FIND — search within a scope by tags and/or matcher.",

@@ -12,57 +12,6 @@
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-grammar";
 
-// Random suffix per call. Collision space is 2^32 against the user's body
-// content; vanishingly unlikely for any reasonable input.
-const randomSuffix = (): string => Math.floor(Math.random() * 0xFFFFFFFF).toString(16).padStart(8, "0");
-
-const formatTags = (tags: string[] | undefined): string => {
-    if (tags === undefined || tags.length === 0) return "";
-    return `[${tags.join(",")}]`;
-};
-
-const formatLineMarker = (lm: LineMarker | undefined): string => {
-    if (lm === undefined || lm === null) return "";
-    if (lm.last === null || lm.last === lm.first) return `<${lm.first}>`;
-    return `<${lm.first}-${lm.last}>`;
-};
-
-const formatPath = (path: string | undefined): string => {
-    if (path === undefined) return "";
-    return `(${path})`;
-};
-
-// Build a HEREDOC statement string. `signal` is the raw signal payload —
-// CSV tags `[a,b,c]` for most ops, a single number for SEND (`[200]`),
-// a single runtime tag for EXEC (`[node]`).
-const buildHeredoc = ({
-    op, suffix, signal, target, lineMarker, body,
-}: {
-    op: string;
-    suffix: string;
-    signal: string;
-    target: string;
-    lineMarker: string;
-    body: string;
-}): string => `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
-
-export const parseSingleStatement = (text: string): PlurnkStatement => {
-    const result = PlurnkParser.parse(text);
-    for (const item of result.items) {
-        if (item.kind === "statement") return item.statement;
-    }
-    throw new Error(`expected a parsed statement, got none from: ${text}`);
-};
-
-export const parseAllStatements = (text: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(text);
-    return result.items
-        .filter((i) => i.kind === "statement")
-        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
-};
-
-// === Per-op clean-shape → PlurnkStatement ===
-
 interface OpWithMatcher {
     target: string;
     matcher?: string;
@@ -96,77 +45,148 @@ interface OpExecParams {
     command?: string;
 }
 
-export const buildEdit = (p: OpEditParams): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "EDIT", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.target),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.content ?? "",
-}));
+export default class Dsl {
+    // Random suffix per call. Collision space is 2^32 against the user's body
+    // content; vanishingly unlikely for any reasonable input.
+    static #randomSuffix(): string {
+        return Math.floor(Math.random() * 0xFFFFFFFF).toString(16).padStart(8, "0");
+    }
 
-export const buildRead = (p: OpWithMatcher): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "READ", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.target),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.matcher ?? "",
-}));
+    static #formatTags(tags: string[] | undefined): string {
+        if (tags === undefined || tags.length === 0) return "";
+        return `[${tags.join(",")}]`;
+    }
 
-export const buildFind = (p: { scope: string; matcher?: string; tags?: string[]; lineRange?: LineMarker }): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "FIND", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.scope),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.matcher ?? "",
-}));
+    static #formatLineMarker(lm: LineMarker | undefined): string {
+        if (lm === undefined || lm === null) return "";
+        if (lm.last === null || lm.last === lm.first) return `<${lm.first}>`;
+        return `<${lm.first}-${lm.last}>`;
+    }
 
-export const buildShow = (p: OpWithMatcher): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "SHOW", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.target),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.matcher ?? "",
-}));
+    static #formatPath(path: string | undefined): string {
+        if (path === undefined) return "";
+        return `(${path})`;
+    }
 
-export const buildHide = (p: OpWithMatcher): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "HIDE", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.target),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.matcher ?? "",
-}));
+    // Build a HEREDOC statement string. `signal` is the raw signal payload —
+    // CSV tags `[a,b,c]` for most ops, a single number for SEND (`[200]`),
+    // a single runtime tag for EXEC (`[node]`).
+    static #buildHeredoc({
+        op, suffix, signal, target, lineMarker, body,
+    }: {
+        op: string;
+        suffix: string;
+        signal: string;
+        target: string;
+        lineMarker: string;
+        body: string;
+    }): string {
+        return `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
+    }
 
-export const buildCopy = (p: OpCopyMoveParams): PlurnkStatement => {
-    if (p.destination === undefined) throw new Error("op.copy requires destination");
-    return parseSingleStatement(buildHeredoc({
-        op: "COPY", suffix: randomSuffix(),
-        signal: formatTags(p.tags),
-        target: formatPath(p.source),
-        lineMarker: formatLineMarker(p.lineRange),
-        body: p.destination,
-    }));
-};
+    static parseSingleStatement(text: string): PlurnkStatement {
+        const result = PlurnkParser.parse(text);
+        for (const item of result.items) {
+            if (item.kind === "statement") return item.statement;
+        }
+        throw new Error(`expected a parsed statement, got none from: ${text}`);
+    }
 
-export const buildMove = (p: OpCopyMoveParams): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "MOVE", suffix: randomSuffix(),
-    signal: formatTags(p.tags),
-    target: formatPath(p.source),
-    lineMarker: formatLineMarker(p.lineRange),
-    body: p.destination ?? "",
-}));
+    static parseAllStatements(text: string): PlurnkStatement[] {
+        const result = PlurnkParser.parse(text);
+        return result.items
+            .filter((i) => i.kind === "statement")
+            .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+    }
 
-export const buildSend = (p: OpSendParams): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "SEND", suffix: randomSuffix(),
-    signal: `[${p.status}]`,
-    target: p.recipient !== undefined ? formatPath(p.recipient) : "",
-    lineMarker: "",
-    body: p.body ?? "",
-}));
+    static buildEdit(p: OpEditParams): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "EDIT", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.target),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.content ?? "",
+        }));
+    }
 
-export const buildExec = (p: OpExecParams): PlurnkStatement => parseSingleStatement(buildHeredoc({
-    op: "EXEC", suffix: randomSuffix(),
-    signal: p.runtime !== undefined ? `[${p.runtime}]` : "",
-    target: p.cwd !== undefined ? formatPath(p.cwd) : "",
-    lineMarker: "",
-    body: p.command ?? "",
-}));
+    static buildRead(p: OpWithMatcher): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "READ", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.target),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.matcher ?? "",
+        }));
+    }
+
+    static buildFind(p: { scope: string; matcher?: string; tags?: string[]; lineRange?: LineMarker }): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "FIND", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.scope),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.matcher ?? "",
+        }));
+    }
+
+    static buildShow(p: OpWithMatcher): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "SHOW", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.target),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.matcher ?? "",
+        }));
+    }
+
+    static buildHide(p: OpWithMatcher): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "HIDE", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.target),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.matcher ?? "",
+        }));
+    }
+
+    static buildCopy(p: OpCopyMoveParams): PlurnkStatement {
+        if (p.destination === undefined) throw new Error("op.copy requires destination");
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "COPY", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.source),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.destination,
+        }));
+    }
+
+    static buildMove(p: OpCopyMoveParams): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "MOVE", suffix: Dsl.#randomSuffix(),
+            signal: Dsl.#formatTags(p.tags),
+            target: Dsl.#formatPath(p.source),
+            lineMarker: Dsl.#formatLineMarker(p.lineRange),
+            body: p.destination ?? "",
+        }));
+    }
+
+    static buildSend(p: OpSendParams): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "SEND", suffix: Dsl.#randomSuffix(),
+            signal: `[${p.status}]`,
+            target: p.recipient !== undefined ? Dsl.#formatPath(p.recipient) : "",
+            lineMarker: "",
+            body: p.body ?? "",
+        }));
+    }
+
+    static buildExec(p: OpExecParams): PlurnkStatement {
+        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+            op: "EXEC", suffix: Dsl.#randomSuffix(),
+            signal: p.runtime !== undefined ? `[${p.runtime}]` : "",
+            target: p.cwd !== undefined ? Dsl.#formatPath(p.cwd) : "",
+            lineMarker: "",
+            body: p.command ?? "",
+        }));
+    }
+}

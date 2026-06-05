@@ -16,7 +16,8 @@ import { discoverPlugins, loadPlugin } from "../core/PluginLoader.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
-import { fetchLogEntry } from "./logEntry.ts";
+import LogEntry from "./logEntry.ts";
+import Yolo from "./yolo.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 
 import PingMethod from "./methods/ping.ts";
@@ -44,7 +45,6 @@ import EntryReadMethod from "./methods/entry_read.ts";
 import LogReadMethod from "./methods/log_read.ts";
 import ProvidersListMethod from "./methods/providers_list.ts";
 import LoopResolveMethod from "./methods/loop_resolve.ts";
-import { attachYolo } from "./yolo.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -134,7 +134,7 @@ export default class Daemon {
         });
         // In-tree YOLO listener — auto-accepts proposals when the loop's
         // persisted flags.yolo === true. Skips client roundtrip entirely.
-        attachYolo(this.#engine, this.#db);
+        Yolo.attachYolo(this.#engine, this.#db);
     }
 
     get registry(): MethodRegistry { return this.#registry; }
@@ -423,7 +423,7 @@ export default class Daemon {
                     if (loopRow !== undefined) {
                         const onDispatch = (logEntryId: number): void => {
                             void (async () => {
-                                const entry = await fetchLogEntry(this.#db, logEntryId);
+                                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                                 this.#broadcast({ sessionId }, null, "log/entry", { entry });
                             })();
                         };

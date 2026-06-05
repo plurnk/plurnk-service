@@ -6,9 +6,9 @@
 
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { HandlerContext } from "../MethodRegistry.ts";
-import { insertClientTurn } from "../clientTurn.ts";
-import { fetchLogEntry } from "../logEntry.ts";
-import { ensureClientLoop } from "../envelope.ts";
+import ClientTurn from "../clientTurn.ts";
+import LogEntry from "../logEntry.ts";
+import Envelope from "../envelope.ts";
 
 export interface DispatchAsClientResult {
     status: number;
@@ -22,10 +22,10 @@ export default class DispatchAsClient {
         }
         const { sessionId, runId } = ctx.session;
         if (ctx.session.clientLoopId === null) {
-            ctx.session.clientLoopId = await ensureClientLoop(ctx.db, runId);
+            ctx.session.clientLoopId = await Envelope.ensureClientLoop(ctx.db, runId);
         }
         const clientLoopId = ctx.session.clientLoopId;
-        const turnId = await insertClientTurn(ctx.db, clientLoopId);
+        const turnId = await ClientTurn.insertClientTurn(ctx.db, clientLoopId);
         const result = await ctx.engine.dispatch({
             statement,
             sessionId,
@@ -36,7 +36,7 @@ export default class DispatchAsClient {
             origin: "client",
             onDispatch: (logEntryId) => {
                 void (async () => {
-                    const entry = await fetchLogEntry(ctx.db, logEntryId);
+                    const entry = await LogEntry.fetchLogEntry(ctx.db, logEntryId);
                     ctx.notify({ sessionId }, "log/entry", { entry });
                 })();
             },

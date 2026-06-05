@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildCopy } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -17,7 +17,7 @@ export default class OpCopyMethod {
                 const p = (params ?? {}) as Params;
                 if (typeof p.source !== "string" || p.source.length === 0) throw new Error("op.copy requires params.source: string");
                 if (typeof p.destination !== "string" || p.destination.length === 0) throw new Error("op.copy requires params.destination: string");
-                const statement = buildCopy(p);
+                const statement = Dsl.buildCopy(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "COPY — clone an entry to a new path.",

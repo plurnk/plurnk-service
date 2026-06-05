@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildMove } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpMoveMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.source !== "string" || p.source.length === 0) throw new Error("op.move requires params.source: string");
-                const statement = buildMove(p);
+                const statement = Dsl.buildMove(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "MOVE — relocate an entry (or delete if destination omitted).",

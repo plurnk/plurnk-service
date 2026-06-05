@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import type MethodRegistry from "../MethodRegistry.ts";
-import { createClientEnvelope } from "../envelope.ts";
+import Envelope from "../envelope.ts";
 
 export default class SessionCreateMethod {
     static register(registry: MethodRegistry): void {
@@ -23,7 +23,7 @@ export default class SessionCreateMethod {
                 if (persona !== null && typeof persona !== "string") {
                     throw new Error("session.create: persona must be a string or null");
                 }
-                const envelope = await createClientEnvelope(ctx.db, { name: p.name, projectRoot, persona });
+                const envelope = await Envelope.createClientEnvelope(ctx.db, { name: p.name, projectRoot, persona });
                 ctx.attachSession(envelope);
                 ctx.notify("all", "session/created", {
                     id: envelope.sessionId,

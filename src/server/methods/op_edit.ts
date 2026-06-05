@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildEdit } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpEditMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.edit requires params.target: string");
-                const statement = buildEdit(p);
+                const statement = Dsl.buildEdit(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "EDIT — write or update an entry's body.",

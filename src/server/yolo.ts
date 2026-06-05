@@ -37,14 +37,16 @@ import type Engine from "../core/Engine.ts";
 import type { ProposalPendingEvent } from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 
-export const attachYolo = (engine: Engine, _db: Db): void => {
-    engine.onProposalPending((event: ProposalPendingEvent) => {
-        if (!event.flags.yolo) return;
-        try {
-            engine.resolveProposal(event.logEntryId, { decision: "accept" });
-        } catch {
-            // Errors here don't abort dispatch — the proposal stays
-            // pending and falls through to the RPC / timeout path.
-        }
-    });
-};
+export default class Yolo {
+    static attachYolo(engine: Engine, _db: Db): void {
+        engine.onProposalPending((event: ProposalPendingEvent) => {
+            if (!event.flags.yolo) return;
+            try {
+                engine.resolveProposal(event.logEntryId, { decision: "accept" });
+            } catch {
+                // Errors here don't abort dispatch — the proposal stays
+                // pending and falls through to the RPC / timeout path.
+            }
+        });
+    }
+}

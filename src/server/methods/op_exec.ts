@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { buildExec } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -13,7 +13,7 @@ export default class OpExecMethod {
         registry.registerMethod("op.exec", {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
-                const statement = buildExec(p);
+                const statement = Dsl.buildExec(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "EXEC — invoke a subprocess.",

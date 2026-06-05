@@ -20,7 +20,7 @@ import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { PATHS } from "../../src/index.ts";
-import { attachYolo } from "../../src/server/yolo.ts";
+import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
@@ -55,7 +55,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
-        attachYolo(engine, db);
+        Yolo.attachYolo(engine, db);
         const sessionId = await insertSession(db, `demo-script-${crypto.randomUUID()}`);
         await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: workspace });
         const runId = await insertRun(db, sessionId);

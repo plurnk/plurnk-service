@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { buildSend } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -14,7 +14,7 @@ export default class OpSendMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.status !== "number") throw new Error("op.send requires params.status: number");
-                const statement = buildSend(p);
+                const statement = Dsl.buildSend(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "SEND — talk to a recipient or broadcast a terminal status.",

@@ -9,7 +9,7 @@ import type Engine from "../core/Engine.ts";
 import type MethodRegistry from "./MethodRegistry.ts";
 import type { DaemonSurface, HandlerContext, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import type { Db } from "../core/Db.ts";
-import { createClientEnvelope, closeClientLoop } from "./envelope.ts";
+import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
 // JSON-RPC 2.0 standard error codes (SPEC §13.8).
@@ -88,7 +88,7 @@ export default class ClientConnection {
             // connection that only ran loop.run never spawned a client
             // loop and has nothing to clean up here.
             if (this.#session.clientLoopId !== null) {
-                void closeClientLoop(this.#db, this.#session.clientLoopId, 200);
+                void Envelope.closeClientLoop(this.#db, this.#session.clientLoopId, 200);
             }
             this.#session = null;
         }
@@ -122,7 +122,7 @@ export default class ClientConnection {
 
         if (registration.requiresInit && this.#session === null) {
             try {
-                const envelope = await createClientEnvelope(this.#db, { prefix: "auto" });
+                const envelope = await Envelope.createClientEnvelope(this.#db, { prefix: "auto" });
                 this.#session = envelope;
                 this.#broadcast("all", this, "session/created", {
                     id: envelope.sessionId,

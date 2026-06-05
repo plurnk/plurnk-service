@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildHide } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpHideMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.hide requires params.target: string");
-                const statement = buildHide(p);
+                const statement = Dsl.buildHide(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "HIDE — demote an entry from the active index to the archive.",

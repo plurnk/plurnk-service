@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { updateSessionPersona } from "../envelope.ts";
+import Envelope from "../envelope.ts";
 
 export default class SessionSetPersonaMethod {
     static register(registry: MethodRegistry): void {
@@ -13,7 +13,7 @@ export default class SessionSetPersonaMethod {
                 if (persona !== null && typeof persona !== "string") {
                     throw new Error("session.set_persona: persona must be a string or null");
                 }
-                const updated = await updateSessionPersona(ctx.db, ctx.session.sessionId, persona);
+                const updated = await Envelope.updateSessionPersona(ctx.db, ctx.session.sessionId, persona);
                 // Mutate the attached envelope so subsequent handler invocations
                 // on this connection observe the new value. ctx.session is the
                 // same object reference held in ClientConnection.#session.

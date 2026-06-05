@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildRead } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpReadMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.read requires params.target: string");
-                const statement = buildRead(p);
+                const statement = Dsl.buildRead(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "READ — fetch an entry's body or a slice of it.",

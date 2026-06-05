@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import type MethodRegistry from "../MethodRegistry.ts";
-import { updateSessionProjectRoot } from "../envelope.ts";
+import Envelope from "../envelope.ts";
 
 export default class SessionSetRootMethod {
     static register(registry: MethodRegistry): void {
@@ -19,7 +19,7 @@ export default class SessionSetRootMethod {
                         throw new Error("session.set_root: projectRoot must be an absolute path");
                     }
                 }
-                const updated = await updateSessionProjectRoot(ctx.db, ctx.session.sessionId, projectRoot);
+                const updated = await Envelope.updateSessionProjectRoot(ctx.db, ctx.session.sessionId, projectRoot);
                 // Mutate the attached envelope so subsequent handler invocations on
                 // this connection observe the new value. ctx.session is the same
                 // object reference held in ClientConnection.#session.

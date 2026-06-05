@@ -19,7 +19,7 @@ import { loadActiveProvider } from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { readFile as readPath } from "node:fs/promises";
 import { PATHS } from "../../src/index.ts";
-import { attachYolo } from "../../src/server/yolo.ts";
+import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -56,7 +56,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
         process.env.PLURNK_BUDGET_CEILING = String(CEILING);
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
         delete process.env.PLURNK_BUDGET_CEILING; // engine captured it at construction
-        attachYolo(engine, db);
+        Yolo.attachYolo(engine, db);
         const sessionId = await insertSession(db, `demo-budget-${crypto.randomUUID()}`);
         await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: fixture.workspace });
         await fixture.addToCatalog(db, sessionId);

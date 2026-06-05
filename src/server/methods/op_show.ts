@@ -1,6 +1,6 @@
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { LineMarker } from "@plurnk/plurnk-grammar";
-import { buildShow } from "../dsl.ts";
+import Dsl from "../dsl.ts";
 import DispatchAsClient from "./_dispatchAsClient.ts";
 
 interface Params {
@@ -16,7 +16,7 @@ export default class OpShowMethod {
             handler: async (params, ctx) => {
                 const p = (params ?? {}) as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.show requires params.target: string");
-                const statement = buildShow(p);
+                const statement = Dsl.buildShow(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "SHOW — promote an entry to the active index.",

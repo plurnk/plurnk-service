@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { listRunsForSession } from "../envelope.ts";
+import Envelope from "../envelope.ts";
 
 export default class SessionRunsMethod {
     static register(registry: MethodRegistry): void {
@@ -10,7 +10,7 @@ export default class SessionRunsMethod {
                 if (typeof sessionId !== "number") {
                     throw new Error("session.runs requires params.id: number (or an attached session)");
                 }
-                return { runs: await listRunsForSession(ctx.db, sessionId) };
+                return { runs: await Envelope.listRunsForSession(ctx.db, sessionId) };
             },
             description: "List runs in a session, most recent first.",
             params: {

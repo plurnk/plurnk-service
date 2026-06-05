@@ -3,7 +3,7 @@
 
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { Db, PrepMethod } from "../../core/Db.ts";
-import { fetchLogEntry } from "../logEntry.ts";
+import LogEntry from "../logEntry.ts";
 import type { LogEntryWire } from "../logEntry.ts";
 
 interface Params {
@@ -27,7 +27,7 @@ export default class LogReadMethod {
             limit,
         });
         const entries: LogEntryWire[] = [];
-        for (const r of rows) entries.push(await fetchLogEntry(db, r.id));
+        for (const r of rows) entries.push(await LogEntry.fetchLogEntry(db, r.id));
         return entries;
     }
 

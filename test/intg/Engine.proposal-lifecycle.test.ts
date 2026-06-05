@@ -235,8 +235,8 @@ test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
         await (db.engine_set_loop_flags as PrepMethod).run({
             loop_id: ctx.loopId, flags: JSON.stringify({ yolo: true }),
         });
-        const { attachYolo } = await import("../../src/server/yolo.ts");
-        attachYolo(ctx.engine, db);
+        const Yolo = (await import("../../src/server/yolo.ts")).default;
+        Yolo.attachYolo(ctx.engine, db);
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -265,8 +265,8 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
     try {
         const ctx = await setupEngine(db);
         // Default flags JSON ('{}') — yolo defaults false.
-        const { attachYolo } = await import("../../src/server/yolo.ts");
-        attachYolo(ctx.engine, db);
+        const Yolo = (await import("../../src/server/yolo.ts")).default;
+        Yolo.attachYolo(ctx.engine, db);
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({

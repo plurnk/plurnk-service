@@ -1,5 +1,5 @@
 import type MethodRegistry from "../MethodRegistry.ts";
-import { attachToSession } from "../envelope.ts";
+import Envelope from "../envelope.ts";
 
 export default class SessionAttachMethod {
     static register(registry: MethodRegistry): void {
@@ -22,7 +22,7 @@ export default class SessionAttachMethod {
                 if (persona !== null && typeof persona !== "string") {
                     throw new Error("session.attach: persona must be a string or null");
                 }
-                const envelope = await attachToSession(ctx.db, p.id, { runId: p.runId, runName: p.runName, persona });
+                const envelope = await Envelope.attachToSession(ctx.db, p.id, { runId: p.runId, runName: p.runName, persona });
                 ctx.attachSession(envelope);
                 return {
                     id: envelope.sessionId,

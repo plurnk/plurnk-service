@@ -32,40 +32,42 @@ export interface LogEntryWire {
     tokens: number;
 }
 
-const parseJsonOrNull = (v: unknown): unknown => {
-    if (v === null || v === undefined) return null;
-    if (typeof v !== "string") return v;
-    return JSON.parse(v);
-};
+export default class LogEntry {
+    static #parseJsonOrNull(v: unknown): unknown {
+        if (v === null || v === undefined) return null;
+        if (typeof v !== "string") return v;
+        return JSON.parse(v);
+    }
 
-export const fetchLogEntry = async (db: Db, id: number): Promise<LogEntryWire> => {
-    const row = await (db.log_entry_by_id as PrepMethod).get<Record<string, unknown>>({ id });
-    if (row === undefined) throw new Error(`log_entries row ${id} not found`);
-    return {
-        id: row.id as number,
-        run_id: row.run_id as number,
-        loop_id: row.loop_id as number,
-        turn_id: row.turn_id as number,
-        sequence: row.sequence as number,
-        at: row.at as string,
-        origin: row.origin as string,
-        op: row.op as string,
-        suffix: row.suffix as string,
-        signal: parseJsonOrNull(row.signal),
-        scheme: row.scheme as string | null,
-        username: row.username as string | null,
-        password: row.password as string | null,
-        hostname: row.hostname as string | null,
-        port: row.port as number | null,
-        pathname: row.pathname as string | null,
-        params: parseJsonOrNull(row.params),
-        fragment: row.fragment as string | null,
-        lineMarker: parseJsonOrNull(row.lineMarker),
-        tx: parseJsonOrNull(row.tx),
-        mimetype_tx: row.mimetype_tx as string,
-        rx: parseJsonOrNull(row.rx),
-        mimetype_rx: row.mimetype_rx as string,
-        status_rx: row.status_rx as number,
-        tokens: row.tokens as number,
-    };
-};
+    static async fetchLogEntry(db: Db, id: number): Promise<LogEntryWire> {
+        const row = await (db.log_entry_by_id as PrepMethod).get<Record<string, unknown>>({ id });
+        if (row === undefined) throw new Error(`log_entries row ${id} not found`);
+        return {
+            id: row.id as number,
+            run_id: row.run_id as number,
+            loop_id: row.loop_id as number,
+            turn_id: row.turn_id as number,
+            sequence: row.sequence as number,
+            at: row.at as string,
+            origin: row.origin as string,
+            op: row.op as string,
+            suffix: row.suffix as string,
+            signal: LogEntry.#parseJsonOrNull(row.signal),
+            scheme: row.scheme as string | null,
+            username: row.username as string | null,
+            password: row.password as string | null,
+            hostname: row.hostname as string | null,
+            port: row.port as number | null,
+            pathname: row.pathname as string | null,
+            params: LogEntry.#parseJsonOrNull(row.params),
+            fragment: row.fragment as string | null,
+            lineMarker: LogEntry.#parseJsonOrNull(row.lineMarker),
+            tx: LogEntry.#parseJsonOrNull(row.tx),
+            mimetype_tx: row.mimetype_tx as string,
+            rx: LogEntry.#parseJsonOrNull(row.rx),
+            mimetype_rx: row.mimetype_rx as string,
+            status_rx: row.status_rx as number,
+            tokens: row.tokens as number,
+        };
+    }
+}
