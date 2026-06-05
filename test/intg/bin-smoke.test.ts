@@ -1,4 +1,4 @@
-// Smoke coverage for bin/plurnk-service.js. Lint and intg exercise the
+// Smoke coverage for bin/plurnk-service.ts. Lint and intg exercise the
 // in-tree Daemon class directly; nothing today catches rot in the bin
 // entrypoint (config cascade, env→arg mapping, signal handlers, the
 // dynamic provider load path, the startup-line stdout format clients
@@ -15,7 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { WebSocket } from "ws";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const BIN_PATH = resolve(here, "../../bin/plurnk-service.js");
+const BIN_PATH = resolve(here, "../../bin/plurnk-service.ts");
 
 interface BootedDaemon {
     child: ChildProcess;
