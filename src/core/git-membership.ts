@@ -29,7 +29,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import { writeEntry } from "../schemes/_entry-crud.ts";
+import EntryCrud from "../schemes/_entry-crud.ts";
 
 const execFileP = promisify(execFile);
 
@@ -119,7 +119,7 @@ const materializeMember = async (
     // writeEntry finds the registered member (scheme=null) and refreshes its
     // body channel each turn, so a member edited out-of-band reflects current
     // disk content (D5) — tokenization + visibility flow through the paradigm.
-    await writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+    await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
 };
 
 // Full membership + materialization pass for a run. Registers git members,

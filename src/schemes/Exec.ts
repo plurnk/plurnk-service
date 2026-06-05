@@ -3,11 +3,11 @@ import { isKnownRuntime, SubprocessExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { readSessionEntry, showSessionEntry, hideSessionEntry } from "./_entry-ops.ts";
+import EntryOps from "./_entry-ops.ts";
+import EntryCrud from "./_entry-crud.ts";
+import EntryFind from "./_entry-find.ts";
 import type { ReadResult, ShowHideResult } from "./_entry-ops.ts";
-import { readEntry, writeEntry, deleteEntry } from "./_entry-crud.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
-import { findSessionEntries } from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import {
     appendToChannel, setChannelState,
@@ -142,7 +142,7 @@ export default class Exec {
             };
         }
         const seed: EntryData = { channels: seedChannels, tags: [] };
-        const { entryId } = await writeEntry(pathname, seed, ctx, "exec");
+        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, "exec");
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
         const subscriptionId = await openSubscription(ctx.db, {
@@ -235,30 +235,30 @@ export default class Exec {
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return readSessionEntry(statement, ctx, Exec.manifest);
+        return EntryOps.readSessionEntry(statement, ctx, Exec.manifest);
     }
 
     async show(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return showSessionEntry(statement, ctx, Exec.manifest);
+        return EntryOps.showSessionEntry(statement, ctx, Exec.manifest);
     }
 
     async hide(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return hideSessionEntry(statement, ctx, Exec.manifest);
+        return EntryOps.hideSessionEntry(statement, ctx, Exec.manifest);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return findSessionEntries(statement, ctx, Exec.manifest.name);
+        return EntryFind.findSessionEntries(statement, ctx, Exec.manifest.name);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return readEntry(pathname, ctx, Exec.manifest.name);
+        return EntryCrud.readEntry(pathname, ctx, Exec.manifest.name);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        return writeEntry(pathname, entry, ctx, Exec.manifest.name);
+        return EntryCrud.writeEntry(pathname, entry, ctx, Exec.manifest.name);
     }
 
     async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        return deleteEntry(pathname, ctx, Exec.manifest.name);
+        return EntryCrud.deleteEntry(pathname, ctx, Exec.manifest.name);
     }
 }

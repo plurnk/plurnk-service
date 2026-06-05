@@ -9,8 +9,8 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { writeEntry } from "../schemes/_entry-crud.ts";
-import { buildManifestBody } from "../schemes/_entry-manifest.ts";
+import EntryCrud from "../schemes/_entry-crud.ts";
+import EntryManifest from "../schemes/_entry-manifest.ts";
 import { indexGitMembership } from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -690,8 +690,8 @@ export default class Engine {
         // manifest + index build so this turn's packet reflects them.
         await indexGitMembership(systemCtx);
 
-        await writeEntry("manifest.json", {
-            channels: { body: { content: await buildManifestBody(systemCtx, this.#previewBudget), mimetype: "application/json" } },
+        await EntryCrud.writeEntry("manifest.json", {
+            channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx, this.#previewBudget), mimetype: "application/json" } },
             tags: [],
         }, systemCtx, "plurnk");
 
@@ -1430,7 +1430,7 @@ export default class Engine {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
             tags: [],
         };
-        await writeEntry(pathname, entry, ctx, "plurnk");
+        await EntryCrud.writeEntry(pathname, entry, ctx, "plurnk");
         return { loopId, turnSeq };
     }
 

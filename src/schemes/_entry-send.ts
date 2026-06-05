@@ -5,7 +5,7 @@
 import type { SendStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { deleteEntry } from "./_entry-crud.ts";
+import EntryCrud from "./_entry-crud.ts";
 import { findActiveSubscription } from "../core/ChannelWrite.ts";
 
 export interface SendResult {
@@ -13,56 +13,58 @@ export interface SendResult {
     [key: string]: unknown;
 }
 
-const pathnameOf = (statement: SendStatement): string | null => {
-    const path = statement.target;
-    if (path === null) return null;
-    if (path.kind === "url") return path.pathname;
-    return path.raw;
-};
+export default class EntrySend {
+    static #pathnameOf(statement: SendStatement): string | null {
+        const path = statement.target;
+        if (path === null) return null;
+        if (path.kind === "url") return path.pathname;
+        return path.raw;
+    }
 
-const fragmentOf = (statement: SendStatement): string | null => {
-    const path = statement.target;
-    if (path === null || path.kind !== "url") return null;
-    return path.fragment;
-};
+    static #fragmentOf(statement: SendStatement): string | null {
+        const path = statement.target;
+        if (path === null || path.kind !== "url") return null;
+        return path.fragment;
+    }
 
-export const sendToSessionEntry = async (statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> => {
-    if (statement.target === null) return { status: 400, error: "directed SEND requires a path" };
+    static async sendToSessionEntry(statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> {
+        if (statement.target === null) return { status: 400, error: "directed SEND requires a path" };
 
-    const status = statement.signal;
-    if (status === null) return { status: 400, error: "SEND requires a numeric status code" };
+        const status = statement.signal;
+        if (status === null) return { status: 400, error: "SEND requires a numeric status code" };
 
-    // SEND[410] Gone — delete the targeted resource (SPEC §3.5). With a
-    // #fragment, deletes just that channel; without, deletes the whole entry.
-    if (status === 410) {
-        const pathname = pathnameOf(statement);
-        if (pathname === null) return { status: 400 };
-        const fragment = fragmentOf(statement);
-        if (fragment !== null) {
-            const { db, sessionId } = ctx;
-            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-            if (entry === undefined) return { status: 404 };
-            const deleted = await (db.crud_delete_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: fragment });
-            return { status: deleted === undefined ? 404 : 200 };
+        // SEND[410] Gone — delete the targeted resource (SPEC §3.5). With a
+        // #fragment, deletes just that channel; without, deletes the whole entry.
+        if (status === 410) {
+            const pathname = EntrySend.#pathnameOf(statement);
+            if (pathname === null) return { status: 400 };
+            const fragment = EntrySend.#fragmentOf(statement);
+            if (fragment !== null) {
+                const { db, sessionId } = ctx;
+                const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+                if (entry === undefined) return { status: 404 };
+                const deleted = await (db.crud_delete_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: fragment });
+                return { status: deleted === undefined ? 404 : 200 };
+            }
+            const result = await EntryCrud.deleteEntry(pathname, ctx, scheme);
+            return { status: result.status };
         }
-        const result = await deleteEntry(pathname, ctx, scheme);
-        return { status: result.status };
-    }
 
-    // SEND[499] Client Closed Request — cancel active subscription (SPEC §3.5, §7.7).
-    // Entry-bearing schemes never have subscriptions in v0; always return 404.
-    // Streaming schemes (sse / exec / etc.) override this and look up via
-    // findActiveSubscription, then call their teardown using the stored handle.
-    if (status === 499) {
-        const pathname = pathnameOf(statement);
-        if (pathname === null) return { status: 400 };
-        const { db, sessionId, runId } = ctx;
-        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-        if (entry === undefined) return { status: 404, error: "no entry at path" };
-        const subscription = await findActiveSubscription(db, { runId, entryId: entry.id });
-        if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
-        return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
-    }
+        // SEND[499] Client Closed Request — cancel active subscription (SPEC §3.5, §7.7).
+        // Entry-bearing schemes never have subscriptions in v0; always return 404.
+        // Streaming schemes (sse / exec / etc.) override this and look up via
+        // findActiveSubscription, then call their teardown using the stored handle.
+        if (status === 499) {
+            const pathname = EntrySend.#pathnameOf(statement);
+            if (pathname === null) return { status: 400 };
+            const { db, sessionId, runId } = ctx;
+            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+            if (entry === undefined) return { status: 404, error: "no entry at path" };
+            const subscription = await findActiveSubscription(db, { runId, entryId: entry.id });
+            if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
+            return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
+        }
 
-    return { status: 501, error: `entry scheme does not interpret SEND status ${status}` };
-};
+        return { status: 501, error: `entry scheme does not interpret SEND status ${status}` };
+    }
+}

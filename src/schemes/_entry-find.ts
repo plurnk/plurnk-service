@@ -20,76 +20,78 @@ export interface FindResult {
     results: string[];
 }
 
-const scopePathnameOf = (statement: FindStatement): string | null => {
-    const path = statement.target;
-    if (path === null) return null;
-    if (path.kind === "url") return path.pathname;
-    return path.raw;
-};
-
-const paginate = <T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } => {
-    const total = items.length;
-    const { first, last } = marker;
-    if (last === null) {
-        if (first === 0 || first === -1) return { status: 200, items: [] };
-        if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
-        return { status: 416 };
+export default class EntryFind {
+    static #scopePathnameOf(statement: FindStatement): string | null {
+        const path = statement.target;
+        if (path === null) return null;
+        if (path.kind === "url") return path.pathname;
+        return path.raw;
     }
-    let n = first;
-    let m = last;
-    if (n === 0) n = 1;
-    if (m === -1) m = total;
-    if (n < 1 || n > total) return { status: 416 };
-    if (m < 1 || m > total) return { status: 416 };
-    if (n > m) return { status: 416 };
-    return { status: 200, items: items.slice(n - 1, m) };
-};
 
-export const findSessionEntries = async (statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> => {
-    if (statement.target === null) return { status: 400, content: null, mimetype: null, results: [] };
-
-    let regexFilter: RegExp | null = null;
-    let pathnameGlob: string | null = null;
-    if (statement.body !== null) {
-        if (statement.body.dialect === "glob") {
-            pathnameGlob = statement.body.raw;
-        } else if (statement.body.dialect === "regex") {
-            try {
-                regexFilter = new RegExp(statement.body.pattern, statement.body.flags);
-            } catch {
-                return { status: 400, content: null, mimetype: null, results: [] };
-            }
-        } else {
-            // xpath / jsonpath need per-mimetype content matching (plurnk-mimetypes#3).
-            return { status: 501, content: null, mimetype: null, results: [] };
+    static #paginate<T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } {
+        const total = items.length;
+        const { first, last } = marker;
+        if (last === null) {
+            if (first === 0 || first === -1) return { status: 200, items: [] };
+            if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
+            return { status: 416 };
         }
+        let n = first;
+        let m = last;
+        if (n === 0) n = 1;
+        if (m === -1) m = total;
+        if (n < 1 || n > total) return { status: 416 };
+        if (m < 1 || m > total) return { status: 416 };
+        if (n > m) return { status: 416 };
+        return { status: 200, items: items.slice(n - 1, m) };
     }
 
-    const scopePathname = scopePathnameOf(statement);
-    const scopeGlob = scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;
-    const tags = Array.isArray(statement.signal) ? statement.signal : [];
-    const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
+    static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<FindResult> {
+        if (statement.target === null) return { status: 400, content: null, mimetype: null, results: [] };
 
-    const { db, sessionId } = ctx;
-    const rows = await (db.find_session_entries as PrepMethod).all<{ pathname: string }>({
-        session_id: sessionId,
-        scheme,
-        scope_pathname: scopeGlob,
-        pathname_pattern: pathnameGlob,
-        tags: tagsParam,
-    });
+        let regexFilter: RegExp | null = null;
+        let pathnameGlob: string | null = null;
+        if (statement.body !== null) {
+            if (statement.body.dialect === "glob") {
+                pathnameGlob = statement.body.raw;
+            } else if (statement.body.dialect === "regex") {
+                try {
+                    regexFilter = new RegExp(statement.body.pattern, statement.body.flags);
+                } catch {
+                    return { status: 400, content: null, mimetype: null, results: [] };
+                }
+            } else {
+                // xpath / jsonpath need per-mimetype content matching (plurnk-mimetypes#3).
+                return { status: 501, content: null, mimetype: null, results: [] };
+            }
+        }
 
-    let pathnames = rows.map((r) => r.pathname);
-    if (regexFilter !== null) {
-        pathnames = pathnames.filter((p) => regexFilter.test(p));
+        const scopePathname = EntryFind.#scopePathnameOf(statement);
+        const scopeGlob = scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;
+        const tags = Array.isArray(statement.signal) ? statement.signal : [];
+        const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
+
+        const { db, sessionId } = ctx;
+        const rows = await (db.find_session_entries as PrepMethod).all<{ pathname: string }>({
+            session_id: sessionId,
+            scheme,
+            scope_pathname: scopeGlob,
+            pathname_pattern: pathnameGlob,
+            tags: tagsParam,
+        });
+
+        let pathnames = rows.map((r) => r.pathname);
+        if (regexFilter !== null) {
+            pathnames = pathnames.filter((p) => regexFilter.test(p));
+        }
+
+        if (statement.lineMarker !== null) {
+            const page = EntryFind.#paginate(pathnames, statement.lineMarker);
+            if (page.status !== 200) return { status: page.status, content: null, mimetype: null, results: [] };
+            pathnames = page.items ?? [];
+        }
+
+        const results = pathnames.map((p) => `${scheme}://${p}`);
+        return { status: 200, content: results.join("\n"), mimetype: "text/plain", results };
     }
-
-    if (statement.lineMarker !== null) {
-        const page = paginate(pathnames, statement.lineMarker);
-        if (page.status !== 200) return { status: page.status, content: null, mimetype: null, results: [] };
-        pathnames = page.items ?? [];
-    }
-
-    const results = pathnames.map((p) => `${scheme}://${p}`);
-    return { status: 200, content: results.join("\n"), mimetype: "text/plain", results };
-};
+}

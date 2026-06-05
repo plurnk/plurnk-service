@@ -4,7 +4,7 @@ import { createPatch } from "diff";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { writeEntry } from "./_entry-crud.ts";
+import EntryCrud from "./_entry-crud.ts";
 import { LineMarkerOps, Matcher, MimetypeBinary } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
@@ -262,7 +262,7 @@ export default class File {
             // scheme=null: the "file" scheme is a routing internal only;
             // never stored. Entries.scheme stays NULL for filesystem rows
             // so render-time bare-path output requires no special case.
-            await writeEntry(relPath, {
+            await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
             }, ctx, null);
