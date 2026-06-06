@@ -17,7 +17,7 @@ export default class LoopResolveMethod {
         registry.registerMethod("loop.resolve", {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("loop.resolve requires an attached session");
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.logEntryId !== "number" || p.logEntryId <= 0) {
                     throw new Error("loop.resolve requires positive integer params.logEntryId");
                 }

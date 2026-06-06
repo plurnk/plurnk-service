@@ -8,7 +8,7 @@ export default class SessionAttachMethod {
                 if (ctx.session !== null) {
                     throw new Error("connection already has a session attached");
                 }
-                const p = (params ?? {}) as { id: number; runId?: number; runName?: string; persona?: string | null };
+                const p = params as { id: number; runId?: number; runName?: string; persona?: string | null };
                 if (typeof p.id !== "number") {
                     throw new Error("session.attach requires params.id: number");
                 }

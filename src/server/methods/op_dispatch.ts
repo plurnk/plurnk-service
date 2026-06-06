@@ -10,7 +10,7 @@ export default class OpDispatchMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.dispatch", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (p.statement === undefined || p.statement === null) throw new Error("op.dispatch requires params.statement: PlurnkStatement");
                 return DispatchAsClient.dispatch(ctx, p.statement);
             },

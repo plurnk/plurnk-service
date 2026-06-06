@@ -19,7 +19,7 @@ export default class LoopCancelMethod {
         registry.registerMethod("loop.cancel", {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("loop.cancel requires an attached session");
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 const reason = (typeof p.reason === "string" && p.reason.length > 0) ? p.reason : "user_cancelled";
                 const cancelled = ctx.daemon.cancelDrain(ctx.session.runId, reason);
                 return { cancelled, runId: ctx.session.runId, reason };

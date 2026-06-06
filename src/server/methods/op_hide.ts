@@ -14,7 +14,7 @@ export default class OpHideMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.hide", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.hide requires params.target: string");
                 const statement = Dsl.buildHide(p);
                 return DispatchAsClient.dispatch(ctx, statement);

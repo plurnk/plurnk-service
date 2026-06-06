@@ -37,7 +37,7 @@ export default class LoopRunMethod {
         registry.registerMethod("loop.run", {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("loop.run requires an attached session");
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.prompt !== "string" || p.prompt.length === 0) {
                     throw new Error("loop.run requires non-empty params.prompt");
                 }

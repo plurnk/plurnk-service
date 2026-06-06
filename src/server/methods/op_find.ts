@@ -14,7 +14,7 @@ export default class OpFindMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.find", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.scope !== "string" || p.scope.length === 0) throw new Error("op.find requires params.scope: string");
                 const statement = Dsl.buildFind(p);
                 return DispatchAsClient.dispatch(ctx, statement);

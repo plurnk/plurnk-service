@@ -14,7 +14,7 @@ export default class OpReadMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.read", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.read requires params.target: string");
                 const statement = Dsl.buildRead(p);
                 return DispatchAsClient.dispatch(ctx, statement);

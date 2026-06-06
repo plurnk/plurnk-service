@@ -9,7 +9,7 @@ export default class SessionSetRootMethod {
                 if (ctx.session === null) {
                     throw new Error("session.set_root requires an attached session");
                 }
-                const p = (params ?? {}) as { projectRoot?: string | null };
+                const p = params as { projectRoot?: string | null };
                 const projectRoot = p.projectRoot ?? null;
                 if (projectRoot !== null) {
                     if (typeof projectRoot !== "string" || projectRoot.length === 0) {

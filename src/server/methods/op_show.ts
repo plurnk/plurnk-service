@@ -14,7 +14,7 @@ export default class OpShowMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.show", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.show requires params.target: string");
                 const statement = Dsl.buildShow(p);
                 return DispatchAsClient.dispatch(ctx, statement);

@@ -35,7 +35,7 @@ export default class LogReadMethod {
         registry.registerMethod("log.read", {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("log.read requires an attached session");
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 const entries = await LogReadMethod.#fetchLogEntries(ctx.db, ctx.session.runId, p);
                 return { status: 200, entries };
             },

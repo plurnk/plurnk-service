@@ -8,7 +8,7 @@ export default class SessionSetPersonaMethod {
                 if (ctx.session === null) {
                     throw new Error("session.set_persona requires an attached session");
                 }
-                const p = (params ?? {}) as { persona?: string | null };
+                const p = params as { persona?: string | null };
                 const persona = p.persona ?? null;
                 if (persona !== null && typeof persona !== "string") {
                     throw new Error("session.set_persona: persona must be a string or null");

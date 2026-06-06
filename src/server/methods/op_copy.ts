@@ -14,7 +14,7 @@ export default class OpCopyMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.copy", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.source !== "string" || p.source.length === 0) throw new Error("op.copy requires params.source: string");
                 if (typeof p.destination !== "string" || p.destination.length === 0) throw new Error("op.copy requires params.destination: string");
                 const statement = Dsl.buildCopy(p);

@@ -9,7 +9,7 @@ export default class SessionCreateMethod {
                 if (ctx.session !== null) {
                     throw new Error("connection already has a session attached");
                 }
-                const p = (params ?? {}) as { name?: string; projectRoot?: string | null; persona?: string | null };
+                const p = params as { name?: string; projectRoot?: string | null; persona?: string | null };
                 const projectRoot = p.projectRoot ?? null;
                 if (projectRoot !== null) {
                     if (typeof projectRoot !== "string" || projectRoot.length === 0) {

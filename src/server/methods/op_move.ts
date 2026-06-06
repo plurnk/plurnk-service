@@ -14,7 +14,7 @@ export default class OpMoveMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.move", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.source !== "string" || p.source.length === 0) throw new Error("op.move requires params.source: string");
                 const statement = Dsl.buildMove(p);
                 return DispatchAsClient.dispatch(ctx, statement);

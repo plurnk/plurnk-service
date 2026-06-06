@@ -5,7 +5,7 @@ export default class SessionRunsMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("session.runs", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as { id?: number };
+                const p = params as { id?: number };
                 const sessionId = p.id ?? ctx.session?.sessionId;
                 if (typeof sessionId !== "number") {
                     throw new Error("session.runs requires params.id: number (or an attached session)");

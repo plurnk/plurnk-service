@@ -12,7 +12,7 @@ export default class OpSendMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.send", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.status !== "number") throw new Error("op.send requires params.status: number");
                 const statement = Dsl.buildSend(p);
                 return DispatchAsClient.dispatch(ctx, statement);

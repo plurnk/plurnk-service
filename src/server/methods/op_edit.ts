@@ -14,7 +14,7 @@ export default class OpEditMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.edit", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.edit requires params.target: string");
                 const statement = Dsl.buildEdit(p);
                 return DispatchAsClient.dispatch(ctx, statement);

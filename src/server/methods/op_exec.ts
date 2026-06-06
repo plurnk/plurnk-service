@@ -12,7 +12,7 @@ export default class OpExecMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.exec", {
             handler: async (params, ctx) => {
-                const p = (params ?? {}) as Params;
+                const p = params as Params;
                 const statement = Dsl.buildExec(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
