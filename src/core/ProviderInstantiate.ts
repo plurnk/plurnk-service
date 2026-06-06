@@ -16,10 +16,7 @@ export default class ProviderInstantiate {
         try {
             mod = await import(packageName);
         } catch (cause) {
-            throw new Error(
-                `provider package ${packageName} not installed (alias '${alias.alias}' requires it): ` +
-                (cause instanceof Error ? cause.message : String(cause)),
-            );
+            throw new Error(`provider package ${packageName} not installed (alias '${alias.alias}' requires it)`, { cause });
         }
         const factory = mod.default;
         if (typeof factory?.fromEnv !== "function") {
