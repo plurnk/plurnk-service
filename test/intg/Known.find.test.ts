@@ -130,6 +130,30 @@ test("Known.find regex honors flags — case-insensitive via SQL REGEXP", async 
     } finally { db.close(); }
 });
 
+test("Known.find regex accepts `g` — neutralized to a no-op by SQL REGEXP (no throw)", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seedEntries(db, sessionId, runId, [["foo", "x"], ["afoo", "y"], ["bar", "z"]]);
+        // /foo/g once threw (sqlrite rejected stateful flags); now `g` is a no-op → matches like /foo/.
+        const g: MatcherBody = { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" };
+        const r = await new Known().find(findStmt(url(""), g), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results.toSorted(), ["known://afoo", "known://foo"]);
+    } finally { db.close(); }
+});
+
+test("Known.find regex `y` (sticky) anchors at the start via SQL REGEXP", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seedEntries(db, sessionId, runId, [["foobar", "x"], ["afoobar", "y"]]);
+        // lastIndex reset each row → sticky means "match at position 0", not anywhere.
+        const y: MatcherBody = { dialect: "regex", raw: "/foo/y", pattern: "foo", flags: "y" };
+        const r = await new Known().find(findStmt(url(""), y), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://foobar"]);
+    } finally { db.close(); }
+});
+
 test("Known.find with xpath matcher returns 501 (pending plurnk-mimetypes#3)", async () => {
     const { db, sessionId, runId } = await setup();
     try {

@@ -64,10 +64,9 @@ export default class EntryFind {
             if (statement.body.dialect === "glob") {
                 pathnameGlob = statement.body.raw;
             } else if (statement.body.dialect === "regex") {
+                // The grammar already validated this compiles (AstBuilder #parseRegexBody);
+                // the match runs in SQL (REGEXP — sqlrite 5.1.1 accepts all flags, taming g/y).
                 const { pattern, flags } = statement.body;
-                // Validate the pattern compiles; the match itself runs in SQL (REGEXP).
-                try { new RegExp(pattern, flags); }
-                catch { return { status: 400, pathnames: [] }; }
                 pathnameRegex = flags ? `(?${flags})${pattern}` : pattern;
             } else {
                 // xpath / jsonpath need per-mimetype content matching (plurnk-mimetypes#3).
