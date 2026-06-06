@@ -15,11 +15,12 @@
 
 import { MimetypeBinary } from "../content/index.ts";
 
-// Permissive packet shapes. This module is the JSON boundary — sections come
-// from Engine's in-memory packet AND from `turns.packet` re-parsed by the
-// digest, so leaf fields are typed loose (`unknown` / small unions) and the
-// runtime `typeof` checks below do the narrowing. Interior trust (and the
-// no-defensive-coding cleanup) is a separate concern.
+// The SECTION shapes (SystemSection/UserSection) are the JSON boundary — they
+// arrive both from Engine's in-memory packet AND from `turns.packet` re-parsed
+// by the digest, so leaf fields are typed loose (`unknown` / small unions) and
+// the runtime `typeof` narrowing below validates them (boundaries validate).
+// The full Packet is Engine-only and contract-guaranteed (RequestPacket), so it
+// is typed strict — no system/user defaulting.
 interface ChannelView { content?: unknown; mimetype?: unknown; tokens?: unknown; lines?: unknown }
 interface IndexEntry {
     scheme?: string | null;
@@ -61,7 +62,7 @@ interface UserSection {
     system_requirements?: unknown;
     tokens?: number;
 }
-interface Packet { system?: SystemSection; user?: UserSection }
+interface Packet { system: SystemSection; user: UserSection }
 type CountTokens = (text: string) => number;
 
 export default class PacketWire {
@@ -113,8 +114,8 @@ export default class PacketWire {
     // Engine calls this directly; the result is what provider.generate receives.
     static packetToWireMessages(packet: Packet): Array<{ role: string; content: string }> {
         return [
-            { role: "system", content: PacketWire.renderSystemContent(packet.system ?? { system_definition: "" }) },
-            { role: "user", content: PacketWire.renderUserContent(packet.user ?? {}) },
+            { role: "system", content: PacketWire.renderSystemContent(packet.system) },
+            { role: "user", content: PacketWire.renderUserContent(packet.user) },
         ];
     }
 
@@ -130,8 +131,8 @@ export default class PacketWire {
         log: { entries: number; tokens: number; byScheme: Array<{ scheme: string; entries: number; tokens: number }> };
         total: number;
     } {
-        const system: SystemSection = packet.system ?? { system_definition: "" };
-        const user: UserSection = packet.user ?? {};
+        const system: SystemSection = packet.system;
+        const user: UserSection = packet.user;
         const indexEntries: IndexEntry[] = Array.isArray(system.index) ? system.index : [];
         const logEntries: LogEntryView[] = Array.isArray(system.log) ? system.log : [];
         const indexBody = indexEntries.length > 0 ? PacketWire.#renderIndexEntries(indexEntries) : "";
