@@ -244,7 +244,7 @@ export default class Exec {
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Exec.manifest.name);
+        return EntryFind.findSessionEntries(statement, ctx, Exec.manifest);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {

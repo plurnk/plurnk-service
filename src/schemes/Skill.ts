@@ -57,6 +57,6 @@ export default class Skill {
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Skill.manifest.name);
+        return EntryFind.findSessionEntries(statement, ctx, Skill.manifest);
     }
 }

@@ -463,7 +463,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
 - Filters entries within scope (scheme + pathname prefix). {§6.6-scope-prefix-filter}
-- `body` matcher operates on pathname (glob). {§6.6-glob-filter-on-pathname} Content matchers (xpath/jsonpath/regex over body) live on READ.
+- `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per grammar plurnk.md §"Body matcher dispatch"; the path-glob lives in the (target), not the body. {§6.6-glob-filter-on-content}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§6.6-tag-filter-and-semantics}
 - Session + scheme scoped — no cross-session/cross-scheme leakage. {§6.6-scoped-isolation}
 - Returns `{ status: 200, results: string }` (newline-separated matching paths, `text/plain`).
@@ -1173,8 +1173,8 @@ Carried from the contract walk; durable.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - **COPY `<L>`** → source range, symmetric with READ `<L>`.
 - **READ rx** prefixes each line with `N:\t` per §16.6. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
-- **FIND body matcher** applies to pathname. xpath/jsonpath content matchers dispatch through `Mimetypes.query`.
-- **SHOW/HIDE** has a single-entry path (exact pathname, no slots) and a multi-entry path (any of body/signal/`<L>` present). Multi-entry path treats target as pathname glob scope, applies body matcher to pathnames (regex/glob), filters by `signal` tags, paginates with `<L>`, and flips visibility on the resulting set.
+- **FIND body matcher** applies to entry content (all dialects), per-candidate via `Matcher.matchAgainstContent` → `Mimetypes.query` (status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
+- **SHOW/HIDE** has a single-entry path (exact pathname, no slots) and a multi-entry path (any of body/signal/`<L>` present). Multi-entry path treats target as pathname glob scope, applies the body matcher to entry content (shared with FIND via `matchPathnames`), filters by `signal` tags, paginates with `<L>`, and flips visibility on the resulting set.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §6.5): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
 

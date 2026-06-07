@@ -273,9 +273,10 @@ export default class EntryOps {
             if (entry === undefined) return { status: 404 };
             pathnames = [pathname];
         } else {
-            // Multi-entry path: body matcher (glob/regex) + tags + `<L>` resolve to
-            // the matched pathnames in SQL, shared with FIND via matchPathnames.
-            const match = await EntryFind.matchPathnames(statement, ctx, scheme);
+            // Multi-entry path: scope + tags select candidates in SQL; the body
+            // matcher runs against each candidate's content, shared with FIND via
+            // matchPathnames.
+            const match = await EntryFind.matchPathnames(statement, ctx, manifest);
             if (match.status !== 200) return { status: match.status };
             if (match.pathnames.length === 0) return { status: 304 };
             pathnames = match.pathnames;

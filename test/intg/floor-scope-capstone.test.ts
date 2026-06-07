@@ -8,7 +8,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const parse = (dsl: string): PlurnkStatement[] => {
     const result = PlurnkParser.parse(dsl);
@@ -20,7 +20,11 @@ const parse = (dsl: string): PlurnkStatement[] => {
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, "capstone-ws");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    // FIND/SHOW/HIDE body matchers now run content through the mimetypes daughter,
+    // so the end-to-end engine needs a real (discovering) Mimetypes — same as the
+    // daemon wires in production; the bare default has no handlers.
+    await DEFAULT_MIMETYPES.ready();
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
     const dispatch = async (statement: PlurnkStatement, sequence: number) =>
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
@@ -62,7 +66,8 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.equal(r6.status, 200);
         assert.deepEqual(r6.results, ["known://france/capital"]);
 
-        const [findByGlob] = parse("<<FIND(known://):france*:FIND");
+        // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
+        const [findByGlob] = parse("<<FIND(known://):Paris*:FIND");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
         assert.deepEqual(r7.results, ["known://france/capital"]);

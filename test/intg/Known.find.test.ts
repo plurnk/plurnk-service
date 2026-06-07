@@ -65,15 +65,16 @@ test("[§6.6-scope-prefix-filter] Known.find with scope prefix filters to that s
     } finally { db.close(); }
 });
 
-test("[§6.6-glob-filter-on-pathname] Known.find with glob matcher filters by pattern", async () => {
+test("[§6.6-glob-filter-on-content] Known.find with glob matcher filters by CONTENT", async () => {
     const { db, sessionId, runId } = await setup();
     try {
+        // Pathnames are neutral (a/b/c); the matchable token lives in the content.
         await seedEntries(db, sessionId, runId, [
-            ["france", "x"], ["france/capital", "y"], ["italy", "z"],
+            ["a", "france is the topic"], ["b", "france and germany"], ["c", "italy only"],
         ]);
         const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://france", "known://france/capital"]);
+        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
     } finally { db.close(); }
 });
 
@@ -93,73 +94,77 @@ test("[§6.6-tag-filter-and-semantics] Known.find with tag filter — AND semant
     } finally { db.close(); }
 });
 
-test("Known.find combining glob + tag filter", async () => {
+test("Known.find combining glob (content) + tag filter", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
-            ["plan/step1", "x", ["urgent"]],
-            ["plan/step2", "y", ["later"]],
-            ["other/thing", "z", ["urgent"]],
+            ["s1", "plan alpha", ["urgent"]],
+            ["s2", "plan beta", ["later"]],
+            ["s3", "other thing", ["urgent"]],
         ]);
-        const r = await new Known().find(findStmt(url(""), glob("plan/*"), ["urgent"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        // glob matches content "plan*"; tag narrows to urgent → only s1 satisfies both.
+        const r = await new Known().find(findStmt(url(""), glob("plan*"), ["urgent"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://plan/step1"]);
+        assert.deepEqual(r.results, ["known://s1"]);
     } finally { db.close(); }
 });
 
-test("Known.find with regex matcher filters by pathname", async () => {
+test("Known.find with regex matcher filters by CONTENT", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["alpha", "x"], ["beta", "y"], ["aardvark", "z"]]);
+        await seedEntries(db, sessionId, runId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
         const r = await new Known().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://aardvark", "known://alpha"]);
+        assert.deepEqual(r.results.toSorted(), ["known://a", "known://c"]);
     } finally { db.close(); }
 });
 
-test("Known.find regex honors flags — case-insensitive via SQL REGEXP", async () => {
+test("Known.find regex honors flags — case-insensitive (i) on content", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["Alpha", "x"], ["alpine", "y"], ["beta", "z"]]);
-        // `(?i)^al` must match "Alpha" (capital A) — only possible if the `i` flag
-        // crosses into SQL REGEXP; without it, `^al` would skip "Alpha".
+        await seedEntries(db, sessionId, runId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
+        // `i` must match "Alpha" (capital A) against /^al/ — the flag crosses into
+        // the daughter's content regex; without it, `^al` would skip "Alpha".
         const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
         const r = await new Known().find(findStmt(url(""), ci), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://Alpha", "known://alpine"]);
+        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
     } finally { db.close(); }
 });
 
-test("Known.find regex accepts `g` — neutralized to a no-op by SQL REGEXP (no throw)", async () => {
+test("Known.find regex accepts `g` flag on content (no throw)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["foo", "x"], ["afoo", "y"], ["bar", "z"]]);
-        // /foo/g once threw (sqlrite rejected stateful flags); now `g` is a no-op → matches like /foo/.
+        await seedEntries(db, sessionId, runId, [["a", "foo here"], ["b", "a foo"], ["c", "bar"]]);
+        // `g` doesn't change hit/no-hit for entry selection; it must not throw.
         const g: MatcherBody = { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" };
         const r = await new Known().find(findStmt(url(""), g), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://afoo", "known://foo"]);
+        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
     } finally { db.close(); }
 });
 
-test("Known.find regex `y` (sticky) anchors at the start via SQL REGEXP", async () => {
+test("Known.find regex `y` (sticky) anchors at content start", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["foobar", "x"], ["afoobar", "y"]]);
-        // lastIndex reset each row → sticky means "match at position 0", not anywhere.
+        await seedEntries(db, sessionId, runId, [["a", "foobar"], ["b", "a foobar"]]);
+        // sticky → match only at position 0 of the content, not anywhere.
         const y: MatcherBody = { dialect: "regex", raw: "/foo/y", pattern: "foo", flags: "y" };
         const r = await new Known().find(findStmt(url(""), y), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://foobar"]);
+        assert.deepEqual(r.results, ["known://a"]);
     } finally { db.close(); }
 });
 
-test("Known.find with xpath matcher returns 501 (pending plurnk-mimetypes#3)", async () => {
+test("Known.find xpath matcher on text content → unsupported dialect, entry excluded (200, empty)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "x"]]);
+        // xpath needs XML; against text/markdown the daughter raises
+        // UnsupportedDialectError (415) per candidate → no content hit → excluded.
+        await seedEntries(db, sessionId, runId, [["a", "plain text"]]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
-        assert.equal(r.status, 501);
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, []);
     } finally { db.close(); }
 });
 

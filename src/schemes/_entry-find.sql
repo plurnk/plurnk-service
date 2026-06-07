@@ -1,20 +1,24 @@
--- FIND helper for entry-bearing schemes (SPEC §6.6).
--- Static query handles all filter combinations via IS-NULL guards
--- (per SqlRite LLMS.md §5) and json_each over a JSON tag array.
+-- FIND / multi-entry SHOW / HIDE candidate selection for entry-bearing
+-- schemes (SPEC §6.6; plurnk.md FIND row).
+--
+-- Scope (target) + tag filters ONLY. The body matcher does NOT belong here:
+-- per plurnk.md §"Body matcher dispatch" it runs against entry CONTENT, which
+-- needs the mimetypes daughter (xpath/jsonpath/regex/glob over structured
+-- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
+-- the default-channel content this query returns. Static query handles every
+-- filter combination via IS-NULL guards (per SqlRite LLMS.md §5).
 
--- PREP: find_session_entries
+-- PREP: find_session_entry_candidates
+-- $channel: default-channel name whose content the body matcher runs against
 -- $scope_pathname: pathname-prefix glob (e.g., "foo/*") or NULL for no prefix
--- $pathname_pattern: full glob pattern or NULL for no glob filter
--- $pathname_regex: regex (optional leading (?flags) from imsuv) or NULL for no regex filter
 -- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
-SELECT e.pathname
+SELECT e.pathname, ec.content, ec.mimetype
 FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.scope = 'session'
   AND e.session_id = $session_id
   AND e.scheme = $scheme
   AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
-  AND ($pathname_pattern IS NULL OR e.pathname GLOB $pathname_pattern)
-  AND ($pathname_regex IS NULL OR e.pathname REGEXP $pathname_regex)
   AND (
     json_array_length(COALESCE($tags, '[]')) = 0
     OR e.id IN (

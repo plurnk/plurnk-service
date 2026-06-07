@@ -56,14 +56,15 @@ test("Known.show: body matcher (glob) flips matching entries", async () => {
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: body matcher (regex) filters by pathname", async () => {
+test("Known.show: body matcher (regex) flips entries by CONTENT", async () => {
     const ctx = await setup();
     try {
         const k = new Known();
-        await writeKnown(ctx.db, ctx, "/alpha");
-        await writeKnown(ctx.db, ctx, "/beta");
-        await writeKnown(ctx.db, ctx, "/aardvark");
-        const r = await k.hide(hideStmt({ target: urlPath("known", "/"), body: { dialect: "regex", raw: "/^\\/a/", pattern: "^/a", flags: "" } }), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
+        await k.edit(editStmt(urlPath("known", "/m1"), "alpha"), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
+        await k.edit(editStmt(urlPath("known", "/m2"), "beta"), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
+        await k.edit(editStmt(urlPath("known", "/m3"), "aardvark"), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
+        // regex matches content starting with "a" → m1 (alpha), m3 (aardvark) flip.
+        const r = await k.hide(hideStmt({ target: urlPath("known", "/"), body: { dialect: "regex", raw: "/^a/", pattern: "^a", flags: "" } }), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
         assert.equal(r.status, 200);
     } finally { await ctx.db.close(); }
 });
@@ -92,12 +93,14 @@ test("Known.show: tag signal filters which entries are flipped", async () => {
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: xpath body matcher → 501 (pending plurnk-mimetypes#3)", async () => {
+test("Known.show: xpath body matcher on text content → unsupported, nothing flipped (304)", async () => {
     const ctx = await setup();
     try {
         await writeKnown(ctx.db, ctx, "/x");
+        // xpath needs XML; against text/markdown the daughter 415s per candidate →
+        // no content hit → no entries to flip → 304.
         const r = await new Known().show(showStmt({ target: urlPath("known", "/"), body: { dialect: "xpath", raw: "//x" } }), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
-        assert.equal(r.status, 501);
+        assert.equal(r.status, 304);
     } finally { await ctx.db.close(); }
 });
 

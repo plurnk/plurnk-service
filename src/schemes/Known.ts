@@ -54,6 +54,6 @@ export default class Known {
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Known.manifest.name);
+        return EntryFind.findSessionEntries(statement, ctx, Known.manifest);
     }
 }

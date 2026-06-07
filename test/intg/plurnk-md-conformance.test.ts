@@ -129,3 +129,36 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
         assert.deepEqual(r.results, ["known://france/capital"]);
     } finally { db.close(); }
 });
+
+// --- FIND with structural dialects (jsonpath/xpath) over native content -------
+// plurnk.md: <<FIND(config/**/*.xml)://user[@role='admin']:FIND — xpath over XML.
+// The dialects route through the daughter's deep-json / deep-xml channels; these
+// prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
+
+test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by content structure", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        // `.json` suffix → application/json mimetype → daughter's deep-json channel.
+        await seed(db, sessionId, runId, [
+            ["alice.json", '{"admin":true}'],
+            ["bob.json", '{"guest":true}'],
+        ]);
+        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://alice.json"]);
+    } finally { db.close(); }
+});
+
+test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content structure", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        // `.xml` suffix → application/xml mimetype → daughter's deep-xml channel.
+        await seed(db, sessionId, runId, [
+            ["a.xml", "<root><user>admin</user></root>"],
+            ["b.xml", "<root><group>x</group></root>"],
+        ]);
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://a.xml"]);
+    } finally { db.close(); }
+});
