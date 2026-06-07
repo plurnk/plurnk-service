@@ -116,11 +116,11 @@ Body content is character-perfect, exactly matching whitespace.
 <<EDIT(known://plan.md)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known://countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known://countries/france/capital.md)<1,-1>::EDIT
-<<EDIT(known://users.json)<-1>:{"name":"Eve"}:EDIT
+<<EDIT(known://users.json)<0>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
-<<MOVE(known://draft/answer.md):known://final/answer.md:MOVE
+<<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
 <<MOVE(known://obsolete/note.md):/dev/null:MOVE
-<<SHOW[france](known://countries/**):Paris*:SHOW
+<<SHOW[france](known://countries/**)<10>:Paris*:SHOW
 <<FIND(known://**)<5>:~french revolutionary history:FIND
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
