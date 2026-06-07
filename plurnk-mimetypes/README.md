@@ -12,6 +12,51 @@ npm install @plurnk/plurnk-mimetypes
 
 Requires Node ≥ 25 (native TypeScript support, ESM only).
 
+### grammar packages
+
+The framework itself ships no grammars — install only the languages you actually use:
+
+```
+npm install @plurnk/plurnk-mimetypes-grammar-python
+npm install @plurnk/plurnk-mimetypes-grammar-rust
+# ...etc
+```
+
+To install every published grammar in one command:
+
+```
+npm install \
+  @plurnk/plurnk-mimetypes-grammar-bash \
+  @plurnk/plurnk-mimetypes-grammar-c \
+  @plurnk/plurnk-mimetypes-grammar-cpp \
+  @plurnk/plurnk-mimetypes-grammar-dart \
+  @plurnk/plurnk-mimetypes-grammar-elixir \
+  @plurnk/plurnk-mimetypes-grammar-fsharp \
+  @plurnk/plurnk-mimetypes-grammar-fsharp-signature \
+  @plurnk/plurnk-mimetypes-grammar-go \
+  @plurnk/plurnk-mimetypes-grammar-haskell \
+  @plurnk/plurnk-mimetypes-grammar-java \
+  @plurnk/plurnk-mimetypes-grammar-javascript \
+  @plurnk/plurnk-mimetypes-grammar-julia \
+  @plurnk/plurnk-mimetypes-grammar-kotlin \
+  @plurnk/plurnk-mimetypes-grammar-lua \
+  @plurnk/plurnk-mimetypes-grammar-make \
+  @plurnk/plurnk-mimetypes-grammar-ocaml \
+  @plurnk/plurnk-mimetypes-grammar-odin \
+  @plurnk/plurnk-mimetypes-grammar-php \
+  @plurnk/plurnk-mimetypes-grammar-python \
+  @plurnk/plurnk-mimetypes-grammar-ruby \
+  @plurnk/plurnk-mimetypes-grammar-rust \
+  @plurnk/plurnk-mimetypes-grammar-scala \
+  @plurnk/plurnk-mimetypes-grammar-toml \
+  @plurnk/plurnk-mimetypes-grammar-tsx \
+  @plurnk/plurnk-mimetypes-grammar-typescript \
+  @plurnk/plurnk-mimetypes-grammar-yaml \
+  @plurnk/plurnk-mimetypes-grammar-zig
+```
+
+The framework auto-detects which grammars are installed; no code changes when you add or remove one.
+
 ## use — orchestrator (plurnk-service side)
 
 ```ts
