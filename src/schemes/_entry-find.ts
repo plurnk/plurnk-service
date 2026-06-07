@@ -2,10 +2,15 @@
 //
 // Slot semantics:
 //   target  — required scope (path or glob); selects which entries are candidates
-//   body    — matcher dispatch (plurnk.md §"Body matcher dispatch"):
-//               glob / regex → applied to pathname (path-like dialects)
-//               xpath / jsonpath → applied to content (structure-like;
-//                 501 pending plurnk-mimetypes#3)
+//   body    — matcher dispatch (plurnk.md §"Body matcher dispatch"). Per the
+//             grammar the body matches entry CONTENT — e.g.
+//             `FIND(log://**/error):/timeout/i` selects logs whose CONTENT
+//             matches, the path-glob being the (target). READ honors this
+//             (matchAgainstContent). DIVERGENCE: this implementation runs
+//             glob/regex against the PATHNAME (below) and 501s xpath/jsonpath.
+//             Both gaps are pinned as deferred-reds in
+//             test/intg/plurnk-md-conformance.test.ts, pending reconciliation
+//             (xpath/jsonpath additionally need plurnk-mimetypes#3).
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
 
