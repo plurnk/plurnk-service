@@ -121,9 +121,10 @@ Body content is character-perfect, exactly matching whitespace.
 <<MOVE(known://draft/answer.md):known://final/answer.md:MOVE
 <<MOVE(known://obsolete/note.md):/dev/null:MOVE
 <<SHOW[france](known://countries/**):Paris*:SHOW
-<<FIND(known://**)<5>:~distributed consensus algorithms:FIND
+<<FIND(known://**)<5>:~french revolutionary history:FIND
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
+<<FIND(known://**):revolution:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
 echo "Hello, world!" > hello.txt
