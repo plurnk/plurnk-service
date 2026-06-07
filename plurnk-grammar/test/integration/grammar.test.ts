@@ -727,6 +727,36 @@ test("MatcherBody: glob returns dialect + raw (no metacharacters)", () => {
     assert.equal(b.raw, "Paris*");
 });
 
+test("MatcherBody: rag returns dialect + raw (natural language query)", () => {
+    const result = PlurnkParser.parse("<<FIND(known://**):~distributed consensus algorithms:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "rag");
+    assert.equal(b.raw, "~distributed consensus algorithms");
+});
+
+test("MatcherBody: rag dispatches with top-K via <L>", () => {
+    const result = PlurnkParser.parse("<<FIND(known://**)<5>:~graph algorithms:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    assert.deepEqual(item.statement.lineMarker, { first: 5, last: null });
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "rag");
+    assert.equal(b.raw, "~graph algorithms");
+});
+
+test("MatcherBody: rag accepts arbitrary text after tilde (no parse step)", () => {
+    const result = PlurnkParser.parse("<<SHOW:~find me anything about: !@#$%^ malformed (but valid as query):SHOW");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "SHOW") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "rag");
+});
+
 test("MatcherBody: //-prefix code comment falls back to glob (xpath disambiguation)", () => {
     const result = PlurnkParser.parse("<<READ(src/app.js):// TODO: add error handling:READ");
     const item = result.items[0];

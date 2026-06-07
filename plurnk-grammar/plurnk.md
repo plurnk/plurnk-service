@@ -60,9 +60,10 @@ On structured entries, `<L>` addresses item index, not line number.
 | `//`           | xpath    | `//selector`          |
 | `/`            | regex    | `/pattern/[igmsu]?`   |
 | `$`            | jsonpath | `$.field`             |
+| `~`            | rag      | `~query text`         |
 | otherwise      | glob     | `pattern`             |
 
-Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`.
+Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. RAG narrows top-K via `<L>` on the host statement.
 
 ## Paths
 
@@ -120,6 +121,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<MOVE(known://draft/answer.md):known://final/answer.md:MOVE
 <<MOVE(known://obsolete/note.md):/dev/null:MOVE
 <<SHOW[france](known://countries/**):Paris*:SHOW
+<<FIND(known://**)<5>:~distributed consensus algorithms:FIND
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 
