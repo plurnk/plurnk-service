@@ -1,7 +1,8 @@
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
-import { queryGlob, queryJsonpathObject, queryRegex } from "./query.ts";
-import { UnsupportedDialectError } from "./QueryError.ts";
+import { projectJsonToXml } from "./projectJsonToXml.ts";
+import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { InvalidExpressionError, UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
     MimeSymbol,
@@ -60,6 +61,18 @@ export default class BaseHandler {
     //   - ANTLR / hand-rolled: handler authors as appropriate.
     deepJson(_content: HandlerContent): unknown | Promise<unknown> {
         return null;
+    }
+
+    // Deep-xml channel (issue #10). Default: project deepJson() through the
+    // framework's projectJsonToXml() so every handler that emits a deep tree
+    // automatically gets a queryable XML view (xpath target). Handlers can
+    // override when their algebra has a natural XML representation that the
+    // generic projection wouldn't capture as well — e.g., HTML/XML returning
+    // the actual source markup instead of a projected tree.
+    async deepXml(content: HandlerContent): Promise<string> {
+        const tree = await this.deepJson(content);
+        if (tree === null || tree === undefined) return "";
+        return projectJsonToXml(tree);
     }
 
     // Addressable extent of the content in the unit the model navigates by
@@ -144,12 +157,25 @@ export default class BaseHandler {
                 const outline = buildJsonOutline(await this.extractRaw(content));
                 return queryJsonpathObject(outline, pattern);
             }
-            case "xpath":
-                throw new UnsupportedDialectError({
-                    mimetype: this.mimetype,
-                    dialect: "xpath",
-                    reason: "no xpath projection for this mimetype",
-                });
+            case "xpath": {
+                // Per issue #10's symmetric design: xpath dispatches against
+                // the deep-xml channel for every entry. The framework projects
+                // deepJson() → deepXml() (or the handler overrides deepXml()
+                // directly) so xpath works on JSON, code, markdown, anything
+                // with a structural tree — not just XML-shaped content.
+                // Handlers that want source-position accuracy (text-html,
+                // application-xml) override query() entirely to dispatch
+                // xpath against the real DOM.
+                const xml = await this.deepXml(content);
+                if (xml.length === 0) {
+                    throw new UnsupportedDialectError({
+                        mimetype: this.mimetype,
+                        dialect: "xpath",
+                        reason: "no deep tree available for xpath projection",
+                    });
+                }
+                return queryXpathString(xml, pattern, this.mimetype);
+            }
         }
     }
 

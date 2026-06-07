@@ -1,5 +1,7 @@
 import { JSONPath } from "jsonpath-plus";
-import { InvalidExpressionError } from "./QueryError.ts";
+import { DOMParser } from "@xmldom/xmldom";
+import * as xpath from "xpath";
+import { InvalidExpressionError, QueryParseFailureError } from "./QueryError.ts";
 import type { QueryMatch } from "./types.ts";
 
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
@@ -76,6 +78,64 @@ export function queryJsonpathObject(
         const line = lineFor ? lineFor(r.path, r.value) : deepMinLine(r.value);
         return { line, matched: r.value, matching: r.path };
     });
+}
+
+// xpath against a string of XML — parses the XML via @xmldom/xmldom, runs the
+// xpath expression via the `xpath` package's XPath 1.0 engine, shapes results
+// per grammar #17. Returns:
+//   - element node match  → string (serialized XML)
+//   - attribute/text/comment/PI node match → string (text content)
+//   - primitive result (from string()/count()/etc.) → string
+//
+// Used by BaseHandler.query() for the universal xpath dispatch (xpath against
+// the deep-xml channel for any handler that has structural content). Per-
+// handler overrides (text-html, application-xml) bypass this and dispatch
+// against the real source DOM for source-position fidelity.
+export function queryXpathString(xml: string, pattern: string, mimetype: string): QueryMatch[] {
+    let doc: Document;
+    try {
+        doc = new DOMParser({ errorHandler: () => undefined })
+            .parseFromString(xml, "text/xml") as unknown as Document;
+    } catch (cause) {
+        throw new QueryParseFailureError({ mimetype, cause });
+    }
+    let result: xpath.SelectReturnType;
+    try {
+        result = xpath.select(pattern, doc as unknown as Node);
+    } catch (cause) {
+        throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
+    }
+    return shapeXpathResult(pattern, result);
+}
+
+// Translate xpath.select result to QueryMatch[] per grammar #17. Line numbers
+// default to 1 because the projected deep-xml has no inherent source position
+// — the original handler's deepJson is line-aware and would expose those if
+// callers needed them via jsonpath instead.
+function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
+    if (Array.isArray(result)) {
+        return result.map((node, i): QueryMatch => ({
+            line: 1,
+            matched: serializeXpathNode(node),
+            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+        }));
+    }
+    if (result === null || result === undefined) return [];
+    return [{ line: 1, matched: typeof result === "string" ? result : String(result) }];
+}
+
+const ATTRIBUTE_NODE = 2;
+const TEXT_NODE = 3;
+const CDATA_SECTION_NODE = 4;
+const PROCESSING_INSTRUCTION_NODE = 7;
+const COMMENT_NODE = 8;
+function serializeXpathNode(node: Node): string {
+    const nt = node.nodeType;
+    if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
+    if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;
+    if (nt === COMMENT_NODE) return (node as Comment).data;
+    if (nt === PROCESSING_INSTRUCTION_NODE) return (node as ProcessingInstruction).data;
+    return (node as unknown as { toString: () => string }).toString();
 }
 
 // Pick a return shape for a regex match per grammar #17's polymorphism rule.

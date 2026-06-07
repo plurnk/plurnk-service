@@ -48,7 +48,7 @@ export { parseBodyMatcher } from "./parseBodyMatcher.ts";
 export type { ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 export { buildJsonOutline } from "./buildJsonOutline.ts";
 export type { JsonOutline } from "./buildJsonOutline.ts";
-export { queryGlob, queryJsonpathObject, queryRegex } from "./query.ts";
+export { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
 export { projectJsonToXml } from "./projectJsonToXml.ts";
 export {
     InvalidExpressionError,

@@ -415,16 +415,10 @@ interface QueryMatch {
 `BaseHandler.query` provides defaults:
 
 - **regex / glob** — apply against `toText(content)`. Default `toText` returns string content as-is; for binary content it throws `UnsupportedDialectError`. Handlers with binary content (PDF) override `toText` to provide a text projection (e.g. extracted page text).
-- **jsonpath** — apply against the **bare-leaves outline** built from `extractRaw`:
+- **jsonpath** — apply against the **deep-json** channel (`handler.deepJson(content)`) per issue #10. Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath with handler-specific line resolution (jsonc-parser tree, yaml Document positions, etc.). The legacy bare-leaves outline path remains as a fallback when `deepJson()` returns null.
+- **xpath** — apply against the **deep-xml** channel (`handler.deepXml(content)`, default = `projectJsonToXml(await this.deepJson(content))`) per issue #10. Every handler that emits a structural tree automatically gets xpath dispatch — xpath-on-JSON, xpath-on-code, xpath-on-markdown all work via the projection. Handlers that want source-position accuracy (`text/html`, `application/xml`) override `query` to dispatch xpath against the real parsed DOM. When `deepXml()` is empty (handler has no structural tree at all), `UnsupportedDialectError` is thrown.
 
-  ```json
-  { "Parser": { "parse": 10, "load": 22 }, "topLevel": 50 }
-  ```
-
-  Nesting matches structural depth; leaves are bare line numbers; parents are objects. No `kind`, no `endLine`, no `params` — those live on `MimeSymbol` for callers using `extractRaw` directly but are absent from the queryable shape. This is the unified shape across markdown, HTML headings, PDF outline, and source-code symbol trees: one navigation idiom for the model.
-
-  Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath against the parsed value instead of the outline. Line resolution is per-handler (jsonc-parser tree, yaml Document positions, etc.).
-- **xpath** — throws `UnsupportedDialectError`. `text/html` overrides to apply xpath against the parsed DOM.
+This is the symmetric design promised in issue #10: jsonpath dispatches against deep-json on any entry; xpath dispatches against deep-xml on any entry. The cross cases (xpath-on-JSON, jsonpath-on-XML, both on code) all work.
 
 ### 11.4 Error policy
 
@@ -575,6 +569,24 @@ The legacy `wasmPackage`/`wasmFile` fields are deprecated but kept populated for
 
 Each grammar package's `scripts/build-wasm.mjs` rebuilds the WASM from the pinned upstream commit using `tree-sitter-cli`'s bundled wasi-sdk. CI runs `scripts/verify-wasm.mjs` to confirm the committed WASM is byte-identical to a fresh rebuild — this catches tampering and forces grammar updates through pin bumps rather than ad-hoc rebuilds.
 
-## 14. Public API stability
+## 14. Testing discipline (issue-driven test files)
+
+Recurring problem: tests prove that what was written does what was intended, not whether what was written matches the design promise the issue claimed to deliver. When an issue says "X works universally" and the implementation only delivers half of X, the per-feature tests still pass — because no one wrote the test that asserts "X is universal."
+
+The fix: every closed issue gets a test file in `src/issues/issue-{N}.test.ts` whose `describe` block names enumerate the issue's load-bearing claims (C1, C2, ...). The PR closing the issue must include this file. The tests assert the claim — *not the implementation* — so a future refactor that breaks the contract fails here, even if the per-feature tests still pass.
+
+Example (`src/issues/issue-10.test.ts`):
+
+```ts
+describe("Issue #10 — C3: cross-dispatch matrix", () => {
+    it("xpath on a JSON-shaped entry returns matches via the projected deep-xml", ...);
+    it("jsonpath on a tree-shaped entry returns matches via deep-json", ...);
+    // ...
+});
+```
+
+If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (issue #10's symmetric half, undelivered until framework v0.12.0) would have failed the test immediately rather than shipping silently for several framework versions.
+
+## 15. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.
