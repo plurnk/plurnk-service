@@ -1,119 +1,100 @@
-// Unit tests for matcher.ts adapter. The actual dialect dispatch lives
-// in @plurnk/plurnk-mimetypes; what we test here is the error→status
-// mapping, the baseLine offset, and the 204/200/203 result construction.
+// Unit tests for matcher.ts. The dialect primitives (queryGlob, queryRegex,
+// queryJsonpathObject) live in @plurnk/plurnk-mimetypes and run REAL here over
+// fixed content — they're pure functions, so their output is deterministic.
+// What plurnk-service OWNS and this file tests is the orchestration: dialect
+// dispatch, the `<line>:\t<value>` rendering (§16.2), the <L> baseLine shift,
+// and the status mapping (200/204/203/400/501). Only `mimetypes.process` (the
+// structural projection) is stubbed — it's the one daughter method matcher.ts
+// calls; glob/regex go straight to the imported primitives.
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
-import type { Mimetypes, QueryMatch } from "@plurnk/plurnk-mimetypes";
-import {
-    UnsupportedDialectError,
-    InvalidExpressionError,
-    QueryParseFailureError,
-} from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Matcher from "./matcher.ts";
+import MimetypeBinary from "./mimetype-binary.ts";
 
-// Stub factory: returns a Mimetypes-shaped object whose `query` resolves
-// or rejects per the caller's spec. The adapter only touches `query`.
-const stubMimetypes = (impl: (input: object, expression: string) => Promise<QueryMatch[]>): Mimetypes => {
-    return { query: impl } as unknown as Mimetypes;
-};
+// Stub the single daughter method matcher.ts invokes for structural dialects.
+// `noProcess` is a never-called placeholder for the glob/regex tests (which
+// bypass process entirely); the structural tests pass a real projection or throw.
+const stubProcess = (impl: (input: { content: string; hint: string }) => Promise<{ deepJson: unknown; deepXml: string }>): Mimetypes =>
+    ({ process: impl } as unknown as Mimetypes);
+const noProcess = stubProcess(async () => ({ deepJson: null, deepXml: "" }));
 
-const regexBody: MatcherBody = { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" };
+const regexBody = (pattern: string): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" });
 
-test("matcher: matches → status 200 with N:\\t<value> lines", async () => {
-    const mts = stubMimetypes(async () => [
-        { line: 3, matched: "foo" },
-        { line: 7, matched: "foo" },
-    ]);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
+test("[§16.2-match-line-form] regex hits → 200, one `<line>:\\t<value>` per match", async () => {
+    const r = await Matcher.matchAgainstContent(regexBody("foo"), "alpha\nfoo bar\nbeta\nfoo baz", "text/markdown", noProcess);
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
-    assert.equal(r.body, "3:\tfoo\n7:\tfoo");
+    assert.equal(r.body, "2:\tfoo\n4:\tfoo");  // matched = the regex match, not the line
 });
 
-test("matcher: framework returns empty array → status 204", async () => {
-    const mts = stubMimetypes(async () => []);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
+test("[§16.2-empty-204] matcher applied with zero hits → 204, no body", async () => {
+    const r = await Matcher.matchAgainstContent(regexBody("zzz"), "alpha\nbeta", "text/markdown", noProcess);
     assert.equal(r.status, 204);
     assert.equal(r.matches, 0);
     assert.equal(r.body, undefined);
 });
 
-test("matcher: baseLine offset shifts framework lines into source coordinates", async () => {
-    const mts = stubMimetypes(async () => [
-        { line: 1, matched: "foo" },
-        { line: 3, matched: "foo" },
-    ]);
-    // Slice started at source line 10 — framework saw line 1 of the slice,
-    // we report source line 10.
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 10);
-    assert.equal(r.status, 200);
-    assert.equal(r.body, "10:\tfoo\n12:\tfoo");
-});
-
-test("matcher: baseLine=1 (no slice) leaves lines unmodified", async () => {
-    const mts = stubMimetypes(async () => [{ line: 5, matched: "foo" }]);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 1);
-    assert.equal(r.body, "5:\tfoo");
-});
-
-test("matcher: object values JSON-encoded one-per-line; resolved path dropped", async () => {
-    const mts = stubMimetypes(async () => [
-        { line: 3, matched: { name: "Alice", role: "admin" }, matching: "$.users[0]" },
-        { line: 7, matched: "Bob", matching: "$.users[1].name" },
-    ]);
+test("[§16.2-value-encoding] object hits → compact JSON one-per-line; the `matching` discriminator is dropped", async () => {
+    // jsonpath runs over the daughter's deepJson projection (stubbed here). Both
+    // hits resolve to source line 1; their distinguishing `matching` paths
+    // ($['users'][0] / [1]) are NOT rendered — only line + value.
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody,
-        "irrelevant", "application/json", mts,
+        '{"users":[{"name":"Alice","role":"admin"},{"name":"Bob"}]}', "application/json",
+        stubProcess(async () => ({ deepJson: { users: [{ name: "Alice", role: "admin" }, { name: "Bob" }] }, deepXml: "" })),
     );
-    // object → compact JSON on one line; scalar → bare; the `matching` path is gone.
-    assert.equal(r.body, '3:\t{"name":"Alice","role":"admin"}\n7:\tBob');
+    assert.equal(r.status, 200);
+    assert.equal(r.body, '1:\t{"name":"Alice","role":"admin"}\n1:\t{"name":"Bob"}');
 });
 
-test("matcher: UnsupportedDialectError → 415", async () => {
-    const mts = stubMimetypes(async () => {
-        throw new UnsupportedDialectError({
-            mimetype: "image/png", dialect: "regex", reason: "binary content",
-        });
-    });
-    const r = await Matcher.matchAgainstContent(regexBody, "x", "image/png", mts);
-    assert.equal(r.status, 415);
+test("regex capture groups render as a JSON-array value", async () => {
+    const r = await Matcher.matchAgainstContent(regexBody("name: (\\w+)"), "name: Alice\nname: Bob", "text/markdown", noProcess);
+    assert.equal(r.body, '1:\t["Alice"]\n2:\t["Bob"]');
+});
+
+test("glob extracts the whole matching source line", async () => {
+    const r = await Matcher.matchAgainstContent({ dialect: "glob", raw: "*foo*" } as MatcherBody, "alpha\nfoo bar\nbeta", "text/markdown", noProcess);
+    assert.equal(r.status, 200);
+    assert.equal(r.body, "2:\tfoo bar");
+});
+
+test("<L> baseLine offset shifts hit lines back into source coordinates", async () => {
+    // The matcher saw lines 1-2 of a slice that began at source line 10.
+    const r = await Matcher.matchAgainstContent(regexBody("foo"), "foo\nfoo", "text/markdown", noProcess, 10);
+    assert.equal(r.body, "10:\tfoo\n11:\tfoo");
+});
+
+test("baseLine=1 (no slice) leaves hit lines unshifted", async () => {
+    const r = await Matcher.matchAgainstContent(regexBody("foo"), "x\nfoo", "text/markdown", noProcess, 1);
+    assert.equal(r.body, "2:\tfoo");
+});
+
+test("source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
+    const r = await Matcher.matchAgainstContent(
+        { dialect: "jsonpath", raw: "$.field" } as MatcherBody,
+        "{broken json", "application/json",
+        stubProcess(async () => { throw new Error("unexpected token } in JSON"); }),
+    );
+    assert.equal(r.status, 203);
+    assert.equal(r.body, "{broken json");  // raw bytes handed back so the model can regex/visual-parse
+    assert.equal(r.mimetype, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
+    assert.ok((r.reason ?? "").includes("unexpected token"));
+});
+
+test("malformed structural expression → 400 (model-facing, not a 500)", async () => {
+    const r = await Matcher.matchAgainstContent(
+        { dialect: "xpath", raw: "//[" } as MatcherBody,
+        "<root><a/></root>", "text/html",
+        stubProcess(async () => ({ deepJson: null, deepXml: "<root><a/></root>" })),
+    );
+    assert.equal(r.status, 400);
     assert.ok((r.error ?? "").length > 0);
 });
 
-test("matcher: InvalidExpressionError → 400", async () => {
-    const mts = stubMimetypes(async () => {
-        throw new InvalidExpressionError({
-            dialect: "regex", expression: "/[/", cause: new Error("unclosed bracket"),
-        });
-    });
-    const r = await Matcher.matchAgainstContent(regexBody, "x", "text/markdown", mts);
-    assert.equal(r.status, 400);
-});
-
-test("matcher: QueryParseFailureError → 203 fallback with raw content + reason", async () => {
-    const mts = stubMimetypes(async () => {
-        throw new QueryParseFailureError({
-            mimetype: "application/json", cause: new SyntaxError("unexpected token } in JSON"),
-        });
-    });
-    const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.field" } as MatcherBody,
-        "{broken json", "application/json", mts,
-    );
-    assert.equal(r.status, 203);
-    assert.equal(r.body, "{broken json");  // raw content preserved
-    assert.equal(r.mimetype, "text/markdown");
-    assert.ok((r.reason ?? "").length > 0);
-});
-
-test("matcher: unexpected error propagates (not caught)", async () => {
-    const mts = stubMimetypes(async () => {
-        throw new Error("something else entirely");
-    });
-    await assert.rejects(
-        Matcher.matchAgainstContent(regexBody, "x", "text/markdown", mts),
-        /something else entirely/,
-    );
+test("rag dialect → 501 (semantic similarity is parked)", async () => {
+    const r = await Matcher.matchAgainstContent({ dialect: "rag", raw: "~query" } as MatcherBody, "x", "text/markdown", noProcess);
+    assert.equal(r.status, 501);
 });

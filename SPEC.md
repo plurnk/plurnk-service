@@ -1031,7 +1031,7 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 ### §15.2 user.system_requirements — static per-turn rules
 
-Rendered at the END of the user packet under `# Plurnk System Requirements` — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`").
+Rendered at the END of the user packet under `# Plurnk System Requirements` {§15.2-requirements-render-last} — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. The header is omitted entirely when the requirements string is empty. {§15.2-requirements-omitted-when-empty} Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`").
 
 **Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
 
