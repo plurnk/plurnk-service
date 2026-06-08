@@ -5,7 +5,7 @@
 // `peak` blows the ceiling; staying under means the model HID earlier reads as
 // it worked. The communicated ceiling is shrunk, not the real window, so this
 // isolates "does the readout MOTIVATE curation" with no real-413 confound.
-// Run + digest (bin/digest.js) to analyze the failure together.
+// Run + digest (bin/digest.ts) to analyze the failure together.
 
 import test from "node:test";
 import assert from "node:assert/strict";

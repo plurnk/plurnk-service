@@ -16,9 +16,9 @@ import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from 
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
-// Plain JS module shared with bin/digest.js so wire projection and
-// digest projection are structurally one function. tsconfig.build.json
-// has allowJs:true so this gets copied through to dist/.
+// Shared module imported by both Engine and bin/digest.ts, so wire
+// projection and digest projection are structurally one function — no
+// drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
@@ -1034,8 +1034,8 @@ export default class Engine {
         });
     }
 
-    // Wire projection lives in ./packet-wire.js (plain JS) so Engine and
-    // bin/digest.js import the exact same function — structurally one
+    // Wire projection lives in ./packet-wire.ts so Engine and
+    // bin/digest.ts import the exact same function — structurally one
     // implementation, no drift between wire and digest possible.
     // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
     #packetToWireMessages(packet: RequestPacket): ChatMessage[] {

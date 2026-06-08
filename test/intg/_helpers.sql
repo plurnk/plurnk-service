@@ -1,6 +1,6 @@
 -- Test-fixture PREP blocks. These are loaded only when tests open the DB
 -- via openMigrated() (which scans test/intg/ in addition to migrations + src).
--- Production boot (bin/plurnk-service.js) does NOT include this directory,
+-- Production boot (bin/plurnk-service.ts) does NOT include this directory,
 -- so test fixtures stay out of production.
 
 -- PREP: test_insert_session

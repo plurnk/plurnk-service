@@ -102,7 +102,7 @@ Dependency direction (from root to leaf):
     - `plurnk-mimetypes` — handler base classes, discovery, fitting algorithm, matcher dispatch. Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
     - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
     - `plurnk-execs` — `BaseExecutor`, `SubprocessExecutor`, runtime resolver, discovery. Children declare runtimes: `plurnk-execs-sh`, future `plurnk-execs-search`, `plurnk-execs-node`, …
-- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, hosts the daemon (`bin/plurnk-service.js` over WebSocket + JSON-RPC), and projects packets to the wire per `Packet.json`. Most of the substantive runtime work lives here.
+- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, hosts the daemon (`bin/plurnk-service.ts` over WebSocket + JSON-RPC), and projects packets to the wire per `Packet.json`. Most of the substantive runtime work lives here.
 - **`plurnk`** (client) — terminal UI consuming the daemon's RPC surface. Renders `telemetry/event` notifications, subscribes to log/stream/proposal events. No engine logic of its own.
 
 The grammar is the contract. The frameworks consume the contract and add author-facing surfaces. The service consumes the frameworks and runs the engine. The client consumes the service and renders to humans. Each tier is its own published package; each tier's evolution happens in its own repo.
@@ -640,7 +640,7 @@ Plugin discovery (§9) registers whatever's in `node_modules/@plurnk/*`.
 
 ## §12 Operator Configuration
 
-Env-var cascade: `.env.example` < `.env` < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.js` auto-loads `.env.example`; zero-setup boot.
+Env-var cascade: `.env.example` < `.env` < `.env.<config>` (via `--config=`) < shell < CLI flags. `bin/plurnk-service.ts` auto-loads `.env.example`; zero-setup boot.
 
 Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Aliases live in `.env`, not `.env.example` (operator-specific).
 
@@ -670,7 +670,7 @@ Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
 External plugins declare their own env vars in their own `.env.example`; service merges at boot via the cascade.
 
-**Admin CLI flag derivation.** `bin/plurnk-service.js` auto-derives flags from `.env.example`: every `PLURNK_*` becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). Comment immediately above (no blank line) becomes `-h` description. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor config belongs in the vendor's package namespace.
+**Admin CLI flag derivation.** `bin/plurnk-service.ts` auto-derives flags from `.env.example`: every `PLURNK_*` becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). Comment immediately above (no blank line) becomes `-h` description. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor config belongs in the vendor's package namespace.
 
 ---
 

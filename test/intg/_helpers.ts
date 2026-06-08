@@ -42,7 +42,7 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 
 // File-backed per-test DB so on-disk consumers (digest tool, future
 // forensics) exercise the same artifacts the suite produces. `:memory:`
-// hid a column-rename regression in bin/digest.js for an unknown number
+// hid a column-rename regression in bin/digest.ts for an unknown number
 // of PRs. Per-test UUID filenames eliminate parallel collisions.
 //
 // DBs are KEPT on close — any test that surfaces something worth review
