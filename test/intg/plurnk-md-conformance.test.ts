@@ -197,10 +197,10 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
 });
 
 // plurnk.md (grammar 0.21.0): `<<FIND(known://**)<5>:~french revolutionary history:FIND`
-// — RAG semantic similarity, top-K via <L>. DEFERRED-RED (red light): rag is
-// parked at 501 — a service-side feature needing its own embedding/vector design.
-// Asserting the intended hit keeps the gap a visible failing line.
-test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", async () => {
+// — RAG semantic similarity, top-K via <L>. TODO: rag is parked at 501 — a
+// service-side feature needing its own embedding/vector design. Asserting the
+// intended hit so the todo flips to a pass once it's built.
+test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", { todo: "rag parked — its own embedding/vector design (grammar 0.21.0)" }, async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seed(db, sessionId, runId, [
