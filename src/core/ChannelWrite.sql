@@ -1,7 +1,7 @@
 -- Channel-write SQL for streaming schemes. SPEC §5.6 + §7.1 + §13.6.
 
 -- PREP: channel_meta
-SELECT e.session_id, ec.state, length(ec.content) AS contentLength
+SELECT e.session_id, e.scheme, e.pathname, ec.state, length(ec.content) AS contentLength
 FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE ec.entry_id = $entry_id AND ec.name = $channel;

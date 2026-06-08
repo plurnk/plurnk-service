@@ -12,6 +12,7 @@ export type ChannelState = "static" | "active" | "closed" | "errored";
 
 export interface StreamEventPayload {
     entryId: number;
+    target: string;                // the entry's URI (`scheme://pathname`) — so clients route without an entryId→URI lookup (#179)
     channel: string;
     state: ChannelState;
     contentLength: number;
@@ -29,6 +30,7 @@ export interface WakeRunPayload {
     sessionId: number;
     runId: number;
     entryId: number;
+    target: string;                // the entry's URI (`scheme://pathname`) — #179
     subscriptionId: number;
     closeStatus: number;          // 200 (clean) | 500 (error) | 499 (aborted)
     scheme: string;                // the scheme that owned the subscription
@@ -52,6 +54,8 @@ export type TelemetryEventNotify = (sessionId: number, payload: TelemetryEventPa
 
 interface ChannelMetaRow {
     session_id: number;
+    scheme: string | null;
+    pathname: string;
     state: ChannelState;
     contentLength: number;
 }
@@ -64,6 +68,13 @@ export default class ChannelWrite {
     static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
     static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
 
+    // The entry's target URI for stream notifications (#179). A NULL scheme is
+    // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
+    // file://.
+    static #targetUri(scheme: string | null, pathname: string): string {
+        return `${scheme === null ? "file" : scheme}://${pathname}`;
+    }
+
     static async appendToChannel(
         db: Db,
         { entryId, channel, chunk, notify }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify },
@@ -73,7 +84,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength });
     }
 
     static async setChannelState(
@@ -85,7 +96,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, channel, state: meta.state, contentLength: meta.contentLength });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength });
     }
 
     static async openSubscription(

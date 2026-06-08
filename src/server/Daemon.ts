@@ -273,6 +273,7 @@ export default class Daemon {
             description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
             params: {
                 entryId: "number — the entry whose channel changed",
+                target: "string — the entry's URI (scheme://pathname); clients route on this without an entryId→URI lookup",
                 channel: "string — the channel name",
                 state: "string — current state (static, active, closed, errored)",
                 contentLength: "number — current length of the channel's content",
@@ -289,6 +290,7 @@ export default class Daemon {
             description: "A streaming-scheme subscription closed (the underlying connection / subprocess finished, errored, or was cancelled). Scoped to the entry's session. wakeAction describes whether the daemon opened a fresh loop to surface the conclusion to the model.",
             params: {
                 entryId: "number",
+                target: "string — the entry's URI (scheme://pathname)",
                 subscriptionId: "number",
                 scheme: "string — the scheme that owned the subscription (e.g. 'exec')",
                 closeStatus: "number — 200 (clean) / 500 (error) / 499 (aborted)",

@@ -239,7 +239,7 @@ export default class Exec {
             if (ctx.wakeRunNotify !== undefined) {
                 ctx.wakeRunNotify({
                     sessionId: ctx.sessionId, runId: ctx.runId,
-                    entryId, subscriptionId, closeStatus,
+                    entryId, target: `exec://${pathname}`, subscriptionId, closeStatus,
                     scheme: "exec",
                     summary: `exec://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                 });

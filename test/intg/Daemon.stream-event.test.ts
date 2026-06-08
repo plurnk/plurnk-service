@@ -54,10 +54,11 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
             await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "?", notify });
             await flush();
 
-            const events = captured() as Array<{ contentLength: number }>;
+            const events = captured() as Array<{ contentLength: number; target: string }>;
             assert.equal(events.length, 2);
             assert.equal(events[0].contentLength, 3);
             assert.equal(events[1].contentLength, 4);
+            assert.equal(events[0].target, "known://x", "stream/event carries the entry's target URI (#179)");
         } finally { ws.close(); }
     });
 });
