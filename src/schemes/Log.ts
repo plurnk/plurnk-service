@@ -1,7 +1,7 @@
 import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import { LineMarkerOps, Matcher, MimetypeBinary } from "../content/index.ts";
+import { ReadResolve } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 type ShowHideResult = { status: number };
@@ -83,50 +83,13 @@ export default class Log {
             underlyingMimetype = "text/plain";
         }
 
-        // `<L>` scopes; body matches within the scope (slice-then-match).
-        // `<L>` dispatches on the unwrapped rx's mimetype: JSON → LineMarkerOps.sliceJsonItems,
-        // line-navigable → LineMarkerOps.sliceLines. This is what makes
-        // <<READ(log://N/M/K)<1>::READ pick the first item of a matcher result.
-        let workingContent = underlyingContent;
-        let workingStart: number | null = 1;
-        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
-        if (statement.lineMarker !== null) {
-            if (MimetypeBinary.isJsonMimetype(underlyingMimetype)) {
-                const sliced = LineMarkerOps.sliceJsonItems(underlyingContent, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
-                workingContent = sliced.body ?? "[]";
-                workingStart = null;
-                workingMimetypeForSlice = "application/json";
-            } else {
-                const sliced = LineMarkerOps.sliceLines(underlyingContent, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: underlyingMimetype };
-                workingContent = sliced.text ?? "";
-                workingStart = sliced.startLine ?? null;
-            }
-        }
-        if (statement.body !== null) {
-            if (ctx.mimetypes === undefined) {
-                return { status: 500, content: null, mimetype: underlyingMimetype };
-            }
-            const matched = await Matcher.matchAgainstContent(statement.body, workingContent, underlyingMimetype, ctx.mimetypes, workingStart ?? 1);
-            if (matched.status === 204) {
-                return { status: 204, content: "", mimetype: "text/markdown", startLine: null, matches: 0 };
-            }
-            if (matched.status === 203) {
-                return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
-            }
-            if (matched.status !== 200) return { status: matched.status, content: null, mimetype: underlyingMimetype };
-            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches };
-        }
-        if (statement.lineMarker !== null) {
-            const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
-            if (workingContent === "" || isEmptyJsonArray) {
-                return { status: 204, content: "", mimetype: workingMimetypeForSlice, startLine: null };
-            }
-            return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, startLine: workingStart };
-        }
-        if (underlyingContent === "") return { status: 204, content: "", mimetype: underlyingMimetype, startLine: null };
-        return { status: 200, content: underlyingContent, mimetype: underlyingMimetype, startLine: 1 };
+        return ReadResolve.resolve({
+            content: underlyingContent,
+            mimetype: underlyingMimetype,
+            lineMarker: statement.lineMarker,
+            body: statement.body,
+            mimetypes: ctx.mimetypes,
+        });
     }
 
     async show(statement: ShowStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {

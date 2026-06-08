@@ -5,7 +5,7 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
-import { LineMarkerOps, Matcher, MimetypeBinary } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, ReadResolve } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
@@ -109,46 +109,13 @@ export default class File {
         // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
         //   JSON → LineMarkerOps.sliceJsonItems (item index)
         //   line-navigable → LineMarkerOps.sliceLines (line index)
-        let workingContent = content;
-        let workingStart: number | null = 1;
-        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
-        if (statement.lineMarker !== null) {
-            if (MimetypeBinary.isJsonMimetype(mimetype)) {
-                const sliced = LineMarkerOps.sliceJsonItems(content, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
-                workingContent = sliced.body ?? "[]";
-                workingStart = null;
-                workingMimetypeForSlice = "application/json";
-            } else {
-                const sliced = LineMarkerOps.sliceLines(content, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
-                workingContent = sliced.text ?? "";
-                workingStart = sliced.startLine ?? null;
-            }
-        }
-        if (statement.body !== null) {
-            if (ctx.mimetypes === undefined) {
-                return { status: 500, content: null, mimetype };
-            }
-            const matched = await Matcher.matchAgainstContent(statement.body, workingContent, mimetype, ctx.mimetypes, workingStart ?? 1);
-            if (matched.status === 204) {
-                return { status: 204, content: "", mimetype: "text/markdown", startLine: null, matches: 0 };
-            }
-            if (matched.status === 203) {
-                return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
-            }
-            if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
-            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches };
-        }
-        if (statement.lineMarker !== null) {
-            const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
-            if (workingContent === "" || isEmptyJsonArray) {
-                return { status: 204, content: "", mimetype: workingMimetypeForSlice, startLine: null };
-            }
-            return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, startLine: workingStart };
-        }
-        if (content === "") return { status: 204, content: "", mimetype, startLine: null };
-        return { status: 200, content, mimetype, startLine: 1 };
+        return ReadResolve.resolve({
+            content,
+            mimetype,
+            lineMarker: statement.lineMarker,
+            body: statement.body,
+            mimetypes: ctx.mimetypes,
+        });
     }
 
     // Edit op (task #42 canonical proposal consumer). Returns status=202

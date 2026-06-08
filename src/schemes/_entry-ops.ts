@@ -1,7 +1,7 @@
 import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { LineMarkerOps, Matcher, MimetypeBinary, PathMimetype } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve } from "../content/index.ts";
 import EntryFind from "./_entry-find.ts";
 
 // Shared static-method helpers for session-scope entry-bearing schemes
@@ -186,65 +186,14 @@ export default class EntryOps {
             }
         }
 
-        // `<L>` scopes; body matches within the scope. Slot order in plurnk.md
-        // is `<L>?:body?`, so the natural composition is slice-then-match.
-        // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
-        //   line-navigable (text/markdown, source) → LineMarkerOps.sliceLines (line index)
-        //   JSON                                   → LineMarkerOps.sliceJsonItems (item index)
-        //   XML/HTML                               → LineMarkerOps.sliceLines (defer XML structural)
-        let workingContent = row.content;
-        let workingStart: number | null = 1;
-        let workingMimetypeForSlice = MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
-        if (statement.lineMarker !== null) {
-            if (MimetypeBinary.isJsonMimetype(row.mimetype)) {
-                const sliced = LineMarkerOps.sliceJsonItems(row.content, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-                workingContent = sliced.body ?? "[]";
-                workingStart = null;
-                workingMimetypeForSlice = "application/json";
-            } else {
-                const sliced = LineMarkerOps.sliceLines(row.content, statement.lineMarker);
-                if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-                workingContent = sliced.text ?? "";
-                workingStart = sliced.startLine ?? null;
-            }
-        }
-
-        if (statement.body !== null) {
-            if (ctx.mimetypes === undefined) {
-                return { status: 500, content: null, mimetype: row.mimetype, channel: targetChannel };
-            }
-            const matched = await Matcher.matchAgainstContent(statement.body, workingContent, row.mimetype, ctx.mimetypes, workingStart ?? 1);
-            if (matched.status === 204) {
-                return { status: 204, content: "", mimetype: "text/markdown", channel: targetChannel, startLine: null, matches: 0 };
-            }
-            if (matched.status === 203) {
-                // Dialect-parse-failure fallback: raw source as text/markdown,
-                // reason field surfaces why the structured parse failed.
-                return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", channel: targetChannel, startLine: 1, reason: matched.reason };
-            }
-            if (matched.status !== 200) return { status: matched.status, content: null, mimetype: row.mimetype, channel: targetChannel };
-            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", channel: targetChannel, startLine: null, matches: matched.matches };
-        }
-
-        if (statement.lineMarker !== null) {
-            // `<L>` slice mimetype follows the source family:
-            //   line-navigable source → text/markdown (text primitive)
-            //   JSON source           → application/json (preserve structure for compose)
-            // Workspace `<L>` empty case (sentinel <0>/<-1>) is 204.
-            // For JSON sources LineMarkerOps.sliceJsonItems returns body="[]" on sentinels;
-            // we treat empty array as 204 here for shape consistency.
-            const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
-            if (workingContent === "" || isEmptyJsonArray) {
-                return { status: 204, content: "", mimetype: workingMimetypeForSlice, channel: targetChannel, startLine: null };
-            }
-            return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, channel: targetChannel, startLine: workingStart };
-        }
-
-        if (row.content === "") {
-            return { status: 204, content: "", mimetype: row.mimetype, channel: targetChannel, startLine: null };
-        }
-        return { status: 200, content: row.content, mimetype: row.mimetype, channel: targetChannel, startLine: 1 };
+        const r = await ReadResolve.resolve({
+            content: row.content,
+            mimetype: row.mimetype,
+            lineMarker: statement.lineMarker,
+            body: statement.body,
+            mimetypes: ctx.mimetypes,
+        });
+        return { ...r, channel: targetChannel };
     }
 
     static async #setSessionEntryVisibility(

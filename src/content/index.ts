@@ -12,3 +12,6 @@ export { default as PathMimetype } from "./path-mimetype.ts";
 
 export { default as Matcher } from "./matcher.ts";
 export type { MatchResult } from "./matcher.ts";
+
+export { default as ReadResolve } from "./read-resolve.ts";
+export type { ReadSliceResult } from "./read-resolve.ts";
