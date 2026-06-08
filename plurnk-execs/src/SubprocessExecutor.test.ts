@@ -1,5 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { spawnSync } from "node:child_process";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import type { ExecArgs, ExecResult } from "./types.ts";
 import type { TelemetryEvent } from "./TelemetryEvent.ts";
@@ -96,4 +97,21 @@ test("abort mid-run → status 499", async () => {
     const { result, states } = await promise;
     assert.equal(result.status, 499);
     assert.equal(states.at(-1)?.state, "errored");
+});
+
+test("abort terminates the whole process group — no shell grandchild survives (plurnk-execs#4)", async () => {
+    // Unique, long-lived duration so the spawned `sleep` is matchable via pgrep
+    // and can't collide with another test's process.
+    const dur = `9999.${process.hrtime.bigint().toString().slice(-9)}`;
+    const controller = new AbortController();
+    const promise = exec("sh", `sleep ${dur}`, { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 300));   // let the group establish
+    controller.abort();
+    const { result } = await promise;
+    assert.equal(result.status, 499);
+
+    await new Promise((r) => setTimeout(r, 600));    // let SIGTERM land
+    const survivors = spawnSync("pgrep", ["-f", dur]).stdout.toString().trim();
+    if (survivors) spawnSync("pkill", ["-f", dur]);  // don't leak into other tests
+    assert.equal(survivors, "", `leaked process(es) after abort: ${survivors}`);
 });

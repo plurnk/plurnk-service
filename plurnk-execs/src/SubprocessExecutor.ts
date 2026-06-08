@@ -3,6 +3,11 @@ import BaseExecutor from "./BaseExecutor.ts";
 import { resolveRuntime } from "./runtime.ts";
 import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "./types.ts";
 
+// Grace period between SIGTERM and SIGKILL when tearing down an aborted process
+// group — long enough for a well-behaved process to clean up, bounded so a
+// process ignoring SIGTERM can't wedge cancellation.
+const ABORT_GRACE_MS = 2000;
+
 // Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
 // via resolveRuntime, streams the process's stdout/stderr into the declared
 // channels, honors cancellation, and reports the exit code. The sibling
@@ -51,26 +56,50 @@ export default class SubprocessExecutor extends BaseExecutor {
     run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const { cmd, args, useShell } = resolveRuntime(runtime, command);
         return new Promise<ExecResult>((resolve) => {
-            // Abort and close both fire on signal-kill; settle exactly once so
-            // channel state isn't transitioned twice.
+            // Already cancelled before we start — don't launch a doomed process.
+            if (signal.aborted) {
+                setState("stdout", "errored");
+                setState("stderr", "errored");
+                resolve({ status: 499, exitCode: -1 });
+                return;
+            }
+
             let settled = false;
+            let killTimer: NodeJS.Timeout | undefined;
+
+            // `detached` makes the child its own process-group leader, so abort
+            // can signal the WHOLE group (`-pid`) — reaching shell grandchildren
+            // (e.g. the `sleep` in `sh -c "sleep 30"`) that a bare SIGTERM to the
+            // direct child orphans, leaking the process and its stdout pipe. We
+            // drive cancellation manually rather than via spawn's `signal`
+            // option, which only kills the direct child (plurnk-execs#4).
+            const child = spawn(cmd, args, { shell: useShell, cwd: cwd ?? undefined, detached: true });
+
+            const killGroup = (sig: NodeJS.Signals): void => {
+                if (child.pid === undefined) return;
+                try { process.kill(-child.pid, sig); } catch { /* group already gone */ }
+            };
+            const onAbort = (): void => {
+                killGroup("SIGTERM");
+                // Escalate if the group ignores SIGTERM. `close` fires once the
+                // pipes drain, which now happens because the grandchildren die.
+                killTimer = setTimeout(() => killGroup("SIGKILL"), ABORT_GRACE_MS);
+            };
             const finish = (result: ExecResult, state: "closed" | "errored"): void => {
                 if (settled) return;
                 settled = true;
+                if (killTimer) clearTimeout(killTimer);
+                signal.removeEventListener("abort", onAbort);
                 setState("stdout", state);
                 setState("stderr", state);
                 resolve(result);
             };
 
-            const child = spawn(cmd, args, { shell: useShell, signal, cwd: cwd ?? undefined });
+            signal.addEventListener("abort", onAbort, { once: true });
             child.stdout?.on("data", (chunk: Buffer) => write("stdout", chunk.toString("utf8")));
             child.stderr?.on("data", (chunk: Buffer) => write("stderr", chunk.toString("utf8")));
 
             child.on("error", (err) => {
-                if ((err as NodeJS.ErrnoException).code === "ABORT_ERR") {
-                    finish({ status: 499, exitCode: -1 }, "errored");
-                    return;
-                }
                 // The process could not be started — a framework-level failure
                 // the model benefits from seeing as telemetry (a nonzero exit,
                 // by contrast, is the program's own result and lives on stderr).
@@ -78,8 +107,8 @@ export default class SubprocessExecutor extends BaseExecutor {
                 finish({ status: 500, exitCode: -1 }, "errored");
             });
 
-            child.on("close", (code, killedBySignal) => {
-                if (killedBySignal !== null) {
+            child.on("close", (code) => {
+                if (signal.aborted) {
                     finish({ status: 499, exitCode: code ?? -1 }, "errored");
                     return;
                 }

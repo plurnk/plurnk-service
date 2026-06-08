@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": ["plurnk", "exec", "runtime", "executor"],
     "homepage": "https://github.com/plurnk/plurnk-execs#readme",
