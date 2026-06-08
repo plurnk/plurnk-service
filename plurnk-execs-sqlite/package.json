@@ -1,0 +1,55 @@
+{
+    "name": "@plurnk/plurnk-execs-sqlite",
+    "version": "0.1.0",
+    "description": "SQLite runtime executor for plurnk-service's exec scheme — runs the sqlite runtime tag in-process via node:sqlite, results as application/json.",
+    "keywords": ["plurnk", "exec", "runtime", "executor", "sqlite", "sql"],
+    "homepage": "https://github.com/plurnk/plurnk-execs-sqlite#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-sqlite/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-sqlite.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            { "name": "sqlite", "glyph": "🗃" }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs": "0.3.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
