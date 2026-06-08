@@ -1,4 +1,4 @@
-import type { ChannelDecl, ExecArgs, ExecResult, ExecutorMetadata } from "./types.ts";
+import type { ChannelDecl, ExecArgs, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
 // A `@plurnk/plurnk-execs-*` sibling subclasses this and implements `run()`.
@@ -31,4 +31,18 @@ export default abstract class BaseExecutor {
     // terminal status; never throw for an expected runtime failure — surface
     // it through `emit` + an errored channel state and a non-200 `status`.
     abstract run(args: ExecArgs): Promise<ExecResult>;
+
+    // Whether this runtime's execution environment is usable in the current
+    // deployment. Default: available (pure / in-process runtimes — e.g. node,
+    // sqlite, where the daemon itself satisfies the dependency). Subclasses
+    // that depend on an external binary or external config override.
+    //
+    // The consumer probes once at boot, per package, runs probes concurrently
+    // under a per-probe timeout, and caches the result. Unlike `run()`, this
+    // MAY reject — the consumer treats a rejection as `{ available: false }` —
+    // but returning a crafted `{ available: false, detail }` for an expected
+    // miss gives a better model-facing reason than a raw error.
+    async probe(): Promise<RuntimeAvailability> {
+        return { available: true };
+    }
 }

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import BaseExecutor from "./BaseExecutor.ts";
 import { resolveRuntime } from "./runtime.ts";
-import type { ChannelDecl, ExecArgs, ExecResult } from "./types.ts";
+import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "./types.ts";
 
 // Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
 // via resolveRuntime, streams the process's stdout/stderr into the declared
@@ -18,6 +18,34 @@ export default class SubprocessExecutor extends BaseExecutor {
             stdout: { mimetype: "text/stream" },
             stderr: { mimetype: "text/stream" },
         };
+    }
+
+    // The executable this runtime depends on, for probe(). `null` = nothing to
+    // check (always available — e.g. node, where the daemon already IS the
+    // runtime). Subclasses naming an external interpreter override this.
+    protected get binary(): string | null {
+        return null;
+    }
+
+    override async probe(): Promise<RuntimeAvailability> {
+        const bin = this.binary;
+        if (bin === null) return { available: true };
+        return new Promise<RuntimeAvailability>((resolve) => {
+            let settled = false;
+            const done = (r: RuntimeAvailability): void => { if (!settled) { settled = true; resolve(r); } };
+            let out = "";
+            const child = spawn(bin, ["--version"], { signal: AbortSignal.timeout(3000) });
+            child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
+            child.on("error", (err) => done({
+                available: false,
+                detail: (err as NodeJS.ErrnoException).code === "ABORT_ERR"
+                    ? `${bin} probe timed out`
+                    : `${bin} not found on PATH`,
+            }));
+            child.on("close", (code) => done(code === 0
+                ? { available: true, detail: out.trim().split("\n")[0] || undefined }
+                : { available: false, detail: `${bin} --version exited ${code}` }));
+        });
     }
 
     run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {

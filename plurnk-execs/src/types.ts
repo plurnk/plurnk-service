@@ -65,6 +65,16 @@ export interface ExecResult {
     exitCode?: number;
 }
 
+// Environment availability of a runtime, reported by `BaseExecutor.probe()`.
+// The consumer probes once at boot (per package, not per tag) and offers the
+// model only the available runtimes; `detail` is model-facing — it rides the
+// 501 reason for a deliberate attempt at an unavailable runtime, so keep it
+// terse and actionable ("python3 not on PATH").
+export interface RuntimeAvailability {
+    available: boolean;
+    detail?: string;
+}
+
 // One discovered runtime tag and the package that provides it.
 export interface ExecInfo {
     runtime: string;

@@ -29,6 +29,30 @@ test("SubprocessExecutor declares stdout + stderr channels", () => {
     });
 });
 
+test("probe: default (no binary) → available", async () => {
+    const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
+    assert.deepEqual(await ex.probe(), { available: true });
+});
+
+// A SubprocessExecutor naming a real vs bogus binary, to exercise the probe path.
+class BinExec extends SubprocessExecutor {
+    #bin: string;
+    constructor(bin: string) { super({ runtime: bin, glyph: "•" }); this.#bin = bin; }
+    protected override get binary(): string { return this.#bin; }
+}
+
+test("probe: present binary → available with version detail", async () => {
+    const { available, detail } = await new BinExec("node").probe();
+    assert.equal(available, true);
+    assert.match(String(detail), /^v?\d+\./);
+});
+
+test("probe: missing binary → unavailable with actionable detail", async () => {
+    const { available, detail } = await new BinExec("definitely-not-a-real-binary-xyz").probe();
+    assert.equal(available, false);
+    assert.match(String(detail), /not found on PATH/);
+});
+
 test("sh: stdout streamed, channels closed, exit 0", async () => {
     const { result, out, states, events } = await exec("sh", "echo hello");
     assert.deepEqual(result, { status: 200, exitCode: 0 });
