@@ -213,6 +213,10 @@ test("xpath: //element node selection serializes XML into the value", async () =
         );
 
         assert.equal(r.status, 200);
+        // DEFERRED-RED (plurnk-mimetypes#12): the deepXml's inline line/endLine
+        // bookkeeping pollutes element serialization, so the value is currently
+        // `<user line="1" endLine="1">Alice</user>`. We assert the clean intended
+        // form — stripping the bookkeeping is the daughter's job, not ours.
         const values = rxValues(r.content);
         assert.equal(values.length, 2);
         assert.match(values[0], /<user>Alice<\/user>/);
@@ -235,16 +239,18 @@ test("xpath with predicate: //user[@role='admin']", async () => {
     } finally { await db.close(); }
 });
 
-test("xpath on a non-XML mimetype (text/markdown) → 415", async () => {
+test("xpath on markdown content with no structural match → 204", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/notes", "not html");
+        // xpath now runs over the markdown deepXml (any type is queryable); `//h1`
+        // matches no heading → zero results, not an unsupported-dialect rejection.
         const r = await new Known().read(
             readStmt(urlPath("known", "/notes"), { dialect: "xpath", raw: "//h1" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
-        assert.equal(r.status, 415);
+        assert.equal(r.status, 204);
     } finally { await db.close(); }
 });
 

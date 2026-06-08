@@ -93,12 +93,11 @@ test("Known.show: tag signal filters which entries are flipped", async () => {
     } finally { await ctx.db.close(); }
 });
 
-test("Known.show: xpath body matcher on text content → unsupported, nothing flipped (304)", async () => {
+test("Known.show: xpath body matcher with no structural match → nothing flipped (304)", async () => {
     const ctx = await setup();
     try {
         await writeKnown(ctx.db, ctx, "/x");
-        // xpath needs XML; against text/markdown the daughter 415s per candidate →
-        // no content hit → no entries to flip → 304.
+        // xpath runs over the deepXml; `//x` matches no element → no hit → 304.
         const r = await new Known().show(showStmt({ target: urlPath("known", "/"), body: { dialect: "xpath", raw: "//x" } }), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
         assert.equal(r.status, 304);
     } finally { await ctx.db.close(); }

@@ -156,11 +156,11 @@ test("Known.find regex `y` (sticky) anchors at content start", async () => {
     } finally { db.close(); }
 });
 
-test("Known.find xpath matcher on text content → unsupported dialect, entry excluded (200, empty)", async () => {
+test("Known.find xpath matcher with no structural match → entry excluded (200, empty)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        // xpath needs XML; against text/markdown the daughter raises
-        // UnsupportedDialectError (415) per candidate → no content hit → excluded.
+        // xpath runs over the markdown deepXml; `//x` matches no element →
+        // no content hit → excluded.
         await seedEntries(db, sessionId, runId, [["a", "plain text"]]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);

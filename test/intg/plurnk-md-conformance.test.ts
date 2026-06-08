@@ -162,3 +162,36 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
         assert.deepEqual(r.results, ["known://a.xml"]);
     } finally { db.close(); }
 });
+
+// --- Cross-dialect: the payoff of filtering the deep channels ourselves --------
+// process() builds BOTH deepJson and deepXml for every type, and we run the
+// dialect against the matching projection — so xpath works on a JSON doc and
+// jsonpath on an XML doc. Source mimetype is irrelevant to the dialect.
+
+test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by structure (over deepXml)", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        // JSON content → process() also yields deepXml (`<root><role>…</role></root>`); xpath runs over it.
+        await seed(db, sessionId, runId, [
+            ["a.json", '{"role":"admin"}'],
+            ["b.json", '{"name":"guest"}'],
+        ]);
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://a.json"]);
+    } finally { db.close(); }
+});
+
+test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by structure (over deepJson)", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        // XML content → process() also yields deepJson (`…attrs.role`); jsonpath runs over it.
+        await seed(db, sessionId, runId, [
+            ["a.xml", '<root><user role="admin">x</user></root>'],
+            ["b.xml", '<root><user name="guest">x</user></root>'],
+        ]);
+        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.results, ["known://a.xml"]);
+    } finally { db.close(); }
+});
