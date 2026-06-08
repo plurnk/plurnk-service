@@ -61,6 +61,16 @@ test("declares a results channel (application/json)", () => {
     });
 });
 
+test("probe: available when SEARXNG_URL is set, unavailable otherwise", async () => {
+    const set = await new Search({ runtime: "search", glyph: "🔎" }).probe();
+    assert.deepEqual(set, { available: true, detail: "http://searxng.test" });
+
+    delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+    const unset = await new Search({ runtime: "search", glyph: "🔎" }).probe();
+    assert.equal(unset.available, false);
+    assert.match(String(unset.detail), /not set/);
+});
+
 test("search: queries SearXNG, writes results, closes channel, status 200", async () => {
     let captured: URL | undefined;
     setFetch(async (u) => {

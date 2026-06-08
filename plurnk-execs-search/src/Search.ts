@@ -1,5 +1,5 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, ExecArgs, ExecResult } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
 // claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
@@ -39,6 +39,16 @@ const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` :
 export default class Search extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
+    }
+
+    // Available iff a SearXNG instance is configured. This is a config check,
+    // not a reachability ping — boot answers "is search set up?"; live
+    // reachability is the run path's job (it emits searxng_unreachable).
+    override async probe(): Promise<RuntimeAvailability> {
+        const url = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+        return url
+            ? { available: true, detail: url }
+            : { available: false, detail: "PLURNK_EXECS_SEARCH_SEARXNG_URL not set" };
     }
 
     async run({ runtime, command, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
