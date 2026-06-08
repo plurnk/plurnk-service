@@ -203,3 +203,55 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
         } finally { ws.close(); }
     });
 });
+
+test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async () => {
+    // printf lands "a\nb\n" (4 bytes) immediately — dash flushes builtin
+    // output before `exec` — then the shell exec-replaces into a bare
+    // `sleep`, so at cancel time the bytes are already in the channel and
+    // the live process is a single cancellable sleep (no grandchild;
+    // `exec` dodges plurnk-execs#4). The 499 conclusion must STILL report
+    // those 4 bytes — partial output is captured + retained through an
+    // abort, not discarded.
+    const mock = new Mock({
+        contextSize: 8192,
+        responses: [
+            mockResponse(`<<EXEC[sh]:printf 'a\\nb\\n'; exec sleep 30:EXEC\n<<SEND[102]:running:SEND`),
+            mockResponse("<<SEND[200]:never:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "exec-cancel-partial" });
+            const streamEvents = subscribeNotifications(ws, "stream/event");
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output", flags: { yolo: true } });
+
+            // Deterministic: cancel only AFTER the 4 bytes have actually
+            // landed in the stdout channel — no fixed sleep racing printf.
+            await waitFor(
+                () => streamEvents() as Array<{ channel: string; contentLength: number }>,
+                (evs) => evs.some((e) => e.channel === "stdout" && e.contentLength >= 4),
+                { timeoutMs: 4000 },
+            );
+
+            await rpcCall(ws, 3, "loop.cancel", {});
+            try { await loopPromise; } catch { /* cancelled */ }
+
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "exec"),
+                { timeoutMs: 4000 },
+            );
+
+            const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; summary: string }>;
+            const wake = concluded.find((c) => c.scheme === "exec");
+            assert.ok(wake, "exec stream concluded");
+            assert.equal(wake.closeStatus, 499, "deliberate cancel concludes at 499");
+            assert.match(wake.summary, /stdout=4 bytes/,
+                `partial stdout ("a\\nb\\n" = 4 bytes) survives the abort; got ${wake.summary}`);
+        } finally { ws.close(); }
+    });
+});
