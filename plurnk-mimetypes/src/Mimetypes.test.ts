@@ -243,7 +243,10 @@ describe("Mimetypes — process", () => {
         });
         const result = await m.process({ path: "anything.txt", content: "hello" });
         assert.deepEqual(result.deepJson, { type: "root", line: 1, endLine: 1, name: "Plain" });
-        assert.equal(result.deepXml, '<root line="1" endLine="1"><name>Plain</name></root>');
+        assert.equal(
+            result.deepXml,
+            '<root xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
+        );
     });
 
     it("reads content from disk when only path is provided", async () => {

@@ -10,16 +10,27 @@
 //      the parent key (when projecting an object inside another object) or
 //      from the optional `rootName` at the document root.
 //
-//   2. Within an element, the following fields become ATTRIBUTES (positional
-//      metadata that's more useful at the element header than as nested
-//      elements): line, endLine, column, endColumn, level. They're rendered
-//      only when their value is a number or a non-empty string.
+//   2. Within an element, the following fields become ATTRIBUTES under the
+//      reserved `pk:` namespace (positional bookkeeping that's more useful at
+//      the element header than as nested elements): line, endLine, column,
+//      endColumn, level. They render as `pk:line`, `pk:endLine`, etc. The
+//      root element carries `xmlns:pk="https://plurnk.dev/deep-xml/1"` so the
+//      namespace declaration scopes the whole document.
+//
+//      Why namespaced: per issue #12, source content's own attributes can
+//      collide with bookkeeping (e.g. HTML with `<foo line="5">` content
+//      yielded duplicate `line` attrs → invalid XML). Namespacing makes the
+//      framework's bookkeeping always distinguishable from content attrs,
+//      keeps the XML valid, and lets consumers strip it cleanly via
+//      `removeAttributeNS` or a regex on the `pk:` prefix without touching
+//      legitimate content attrs.
 //
 //   2b. An `attrs` field whose value is an object renders its entries as
-//       additional XML attributes. Used by HTML/XML handlers where the source
-//       algebra has its own attribute concept that the model writes xpath
-//       against (`//a[@href]`, `//div[@class='nav']`). Attribute values that
-//       aren't string/number/boolean primitives are skipped.
+//       additional XML attributes in the default namespace (no prefix). Used
+//       by HTML/XML handlers where the source algebra has its own attribute
+//       concept that the model writes xpath against (`//a[@href]`,
+//       `//div[@class='nav']`). Attribute values that aren't
+//       string/number/boolean primitives are skipped.
 //
 //   3. The `text` field on a leaf-shaped node becomes the element's text
 //      content. Used for tree-sitter terminal nodes (identifiers, literals).
@@ -58,46 +69,62 @@ const RESERVED_FIELDS = new Set([
     "type", "text", "attrs", ...ATTRIBUTE_FIELDS,
 ]);
 
+// Namespace prefix and URI for framework-emitted bookkeeping attributes.
+// Declared on the root element only; scopes the whole document.
+const PK_PREFIX = "pk";
+const PK_NS = "https://plurnk.dev/deep-xml/1";
+
 export function projectJsonToXml(json: unknown, rootName = "root"): string {
-    return renderValue(json, rootName);
+    return renderValue(json, rootName, /*isRoot*/ true);
 }
 
-function renderValue(value: unknown, elementName: string): string {
+function renderValue(value: unknown, elementName: string, isRoot = false): string {
     if (value === null || value === undefined) {
-        return `<${elementName}/>`;
+        return isRoot ? `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}"/>` : `<${elementName}/>`;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        if (isRoot) {
+            return `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}">${escapeText(String(value))}</${elementName}>`;
+        }
         return `<${elementName}>${escapeText(String(value))}</${elementName}>`;
     }
     if (Array.isArray(value)) {
         // Top-level array (called via projectJsonToXml with array root) wraps
         // in <rootName> with repeated <item> children. Nested arrays are
         // handled inside renderObject's per-field path.
-        const inner = value.map((v) => renderValue(v, "item")).join("");
-        return `<${elementName}>${inner}</${elementName}>`;
+        const inner = value.map((v) => renderValue(v, "item", false)).join("");
+        const nsDecl = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
+        return `<${elementName}${nsDecl}>${inner}</${elementName}>`;
     }
     if (typeof value === "object") {
-        return renderObject(value as Record<string, unknown>, elementName);
+        return renderObject(value as Record<string, unknown>, elementName, isRoot);
     }
-    return `<${elementName}/>`;
+    return isRoot ? `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}"/>` : `<${elementName}/>`;
 }
 
-function renderObject(obj: Record<string, unknown>, fallbackName: string): string {
+function renderObject(obj: Record<string, unknown>, fallbackName: string, isRoot = false): string {
     const tag = typeof obj.type === "string" && obj.type.length > 0
         ? sanitizeElementName(obj.type)
         : fallbackName;
 
-    let attrs = "";
+    // Root element declares the pk: namespace once; it scopes the document.
+    let attrs = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
+
+    // Framework bookkeeping (line/endLine/column/endColumn/level) → pk:-prefixed
+    // to avoid collision with content's own attributes of the same name.
     for (const key of ATTRIBUTE_FIELDS) {
         if (!(key in obj)) continue;
         const v = obj[key];
         if (v === null || v === undefined) continue;
         if (typeof v === "number" || (typeof v === "string" && v.length > 0)) {
-            attrs += ` ${key}="${escapeAttr(String(v))}"`;
+            attrs += ` ${PK_PREFIX}:${key}="${escapeAttr(String(v))}"`;
         }
     }
     // Additional attrs from the optional `attrs` object — HTML/XML
-    // convention for source-algebra attributes.
+    // convention for source-algebra attributes. Rendered in the default
+    // namespace (no prefix), so consumers' xpath like `//a[@href]` keeps
+    // working naturally and is structurally distinguishable from
+    // framework bookkeeping.
     const extraAttrs = obj.attrs;
     if (extraAttrs !== null && typeof extraAttrs === "object" && !Array.isArray(extraAttrs)) {
         for (const [k, v] of Object.entries(extraAttrs as Record<string, unknown>)) {

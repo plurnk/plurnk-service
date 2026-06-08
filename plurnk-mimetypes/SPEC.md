@@ -477,16 +477,17 @@ interface DeepTreeNode {
 The framework's `projectJsonToXml()` applies these rules (in priority order):
 
 1. A JSON object whose `type` field is a non-empty string becomes an element named after that type. Otherwise, the element name comes from the parent key, falling back to `<root>` at the document root.
-2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** when their value is a number or non-empty string. Positional metadata is more useful at the element header than as nested children.
+2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** under the **reserved `pk:` namespace** (`xmlns:pk="https://plurnk.dev/deep-xml/1"`, declared on the root element only) when their value is a number or non-empty string. Per issue #12: namespacing is required because content's own attributes can carry the same names (e.g., HTML/XML source with `<foo line="5">`), and unprefixed bookkeeping would emit duplicate-attribute names → invalid XML. The `pk:` prefix makes framework bookkeeping always distinguishable from content attrs, keeps the document valid, and lets consumers strip the bookkeeping cleanly via `removeAttributeNS` or a regex on the prefix.
 3. A leaf's `text` field becomes the element's text content.
-4. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
-5. `null` / `undefined` values are skipped.
-6. Top-level arrays / primitives wrap in `<root>`.
+4. The optional `attrs` field on an object renders its entries as **content attributes in the default (no-prefix) namespace** — these are source-algebra attributes (HTML's `href`/`class`, XML's anything), and the model writes xpath against them naturally (`//a[@href]`, not `//a[@pk:href]`).
+5. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
+6. `null` / `undefined` values are skipped.
+7. Top-level arrays / primitives wrap in `<root>`.
 
 Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", params: ["x", "y"] }` →
 
 ```xml
-<function_definition line="5" endLine="10">
+<function_definition xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="5" pk:endLine="10">
   <name>greet</name>
   <params>x</params>
   <params>y</params>
