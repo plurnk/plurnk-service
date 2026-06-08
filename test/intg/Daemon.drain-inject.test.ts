@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor } from "./_rpc.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
@@ -29,14 +29,22 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
-test("loop.cancel: aborts an in-flight drain (yolo exec spawn keeps drain alive)", async () => {
+test("loop.cancel terminates a backgrounded exec that outlived its loop (concludes 499)", async () => {
+    // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
+    // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
+    // must ACTUALLY terminate it — proven by the exec stream concluding 499,
+    // not merely cancelled=true. The wall clock used to hide a broken kill
+    // behind a 30s leak (the original assertion never checked the kill).
+    //
+    // `exec sleep` (shell exec-replace) so SIGTERM hits the process directly;
+    // plain `sleep 30` leaks a shell grandchild — that's plurnk-execs#4, a
+    // process-group concern the daughter owns, not this service-side test.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            // Turn 1: kick off a slow exec, continue. Drain parks on the spawn.
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
-            sendOnly("<<SEND[200]:never reached:SEND"),
-            sendOnly("<<SEND[200]:never reached:SEND"),
+            sendOnly("<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND"),
+            sendOnly("<<SEND[200]:done:SEND"),
+            sendOnly("<<SEND[200]:done:SEND"),
         ],
     });
 
@@ -44,11 +52,8 @@ test("loop.cancel: aborts an in-flight drain (yolo exec spawn keeps drain alive)
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "drain-cancel" });
-            const loopPromise = rpcCall(ws, 2, "loop.run", {
-                prompt: "start slow job",
-                flags: { yolo: true },
-            });
-            // Let turn 1 dispatch and the spawn start.
+            const concluded = subscribeNotifications(ws, "stream/concluded");
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { yolo: true } });
             await flush();
             await new Promise((r) => setTimeout(r, 250));
 
@@ -57,15 +62,17 @@ test("loop.cancel: aborts an in-flight drain (yolo exec spawn keeps drain alive)
             assert.equal(cancelResult.cancelled, true);
             assert.equal(cancelResult.reason, "redirected");
 
-            // The loop's actual finalStatus depends on whether cancel
-            // arrived mid-iteration (→ 499) or after Mock already sent
-            // SEND[200] (→ 200). Mock is instant so timing is racy. The
-            // important thing is loop.cancel reported cancelled=true and
-            // the RPC returned (not hung).
-            const loopResp = await loopPromise;
-            const loopResult = loopResp.result as { finalStatus: number };
-            assert.ok([200, 499].includes(loopResult.finalStatus),
-                `loop closed with terminal status; got ${loopResult.finalStatus}`);
+            // The kill actually happened — promptly, not 30s later.
+            const conc = await waitFor(
+                () => concluded() as Array<{ scheme: string; closeStatus: number }>,
+                (cs) => cs.some((c) => c.scheme === "exec" && c.closeStatus === 499),
+                { timeoutMs: 5000 },
+            );
+            assert.ok(conc.some((c) => c.scheme === "exec" && c.closeStatus === 499),
+                "loop.cancel terminated the backgrounded exec (stream concluded 499)");
+
+            const loopResult = (await loopPromise).result as { finalStatus: number };
+            assert.ok([200, 499].includes(loopResult.finalStatus), `loop terminal; got ${loopResult.finalStatus}`);
         } finally { ws.close(); }
     });
 });
@@ -89,7 +96,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -121,15 +128,19 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     });
 });
 
-test("loop.run while drain is active: second call injects into the current loop's next-turn slot", async () => {
-    // Drain stays alive via exec spawn. Second loop.run lands while the
-    // active loop is mid-iteration → engine.inject finds the loop at
-    // status=102 → writes prompt entry for slot 2 → returns action=injected_next_turn.
+test("loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
+    // Deterministic hold (no 50ms race): a non-yolo EXEC proposal pauses
+    // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
+    // provably live at status=102 when the second loop.run lands. We REJECT it
+    // (no spawn → no stream → no wake side-effect); loop 1 then continues to
+    // turn 2, whose prompt is the injected "follow-up", and ends. This pins the
+    // single-drain invariant: a concurrent loop.run injects into the live loop,
+    // it never spins up a parallel drain.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
-            sendOnly("<<SEND[200]:never:SEND"),
+            sendOnly("<<EXEC[sh]:true:EXEC"),       // proposal → pause (no yolo, no SEND → continue)
+            sendOnly("<<SEND[200]:done:SEND"),      // turn 2 consumes the injected prompt, ends
         ],
     });
 
@@ -137,38 +148,38 @@ test("loop.run while drain is active: second call injects into the current loop'
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "drain-inject-active" });
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
 
-            const firstPromise = rpcCall(ws, 2, "loop.run", {
-                prompt: "kick off", flags: { yolo: true },
-            });
-            // Let turn 1 fully process (proposal → applyResolution → spawn starts → SEND[102] dispatches).
-            // After SEND[102], turn 1 closes; turn 2 builds; Mock returns the second response (SEND[200]);
-            // engine dispatches it; loop closes at 200. Total: ~200ms with provider being instant.
-            // For the inject to land while loop is still at 102, we need to inject DURING turn 1
-            // or during the build of turn 2. Use a small wait.
-            await flush();
-            await new Promise((r) => setTimeout(r, 50));
+            const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
+            // Loop 1 is provably paused at the proposal → status=102.
+            const pending = await waitFor(
+                () => proposals() as Array<{ logEntryId: number }>,
+                (p) => p.length >= 1,
+            );
 
             const r2 = await rpcCall(ws, 3, "loop.run", { prompt: "follow-up" });
             const result2 = r2.result as { action: string; turnSeq?: number };
-            // Either injected (loop still at 102) or enqueued (loop already terminated).
-            // The interesting case is injected; if it's enqueued we just verify the
-            // mechanism didn't start a parallel drain.
-            assert.ok(["injected_next_turn", "enqueued_new_loop"].includes(result2.action),
-                `expected one of injected/enqueued; got ${result2.action}`);
+            assert.equal(result2.action, "injected_next_turn",
+                "a loop.run while a loop is live injects into its next turn — never a parallel drain");
+            assert.ok(typeof result2.turnSeq === "number" && result2.turnSeq > 1,
+                `injected into a turn slot >1; got ${result2.turnSeq}`);
 
-            // Cancel + clean up.
-            await rpcCall(ws, 4, "loop.cancel", {});
-            try { await firstPromise; } catch { /* expected */ }
+            type EntryRow = { scheme: string; pathname: string };
+            const entries = await (db as unknown as { test_list_entries_by_session_session_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_session_session_pathname.all<EntryRow>({ session_id: 1 });
+            const injected = entries.find((e) => e.scheme === "plurnk" && /^prompt\/\d+\/[2-9]\d*$/.test(e.pathname));
+            assert.ok(injected, "injected prompt entry exists in a turn slot >1");
 
-            // If the action was "injected_next_turn", a prompt entry exists in a turn slot >1.
-            if (result2.action === "injected_next_turn") {
-                assert.ok(typeof result2.turnSeq === "number" && result2.turnSeq > 1, "turnSeq > 1");
-                type EntryRow = { scheme: string; pathname: string };
-                const entries = await ((db as unknown as { test_list_entries_by_session_session_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_session_session_pathname.all<EntryRow>({ session_id: 1 }));
-                const injected = entries.find((e: EntryRow) => e.scheme === "plurnk" && /^prompt\/\d+\/[2-9]\d*$/.test(e.pathname));
-                assert.ok(injected, "injected prompt entry exists in a turn slot >1");
-            }
+            // Reject the proposal (no spawn); loop 1 continues to turn 2, which
+            // consumes the injected prompt and ends cleanly.
+            await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
+            const firstResp = await firstPromise;
+            assert.equal((firstResp.result as { finalStatus: number }).finalStatus, 200,
+                "loop 1 ends cleanly after consuming the injected prompt");
+
+            // Exactly one loop ran for the run: the second call injected, it did
+            // not spin up a parallel drain.
+            assert.equal((terminated() as unknown[]).length, 1, "exactly one loop terminated — no parallel drain");
         } finally { ws.close(); }
     });
 });

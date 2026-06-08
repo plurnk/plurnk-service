@@ -67,14 +67,21 @@ export default class Daemon {
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
 
-    // Run-level drain registry (rummy AgentLoop parallel). At most one
-    // drain per run; concurrent loop.run calls inject into the active
-    // drain instead of starting parallel runLoops.
+    // Run-level drain registry. At most one drain per run. The stored object
+    // is the drain's identity handle: start/exit compare it by reference so a
+    // drain exiting never clobbers a successor that raced in, and a loop
+    // enqueued during teardown is never stranded. A drain is a pure queue
+    // consumer (claim → run → exit on empty queue); streams live independently
+    // (subscriptions + Exec.idle), and a concluding stream routes through
+    // inject() like any other loop source.
     #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
-    // Wake/event signals for drains parked on "queue empty, active subs in
-    // flight." A wake-on-completion → engine.inject can resolve the pending
-    // promise so the drain re-checks the queue without polling.
-    #drainPokes = new Map<number, () => void>();
+    // Per-run cancellation scope. Loops AND the streams they spawn (execs)
+    // share this signal, so loop.cancel / shutdown abort it once and every
+    // in-flight subscription tears down — even a spawn that registers AFTER the
+    // cancel self-aborts against the already-aborted signal (no race). Outlives
+    // any single (ephemeral) drain; replaced with a fresh controller once
+    // aborted so a later loop.run isn't born cancelled.
+    #runAborts = new Map<number, AbortController>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
@@ -191,7 +198,11 @@ export default class Daemon {
         // to completion, (3) drain streaming schemes' background work
         // (exec spawn cleanup, channel writes). Only THEN close the DB
         // upstream — drain queries hit the DB right up until they exit.
-        for (const drain of this.#activeDrains.values()) drain.controller.abort("daemon_stopping");
+        // Abort every run's cancellation scope — stops in-flight loops AND the
+        // streams (background execs) linked to them, so idle() doesn't block on
+        // a long-running command. Covers runs whose drain already exited but
+        // whose exec is still in flight.
+        for (const scope of this.#runAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
@@ -332,22 +343,14 @@ export default class Daemon {
         drainPromise?: Promise<unknown>;
     }> {
         const { sessionId, runId, prompt } = args;
-        // Wake any drain parked on "queue empty + active subs" so it
-        // re-checks the queue immediately regardless of which branch we
-        // take. The poke fires before we return; if we enqueue a new
-        // loop, the drain we start below claims it on its first iteration.
-        this.#pokeDrain(runId);
-
-        const drainActive = this.#activeDrains.has(runId);
-        if (drainActive) {
+        // Active loop (status=102)? Fold the wake/prompt into its next turn.
+        // engine.inject returns null when no loop is currently executing, so
+        // we enqueue a fresh loop below and ensure a drain claims it.
+        if (this.#activeDrains.has(runId)) {
             const result = await this.#engine.inject(runId, prompt);
             if (result !== null) {
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
             }
-            // Race: #activeDrains exists but drain hasn't yet claimed a
-            // loop (status=102). Fall through to the enqueue path — but
-            // we must NOT start a parallel drain. The existing drain
-            // will claim this loop on a subsequent iteration.
         }
 
         // Enqueue a fresh loop. Persist flags + persona override on the row.
@@ -366,19 +369,19 @@ export default class Daemon {
             });
         }
 
-        // Existing drain will pick this loop up — don't start a parallel one.
-        if (drainActive) {
-            // Poke the existing drain in case it's parked.
-            this.#pokeDrain(runId);
-            return { action: "enqueued_new_loop", loopId };
-        }
-
-        const { firstLoopPromise, drainPromise } = this.#startDrain({
+        // Guarantee a drain claims the loop we just enqueued. Synchronous
+        // check-and-start (no await between the membership test and the
+        // registry write): a live drain re-claims it; otherwise we start one.
+        // The drain's exit coordinates via an identity-checked re-claim so the
+        // loop is never stranded (the lost-loop hang). firstLoopPromise is
+        // present only when THIS call started the drain — loop.run keys its
+        // fast-path response on that.
+        const started = this.#ensureDrain({
             sessionId, runId, provider: args.provider,
             systemPrompt: args.systemPrompt, personaDefault: args.persona,
             maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
         });
-        return { action: "enqueued_new_loop", loopId, firstLoopPromise, drainPromise };
+        return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
     }
 
     /**
@@ -402,7 +405,12 @@ export default class Daemon {
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
     } {
         const { sessionId, runId, provider, systemPrompt, personaDefault, maxTurns } = opts;
-        const controller = new AbortController();
+        // The drain runs under the run's cancellation scope (shared with the
+        // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
+        const controller = this.#runSignal(runId);
+        const handle: { controller: AbortController; promise: Promise<unknown> } = {
+            controller, promise: Promise.resolve(),
+        };
 
         let resolveFirst: (v: DrainLoopResult) => void = () => {};
         let rejectFirst: (e: unknown) => void = () => {};
@@ -411,56 +419,62 @@ export default class Daemon {
         });
         let firstSettled = false;
 
+        const claim = () => (this.#db.drain_claim_next_loop as PrepMethod).get<{
+            id: number; sequence: number; prompt: string; persona: string | null;
+        }>({ run_id: runId });
+
         const drainPromise = (async () => {
             let loopsDrained = 0;
             let lastResult: DrainLoopResult | null = null;
             try {
                 while (true) {
                     controller.signal.throwIfAborted();
-                    const loopRow = await (this.#db.drain_claim_next_loop as PrepMethod).get<{
-                        id: number; sequence: number; prompt: string; persona: string | null;
-                    }>({ run_id: runId });
-                    if (loopRow !== undefined) {
-                        const onDispatch = (logEntryId: number): void => {
-                            void (async () => {
-                                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                                this.#broadcast({ sessionId }, null, "log/entry", { entry });
-                            })();
-                        };
-                        const result = await this.#engine.runLoop({
-                            provider, sessionId, runId, loopId: loopRow.id, maxTurns,
-                            messages: [
-                                { role: "system", content: systemPrompt },
-                                { role: "user", content: loopRow.prompt },
-                            ],
-                            persona: personaDefault,
-                            origin: "model",
-                            onDispatch,
-                            signal: controller.signal,
-                        });
-                        this.#broadcast({ sessionId }, null, "loop/terminated", {
-                            loopId: loopRow.id,
-                            finalStatus: result.finalStatus,
-                            hitMaxTurns: result.hitMaxTurns,
-                        });
-                        loopsDrained++;
-                        const loopResult: DrainLoopResult = {
-                            loopId: loopRow.id,
-                            turnIds: result.turnIds,
-                            finalStatus: result.finalStatus,
-                            hitMaxTurns: result.hitMaxTurns,
-                        };
-                        lastResult = loopResult;
-                        if (!firstSettled) {
-                            firstSettled = true;
-                            resolveFirst(loopResult);
-                        }
-                        continue;
+                    let loopRow = await claim();
+                    if (loopRow === undefined) {
+                        // Queue empty → exit. Coordinate with a concurrent
+                        // inject + #ensureDrain: relinquish ownership, then
+                        // re-claim once. A loop that raced in during teardown
+                        // is caught here (re-acquire + run it); otherwise exit.
+                        // Identity-checked so we never delete a successor entry.
+                        if (this.#activeDrains.get(runId) === handle) this.#activeDrains.delete(runId);
+                        loopRow = await claim();
+                        if (loopRow === undefined) break;
+                        this.#activeDrains.set(runId, handle);
                     }
-                    // Queue empty. Stream-aware: don't exit while subs are open.
-                    const subRow = await (this.#db.drain_count_active_subs_for_run as PrepMethod).get<{ n: number }>({ run_id: runId });
-                    if ((subRow?.n ?? 0) === 0) break;
-                    await this.#awaitDrainPoke(runId, controller.signal);
+                    const onDispatch = (logEntryId: number): void => {
+                        void (async () => {
+                            const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+                            this.#broadcast({ sessionId }, null, "log/entry", { entry });
+                        })();
+                    };
+                    const result = await this.#engine.runLoop({
+                        provider, sessionId, runId, loopId: loopRow.id, maxTurns,
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: loopRow.prompt },
+                        ],
+                        persona: personaDefault,
+                        origin: "model",
+                        onDispatch,
+                        signal: controller.signal,
+                    });
+                    this.#broadcast({ sessionId }, null, "loop/terminated", {
+                        loopId: loopRow.id,
+                        finalStatus: result.finalStatus,
+                        hitMaxTurns: result.hitMaxTurns,
+                    });
+                    loopsDrained++;
+                    const loopResult: DrainLoopResult = {
+                        loopId: loopRow.id,
+                        turnIds: result.turnIds,
+                        finalStatus: result.finalStatus,
+                        hitMaxTurns: result.hitMaxTurns,
+                    };
+                    lastResult = loopResult;
+                    if (!firstSettled) {
+                        firstSettled = true;
+                        resolveFirst(loopResult);
+                    }
                 }
             } catch (err) {
                 if (!firstSettled) {
@@ -473,59 +487,68 @@ export default class Daemon {
                     firstSettled = true;
                     rejectFirst(new Error("drain exited without producing a result"));
                 }
-                this.#activeDrains.delete(runId);
-                this.#drainPokes.delete(runId);
+                if (this.#activeDrains.get(runId) === handle) this.#activeDrains.delete(runId);
             }
             return { loopsDrained, lastResult };
         })();
 
-        this.#activeDrains.set(runId, { controller, promise: drainPromise });
-        // Attach a swallowing handler so unhandled rejections (e.g. when
-        // the drain aborts and no caller awaited drainPromise) don't
-        // crash the process. The error already surfaced via firstLoopPromise
-        // if relevant, or was already logged inside the drain body.
+        handle.promise = drainPromise;
+        this.#activeDrains.set(runId, handle);
+        // Swallow unhandled rejections (drain aborts with no awaiter); the
+        // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
-        // firstLoopPromise also needs a handler in case nobody awaits it
-        // (e.g. wake-on-completion enqueue path doesn't always read it).
         firstLoopPromise.catch(() => {});
         return { firstLoopPromise, drainPromise };
     }
 
-    #pokeDrain(runId: number): void {
-        const poke = this.#drainPokes.get(runId);
-        if (poke !== undefined) {
-            this.#drainPokes.delete(runId);
-            poke();
-        }
+    // Idempotent, synchronous drain guarantee. A live drain will claim the
+    // just-enqueued loop in its own iteration (or its exit re-claim) → return
+    // null. Otherwise start one. MUST be called synchronously after the
+    // enqueue (no await between) so the membership test and #startDrain's
+    // registry write are one tick — two concurrent injects can't both start a
+    // drain for the same run.
+    #ensureDrain(opts: {
+        sessionId: number; runId: number; provider: Provider;
+        systemPrompt: string; personaDefault: string; maxTurns: number;
+    }): {
+        firstLoopPromise: Promise<DrainLoopResult>;
+        drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
+    } | null {
+        if (this.#activeDrains.has(opts.runId)) return null;
+        return this.#startDrain(opts);
     }
 
-    #awaitDrainPoke(runId: number, signal: AbortSignal): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            if (signal.aborted) { reject(new Error("drain aborted")); return; }
-            const onAbort = (): void => {
-                this.#drainPokes.delete(runId);
-                reject(new Error("drain aborted"));
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
-            this.#drainPokes.set(runId, () => {
-                signal.removeEventListener("abort", onAbort);
-                resolve();
-            });
-        });
+    // The run's cancellation scope — lazily created, and replaced once aborted
+    // so a later loop.run gets a live signal. The drain and the execs its loops
+    // spawn all run under it.
+    #runSignal(runId: number): AbortController {
+        const existing = this.#runAborts.get(runId);
+        if (existing !== undefined && !existing.signal.aborted) return existing;
+        const fresh = new AbortController();
+        this.#runAborts.set(runId, fresh);
+        return fresh;
     }
 
     /**
-     * Cancel the active drain for a run. Fires the drain's AbortController;
-     * the engine's per-loop loopAbort cascades from the runLoop signal arg,
-     * so in-flight scheme operations (exec spawns, future SSE/WS) tear
-     * down. Queued loops in the run remain enqueued — call again if you
-     * want them cleared, or rely on subsequent loop.run to resume.
+     * Cancel the run's in-flight work (loop.cancel). One abort, one scope: the
+     * run signal stops the running loop's turn generation AND tears down every
+     * stream linked to it — a background exec that outlived its loop, or even a
+     * spawn that registers after this abort (it self-aborts against the aborted
+     * signal). Returns cancelled iff there was work. Queued loops stay enqueued.
      */
     cancelDrain(runId: number, reason: string = "user_cancelled"): boolean {
-        const drain = this.#activeDrains.get(runId);
-        if (drain === undefined) return false;
-        drain.controller.abort(reason);
-        return true;
+        const hadWork = this.#activeDrains.has(runId) || this.#runHasActiveStreams(runId);
+        const scope = this.#runAborts.get(runId);
+        if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
+        return hadWork;
+    }
+
+    // Does the run have an in-flight stream (a background exec)? Used only for
+    // loop.cancel's cancelled=true/false answer; the teardown itself rides the
+    // run signal. Duck-typed like #drainStreamingSchemes.
+    #runHasActiveStreams(runId: number): boolean {
+        const exec = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+        return exec?.hasActiveSpawns?.(runId) ?? false;
     }
 
     /**
@@ -542,13 +565,6 @@ export default class Daemon {
      * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
      */
     async #handleWakeRun(payload: WakeRunPayload): Promise<void> {
-        // Every subscription close pokes the run's drain (if any) so a
-        // parked stream-aware drain re-checks active subs count. This
-        // happens regardless of whether we go on to inject a new loop,
-        // so the 499-skipped / no-provider paths still wake the drain
-        // out of its "queue empty, waiting for streams" state.
-        this.#pokeDrain(payload.runId);
-
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.closeStatus === 499) {
             this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {

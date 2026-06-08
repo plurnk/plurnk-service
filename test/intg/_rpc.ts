@@ -49,6 +49,28 @@ export const subscribeNotifications = (ws: WebSocket, method: string): (() => un
 // stream/event tests. Don't use setImmediate — it isn't enough.
 export const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 
+// Event-driven wait: poll a subscribeNotifications getter until `predicate`
+// holds, or throw on timeout. Race-free — the getter returns the full backlog
+// captured since subscription, so nothing is missed between subscribe and
+// wait. Replaces fixed sleeps in lifecycle tests: wait for the thing to be
+// true, and fail loudly (a hang surfaces as a timeout) instead of guessing a
+// duration.
+export const waitFor = async <T>(
+    getter: () => T[],
+    predicate: (items: T[]) => boolean,
+    { timeoutMs = 4000, intervalMs = 20 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<T[]> => {
+    const start = Date.now();
+    for (;;) {
+        const items = getter();
+        if (predicate(items)) return items;
+        if (Date.now() - start >= timeoutMs) {
+            throw new Error(`waitFor: predicate not satisfied within ${timeoutMs}ms (saw ${items.length})`);
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+};
+
 export const connect = (addr: DaemonAddr): Promise<WebSocket> =>
     new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);

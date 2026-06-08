@@ -57,11 +57,20 @@ export default class Exec {
         },
     };
 
-    #activeAborts = new Map<number, AbortController>();
+    #activeAborts = new Map<number, { runId: number; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<void>>();
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
+    }
+
+    // Whether the run has an in-flight spawn (a background exec). The daemon
+    // reads this only for loop.cancel's cancelled=true/false answer — the
+    // teardown itself rides the run's cancellation scope (the spawn's
+    // ctx.signal), so even a spawn registering after the cancel self-aborts.
+    hasActiveSpawns(runId: number): boolean {
+        for (const { runId: r } of this.#activeAborts.values()) if (r === runId) return true;
+        return false;
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
@@ -148,11 +157,17 @@ export default class Exec {
         });
 
         const controller = new AbortController();
+        let unlink = (): void => {};
         if (ctx.signal !== undefined) {
-            if (ctx.signal.aborted) controller.abort(ctx.signal.reason);
-            else ctx.signal.addEventListener("abort", () => controller.abort(ctx.signal!.reason), { once: true });
+            const parent = ctx.signal;
+            if (parent.aborted) controller.abort(parent.reason);
+            else {
+                const onParentAbort = (): void => controller.abort(parent.reason);
+                parent.addEventListener("abort", onParentAbort, { once: true });
+                unlink = (): void => parent.removeEventListener("abort", onParentAbort);
+            }
         }
-        this.#activeAborts.set(subscriptionId, controller);
+        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, controller, unlink });
 
         const tail = this.#runExecutor({
             runtime, command, cwd, ctx, pathname,
@@ -217,6 +232,7 @@ export default class Exec {
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
+            this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 

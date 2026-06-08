@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
 
 const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[200]:done:SEND`;
@@ -47,9 +47,19 @@ test("wake-on-completion: dormant run → daemon opens a new loop with the summa
 
             await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then end", flags: { yolo: true } });
 
-            // echo hi is fast; wake fires after the loop ends; daemon
-            // opens a second loop; that loop terminates on its own.
-            await new Promise((r) => setTimeout(r, 800));
+            // echo hi is fast; wake fires after the loop ends; daemon opens a
+            // second loop; that loop terminates on its own. Wait — event-driven
+            // — for the wake loop to open AND terminate. This hard-fails on a
+            // timeout if the wake loop is ever stranded (the lost-loop hang this
+            // change fixes), instead of a fixed sleep that hides it under load.
+            await waitFor(
+                () => terminatedEvents() as Array<{ loopId: number; finalStatus: number }>,
+                (ts) => {
+                    const wake = (concludedEvents() as Array<{ scheme: string; wakeLoopId?: number }>).find((c) => c.scheme === "exec");
+                    return wake?.wakeLoopId !== undefined && ts.some((t) => t.loopId === wake.wakeLoopId && t.finalStatus === 200);
+                },
+                { timeoutMs: 6000 },
+            );
 
             const concluded = concludedEvents() as Array<{
                 scheme: string; closeStatus: number; summary: string;
@@ -164,7 +174,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(`<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND`),
+            mockResponse(`<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND`),
             mockResponse("<<SEND[200]:never:SEND"),
         ],
     });

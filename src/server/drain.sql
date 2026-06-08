@@ -22,13 +22,6 @@ WHERE id = (
 )
 RETURNING id, sequence, prompt, persona, flags;
 
--- PREP: drain_count_active_subs_for_run
--- Stream-aware drain: a run is "not yet idle" if any subscription is still
--- open (closed_at IS NULL). Drain waits on these before exiting.
-SELECT COUNT(*) AS n
-FROM subscriptions
-WHERE run_id = $run_id AND closed_at IS NULL;
-
 -- PREP: drain_current_loop_for_run
 -- The currently-executing loop for a run (status=102). At most one per run
 -- under drain semantics. Engine.inject uses this to write the prompt entry
