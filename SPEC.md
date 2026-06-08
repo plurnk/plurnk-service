@@ -1061,10 +1061,10 @@ Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with, `[Tt]
 
 ### §16.2 Matcher result shape (uniform across dialects)
 
-Body: JSON array of `{line, matched, matching?}`. Empty → 204. Mimetype = `application/json` regardless of source dialect. Render verbatim (no `N:\t` — tree-navigable per §16.6).
+Body: one match per line as `<line>:\t<value>` — the same `N:\t` form READ emits, so `<L>` can page the result set. Empty → 204. Mimetype = `text/markdown` regardless of source dialect.
 
-- `line` — 1-indexed source line.
-- `matched` — extracted value, polymorphic per dialect:
+- `<line>` — 1-indexed source line, shifted back to source coordinates when matching inside an `<L>` slice.
+- `<value>` — the extracted match, rendered bare when it is a single-line string, else JSON-encoded (preserving the one-match-per-line invariant). Polymorphic per dialect:
   - **bare regex** → string (full match)
   - **anon captures** → array `[c1, c2, …]`
   - **named captures** → object `{name: v, …}`. Mixed anon+named uses positional keys `"1"`, `"2"` alongside names.
@@ -1072,7 +1072,6 @@ Body: JSON array of `{line, matched, matching?}`. Empty → 204. Mimetype = `app
   - **jsonpath** → JSON value at the path
   - **xpath text/attr** → string
   - **xpath node** → serialized XML
-- `matching` — per-instance discriminator. Present for jsonpath wildcards (bracket form like `$['users'][0]['name']`) and xpath multi-match (`(//user)[1]`). Omitted otherwise.
 
 | Dialect | Extracts | Natural use |
 |---|---|---|
