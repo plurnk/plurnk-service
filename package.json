@@ -46,7 +46,7 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "0.2.0",
         "@plurnk/plurnk-execs-sh": "0.1.0",
-        "@plurnk/plurnk-grammar": "0.20.0",
+        "@plurnk/plurnk-grammar": "0.21.0",
         "@plurnk/plurnk-mimetypes": "0.11.0",
         "@plurnk/plurnk-mimetypes-application-json": "0.5.0",
         "@plurnk/plurnk-mimetypes-application-pdf": "0.6.0",
