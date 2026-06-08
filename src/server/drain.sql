@@ -58,3 +58,24 @@ WHERE e.scheme = 'plurnk'
   AND c.name = 'body'
 ORDER BY e.id DESC
 LIMIT 1;
+
+-- PREP: drain_orphaned_prompt_for_loop
+-- A loop can terminate before consuming a next-turn prompt injected into it
+-- (a wake-on-completion, or a loop.run-while-active that landed on a turn the
+-- loop never reached). Engine.inject writes prompt/<loop>/<N> at MAX(turn)+1;
+-- if the loop ended at turn K, an injected prompt at turn > K never ran.
+-- Returns the latest such orphan's body + the ended loop's flags + persona so
+-- the drain can promote it to a fresh loop — no wake silently lost.
+-- $pattern = `prompt/<loop_id>/%`, $prefix_len = length of `prompt/<loop_id>/`
+-- built JS-side (per the SqlRite LIKE-binding note above).
+SELECT c.content AS body, l.flags AS flags, l.persona AS persona
+FROM entries e
+JOIN entry_channels c ON c.entry_id = e.id
+JOIN loops l ON l.id = $loop_id
+WHERE e.scheme = 'plurnk'
+  AND e.pathname LIKE $pattern
+  AND c.name = 'body'
+  AND CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) >
+      (SELECT COALESCE(MAX(sequence), 0) FROM turns WHERE loop_id = $loop_id)
+ORDER BY e.id DESC
+LIMIT 1;

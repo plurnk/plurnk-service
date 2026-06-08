@@ -475,6 +475,10 @@ export default class Daemon {
                         firstSettled = true;
                         resolveFirst(loopResult);
                     }
+                    // A next-turn prompt this loop ended before consuming (a
+                    // wake conclusion or a loop.run-while-active) is promoted to
+                    // a fresh queued loop so it's never silently dropped.
+                    await this.#reconcileOrphanedWake(runId, loopRow.id);
                 }
             } catch (err) {
                 if (!firstSettled) {
@@ -516,6 +520,28 @@ export default class Daemon {
     } | null {
         if (this.#activeDrains.has(opts.runId)) return null;
         return this.#startDrain(opts);
+    }
+
+    // After a loop terminates, promote any next-turn prompt it never consumed —
+    // an injected wake (stream conclusion) or a loop.run-while-active prompt
+    // that landed on a turn the loop didn't reach — into a fresh queued loop.
+    // The drain claims it on its next iteration, so a conclusion or client
+    // prompt is never silently dropped. Inherits the ended loop's flags + persona.
+    async #reconcileOrphanedWake(runId: number, endedLoopId: number): Promise<void> {
+        const prefix = `prompt/${endedLoopId}/`;
+        const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
+            body: string; flags: string | null; persona: string | null;
+        }>({ loop_id: endedLoopId, pattern: `${prefix}%`, prefix_len: prefix.length });
+        if (orphan === undefined) return;
+        const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
+        if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
+        const fresh = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
+            run_id: runId, sequence: seqRow.next, prompt: orphan.body, persona: orphan.persona,
+        });
+        if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
+        if (orphan.flags !== null) {
+            await (this.#db.engine_set_loop_flags as PrepMethod).run({ loop_id: fresh.id, flags: orphan.flags });
+        }
     }
 
     // The run's cancellation scope — lazily created, and replaced once aborted

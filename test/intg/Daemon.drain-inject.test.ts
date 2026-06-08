@@ -183,3 +183,50 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
         } finally { ws.close(); }
     });
 });
+
+test("loop ends before consuming an injected prompt → reconciled into a fresh loop (no wake lost)", async () => {
+    // Edge: a next-turn prompt injected into a loop that then terminates before
+    // reaching that turn would be silently lost. Forced deterministically: hold
+    // loop 1 at a proposal (status=102, turn 1), inject a turn-2 prompt, then
+    // let turn 1 emit SEND[200] so loop 1 ends and turn 2 never runs. The drain
+    // must promote the orphaned prompt to a fresh loop that surfaces it — so two
+    // loops terminate for the run, not one (it would be one if the wake were
+    // lost; no other op here spawns a loop — the EXEC proposal is rejected).
+    const mock = new Mock({
+        contextSize: 8192,
+        responses: [
+            sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[200]:loop 1 ends at turn 1:SEND"),  // pause, then end
+            sendOnly("<<SEND[200]:reconciled loop ran:SEND"),                          // the promoted loop
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "reconcile-orphan" });
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+
+            const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
+            const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
+
+            // Inject a turn-2 prompt while loop 1 is paused at turn 1.
+            const r2 = await rpcCall(ws, 3, "loop.run", { prompt: "the orphaned follow-up" });
+            assert.equal((r2.result as { action: string }).action, "injected_next_turn");
+
+            // Release the proposal → turn 1 emits SEND[200] → loop 1 ends; the
+            // injected turn 2 never runs (it's now orphaned).
+            await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
+            await firstPromise;
+
+            // The orphaned prompt is reconciled into a second loop that runs.
+            const ts = await waitFor(
+                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                (t) => t.length >= 2,
+                { timeoutMs: 5000 },
+            );
+            assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
+            assert.ok(ts.every((t) => t.finalStatus === 200), "both loops ended cleanly");
+        } finally { ws.close(); }
+    });
+});
