@@ -4,7 +4,7 @@ import type { EditStatement, PlurnkStatement, ReadStatement, SendStatement, UrlP
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { MockResponse } from "@plurnk/plurnk-providers";
+import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
@@ -42,6 +42,16 @@ const setup = async () => {
     return { db, engine, sessionId, runId, loopId };
 };
 
+// The Mock's costFor ignores usage; this billing rule charges reasoning
+// tokens too, so a nonzero reasoning count MUST move the recorded turn
+// cost — the discriminator for "did the engine forward reasoning to
+// costFor, or silently drop it?"
+class ReasoningBillingMock extends Mock {
+    costFor({ prompt, completion, reasoning }: ProviderUsage): number {
+        return prompt + completion + reasoning;
+    }
+}
+
 test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
@@ -75,6 +85,38 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: recorded turn cost reflects reasoning tokens (costFor bills them)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const usage = { prompt: 100, completion: 50, reasoning: 200, cached: 0, total: 350 };
+        const provider = new ReasoningBillingMock({
+            contextSize: 100000,
+            responses: [{ assistant: { content: "", ops: [sendStmt(200, "done")], reasoning: "deliberated at length", usage } }],
+        });
+        const result = await engine.runTurn({
+            provider, sessionId, runId, loopId,
+            messages: [
+                { role: "system", content: "You are an agent." },
+                { role: "user", content: "Think hard, then answer." },
+            ],
+        });
+        assert.equal(result.status, 200);
+
+        const turn = await (db.test_get_turn as PrepMethod).get<{ usage_cost_pico: number; usage_completion: number }>({ id: result.turnId });
+        if (turn === undefined) throw new Error("turn not found");
+        // costFor charges prompt+completion+reasoning = 100+50+200 = 350.
+        // Strip reasoning from the usage the engine forwards and it falls
+        // to 150 — so 350 proves reasoning survived into the recorded cost.
+        // The reasoning COUNT is never stored (no column); the cost is its
+        // only forensic trace.
+        assert.equal(provider.costFor({ ...usage, reasoning: 0 }), 150,
+            "control: identical usage minus reasoning bills 150 — the reasoning charge is a real 200-pico delta");
+        assert.equal(turn.usage_cost_pico, 350,
+            "usage_cost_pico = costFor of the FULL usage; reasoning (200) is billed, not dropped");
+        assert.equal(turn.usage_completion, 50, "completion is still recorded separately as a raw count");
     } finally { await db.close(); }
 });
 
