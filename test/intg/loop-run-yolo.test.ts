@@ -96,10 +96,10 @@ test("loop.run with flags.yolo=true: in-tree yolo listener auto-accepts proposal
 
             // The proposed entry should have transitioned out of 'proposed'.
             const rows = await (db.test_log_entries_by_run as PrepMethod).all<{
-                op: string; status_rx: number;
+                op: string; status_rx: number; scheme: string;
             }>({ run_id: 1 });
-            const edit = rows.find((r) => r.op === "EDIT");
-            assert.ok(edit !== undefined, "EDIT log entry expected");
+            const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
+            assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
             // Post-accept the dispatch overwrites status with applyResolution's
             // final status — ProposingTest has no applyResolution so the engine
             // downgrade-on-throw path leaves the entry resolved at 200/4xx.

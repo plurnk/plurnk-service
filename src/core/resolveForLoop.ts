@@ -14,8 +14,10 @@ export default class ResolveForLoop {
      *
      * - Schemes without `manifest.flags` are always active.
      * - `excludedInAsk` filters out under `mode === "ask"`.
-     * - `requiresWeb` / `requiresInteraction` / `proposes` filter out under
-     *   the corresponding `no*` flag.
+     * - `requiresWeb` / `requiresInteraction` filter out under the
+     *   corresponding `no*` flag. (`noProposals` is NOT a capability gate —
+     *   it's a proposal-resolution stance handled by the auto-reject
+     *   listener, invisible to the model. See server/noProposals.ts.)
      */
     static resolveForLoop(
         handlers: ReadonlyMap<string, object>,
@@ -31,7 +33,6 @@ export default class ResolveForLoop {
             if (flags.mode === "ask" && affinity.excludedInAsk) continue;
             if (flags.noWeb && affinity.requiresWeb) continue;
             if (flags.noInteraction && affinity.requiresInteraction) continue;
-            if (flags.noProposals && affinity.proposes) continue;
             active.add(name);
         }
         return active;

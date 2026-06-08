@@ -53,7 +53,6 @@ export default class Exec {
         modelVisible: true,
         flags: {
             excludedInAsk: true,
-            proposes: true,
         },
     };
 

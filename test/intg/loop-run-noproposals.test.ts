@@ -1,0 +1,77 @@
+// Server-side noProposals wire path — the inverse of loop-run-yolo.test.ts.
+// loop.run accepts flags.noProposals; the in-tree noProposals.ts listener
+// reads ProposalPendingEvent.flags and auto-REJECTS in-process without any
+// client loop.resolve. The model sees an ordinary 400 (the action did NOT
+// occur), NEVER the orchestration reason and NEVER a "scheme inactive" gate.
+// Proposal handling stays invisible to the model: the outcome reason is
+// forensics-only, so a noProposals reject is indistinguishable from a human
+// declining.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { Mock } from "@plurnk/plurnk-providers";
+import type { PrepMethod } from "../../src/core/Db.ts";
+import type { SchemeManifest } from "../../src/core/scheme-types.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+
+// Minimal always-proposing scheme (mirrors loop-run-yolo.test.ts). Returns
+// 202 so the proposal lifecycle fires from a full Daemon RPC roundtrip.
+class ProposingTest {
+    static manifest: SchemeManifest = {
+        name: "proposing-test",
+        channels: {},
+        defaultChannel: "body",
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client", "plugin"],
+        volatile: false,
+        modelVisible: true,
+    };
+    async edit(): Promise<{ status: number; attrs: object; body: string }> {
+        return { status: 202, body: "--- proposed\n+++ proposed", attrs: { target: "/proposed" } };
+    }
+}
+
+test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model sees 400 (didn't occur), not a 403 gate", async () => {
+    // Model emits EDIT against the proposing scheme (202), then SEND[200].
+    // With noProposals on, the proposal auto-rejects in-process; the EDIT
+    // lands as status 400 (action did NOT occur) — identical to a human
+    // declining — NOT a 403 "scheme inactive under current loop flags". The
+    // loop still completes on the SEND[200]; the rejected EDIT does not gate
+    // it. The model knows WHETHER (400) without learning HOW (the orchestration).
+    const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });
+
+    await withDaemon(mock, async (db, daemon, addr) => {
+        daemon.schemes.register("proposing-test", new ProposingTest());
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "noproposals-resolve" });
+            const response = await rpcCall(ws, 2, "loop.run", {
+                prompt: "trigger proposal", flags: { noProposals: true },
+            });
+            const result = response.result as { finalStatus: number };
+            assert.equal(result.finalStatus, 200, "loop completes on SEND[200]; the rejected EDIT doesn't gate it");
+
+            const rows = await (db.test_log_entries_by_run as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ run_id: 1 });
+            const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
+            assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
+            assert.equal(edit!.status_rx, 400,
+                "auto-rejected to 400 via the proposal lifecycle (action didn't occur), NOT gated to 403");
+        } finally { ws.close(); }
+    });
+});
+
+test("loop.run rejects non-boolean flags.noProposals", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "bad-noproposals" });
+            const response = await rpcCall(ws, 2, "loop.run", {
+                prompt: "test", flags: { noProposals: "nope" },
+            });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /flags\.noProposals must be a boolean/);
+        } finally { ws.close(); }
+    });
+});

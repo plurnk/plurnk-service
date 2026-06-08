@@ -14,7 +14,6 @@ export interface SchemeFlagAffinity {
     readonly excludedInAsk?: boolean;        // excluded when mode === "ask"
     readonly requiresWeb?: boolean;           // excluded when noWeb
     readonly requiresInteraction?: boolean;   // excluded when noInteraction
-    readonly proposes?: boolean;              // excluded when noProposals
 }
 
 export interface SchemeManifest {

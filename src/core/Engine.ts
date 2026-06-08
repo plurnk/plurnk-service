@@ -1551,7 +1551,7 @@ export default class Engine {
     }
 
     // Per-loop flag gating. Schemes self-declare their flag affinity in
-    // their manifest (proposes / excludedInAsk / requiresWeb /
+    // their manifest (excludedInAsk / requiresWeb /
     // requiresInteraction); SchemeRegistry.resolveForLoop returns the
     // active set under the loop's persisted flags. Anything outside the
     // set returns 403 — action-entry-as-outcome carries the rejection.
@@ -1561,7 +1561,7 @@ export default class Engine {
 
         const flags = await this.#loadLoopFlags(loopId);
         // Fast path: default flags gate nothing. (yolo never gates.)
-        if (!flags.noProposals && !flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
+        if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
         const active = this.#schemes.resolveForLoop(flags);
         const check = (target: PlurnkStatement["target"]): DispatchResult | null => {

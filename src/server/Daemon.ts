@@ -18,6 +18,7 @@ import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.t
 import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
 import Yolo from "./yolo.ts";
+import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 
 import PingMethod from "./methods/ping.ts";
@@ -142,6 +143,10 @@ export default class Daemon {
         // In-tree YOLO listener — auto-accepts proposals when the loop's
         // persisted flags.yolo === true. Skips client roundtrip entirely.
         Yolo.attachYolo(this.#engine, this.#db);
+        // Inverse of YOLO: auto-REJECT proposals in-process when the loop's
+        // persisted flags.noProposals === true (client has no review channel).
+        // The model sees an ordinary 400, never the orchestration reason.
+        NoProposals.attachNoProposals(this.#engine, this.#db);
     }
 
     get registry(): MethodRegistry { return this.#registry; }

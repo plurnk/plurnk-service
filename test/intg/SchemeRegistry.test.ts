@@ -77,10 +77,10 @@ test("[§3.1-manifest] SchemeRegistry.resolveForLoop: mode=ask excludes exec (ex
     assert.equal(active.has("known"), true);
 });
 
-test("SchemeRegistry.resolveForLoop: noProposals excludes exec (proposes)", () => {
+test("SchemeRegistry.resolveForLoop: noProposals is not a gate — exec stays active", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noProposals: true });
-    assert.equal(active.has("exec"), false);
+    assert.equal(active.has("exec"), true);
     assert.equal(active.has("known"), true);
 });
 

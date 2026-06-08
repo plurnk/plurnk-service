@@ -70,11 +70,3 @@ test("resolveForLoop: requiresInteraction filters under noInteraction", () => {
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noInteraction: true };
     assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);
 });
-
-test("resolveForLoop: proposes filters under noProposals", () => {
-    const m = handlers([
-        ["exec", makeScheme("exec", baseManifest("exec", { proposes: true }))],
-    ]);
-    const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noProposals: true };
-    assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);
-});

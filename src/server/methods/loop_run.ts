@@ -11,8 +11,10 @@ import type { Provider } from "@plurnk/plurnk-providers";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
 // Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate
-// schemes whose manifest affinity matches (proposes / excludedInAsk /
-// requiresWeb / requiresInteraction). noWeb/noInteraction are accepted
+// schemes whose manifest affinity matches (excludedInAsk / requiresWeb /
+// requiresInteraction). noProposals is NOT a gate — it's a proposal-
+// resolution stance (server-side auto-reject, inverse of yolo; see
+// server/noProposals.ts), invisible to the model. noWeb/noInteraction are accepted
 // for wire uniformity but have no current consumers (http and ask-user
 // primitives haven't shipped); they activate the moment a scheme opts
 // into the affinity.

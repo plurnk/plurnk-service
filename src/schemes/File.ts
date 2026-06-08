@@ -68,9 +68,6 @@ export default class File {
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
-        flags: {
-            proposes: true,  // file writes go through proposal lifecycle (task #42)
-        },
     };
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
