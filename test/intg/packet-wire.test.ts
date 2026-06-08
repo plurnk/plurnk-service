@@ -437,6 +437,29 @@ test("telemetry render: telemetry without snippet → meta-only (no fence)", () 
     assert.doesNotMatch(out, /<<error:\/\//);
 });
 
+test("[§15.2-requirements-render-last] system_requirements renders LAST in the user packet, under its own header", () => {
+    const user = {
+        prompt: "Reply with just the number.",
+        telemetry: { budget: "5000 free", errors: [{ kind: "no_ops", coordinate: "1/1/1" }] },
+        system_requirements: "Conclude the loop with <<SEND[200]:answer:SEND",
+    };
+    const out = PacketWire.renderUserContent(user);
+    // §15.2: requirements is the contract that must win conflicts with the
+    // natural-language prompt, so it renders closest to the assistant turn —
+    // after the prompt, budget, and errors, with nothing following it.
+    assert.match(out, /# Plurnk System Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
+        "requirements renders LAST under its own header, nothing after it");
+    const reqIdx = out.indexOf("# Plurnk System Requirements");
+    assert.ok(reqIdx > out.indexOf("# Plurnk System User Prompt"), "requirements follows the prompt");
+    assert.ok(reqIdx > out.indexOf("# Plurnk System Budget"), "requirements follows the budget");
+    assert.ok(reqIdx > out.indexOf("# Plurnk System Errors"), "requirements follows the errors");
+});
+
+test("[§15.2-requirements-omitted-when-empty] empty system_requirements emits no header", () => {
+    const out = PacketWire.renderUserContent({ prompt: "P", telemetry: { budget: "", errors: [] }, system_requirements: "" });
+    assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the string is empty");
+});
+
 
 
 test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
