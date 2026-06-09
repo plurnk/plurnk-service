@@ -103,6 +103,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<READ(docs/api.md)://h2/text():READ
 <<READ(plurnk://manifest.json):$[?(@.shown==false)]:READ
 <<READ(log://1/2/3):$[*].matched.codename:READ
+<<READ(/etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown://countries/france/capital.md):What is the capital of France?:EDIT

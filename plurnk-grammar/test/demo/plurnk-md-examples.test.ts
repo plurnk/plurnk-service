@@ -41,7 +41,7 @@ test("plurnk.md examples block contains the expected statement count", () => {
     const result = PlurnkParser.parse(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
-    assert.equal(statements.length, 28, `expected 28 statements, got ${statements.length}`);
+    assert.equal(statements.length, 29, `expected 29 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {
