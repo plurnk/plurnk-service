@@ -68,7 +68,11 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
                 this.#getParserCached(),
                 this.#getMappingCached(),
             ]);
-        } catch {
+        } catch (err) {
+            // GrammarNotInstalledError propagates so Mimetypes.process() can
+            // degrade to text-plain per #14. Other errors route to empty
+            // symbols per the long-standing handler error policy.
+            if ((err as { name?: string })?.name === "GrammarNotInstalledError") throw err;
             return [];
         }
         let tree: TreeSitterTree | null;
@@ -108,7 +112,8 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         let parser: TreeSitterParser;
         try {
             parser = await this.#getParserCached();
-        } catch {
+        } catch (err) {
+            if ((err as { name?: string })?.name === "GrammarNotInstalledError") throw err;
             return null;
         }
         let tree: TreeSitterTree | null;

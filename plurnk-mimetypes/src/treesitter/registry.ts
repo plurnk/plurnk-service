@@ -293,6 +293,15 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         wasmFile: "tree-sitter-odin.wasm",
         importMapping: () => import("./odin.ts"),
     },
+    {
+        mimetype: "text/css",
+        glyph: "🎨",
+        extensions: [".css"],
+        slug: "css",
+        wasmPackage: null,
+        wasmFile: null,
+        importMapping: () => import("./css.ts"),
+    },
 ];
 
 // Look up a registry entry by mimetype. Returns null if the mimetype

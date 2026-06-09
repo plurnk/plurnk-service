@@ -59,6 +59,13 @@ export interface ProcessInput {
 
 export interface ProcessOptions {
     budget?: number;
+    // When true, missing grammar for a detected mimetype throws
+    // GrammarNotInstalledError instead of degrading to a text-plain fallback.
+    // Default false — see issue #14: in the a-la-carte world, a missing
+    // grammar is the expected normal state for any deployment that installs
+    // only the languages it uses, not an error condition. Consumers that
+    // genuinely require a specific grammar to be present can opt in.
+    strict?: boolean;
 }
 
 export interface ProcessResult {
@@ -95,6 +102,13 @@ export interface ProcessResult {
     // every error path (consistent with preview).
     deepJson: unknown;
     deepXml: string;
+    // Per issue #14: when the detected mimetype's grammar package isn't
+    // installed, process() degrades to a text-plain fallback and surfaces
+    // the missing package name here so consumers can show an install hint.
+    // Absent on the happy path. Independent of `ok` — degraded results
+    // still set ok:true (the framework successfully produced a usable
+    // text fallback; nothing is wrong).
+    grammarMissing?: string;
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -235,11 +249,30 @@ export default class Mimetypes {
         // owns extractRaw caching (or its parser cache) so symbols + deepJson
         // typically share work. Deep channels are eager per #10: every
         // process() call materializes them for plurnk-service to persist.
-        const [material, deepJsonValue, extentValue] = await Promise.all([
-            handler.preview(content),
-            handler.deepJson(content),
-            handler.extent(content),
-        ]);
+        //
+        // GrammarNotInstalledError catch routes to the text-plain degradation
+        // path per issue #14 unless options.strict is set. Anything else
+        // propagates per error policy.
+        let material: Preview;
+        let deepJsonValue: unknown;
+        let extentValue: number;
+        try {
+            [material, deepJsonValue, extentValue] = await Promise.all([
+                handler.preview(content),
+                handler.deepJson(content),
+                handler.extent(content),
+            ]);
+        } catch (err) {
+            if ((err as { name?: string })?.name === "GrammarNotInstalledError" && !options.strict) {
+                return await this.#degradedResult(
+                    mimetype,
+                    content,
+                    (err as { plurnkPackage?: string }).plurnkPackage ?? "",
+                    budget,
+                );
+            }
+            throw err;
+        }
         const fitted = await fitPreview(material, budget, this.#tokenize);
         // Pre-format the preview for verbatim rendering downstream (#8). Text
         // previews get `N:\t` line prefixes per plurnk-grammar's plurnk.md
@@ -308,6 +341,43 @@ export default class Mimetypes {
 
         const parsed = parseBodyMatcher(expression);
         return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
+    }
+
+    // Build a degraded ProcessResult when the detected mimetype's grammar
+    // isn't installed (issue #14). Routes content through text/plain so the
+    // consumer still gets a usable preview + line count, and sets
+    // grammarMissing as a structured install hint.
+    async #degradedResult(
+        mimetype: string,
+        content: string | Uint8Array,
+        plurnkPackage: string,
+        budget: number,
+    ): Promise<ProcessResult> {
+        const fallback = await this.getHandler("text/plain");
+        if (fallback === null) {
+            // Floor missing — the framework's own dep tree is broken; surface
+            // an honest error result rather than fabricating fake data.
+            return {
+                ...errorResult(mimetype),
+                grammarMissing: plurnkPackage,
+            };
+        }
+        const material = await fallback.preview(content);
+        const fitted = await fitPreview(material, budget, this.#tokenize);
+        const preview = renderPreviewForConsumer(material, fitted);
+        const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
+        const totalLines = typeof content === "string" ? countLines(content) : 0;
+        return {
+            mimetype,
+            preview,
+            previewTokens,
+            totalLines,
+            extent: totalLines,
+            ok: true,
+            deepJson: null,
+            deepXml: "",
+            grammarMissing: plurnkPackage,
+        };
     }
 
     async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {

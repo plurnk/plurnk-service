@@ -52,7 +52,14 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         let parser: TreeSitterParser;
         try {
             parser = await this.#getParser();
-        } catch {
+        } catch (err) {
+            // GrammarNotInstalledError is signal-bearing — propagates so
+            // Mimetypes.process() can degrade to text-plain with a
+            // grammarMissing hint per issue #14. Other parser-load errors
+            // (corrupt WASM, web-tree-sitter init failure) are silently
+            // routed to empty symbols per the long-standing handler error
+            // policy.
+            if (isGrammarNotInstalled(err)) throw err;
             return [];
         }
         let tree: TreeSitterTree | null;
@@ -81,7 +88,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         let parser: TreeSitterParser;
         try {
             parser = await this.#getParser();
-        } catch {
+        } catch (err) {
+            if (isGrammarNotInstalled(err)) throw err;
             return null;
         }
         let tree: TreeSitterTree | null;
@@ -114,6 +122,15 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
 // which accepts a string (or callback) and returns Tree | null.
 export interface TreeSitterParser {
     parse(content: string): TreeSitterTree | null;
+}
+
+// Duck-typed check for GrammarNotInstalledError without a circular import.
+// The error itself is defined in src/treesitter/handler.ts which depends on
+// this file; we just look for the marker.
+function isGrammarNotInstalled(err: unknown): boolean {
+    return typeof err === "object"
+        && err !== null
+        && (err as { name?: string }).name === "GrammarNotInstalledError";
 }
 
 // Shape of a node in the deep-json tree returned by deepJson(). One per
