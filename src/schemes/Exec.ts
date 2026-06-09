@@ -18,7 +18,7 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
-    pathname: string;       // auto-generated: r-<uuid8>; entry lives at exec://<pathname>
+    pathname: string;       // stamped from the EXEC's log coordinate (<loop>/<turn>/<seq>/EXEC); entry lives at exec://<pathname>
     inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
 }
 
@@ -75,7 +75,7 @@ export default class Exec {
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
-    // auto-generated exec://<pathname> entry's stdout/stderr channels.
+    // coordinate-stamped exec://<pathname> entry's stdout/stderr channels.
     // The model READs that entry on a subsequent turn to see what happened.
     async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
