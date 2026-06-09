@@ -109,6 +109,19 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
 });
 
+test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, source: "provider:test" });
+    mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
+    await assert.rejects(() => p.generate({ messages: [] }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "rate_limit");
+        assert.equal(err.status, 429);
+        assert.deepEqual(err.toTelemetryEvent(), { source: "provider:test", kind: "rate_limit", message: err.message, position: null });
+        return true;
+    });
+});
+
 test("generate rejects on a pre-aborted external signal", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);

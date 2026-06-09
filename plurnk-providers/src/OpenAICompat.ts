@@ -11,6 +11,7 @@
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import { chatCompletionStream } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
+import { toProviderError } from "./telemetry.ts";
 
 // How a numeric PLURNK_REASON budget translates to the wire (SPEC §4).
 //  - "think":             llama-server / Ollama OpenAI-compat → `think: true`
@@ -29,6 +30,7 @@ export type OpenAICompatConfig = {
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/4 heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
+    source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
 };
 
 // SPEC §2 closed set. Wire values outside it (provider-specific or absent)
@@ -56,6 +58,7 @@ export default class OpenAICompatProvider implements Provider {
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
+    #source: string;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -67,6 +70,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#costFor = config.costFor ?? (() => 0);
+        this.#source = config.source ?? "provider";
     }
 
     get contextSize(): number | null { return this.#contextSize; }
@@ -93,7 +97,16 @@ export default class OpenAICompatProvider implements Provider {
 
         const body: Record<string, unknown> = { model: this.#model, messages, ...this.#reasoningBody() };
 
-        const raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
+        let raw;
+        try {
+            raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
+        } catch (err) {
+            // Caller-initiated abort is cancellation, not a telemetry-worthy
+            // provider failure — rethrow as-is. Everything else (HTTP error,
+            // timeout, network) becomes a classified ProviderError.
+            if (signal?.aborted) throw err;
+            throw toProviderError(err, this.#source);
+        }
 
         return {
             assistant: {

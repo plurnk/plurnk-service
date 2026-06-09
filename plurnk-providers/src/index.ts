@@ -25,6 +25,8 @@ export { tokenizerFor, tokenizerByPublisher, parseTokenizerFamily } from "./toke
 export type { TokenizerFamily, CountTokens } from "./tokenizers.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
+export { ProviderError, classifyProviderError, toProviderError, providerSource } from "./telemetry.ts";
+export type { TelemetryEvent, ProviderTelemetryKind } from "./telemetry.ts";
 export { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
 export { default as Mock } from "./Mock.ts";

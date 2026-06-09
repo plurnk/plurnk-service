@@ -95,6 +95,21 @@ test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
     assert.equal(calls.some((u) => u.endsWith("/models")), false); // never queried /models
 });
 
+test("standard provider tags failures with provider:<name> telemetry source", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response("forbidden", { status: 403 }); // chat/completions fails
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    await assert.rejects(() => p!.generate({ messages: [] }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.toTelemetryEvent().source, "provider:openai");
+        assert.equal(err.kind, "unauthorized");
+        return true;
+    });
+});
+
 test("groq: requires its API key", async () => {
     await assert.rejects(standardProviderFromEnv("groq", { ...baseEnv }, "m"), /GROQ_API_KEY must be set/);
 });

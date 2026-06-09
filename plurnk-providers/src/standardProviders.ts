@@ -12,6 +12,7 @@ import type { Provider } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
 import { parseRequiredInt, parseOptionalInt, requireEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
+import { providerSource } from "./telemetry.ts";
 
 type StandardProviderSpec = {
     // API-key env var, and whether it's mandatory (local OpenAI-compat servers
@@ -146,5 +147,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         reasonBudget: parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON", name),
         reasoningStyle: spec.reasoningStyle,
         countTokens: tokenizerFor(family),
+        source: providerSource(name),
     });
 };

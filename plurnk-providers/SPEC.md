@@ -38,7 +38,7 @@ interface ProviderResponse {
     assistant: {
         content: string;            // raw model emission; consumer parses
         reasoning: string | null;   // wire-reported CoT; null if absent
-        usage: ProviderUsage;       // { prompt, completion, cached, total }
+        usage: ProviderUsage;       // { prompt, completion, reasoning, cached, total }
         finishReason: "stop" | "length" | "tool_calls" | "content_filter" | null;
         model: string;              // wire-reported (may differ from requested for relay providers)
     };
@@ -218,3 +218,18 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base URL, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest.
 
 `contextSize` for a standard provider resolves: `PLURNK_PROVIDER_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server/vLLM report their loaded window there; cloud endpoints don't, yielding `null`) → `null`. The probe is best-effort: any failure resolves to `null` (a legitimate "context unknown"), never throws.
+
+## §12 Telemetry — provider failures
+
+Transport failures surface as a `ProviderError` (extends `Error`, so existing catchers keep working) that carries the plurnk **TelemetryEvent** envelope via `toTelemetryEvent()`:
+
+```ts
+{ source: "provider:<vendor>", kind: ProviderTelemetryKind, message: string, position: null }
+```
+
+- `source` is `provider:<vendor>` (schema pattern `^[a-z]+(:[a-z][a-z0-9-]*)?$`); standard providers set it from their name, siblings via the `source` config field (default `"provider"`).
+- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.)
+- `message` is terse and factual (no guidance prose); `position` is `null` (provider failures aren't localizable into prior content).
+- **Caller-initiated abort is NOT telemetry** — an aborted `signal` rethrows the original abort, never a `ProviderError`.
+
+The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structurally matching `@plurnk/plurnk-grammar`'s `TelemetryEvent.json`, so the framework keeps zero grammar dependency (§11). Consumers route provider events through the same `source`+`kind` discriminator as parse/rail events.
