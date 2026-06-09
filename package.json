@@ -45,6 +45,11 @@
     },
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.0",
+        "@plurnk/plurnk-execs-node": "0.2.1",
+        "@plurnk/plurnk-execs-python": "0.2.1",
+        "@plurnk/plurnk-execs-search": "0.2.1",
+        "@plurnk/plurnk-execs-sh": "0.2.1",
+        "@plurnk/plurnk-execs-sqlite": "0.1.1",
         "@plurnk/plurnk-grammar": "0.21.0",
         "@plurnk/plurnk-mimetypes": "0.14.0",
         "@plurnk/plurnk-providers": "0.1.4",

@@ -13,6 +13,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership from "./git-membership.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
@@ -348,6 +349,9 @@ export default class Engine {
     // construction before a provider is wired (same boot affordance as
     // Mimetypes, §4.5). Real counts come from provider.countTokens.
     #tokenize: (text: string) => number;
+    // Boot-discovered runtime executors. Daemon builds + sets via
+    // setExecutors at start(); undefined until then (and in bare tests).
+    #executors: ExecutorRegistry | undefined;
     // Per-loop transient buffer of actionless failures pending surface in the
     // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
     // Map<loopId, TelemetryError[]>. SPEC §15.1.
@@ -412,6 +416,12 @@ export default class Engine {
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
         this.#tokenize = tokenize ?? ((text) => Math.ceil(text.length / 4));
+    }
+
+    // Late injection: the executor registry is async-built at daemon start()
+    // (discover + probe), after Engine construction.
+    setExecutors(executors: ExecutorRegistry): void {
+        this.#executors = executors;
     }
 
     #pushTelemetry(sessionId: number, loopId: number, event: object): void {
@@ -1222,6 +1232,7 @@ export default class Engine {
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
+            executors: this.#executors,
         };
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -1331,6 +1342,7 @@ export default class Engine {
                 wakeRunNotify: this.#wakeRunNotify,
                 tokenize: this.#tokenize,
                 pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
+                executors: this.#executors,
             };
             const applyResult = await handler.applyResolution({
                 attrs: (originalResult.attrs ?? {}) as object,

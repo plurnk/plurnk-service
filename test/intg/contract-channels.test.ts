@@ -8,7 +8,7 @@ import Known from "../../src/schemes/Known.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, hideStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -171,7 +171,7 @@ test("[§5.6-schemes-own-state-transitions] the exec scheme transitions channel 
     const { db, sessionId, runId } = await setup();
     try {
         const exec = new Exec();
-        const ctx = makeSchemeCtx({ db, sessionId, runId, writer: "model" });
+        const ctx = makeSchemeCtx({ db, sessionId, runId, writer: "model", executors: await testExecutors() });
         const pathname = "r-statelife";
 
         // Drive the real applyResolution path: it seeds channels as "active",

@@ -19,7 +19,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -46,6 +46,7 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
             db, schemes,
             streamEventNotify: (_sessionId, event) => events.push(event),
         });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-stream-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "streaming test");
@@ -126,6 +127,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-stream-sub-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "subscription lifecycle");
@@ -175,6 +177,7 @@ test("streaming exec: index render between samples picks up partial channel cont
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-stream-idx-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "index render mid-stream");

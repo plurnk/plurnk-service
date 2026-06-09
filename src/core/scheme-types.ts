@@ -5,6 +5,7 @@
 
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type { TelemetryEvent } from "./results.ts";
@@ -36,6 +37,10 @@ export interface PlurnkSchemeContext {
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
     readonly mimetypes?: Mimetypes;
+    // Boot-discovered runtime executors (tag → probe/effect/run). Engine-
+    // populated; absent in bare test fixtures. Exec dispatch fail-hards if
+    // absent rather than silently falling back to a default runtime.
+    readonly executors?: ExecutorRegistry;
     // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
     // contract (§2.1). Engine populates it from its configured tokenizer;
     // the entry/log write helpers count content tokens through it at write

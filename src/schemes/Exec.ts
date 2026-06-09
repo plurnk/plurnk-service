@@ -1,6 +1,6 @@
 import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
-import { isKnownRuntime, SubprocessExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelState } from "@plurnk/plurnk-execs";
+import type { Executor } from "../core/ExecutorRegistry.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
@@ -20,14 +20,9 @@ interface ExecAttrs {
     pathname: string;       // auto-generated: r-<uuid8>; entry lives at exec://<pathname>
 }
 
-// Single SubprocessExecutor instance handles every subprocess runtime
-// (`sh`/`bash`/`node`/`python`/`python3`/...). Per the discovery-driven
-// model (plurnk-execs#1), specific runtimes will be served by sibling
-// executor packages (`plurnk-execs-search` for non-subprocess work,
-// dedicated subprocess siblings for runtime-specific configuration).
-// Until that registry exists service-side, the universal SubprocessExecutor
-// from the framework covers every KNOWN_RUNTIME the resolver handles.
-const subprocessExecutor = new SubprocessExecutor({ runtime: "subprocess", glyph: "🐚" });
+// Executors are discovered + probed at boot into ExecutorRegistry and reach
+// the scheme through ctx.executors (plurnk-service#181). Each runtime tag
+// resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
 // Per plurnk.md, EXEC's target slot is `cwd`. ParsedPath there means a
 // bare local path or file:// URL — both decode to a filesystem directory.
@@ -91,9 +86,16 @@ export default class Exec {
             }
         }
 
-        const runtime = typeof statement.signal === "string" ? statement.signal : "";
-        if (!isKnownRuntime(runtime)) {
-            return { status: 501, error: `\`${runtime}\` executable not configured.` };
+        const requested = typeof statement.signal === "string" ? statement.signal : "";
+        const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
+        if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
+        const resolved = ctx.executors.entry(runtime);
+        if (resolved === undefined) {
+            return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${ctx.executors.availableRuntimes().join(", ")}` };
+        }
+        if (!resolved.available) {
+            const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
+            return { status: 501, error: `\`${runtime}\` is unavailable${why}` };
         }
         const cwdFromOp = cwdFromTarget(statement.target);
         // Default cwd to the session's project_root so EXEC runs in the
@@ -125,7 +127,7 @@ export default class Exec {
         const attrs = args.attrs as Partial<ExecAttrs>;
         const command = attrs.command;
         const pathname = attrs.pathname;
-        const runtime = typeof attrs.runtime === "string" ? attrs.runtime : "";
+        const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         if (typeof command !== "string" || command.length === 0) {
             return { status: 500, outcome: "missing_command" };
@@ -134,12 +136,15 @@ export default class Exec {
             return { status: 500, outcome: "missing_pathname" };
         }
 
-        // Seed channels from the executor's declared topology (Q1 (b)
-        // in plurnk-service#174 — executor declares, scheme honors).
-        // SubprocessExecutor declares stdout + stderr; future executors
-        // may declare different shapes (search → results, etc.).
+        // Resolve the runtime's executor from the boot registry, then seed
+        // channels from its declared topology (Q1(b) in plurnk-service#174 —
+        // executor declares, scheme honors). Each executor declares its own
+        // shape (subprocess → stdout/stderr; search → results; etc.).
+        if (ctx.executors === undefined) return { status: 500, outcome: "no_executor_registry" };
+        const resolved = ctx.executors.entry(runtime);
+        if (resolved === undefined) return { status: 500, outcome: "no_executor" };
         const seedChannels: EntryData["channels"] = {};
-        for (const [name, decl] of Object.entries(subprocessExecutor.channels)) {
+        for (const [name, decl] of Object.entries(resolved.executor.channels)) {
             seedChannels[name] = {
                 content: "",
                 mimetype: decl.mimetype,
@@ -169,6 +174,7 @@ export default class Exec {
         this.#activeAborts.set(subscriptionId, { runId: ctx.runId, controller, unlink });
 
         const tail = this.#runExecutor({
+            executor: resolved.executor,
             runtime, command, cwd, ctx, pathname,
             entryId, subscriptionId, signal: controller.signal,
         });
@@ -189,10 +195,11 @@ export default class Exec {
     // notify's reported state to "closed" before the chunk event fires
     // as "active." Chain through a single promise queue to serialize.
     async #runExecutor(opts: {
+        executor: Executor;
         runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
     }): Promise<void> {
-        const { runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal } = opts;
+        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal } = opts;
         const db = ctx.db;
         let queue: Promise<void> = Promise.resolve();
         const enqueue = (op: () => Promise<void>): void => {
@@ -203,7 +210,7 @@ export default class Exec {
         let stdoutLength = 0;
         let stderrLength = 0;
         try {
-            const result = await subprocessExecutor.run({
+            const result = await executor.run({
                 runtime, command, cwd, signal,
                 write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                     entryId, channel, chunk, notify: ctx.streamEventNotify,

@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -36,6 +36,7 @@ const withSession = async <T>(fn: (ctx: {
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "exec test");
@@ -231,6 +232,7 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
             db, schemes,
             streamEventNotify: (sessionId, event) => events.push({ sessionId, ...event }),
         });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-notify-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "exec notify test");

@@ -22,7 +22,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
-    insertSession, insertRun, insertLoop, insertTurn,
+    insertSession, insertRun, insertLoop, insertTurn, testExecutors,
 } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
@@ -119,6 +119,7 @@ test("[§7.3-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle 
             db, schemes,
             streamEventNotify: (_sid, ev) => chunkEvents.push({ channel: ev.channel, state: ev.state }),
         });
+        engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `log-lifecycle-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "lifecycle-only");

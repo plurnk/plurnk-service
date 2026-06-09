@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*`
@@ -35,6 +36,16 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     tokenize: (text: string) => Math.ceil(text.length / 4),
     ...overrides,
 });
+
+// Boot-style executor registry for EXEC tests. Memoized — built once (discover
+// + probe the installed siblings), shared across the suite. Pass to
+// engine.setExecutors(...) or makeSchemeCtx({ executors }). Production wires
+// this at Daemon.start(); direct-Engine fixtures must provide it themselves.
+let _executorsPromise: Promise<ExecutorRegistry> | undefined;
+export function testExecutors(): Promise<ExecutorRegistry> {
+    _executorsPromise ??= ExecutorRegistry.build();
+    return _executorsPromise;
+}
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");

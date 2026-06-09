@@ -10,6 +10,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 import type { WakeRunPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
 import Engine from "../core/Engine.ts";
+import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import PluginLoader from "../core/PluginLoader.ts";
@@ -162,6 +163,12 @@ export default class Daemon {
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
         await this.#mimetypes.ready();
+
+        // Discover + probe the installed executor siblings, then hand the
+        // registry to the engine for exec dispatch (plurnk-service#181). The
+        // shell is the default runtime, so its executor must boot usable.
+        const executors = await ExecutorRegistry.build({ defaultRuntime: "sh" });
+        this.#engine.setExecutors(executors);
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
