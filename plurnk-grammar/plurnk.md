@@ -10,17 +10,17 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 ## Operations
 
-| OP   | `[signal]`  | `(target)`| `<Line> / <Result>` | body            |
-|------|-------------|-----------|-----------------|-----------------|
-| FIND | filter tags | required  | results `N,M`   | matcher         |
-| READ | filter tags | required  | lines `N,M`     | matcher         |
-| EDIT | tags        | required  | lines `N,M`     | content         |
-| COPY | apply tags  | required  | lines `N,M`     | destination URI |
-| MOVE | apply tags  | required  | lines `N,M`     | destination URI |
-| SHOW | filter tags | required  | results `N,M`   | matcher         |
-| HIDE | filter tags | required  | results `N,M`   | matcher         |
-| SEND | status code | recipient | —               | message body    |
-| EXEC | executor    | cwd       | —               | command or code |
+| OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body            |
+|------|-------------|------------|---------------------|-----------------|
+| FIND | filter tags | required   | results `N,M`       | matcher         |
+| READ | filter tags | required   | lines `N,M`         | matcher         |
+| EDIT | tags        | required   | lines `N,M`         | content         |
+| COPY | apply tags  | required   | lines `N,M`         | destination URI |
+| MOVE | apply tags  | required   | lines `N,M`         | destination URI |
+| SHOW | filter tags | required   | results `N,M`       | matcher         |
+| HIDE | filter tags | required   | results `N,M`       | matcher         |
+| SEND | status code | recipient  | —                   | message body    |
+| EXEC | executor    | cwd        | —                   | command or code |
 
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
