@@ -51,6 +51,13 @@ test("probe: always available via node:sqlite", async () => {
     });
 });
 
+test("effect: :memory:/no-target → pure; file → host (target-classified)", () => {
+    const ex = new Sqlite({ runtime: "sqlite", glyph: "🗃" });
+    assert.equal(ex.effect(null), "pure");
+    assert.equal(ex.effect(":memory:"), "pure");
+    assert.equal(ex.effect("./app.db"), "host");
+});
+
 test("SELECT against default :memory: → rows as JSON, channel closed, 200", async () => {
     const { result, out, states, events } = await run("SELECT 1 AS one, 'hi' AS two");
     assert.deepEqual(result, { status: 200 });

@@ -32,7 +32,7 @@ The query/mutation split is decided by the prepared statement's `columns()`, nev
 
 ## Availability & proposal gating
 
-`probe()` always reports available (`node:sqlite` is a builtin). `effect()` — which will mark `:memory:` as `pure` (auto-run) and a file-backed db as `host` (propose) — is pending the contract addition in plurnk-service#182 and lands when that does.
+`probe()` always reports available (`node:sqlite` is a builtin). `effect(target)` marks `:memory:` (and no target) as `pure` (auto-run) and a file-backed db as `host` (propose) — classified by the target only, never by inspecting the SQL.
 
 ## Tests
 

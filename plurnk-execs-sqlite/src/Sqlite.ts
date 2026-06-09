@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
 
@@ -31,6 +31,12 @@ export default class Sqlite extends BaseExecutor {
     // Always available — node:sqlite is a Node 25 builtin, in-process.
     override async probe(): Promise<RuntimeAvailability> {
         return { available: true, detail: "node:sqlite" };
+    }
+
+    // :memory: (and no target) is pure; a file-backed db mutates the host.
+    // Classified by the target only — never by inspecting the SQL.
+    override effect(target: string | null): Effect {
+        return target === null || target === MEMORY ? "pure" : "host";
     }
 
     async run({ command, cwd, write, setState, emit }: ExecArgs): Promise<ExecResult> {
