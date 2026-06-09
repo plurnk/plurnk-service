@@ -1,8 +1,12 @@
 {
     "name": "@plurnk/plurnk-schemes",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler family.",
-    "keywords": ["plurnk", "scheme", "uri"],
+    "keywords": [
+        "plurnk",
+        "scheme",
+        "uri"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-schemes#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-schemes/issues"

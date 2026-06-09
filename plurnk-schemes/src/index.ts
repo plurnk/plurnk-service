@@ -46,3 +46,20 @@ export type {
     SchemeResultBase,
     TelemetryEvent,
 } from "./results.ts";
+
+// Capability ctx — DB-free authoring surface for siblings (keystone PR-2,
+// plurnk-service#180). Interfaces only; plurnk-service injects the impl.
+export type {
+    ChannelCaps,
+    ChannelState,
+    CrossSchemeCaps,
+    EntryCaps,
+    EntryData,
+    NotifyCaps,
+    ProposalAware,
+    SchemeCtx,
+    SubscriptionCaps,
+    SubscriptionHandle,
+    TagCaps,
+    VisibilityCaps,
+} from "./ctx.ts";

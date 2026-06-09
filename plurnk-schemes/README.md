@@ -11,7 +11,9 @@ Framework + contract for `@plurnk/plurnk-schemes-*` URI handler packages. Consum
 
 ### Types
 
-`SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Result families: `SchemeResult` / `EntryResult` / `ProposalResult` / `PassthroughResult` / `SchemeResultBase` / `TelemetryEvent`.
+- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `VisibilityCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware`.
 
 ### Helpers
 
@@ -19,9 +21,10 @@ Framework + contract for `@plurnk/plurnk-schemes-*` URI handler packages. Consum
 - `isBinaryMimetype` / `isLineNavigableMimetype` / `isJsonMimetype` / `normalizeAutoTextMimetype` / `TEXT_PRIMITIVE_MIMETYPE` — mimetype classification.
 - `sliceLines` / `sliceLinesRaw` / `sliceJsonItems` / `applyLineMarkerEdit` / `applyJsonItemEdit` — `<L>` slicing + structural EDIT.
 - `resolveEntryMimetype(pathname, default, mimetypes)` — path-extension mimetype resolver.
-- `matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher dispatch adapter over `Mimetypes.query`.
+- `matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher dispatch adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
+- Result builders/guards: `schemeError` / `logCoordinate` / `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`.
 
-DB-coupled helpers (CRUD primitives, entry-op handlers, channel writes, subscription registry) stay in plurnk-service; this repo ships only types and pure helpers. Forward-spec: a namespaced ctx API replaces the v0 split when third-party schemes are an actual concern.
+The **capability ctx** (`SchemeCtx`) is the DB-free authoring surface for siblings — interfaces only; plurnk-service injects the db-backed impl (see SPEC §3.bis). The db-backed implementations themselves (CRUD primitives, entry-op handlers, channel writes, subscription registry) stay in plurnk-service.
 
 ## Tests
 

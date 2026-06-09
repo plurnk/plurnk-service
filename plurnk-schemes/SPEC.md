@@ -77,7 +77,9 @@ Result-type definitions (`EditResult`, `ReadResult`, etc.) live in plurnk-servic
 
 ### Types
 
-- `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
+- Capability ctx (PR-2, see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `VisibilityCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
 
 ### Active-scheme resolution
 
@@ -111,6 +113,23 @@ Result-type definitions (`EditResult`, `ReadResult`, etc.) live in plurnk-servic
   - `QueryParseFailureError` → status 203 (soft fallback: raw content as text/markdown with `reason`)
   - Empty match array → status 204
   - Match array → status 200
+
+### §3.bis Capability ctx — the DB-free authoring surface
+
+The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; plurnk-service injects a db-backed implementation behind them (the `scheme-types.ts` seam, widened). In-tree schemes keep using `db` directly during transition and cut over scheme-by-scheme. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
+
+`SchemeCtx` carries per-dispatch identity (`sessionId`/`runId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+
+- `entries` — CRUD over the scheme's own namespace (`read`/`write`/`delete`).
+- `channels` — content writes + state (`append`/`replace`/`setState`).
+- `visibility` — the per-(run, entry, channel) index bit (`show`/`hide`, channel optional).
+- `tags` — entry tags (`add`/`remove`/`list`).
+- `notify` — between-turn client/engine signals (`streamEvent`, `wakeRun`); not model-facing.
+- `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a run+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk)` is **fused** (append + stream/event in one call); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
+
+`crossScheme` is a **deferred** placeholder — no FROM/TO methods committed until the first real cross-scheme COPY/MOVE forces the shape.
+
+**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle (await/accept/reject, YOLO/noProposals auto-resolve, timeout) and it is invisible to the sibling. The only sibling-side surface is the optional `ProposalAware.applyResolution(pathname, proposal, ctx)` hook the engine calls on accept.
 
 ## §4 What's NOT in this repo
 
