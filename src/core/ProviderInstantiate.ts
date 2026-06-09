@@ -6,11 +6,24 @@
 // The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { resolveActiveAlias, isStandardProvider, standardProviderFromEnv } from "@plurnk/plurnk-providers";
 import type { Provider, ProviderAlias, ProviderFactory } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
+        // Standard providers (openai-compat + groq/deepinfra/...) construct via
+        // the framework's factory — it carries probeNctx (auto-detect the
+        // endpoint's n_ctx, so a local llama-server isn't a no-window black box
+        // that disables the budget grinder + tokensFree) and the shared
+        // OpenAICompat transport. `openai` here replaces the former
+        // @plurnk/plurnk-providers-openai sibling verbatim.
+        if (isStandardProvider(alias.provider)) {
+            const provider = await standardProviderFromEnv(alias.provider, env, alias.model);
+            if (provider === null) throw new Error(`standard provider '${alias.provider}' returned null for model '${alias.model}'`);
+            return provider;
+        }
+        // Bespoke siblings (ollama/openrouter/google/xai/cloudflare): dynamic-
+        // import the package's own fromEnv factory.
         const packageName = `@plurnk/plurnk-providers-${alias.provider}`;
         let mod: { default: ProviderFactory };
         try {
