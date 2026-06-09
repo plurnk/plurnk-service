@@ -13,6 +13,7 @@ export type {
     ExecutorMetadata,
     ExecArgs,
     ExecResult,
+    Effect,
     RuntimeAvailability,
     ExecInfo,
     ExecRegistry,

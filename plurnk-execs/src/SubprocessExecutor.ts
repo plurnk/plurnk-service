@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import BaseExecutor from "./BaseExecutor.ts";
 import { resolveRuntime } from "./runtime.ts";
-import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "./types.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "./types.ts";
 
 // Grace period between SIGTERM and SIGKILL when tearing down an aborted process
 // group — long enough for a well-behaved process to clean up, bounded so a
@@ -30,6 +30,11 @@ export default class SubprocessExecutor extends BaseExecutor {
     // runtime). Subclasses naming an external interpreter override this.
     protected get binary(): string | null {
         return null;
+    }
+
+    // Subprocess runtimes execute code on the host — always `host`.
+    override effect(_target: string | null): Effect {
+        return "host";
     }
 
     override async probe(): Promise<RuntimeAvailability> {

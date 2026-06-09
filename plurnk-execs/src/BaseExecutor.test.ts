@@ -46,6 +46,17 @@ test("BaseExecutor: declares its own channel topology", () => {
     assert.deepEqual(ex.channels, { results: { mimetype: "application/json" } });
 });
 
+test("BaseExecutor: default effect is the conservative `host`", () => {
+    const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
+    assert.equal(ex.effect(null), "host");
+    assert.equal(ex.effect("/some/path"), "host");
+});
+
+test("BaseExecutor: default probe is available", async () => {
+    const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
+    assert.deepEqual(await ex.probe(), { available: true });
+});
+
 test("BaseExecutor.run: writes to declared channel and closes it", async () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const h = harness();

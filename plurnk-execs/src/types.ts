@@ -65,6 +65,14 @@ export interface ExecResult {
     exitCode?: number;
 }
 
+// Side-effect class of an executor invocation, for the consumer's per-runtime
+// proposal-gating policy (service#182). The executor declares the *fact*; the
+// consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
+//   - host  : runs code / mutates the host (subprocess, file-backed sqlite) → propose
+//   - read  : observes external state, no host mutation (search)            → auto
+//   - pure  : no observable side effect (sqlite :memory:, transforms)        → auto
+export type Effect = "pure" | "read" | "host";
+
 // Environment availability of a runtime, reported by `BaseExecutor.probe()`.
 // The consumer probes once at boot (per package, not per tag) and offers the
 // model only the available runtimes; `detail` is model-facing — it rides the

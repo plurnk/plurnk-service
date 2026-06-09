@@ -1,4 +1,4 @@
-import type { ChannelDecl, ExecArgs, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
 // A `@plurnk/plurnk-execs-*` sibling subclasses this and implements `run()`.
@@ -44,5 +44,16 @@ export default abstract class BaseExecutor {
     // miss gives a better model-facing reason than a raw error.
     async probe(): Promise<RuntimeAvailability> {
         return { available: true };
+    }
+
+    // Side-effect class of an invocation against `target` (the parsed EXEC
+    // target — what run() receives as cwd), for the consumer's proposal-gating
+    // policy (service#182). MUST be pure, synchronous, and cheap — it runs on
+    // the dispatch hot path at propose time: classify the target only, NEVER
+    // the command (parsing SQL/shell to judge intent is a sandbox-escape
+    // footgun). Default `host` is the conservative, fail-safe end — anything we
+    // can't classify is treated as host code-execution and proposed.
+    effect(_target: string | null): Effect {
+        return "host";
     }
 }

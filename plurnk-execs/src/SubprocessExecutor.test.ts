@@ -35,6 +35,12 @@ test("probe: default (no binary) → available", async () => {
     assert.deepEqual(await ex.probe(), { available: true });
 });
 
+test("effect: subprocess is always host (regardless of target)", () => {
+    const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
+    assert.equal(ex.effect(null), "host");
+    assert.equal(ex.effect("/work/dir"), "host");
+});
+
 // A SubprocessExecutor naming a real vs bogus binary, to exercise the probe path.
 class BinExec extends SubprocessExecutor {
     #bin: string;
