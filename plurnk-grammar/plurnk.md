@@ -4,23 +4,23 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MO
 
 ## Syntax
 
-<<OPsuffix[signal]?(target)?<L>?:body?:OPsuffix
+<<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
 Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty).
 
 ## Operations
 
-| OP   | `[signal]`  | `(target)`| `<L>`         | body            |
-|------|-------------|-----------|---------------|-----------------|
-| FIND | filter tags | required  | results `N,M` | matcher         |
-| READ | filter tags | required  | lines `N,M`   | matcher         |
-| EDIT | tags        | required  | lines `N,M`   | content         |
-| COPY | apply tags  | required  | lines `N,M`   | destination URI |
-| MOVE | apply tags  | required  | lines `N,M`   | destination URI |
-| SHOW | filter tags | required  | results `N,M` | matcher         |
-| HIDE | filter tags | required  | results `N,M` | matcher         |
-| SEND | status code | recipient | —             | message body    |
-| EXEC | executor    | cwd       | —             | command or code |
+| OP   | `[signal]`  | `(target)`| `<Line> / <Result>` | body            |
+|------|-------------|-----------|-----------------|-----------------|
+| FIND | filter tags | required  | results `N,M`   | matcher         |
+| READ | filter tags | required  | lines `N,M`     | matcher         |
+| EDIT | tags        | required  | lines `N,M`     | content         |
+| COPY | apply tags  | required  | lines `N,M`     | destination URI |
+| MOVE | apply tags  | required  | lines `N,M`     | destination URI |
+| SHOW | filter tags | required  | results `N,M`   | matcher         |
+| HIDE | filter tags | required  | results `N,M`   | matcher         |
+| SEND | status code | recipient | —               | message body    |
+| EXEC | executor    | cwd       | —               | command or code |
 
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
@@ -42,7 +42,7 @@ Index entries are previews; READ pulls the body (full, ranged, or matcher-filter
 YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
 YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
 
-## `<L>`
+## `<Line> / <Result>`
 
 `<N>` selects position N.
 `<N,M>` selects the inclusive range N through M. N and M are signed integers.
@@ -51,7 +51,7 @@ Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (ap
 
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
-On structured entries, `<L>` addresses item index, not line number.
+On structured entries, `<Result>` addresses result index, not line number.
 
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
@@ -63,7 +63,7 @@ On structured entries, `<L>` addresses item index, not line number.
 | `~`            | rag      | `~query text`         |
 | otherwise      | glob     | `pattern`             |
 
-Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. RAG narrows top-K via `<L>` on the host statement.
+Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. RAG narrows top-K via `<Result>` on the host statement.
 
 ## Paths
 
