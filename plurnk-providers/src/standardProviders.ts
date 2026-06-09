@@ -31,6 +31,11 @@ type StandardProviderSpec = {
     reasoningStyle: ReasoningStyle;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
+    // When true and PLURNK_PROVIDER_CONTEXT_SIZE is unset, probe GET /v1/models
+    // for the endpoint-reported context window (`n_ctx`). Set for providers
+    // that may front a local OpenAI-compat server (llama-server, vLLM, …) which
+    // reports its loaded window there. Cloud endpoints don't report it → null.
+    probeNctx?: boolean;
 };
 
 // Frozen so a downstream can't mutate the shared table.
@@ -42,6 +47,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyVar: "OPENAI_API_KEY", apiKeyRequired: false,
         baseUrlVar: "OPENAI_BASE_URL", chatPath: "/v1/chat/completions", flexBaseStrip: true,
         reasoningStyle: "think", tokenizerDefault: "heuristic", tokenizerEnvVar: "OPENAI_TOKENIZER",
+        probeNctx: true,
     },
     groq: {
         apiKeyVar: "GROQ_API_KEY", apiKeyRequired: true,
@@ -87,9 +93,30 @@ const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: s
     return `${trimmed}${spec.chatPath}`;
 };
 
+// Context-window resolution: PLURNK_PROVIDER_CONTEXT_SIZE → endpoint n_ctx
+// (probe, opt-in per spec) → null. llama-server / vLLM report the loaded window
+// as `n_ctx` on GET /v1/models; cloud endpoints don't, so the probe yields null
+// there. Best-effort: any failure (unreachable, no field, non-2xx) → null,
+// which is a legitimate "context unknown", not a swallowed contract violation.
+const probeNctx = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<number | null> => {
+    const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
+    try {
+        const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
+        if (!res.ok) return null;
+        const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number }> };
+        const rows = data.data ?? [];
+        const row = rows.find((r) => r.id === model) ?? rows[0];
+        const n = row?.n_ctx;
+        return typeof n === "number" && n > 0 ? n : null;
+    } catch {
+        return null;
+    }
+};
+
 // Returns a configured Provider, or null when `name` is not a standard
-// provider (so the consumer falls through to dynamic import).
-export const standardProviderFromEnv = (name: string, env: NodeJS.ProcessEnv, model: string): Provider | null => {
+// provider (so the consumer falls through to dynamic import). Async because a
+// probeNctx-enabled provider queries /v1/models at construction.
+export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessEnv, model: string): Promise<Provider | null> => {
     const spec = STANDARD_PROVIDERS[name];
     if (spec === undefined) return null;
 
@@ -101,13 +128,21 @@ export const standardProviderFromEnv = (name: string, env: NodeJS.ProcessEnv, mo
     if (apiKey.length > 0) headers.Authorization = `Bearer ${apiKey}`;
 
     const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
+    const url = resolveUrl(spec, env, name);
+    const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
+
+    // Explicit env wins; otherwise probe the endpoint when the spec opts in.
+    let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
+    if (contextSize === null && spec.probeNctx === true) {
+        contextSize = await probeNctx(url, headers, model, fetchTimeoutMs);
+    }
 
     return new OpenAICompatProvider({
         model,
-        url: resolveUrl(spec, env, name),
+        url,
         headers,
-        contextSize: parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name),
-        fetchTimeoutMs: parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name),
+        contextSize,
+        fetchTimeoutMs,
         reasonBudget: parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON", name),
         reasoningStyle: spec.reasoningStyle,
         countTokens: tokenizerFor(family),
