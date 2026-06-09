@@ -501,7 +501,7 @@ Subscription registry is plurnk-service runtime state (its own SQLite table). Ex
 
 ### §7.2 Chunk accumulation
 
-SSE event types, WS message types, exec stdout/stderr each map to a named channel. Channel record (`ChannelContent`): `content`, `mimetype`, `tokens`. Active-connection state lives in the subscription registry, not on the channel.
+SSE event types, WS message types, exec stdout/stderr each map to a named channel. Channel record (`ChannelContent`): `content`, `mimetype`, `tokens`. Active-connection state lives in the subscription registry, not on the channel. Chunks accumulate into the channel as they arrive — not buffered until close. {§7.2-chunks-accumulate}
 
 ### §7.3 No per-chunk log rows
 
