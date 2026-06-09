@@ -1,6 +1,7 @@
 import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { Executor } from "../core/ExecutorRegistry.ts";
+import EffectPolicy from "./EffectPolicy.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
@@ -18,6 +19,7 @@ interface ExecAttrs {
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
     pathname: string;       // auto-generated: r-<uuid8>; entry lives at exec://<pathname>
+    inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -98,6 +100,9 @@ export default class Exec {
             return { status: 501, error: `\`${runtime}\` is unavailable${why}` };
         }
         const cwdFromOp = cwdFromTarget(statement.target);
+        // Effect on the RAW target (pre-cwd-default) decides the lifecycle:
+        // host → propose, read/pure → auto-run inline (plurnk-service#182).
+        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));
         // Default cwd to the session's project_root so EXEC runs in the
         // same directory File scheme writes to. Without this default, the
         // model creates a file via EDIT (lands in project_root) and then
@@ -113,7 +118,7 @@ export default class Exec {
         // mirrors its log row's URI on the same coordinate. `pathname` is
         // stamped into attrs at log-write time; applyResolution reads it
         // back here.
-        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "" };
+        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "", inline: policy === "auto" };
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;

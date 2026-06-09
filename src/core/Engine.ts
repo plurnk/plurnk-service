@@ -1278,6 +1278,13 @@ export default class Engine {
         // 202 in the result the caller sees, so runTurn never branches on
         // a pending state.
         if (result.status === 202) {
+            // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
+            // no human gate, no loop/proposal notification. Accept + apply
+            // in-process; the model sees the outcome directly, never a review.
+            if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
+                const effective = await this.#runApplyResolution(statement, result, { decision: "accept" }, { sessionId, runId, loopId, turnId });
+                return this.#applyResolution(logEntryId, effective);
+            }
             // Register the resolution waiter SYNCHRONOUSLY before any await
             // yields. A same-tick resolveProposal() (e.g. from a test that
             // awaits the onDispatch callback and immediately resolves) must
