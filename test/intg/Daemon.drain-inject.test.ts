@@ -36,13 +36,13 @@ test("loop.cancel terminates a backgrounded exec that outlived its loop (conclud
     // not merely cancelled=true. The wall clock used to hide a broken kill
     // behind a 30s leak (the original assertion never checked the kill).
     //
-    // `exec sleep` (shell exec-replace) so SIGTERM hits the process directly;
-    // plain `sleep 30` leaks a shell grandchild — that's plurnk-execs#4, a
-    // process-group concern the daughter owns, not this service-side test.
+    // `sleep 30` is the long-running job; loop.cancel must process-group-kill
+    // it (execs 0.4.0+ fixed the #4 grandchild leak) — proven by the 499
+    // conclusion, not a 30s wall-clock leak.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
         ],
@@ -96,7 +96,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),

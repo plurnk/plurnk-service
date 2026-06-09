@@ -175,7 +175,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(`<<EXEC[sh]:exec sleep 30:EXEC\n<<SEND[102]:running:SEND`),
+            mockResponse(`<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND`),
             mockResponse("<<SEND[200]:never:SEND"),
         ],
     });
@@ -205,17 +205,15 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
 });
 
 test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async () => {
-    // printf lands "a\nb\n" (4 bytes) immediately — dash flushes builtin
-    // output before `exec` — then the shell exec-replaces into a bare
-    // `sleep`, so at cancel time the bytes are already in the channel and
-    // the live process is a single cancellable sleep (no grandchild;
-    // `exec` dodges plurnk-execs#4). The 499 conclusion must STILL report
-    // those 4 bytes — partial output is captured + retained through an
-    // abort, not discarded.
+    // printf lands "a\nb\n" (4 bytes) immediately, then `sleep 30` runs; at
+    // cancel time those bytes are already in the channel. loop.cancel
+    // process-group-kills the job (execs 0.4.0+ fixed #4); the 499
+    // conclusion must STILL report those 4 bytes — partial output captured
+    // + retained through an abort, not discarded.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(`<<EXEC[sh]:printf 'a\\nb\\n'; exec sleep 30:EXEC\n<<SEND[102]:running:SEND`),
+            mockResponse(`<<EXEC[sh]:printf 'a\\nb\\n'; sleep 30:EXEC\n<<SEND[102]:running:SEND`),
             mockResponse("<<SEND[200]:never:SEND"),
         ],
     });
