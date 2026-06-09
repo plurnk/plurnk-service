@@ -1,45 +1,10 @@
-// Framework-grade types shared by every `@plurnk/plurnk-schemes-*` sibling
-// and its consumer (plurnk-service).
+// Framework-grade scheme types — single source of truth is now
+// @plurnk/plurnk-schemes (keystone PR-1). This barrel re-exports them so
+// in-tree imports stay `core/types.ts`-local while the canonical definitions
+// live in the daughter; "pull, don't copy."
 //
-// Notably absent from this surface: `PlurnkSchemeContext`. The full per-call
-// context shape (which includes the database handle, channel-write notifier,
-// wake-on-completion notifier, etc.) is plurnk-service-coupled and lives
-// in the consumer. Sister schemes consume the parts of ctx the engine
-// supplies them per dispatch; this repo ships only the manifest + flag
-// types every sibling needs to declare itself.
-
-export type WriterTier = "model" | "client" | "system" | "plugin";
-
-export interface SchemeFlagAffinity {
-    readonly excludedInAsk?: boolean;        // excluded when mode === "ask"
-    readonly requiresWeb?: boolean;           // excluded when noWeb
-    readonly requiresInteraction?: boolean;   // excluded when noInteraction
-}
-
-export interface SchemeManifest {
-    readonly name: string;
-    readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
-    readonly defaultChannel: string;             // empty when channels is empty
-    readonly category: "data" | "logging";
-    readonly scope: "agent" | "session";
-    readonly writableBy: ReadonlyArray<WriterTier>;
-    readonly volatile: boolean;
-    readonly modelVisible: boolean;
-    readonly flags?: SchemeFlagAffinity;
-}
-
-export interface LoopFlags {
-    readonly mode: "ask" | "act";
-    readonly yolo: boolean;
-    readonly noWeb: boolean;
-    readonly noInteraction: boolean;
-    readonly noProposals: boolean;
-}
-
-export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
-    mode: "act",
-    yolo: false,
-    noWeb: false,
-    noInteraction: false,
-    noProposals: false,
-});
+// `PlurnkSchemeContext` is deliberately NOT here — it's service-coupled (db
+// handle, channel-write + wake notifiers) and stays in `scheme-types.ts`
+// until the capability-ctx contract (PR-2, plurnk-schemes#13) lands.
+export type { WriterTier, SchemeFlagAffinity, SchemeManifest, LoopFlags } from "@plurnk/plurnk-schemes";
+export { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-schemes";

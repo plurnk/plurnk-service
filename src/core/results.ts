@@ -1,101 +1,43 @@
-// Canonical op-result contract for `@plurnk/plurnk-schemes-*` siblings and
-// the service's scheme handlers. Replaces the per-op result types that
-// forked in-tree (`_entry-ops.ts` vs the local redefinitions in
-// `File.ts` / `Exec.ts` / `Log.ts`).
+// Canonical op-result contract — single source of truth is now
+// @plurnk/plurnk-schemes (keystone PR-1). The types re-export from the
+// daughter; the logic delegates to its functions behind a local OO facade
+// (mandate: stateless transforms are static-method classes), so in-tree call
+// sites stay `Results.schemeError(...)` while the implementation lives in the
+// daughter — "pull, don't copy."
 //
-// The shape keys on SCHEME-SHAPE, not op. EDIT against `known://` and EDIT
-// against `file://` produce structurally different results because the
-// schemes are differently shaped, not because EDIT is. So a family is the
-// superset of fields its shape can return across every op (entry-shape READ
-// returns content; entry-shape EDIT returns entryId) — fields optional per
-// op, discriminated by `shape`.
-//
-// Three shapes cover the current set:
-//   entry       — entries + entry_channels backed (known/unknown/skill/plurnk)
-//   proposal    — propose-then-resolve with payload (file/exec)
-//   passthrough — read-only / coordinate-addressed / network (log, future http)
-//
-// Error surface: `error` is a grammar `TelemetryEvent` (not a bare string),
-// present iff `status >= 400`. The consumer mirrors it into
+// The shape keys on SCHEME-SHAPE, not op: entry (known/unknown/skill/plurnk),
+// proposal (file/exec), passthrough (log, future http). `error` is a grammar
+// `TelemetryEvent`, present iff `status >= 400`; the consumer mirrors it into
 // `packet.user.telemetry.errors[]` unchanged.
+import {
+    isEntryResult as _isEntryResult,
+    isProposalResult as _isProposalResult,
+    isPassthroughResult as _isPassthroughResult,
+    isErrorStatus as _isErrorStatus,
+    schemeError as _schemeError,
+    logCoordinate as _logCoordinate,
+} from "@plurnk/plurnk-schemes";
+import type {
+    EntryResult, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase, TelemetryEvent,
+} from "@plurnk/plurnk-schemes";
+import type { LogCoordinate } from "@plurnk/plurnk-grammar";
 
-// grammar 0.20.0 exports TelemetryEvent + LogCoordinate from its index
-// (closed plurnk-grammar#23 — earlier versions only shipped the type in
-// types.generated.d.ts, forcing a ReturnType<PlurnkParseError[...]> recovery).
-import type { LogCoordinate, TelemetryEvent } from "@plurnk/plurnk-grammar";
-
-export type { TelemetryEvent };
-
-export interface SchemeResultBase {
-    readonly status: number;
-    readonly error?: TelemetryEvent;
-}
-
-export interface EntryResult extends SchemeResultBase {
-    readonly shape: "entry";
-    readonly entryId: number | null;
-    readonly channel: string | null;
-    readonly content?: string | null;
-    readonly mimetype?: string | null;
-    readonly startLine?: number | null;
-    readonly matches?: number | null;
-    readonly reason?: string;
-}
-
-export interface ProposalResult extends SchemeResultBase {
-    readonly shape: "proposal";
-    readonly body?: string;
-    readonly attrs?: object;
-    readonly diff?: string;
-}
-
-export interface PassthroughResult extends SchemeResultBase {
-    readonly shape: "passthrough";
-    readonly content?: string | null;
-    readonly mimetype?: string | null;
-    readonly startLine?: number | null;
-    readonly matches?: number | null;
-    readonly reason?: string;
-}
-
-export type SchemeResult = EntryResult | ProposalResult | PassthroughResult;
+export type { EntryResult, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase, TelemetryEvent };
 
 export default class Results {
-    static isEntryResult(result: SchemeResult): result is EntryResult { return result.shape === "entry"; }
-    static isProposalResult(result: SchemeResult): result is ProposalResult { return result.shape === "proposal"; }
-    static isPassthroughResult(result: SchemeResult): result is PassthroughResult { return result.shape === "passthrough"; }
+    static isEntryResult(r: SchemeResult): r is EntryResult { return _isEntryResult(r); }
+    static isProposalResult(r: SchemeResult): r is ProposalResult { return _isProposalResult(r); }
+    static isPassthroughResult(r: SchemeResult): r is PassthroughResult { return _isPassthroughResult(r); }
 
-    // A result is an error result iff its status is in the 4xx/5xx range. The
+    // A result is an error result iff its status is in the 4xx/5xx range; the
     // `error` envelope is expected on those and absent otherwise.
-    static isErrorStatus(status: number): boolean { return status >= 400; }
+    static isErrorStatus(status: number): boolean { return _isErrorStatus(status); }
 
-    // Build a scheme-sourced TelemetryEvent. `source` is `scheme:<name>` per
-    // the envelope's producer-namespacing convention (grammar TelemetryEvent
-    // schema). Absent message/position are omitted rather than set to undefined
-    // so the emitted object matches the wire shape exactly.
-    static schemeError(
-        scheme: string,
-        kind: string,
-        message?: string | null,
-        position?: TelemetryEvent["position"],
-    ): TelemetryEvent {
-        return {
-            source: `scheme:${scheme}`,
-            kind,
-            ...(message === undefined ? {} : { message }),
-            ...(position === undefined ? {} : { position }),
-        };
+    // Build a scheme-sourced TelemetryEvent (`source: scheme:<name>`).
+    static schemeError(scheme: string, kind: string, message?: string | null, position?: TelemetryEvent["position"]): TelemetryEvent {
+        return _schemeError(scheme, kind, message, position);
     }
 
-    // Build a LogCoordinate position pointing at an action's log row. The engine
-    // knows the coordinate at result-time, so schemes rarely construct this
-    // directly — it's here for the consumer-side mirror and for schemes that
-    // surface errors against a known prior coordinate.
-    static logCoordinate(coordinate: string, op?: string): LogCoordinate {
-        return {
-            type: "log-coordinate",
-            coordinate,
-            ...(op === undefined ? {} : { op }),
-        };
-    }
+    // Build a LogCoordinate position pointing at an action's log row.
+    static logCoordinate(coordinate: string, op?: string): LogCoordinate { return _logCoordinate(coordinate, op); }
 }
