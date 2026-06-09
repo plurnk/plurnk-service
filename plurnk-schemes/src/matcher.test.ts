@@ -123,3 +123,18 @@ test("matcher: unexpected error propagates (not caught)", async () => {
         /something else entirely/,
     );
 });
+
+// Integration guard: the xpath dialect is served by @plurnk/plurnk-mimetypes
+// (>=0.14.0, queryXpathString wired into Mimetypes.query) — NOT by a local
+// xml engine. This pins that schemes serves xpath through the framework with
+// zero runtime deps (resolves plurnk-service's de-dup ask, schemes#14). Uses
+// a real Mimetypes instance, not a stub, so a regression in the dep surfaces.
+test("matcher: xpath dialect served by the framework, no local xml engine", async () => {
+    const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");
+    const mts = new Mimetypes({ tokenize: async (t: string) => Math.ceil(t.length / 4), defaultMimetype: "text/markdown" });
+    const xpathBody: MatcherBody = { dialect: "xpath", raw: "//item" };
+    const xml = "<root>\n  <item>a</item>\n  <item>b</item>\n</root>";
+    const r = await matchAgainstContent(xpathBody, xml, "text/html", mts);
+    assert.equal(r.status, 200);
+    assert.equal(r.matches, 2);
+});
