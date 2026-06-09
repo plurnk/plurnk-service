@@ -874,6 +874,16 @@ export default class Engine {
                     }
                 }
             }
+            // The grammar also reports an `unparsedTail` when input ends
+            // mid-statement (a body opened but never closed): its `reason`
+            // names the op AND the fix ("…never closed — add `:READ`"), where
+            // the item-level error only says "expected close tag" for a tag the
+            // model thinks it already wrote. Surface it — phenomenal messages
+            // the model can self-correct from are the whole point of the DSL.
+            const tail = parsed.unparsedTail;
+            if (tail !== undefined) {
+                parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
+            }
         }
         const wireReasoning = assistant.reasoning ?? "";
         const scrapedReasoning = textFragments.join("\n");
