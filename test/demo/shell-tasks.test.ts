@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -33,6 +34,11 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 const SYSTEM_PROMPT = await readFile(Paths.instructionsSystem, "utf8");
 const PERSONA = await readFile(Paths.defaultPersona, "utf8");
 const REQUIREMENTS = await readFile(Paths.defaultRequirements, "utf8");
+
+// Real subprocess executors, same as the daemon wires at boot
+// (Daemon.setExecutors). Without this the exec scheme fail-hards:
+// "exec dispatched without an executor registry".
+const EXECUTORS = await ExecutorRegistry.build({ defaultRuntime: "sh" });
 
 const buildProvider = async (): Promise<Provider> => {
     const alias = resolveActiveAlias();
@@ -61,6 +67,7 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
+        engine.setExecutors(EXECUTORS);
         Yolo.attachYolo(engine, db);
         const sessionId = await insertSession(db, `demo-${label}-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
