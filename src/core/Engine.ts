@@ -1363,14 +1363,14 @@ export default class Engine {
                 };
             }
             // Propagate applyResolution.outcome onto the accepted resolution
-            // so the log entry's outcome column reflects operational metadata
-            // (e.g. exec's "exit_N"). Without this, only failures get an
-            // outcome on the durable record, and "ran cleanly but with a
-            // notable detail" has nowhere to land.
-            if (applyResult.outcome !== undefined && resolution.outcome === undefined) {
-                return { ...resolution, outcome: applyResult.outcome };
-            }
-            return resolution;
+            // (operational metadata, e.g. exec's "exit_N") AND its body — an
+            // inline (read/pure) run returns its output as the body, which has
+            // to reach the model-facing result this turn, not just stream to
+            // the entry. Host accepts carry no body (fire-and-forget).
+            const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
+                ? { ...resolution, outcome: applyResult.outcome }
+                : resolution;
+            return applyResult.body === undefined ? withOutcome : { ...withOutcome, body: applyResult.body };
         } catch (err) {
             return {
                 decision: "reject",
@@ -1511,13 +1511,15 @@ export default class Engine {
             : decision === "reject" ? "rejected"
             : "loop_aborted";
         const outcome = resolution.outcome ?? defaultOutcome;
-        // rx is the model-facing operation result. ONLY status — outcome
-        // is operational (security/admin) and stays on the log_entries
-        // column for forensics; body was an input echo with no value to
-        // the model; target/path lives in log_entries metadata and
-        // surfaces via the log section's `target` field uniformly.
+        // rx is the model-facing operation result. Status always; outcome is
+        // operational (stays on log_entries for forensics, never model-facing).
+        // Body is normally dropped — the propose preview was an input echo —
+        // EXCEPT an inline auto-run (read/pure) carries its run output AS the
+        // body, which is exactly the "what happened" the model needs this turn.
         // Per AGENTS.md "Operational hygiene on what the model sees."
-        const rx = JSON.stringify({ status });
+        const rx = (decision === "accept" && resolution.body !== undefined)
+            ? JSON.stringify({ status, body: resolution.body })
+            : JSON.stringify({ status });
         await (this.#db.engine_resolve_log_entry as PrepMethod).run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });

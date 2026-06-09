@@ -48,6 +48,8 @@ test("effect-gating: sqlite :memory: (pure) auto-runs — no proposal, resolves 
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
+        assert.ok(typeof result.body === "string" && result.body.length > 0, "inline returns the run output in the EXEC result, this turn — not a turn later");
+        assert.match(result.body as string, /1/, "the SELECT 1 result is in the body");
         await exec.idle();
     } finally { await db.close(); }
 });

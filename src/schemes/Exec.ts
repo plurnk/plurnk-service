@@ -54,7 +54,7 @@ export default class Exec {
     };
 
     #activeAborts = new Map<number, { runId: number; controller: AbortController; unlink: () => void }>();
-    #activeSpawns = new Map<number, Promise<void>>();
+    #activeSpawns = new Map<number, Promise<number>>();
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
@@ -182,9 +182,20 @@ export default class Exec {
             executor: resolved.executor,
             runtime, command, cwd, ctx, pathname,
             entryId, subscriptionId, signal: controller.signal,
+            inline: attrs.inline === true,
         });
-        this.#activeSpawns.set(subscriptionId, tail);
 
+        // read/pure (inline): await the run + return its output in the EXEC
+        // result — the model gets it THIS turn, not a turn later. host streams:
+        // fire-and-forget; the model READs exec://<pathname> on a later turn.
+        if (attrs.inline === true) {
+            const closeStatus = await tail;
+            const read = await EntryCrud.readEntry(pathname, ctx, "exec");
+            const body = read.entry === null ? ""
+                : Object.values(read.entry.channels).map((c) => c.content).filter((c) => c.length > 0).join("\n");
+            return { status: closeStatus, body };
+        }
+        this.#activeSpawns.set(subscriptionId, tail);
         return { status: 200, outcome: "started" };
     }
 
@@ -203,8 +214,9 @@ export default class Exec {
         executor: Executor;
         runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
-    }): Promise<void> {
-        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal } = opts;
+        inline: boolean;
+    }): Promise<number> {
+        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, inline } = opts;
         const db = ctx.db;
         let queue: Promise<void> = Promise.resolve();
         const enqueue = (op: () => Promise<void>): void => {
@@ -247,7 +259,9 @@ export default class Exec {
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            if (ctx.wakeRunNotify !== undefined) {
+            // Inline runs are delivered synchronously in the EXEC result —
+            // there's nothing to wake a later turn for.
+            if (!inline && ctx.wakeRunNotify !== undefined) {
                 ctx.wakeRunNotify({
                     sessionId: ctx.sessionId, runId: ctx.runId,
                     entryId, target: `exec://${pathname}`, subscriptionId, closeStatus,
@@ -256,6 +270,7 @@ export default class Exec {
                 });
             }
         }
+        return closeStatus;
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
