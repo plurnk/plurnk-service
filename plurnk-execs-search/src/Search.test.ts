@@ -61,6 +61,10 @@ test("declares a results channel (application/json)", () => {
     });
 });
 
+test("effect: search is read (auto-run, no host mutation)", () => {
+    assert.equal(new Search({ runtime: "search", glyph: "🔎" }).effect(null), "read");
+});
+
 test("probe: available when SEARXNG_URL is set, unavailable otherwise", async () => {
     const set = await new Search({ runtime: "search", glyph: "🔎" }).probe();
     assert.deepEqual(set, { available: true, detail: "http://searxng.test" });

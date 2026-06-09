@@ -1,5 +1,5 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
 // claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
@@ -49,6 +49,11 @@ export default class Search extends BaseExecutor {
         return url
             ? { available: true, detail: url }
             : { available: false, detail: "PLURNK_EXECS_SEARCH_SEARXNG_URL not set" };
+    }
+
+    // Search reads external state without mutating the host.
+    override effect(_target: string | null): Effect {
+        return "read";
     }
 
     async run({ runtime, command, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
