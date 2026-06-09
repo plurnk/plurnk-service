@@ -333,7 +333,7 @@ test("index entry: body ending in newline does NOT produce a doubled trailing ne
         persona: "",
         index: [{
             scheme: "exec",
-            pathname: "1/2/1/EXEC",
+            pathname: "sh/1/2/1",
             defaultChannel: "stdout",
             channels: { stdout: { content: "data/\nnotes.md\npackage.json\nsrc/\n", mimetype: "text/stream", tokens: 0 } },
         }],
@@ -341,8 +341,8 @@ test("index entry: body ending in newline does NOT produce a doubled trailing ne
     };
     const out = PacketWire.renderSystemContent(system);
     // Expect exactly one newline between `src/` and the closing fence.
-    assert.match(out, /src\/\n:::exec:\/\/1\/2\/1\/EXEC/);
-    assert.doesNotMatch(out, /src\/\n\n:::exec:\/\/1\/2\/1\/EXEC/);
+    assert.match(out, /src\/\n:::exec:\/\/sh\/1\/2\/1/);
+    assert.doesNotMatch(out, /src\/\n\n:::exec:\/\/sh\/1\/2\/1/);
 });
 
 test("[regression] index preview renders verbatim — service does not re-number (mime owns preview formatting)", () => {
@@ -377,7 +377,7 @@ test("measureBudgetSections: per-section render tokens + assembled total, non-em
                     channels: { content: { content: "do the thing", mimetype: "text/markdown", tokens: 3 } },
                 },
                 {
-                    scheme: "exec", pathname: "1/1/1/EXEC", defaultChannel: "stdout",
+                    scheme: "exec", pathname: "sh/1/1/1", defaultChannel: "stdout",
                     channels: {
                         stdout: { content: "ok", mimetype: "text/plain", tokens: 1 },
                         stderr: { content: "", mimetype: "text/plain", tokens: 0 }, // empty → not rendered, not counted

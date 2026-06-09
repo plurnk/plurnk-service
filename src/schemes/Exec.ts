@@ -18,7 +18,7 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped from the EXEC's log coordinate (<loop>/<turn>/<seq>/EXEC); entry lives at exec://<pathname>
+    pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec://<pathname> (e.g. exec://sh/1/1/2)
     inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
 }
 
@@ -113,11 +113,10 @@ export default class Exec {
             const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
             cwd = sessionRow?.project_root ?? null;
         }
-        // Pathname is assigned by Engine.#writeLog from the log coordinate
-        // (<loop_seq>/<turn_seq>/<sequence>/EXEC), so the exec entry's URI
-        // mirrors its log row's URI on the same coordinate. `pathname` is
-        // stamped into attrs at log-write time; applyResolution reads it
-        // back here.
+        // Pathname is assigned by Engine.#writeLog as <runtime>/<loop_seq>/
+        // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
+        // `pathname` is stamped into attrs at log-write time; applyResolution
+        // reads it back here.
         const attrs: ExecAttrs = { runtime, cwd, command, pathname: "", inline: policy === "auto" };
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.

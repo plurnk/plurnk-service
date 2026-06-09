@@ -1,8 +1,8 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
 //   <<EXEC[runtime](cwd):command:EXEC
-// Auto-generates an `exec://r-<uuid>` entry; spawns the subprocess;
-// streams stdout/stderr into channels; closes subscription + transitions
-// channel state at exit.
+// Auto-generates an `exec://<runtime>/<loop>/<turn>/<seq>` entry; spawns the
+// subprocess; streams stdout/stderr into channels; closes subscription +
+// transitions channel state at exit.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -75,10 +75,10 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, null);
         assert.equal(attrs.command, "echo hello");
-        // Coordinate-based pathname mirrors the log row's URI: the stream
-        // entry at exec://<loop_seq>/<turn_seq>/<sequence>/EXEC parallels
-        // the log row at log://<...>/EXEC.
-        assert.match(attrs.pathname, /^\d+\/\d+\/\d+\/EXEC$/, "pathname is the log coordinate");
+        // Executor-domain + coordinate pathname: the stream entry at
+        // exec://<runtime>/<loop_seq>/<turn_seq>/<sequence> leads with the
+        // runtime, then the coordinate it shares with the log row.
+        assert.match(attrs.pathname, /^[a-z0-9]+\/\d+\/\d+\/\d+$/, "pathname is runtime + log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;

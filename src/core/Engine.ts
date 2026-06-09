@@ -1770,18 +1770,22 @@ export default class Engine {
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
-        // EXEC pathname is coordinate-based — the stream entry lives at
-        // exec://<loop_seq>/<turn_seq>/<sequence>/EXEC, mirroring the log
-        // row's own URI at log://<...>/EXEC. The model can correlate the
-        // log meta to its stream output by structural parallelism — no
-        // random slug injection. Coordinate is resolved here because both
-        // log row write and applyResolution need it.
+        // EXEC pathname is executor-domain + coordinate: the stream entry
+        // lives at exec://<runtime>/<loop_seq>/<turn_seq>/<sequence> (e.g.
+        // exec://sh/1/1/2). The runtime leads — domain-aware, the executor
+        // as authority — and the coordinate that follows is already unique
+        // per statement, so no slug is injected. The log row's target points
+        // at this same address; its log:// coordinate shares the trailing
+        // <loop>/<turn>/<seq>, so the model correlates op to stream output.
+        // Runtime comes from statement.signal (EXEC's runtime slot) so it's
+        // resolvable for failed execs too; empty/absent = the default shell.
         if (statement.op === "EXEC") {
             const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId, turn_id: turnId,
             });
             if (seqs === undefined) throw new Error(`Engine.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
-            const coordPathname = `${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/EXEC`;
+            const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
+            const coordPathname = `${runtime}/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
             target.scheme = "exec";
             target.pathname = coordPathname;
             attrsObj.pathname = coordPathname;
@@ -1789,8 +1793,7 @@ export default class Engine {
             // hands originalResult.attrs to handler.applyResolution after
             // proposal accept (see #acceptResolution). Both views — the
             // stored row AND the in-memory proposal — need the same
-            // coordinate-based pathname so applyResolution writes the
-            // entry at exec://<coord>/EXEC.
+            // pathname so applyResolution writes the entry at the same URI.
             if (result.attrs !== undefined && result.attrs !== null) {
                 (result.attrs as Record<string, unknown>).pathname = coordPathname;
             }

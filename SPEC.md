@@ -368,8 +368,8 @@ Rules:
 |---|---|
 | `known://france/capital` | body (default) |
 | `known://france/capital#preview` | preview |
-| `exec://run/abc#stdout` | stdout |
-| `exec://run/abc#stderr` | stderr |
+| `exec://sh/1/1/2#stdout` | stdout |
+| `exec://sh/1/1/2#stderr` | stderr |
 | `sse://feed/y#data` | data |
 | `log://N/T/A` | (no channel concept; atomic log row) |
 
@@ -384,8 +384,8 @@ RPC params carry fragments inline via the `target` string (`{ target: "known://x
 
 ```
 <<notes.md:...:notes.md             — file scheme (bare)
-<<exec://run:...:exec://run         — exec default (stdout)
-<<exec://run#stderr:...:exec://run#stderr — non-default
+<<exec://sh/1/1/2:...:exec://sh/1/1/2 — exec default (stdout)
+<<exec://sh/1/1/2#stderr:...:exec://sh/1/1/2#stderr — non-default
 <<log://1/1/0:...:log://1/1/0       — atomic log row
 ```
 
@@ -481,11 +481,11 @@ AST: `{ op: "EXEC", target (cwd), body: string | null (command), signal: string 
 
 Engine routes unconditionally to `exec` scheme (path slot is `cwd`, not a URI). The runtime slot (`signal`) selects an executor, resolved against the boot-time `ExecutorRegistry` — siblings discovered and probed at startup, availability cached, default `sh`. Unknown or unavailable runtime → 501 carrying the probe `detail`. {§6.8-registry-resolves}
 
-**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose**: the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<loop>/<turn>/<seq>/EXEC` entry (the URI mirrors the op's log-row coordinate), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.6). {§6.8-host-proposes}
+**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose**: the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec://sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.6). {§6.8-host-proposes}
 
 A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run** in-process: no proposal, no human gate, no notification. The run is awaited synchronously and its channel content rides back as the EXEC result body the same turn — not streamed to the entry for a next-turn read. {§6.8-readpure-inline}
 
-`SEND[499](exec://<loop>/<turn>/<seq>/EXEC)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.7).
+`SEND[499](exec://<runtime>/<loop>/<turn>/<seq>)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.7).
 
 ---
 
