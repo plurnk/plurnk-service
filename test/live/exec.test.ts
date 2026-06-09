@@ -78,6 +78,14 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
                 const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 400)}`);
+                // Debug aid — uncomment to diagnose exec-result-surfacing. Dumps
+                // what the model RECEIVED (the rendered index) and whether the
+                // exec entry reached it. The deterministic Mock tests (intg
+                // Engine.exec-surfaces) prove it does in-engine; this shows
+                // whether the LIVE path agrees, isolating engine vs live-path:
+                //   const sys = (JSON.parse(row?.packet ?? "{}") as { system?: { index?: Array<{ scheme: string | null; pathname: string; channels?: Record<string, { content?: string }> }> } }).system;
+                //   const recv = (sys?.index ?? []).map((e) => `${e.scheme}://${e.pathname}${(e.channels?.stdout?.content ?? "") !== "" ? " [stdout✓]" : ""}`).join("; ");
+                //   console.error(`  INDEX RECEIVED: ${recv || "(empty)"}`);
             }
         };
         if (result.finalStatus !== 200) await dumpTurns();
