@@ -108,14 +108,17 @@ export function queryXpathString(xml: string, pattern: string, mimetype: string)
     return shapeXpathResult(pattern, result);
 }
 
-// Translate xpath.select result to QueryMatch[] per grammar #17. Line numbers
-// default to 1 because the projected deep-xml has no inherent source position
-// — the original handler's deepJson is line-aware and would expose those if
-// callers needed them via jsonpath instead.
+// Translate xpath.select result to QueryMatch[] per grammar #17. Source-line
+// recovery (#13 Q1): element matches read the `pk:line` attribute the
+// framework's projection wrote to every element node — that's the source-line
+// the original handler's deepJson knew about. Attribute/text/comment/PI
+// matches walk up to the parent element to find the same. Primitive results
+// (string/number/boolean from `string(...)`, `count(...)`, etc.) fall back
+// to line 1 since they have no node context.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => ({
-            line: 1,
+            line: lineOfMatchedNode(node),
             matched: serializeXpathNode(node),
             matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
         }));
@@ -129,6 +132,37 @@ const TEXT_NODE = 3;
 const CDATA_SECTION_NODE = 4;
 const PROCESSING_INSTRUCTION_NODE = 7;
 const COMMENT_NODE = 8;
+const ELEMENT_NODE = 1;
+
+// Recover source line from the `pk:line` attribute the framework's projection
+// writes onto every element. Walks up from non-element matches (attributes,
+// text nodes) to find the containing element. Falls back to 1 if nothing
+// useful turns up.
+function lineOfMatchedNode(node: Node): number {
+    let el: Element | null = null;
+    if (node.nodeType === ELEMENT_NODE) {
+        el = node as unknown as Element;
+    } else if (node.nodeType === ATTRIBUTE_NODE) {
+        el = (node as Attr).ownerElement;
+    } else {
+        // Walk up to the nearest element ancestor for text/comment/PI/CDATA.
+        let cur: Node | null = (node as { parentNode?: Node | null }).parentNode ?? null;
+        while (cur && cur.nodeType !== ELEMENT_NODE) {
+            cur = (cur as { parentNode?: Node | null }).parentNode ?? null;
+        }
+        el = cur as unknown as Element | null;
+    }
+    if (!el) return 1;
+    // pk:line lives in the framework's reserved namespace (see SPEC §12.3 + #12).
+    const lineStr = el.getAttributeNS
+        ? el.getAttributeNS("https://plurnk.dev/deep-xml/1", "line")
+        : (el as Element & { getAttribute?: (n: string) => string | null })
+            .getAttribute?.("pk:line") ?? null;
+    if (lineStr === null || lineStr === undefined || lineStr === "") return 1;
+    const n = Number(lineStr);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 function serializeXpathNode(node: Node): string {
     const nt = node.nodeType;
     if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
@@ -197,17 +231,30 @@ function lineAtOffset(text: string, offset: number): number {
 
 // Outline-shape line resolver: leaves are bare numbers (= the line), parents
 // are objects. For a jsonpath that returns a parent, walk inward to find the
-// smallest leaf line; that's the section's "start." Used by the default
+// smallest NUMERIC leaf — that's the section's "start." Used by the default
 // jsonpath path in BaseHandler.
+//
+// Numeric leaves are collected via collectNumbers (separate from the fallback)
+// so non-numeric values (strings, nulls, booleans) don't pollute the min with
+// a stand-in `1`. Pre-fix bug: returning `1` from non-numeric leaves meant any
+// matched object with a string field (e.g. `name: "Alice"`) reported line=1
+// instead of the real line carried by sibling line/endLine fields. Fix
+// surfaced by issue #13 Q1's symmetry test.
 function deepMinLine(value: unknown): number {
-    if (typeof value === "number") return value;
-    if (value !== null && typeof value === "object") {
-        let min = Number.POSITIVE_INFINITY;
-        for (const v of Object.values(value as Record<string, unknown>)) {
-            const candidate = deepMinLine(v);
-            if (candidate < min) min = candidate;
-        }
-        return Number.isFinite(min) ? min : 1;
+    const numbers = collectLineNumbers(value);
+    return numbers.length > 0 ? Math.min(...numbers) : 1;
+}
+
+function collectLineNumbers(value: unknown): number[] {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        return [value];
     }
-    return 1;
+    if (value !== null && typeof value === "object") {
+        const out: number[] = [];
+        for (const v of Object.values(value as Record<string, unknown>)) {
+            for (const n of collectLineNumbers(v)) out.push(n);
+        }
+        return out;
+    }
+    return [];
 }
