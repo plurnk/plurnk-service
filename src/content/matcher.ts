@@ -5,8 +5,8 @@
 //
 //   glob / regex  → the raw default content (line filter; daughter primitives)
 //   jsonpath      → deepJson  (daughter's queryJsonpathObject)
-//   xpath         → deepXml   (our own xpath engine — the daughter exports no
-//                              xpath primitive; we own the xml dependency)
+//   xpath         → deepXml   (daughter's queryXpathString — recovers source
+//                              lines from the projection's pk:line attrs)
 //
 // Cross-dialect (xpath over a JSON doc, jsonpath over an XML doc) works because
 // process() yields BOTH projections for any type. Matches render as the
@@ -18,9 +18,7 @@
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
 import type { Mimetypes, QueryMatch } from "@plurnk/plurnk-mimetypes";
-import { queryGlob, queryRegex, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
-import { DOMParser } from "@xmldom/xmldom";
-import { select } from "xpath";
+import { queryGlob, queryRegex, queryJsonpathObject, queryXpathString } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "./mimetype-binary.ts";
 
 export interface MatchResult {
@@ -91,7 +89,7 @@ export default class Matcher {
             try {
                 matches = body.dialect === "jsonpath"
                     ? queryJsonpathObject(deepJson, body.raw)
-                    : Matcher.#queryXpath(deepXml, body.raw);
+                    : queryXpathString(deepXml, body.raw, mimetype);
             } catch (err) {
                 // A throw from the QUERY is a malformed matcher expression the grammar
                 // didn't catch (model-facing → 400, not a system 500).
@@ -101,33 +99,5 @@ export default class Matcher {
         if (matches.length === 0) return { status: 204, matches: 0 };
         const adjusted = Matcher.#shiftLines(matches, baseLine);
         return { status: 200, body: Matcher.#renderMatches(adjusted), matches: adjusted.length };
-    }
-
-    // XPath over the daughter's deepXml projection — our own engine. An element
-    // node renders as its XML serialization, a text/attribute node its value. Line
-    // comes from the matched node's `line` attr (its parent's, for `text()`),
-    // defaulting to 1 where the projection carries no source lines (JSON's deepXml).
-    // The projection's inline `line`/`endLine` bookkeeping currently pollutes
-    // element serialization (and is invalid XML on a content-attr collision) — the
-    // daughter's to fix (plurnk-mimetypes#12), not ours to strip.
-    static #queryXpath(deepXml: string, expression: string): QueryMatch[] {
-        const doc = new DOMParser().parseFromString(deepXml, "text/xml");
-        const selected = select(expression, doc as never);
-        const nodes = Array.isArray(selected) ? selected : [selected];
-        return nodes.map((node) => {
-            const el = node as {
-                nodeType?: number;
-                nodeValue?: string;
-                getAttribute?: (name: string) => string | null;
-                parentNode?: { getAttribute?: (name: string) => string | null };
-            };
-            const line = el.getAttribute?.("line") ?? el.parentNode?.getAttribute?.("line");
-            const matched = el.nodeType === 1 ? String(node) : el.nodeValue ?? String(node);
-            return {
-                line: line !== undefined && line !== null ? Number(line) : 1,
-                matched,
-                matching: expression,
-            };
-        });
     }
 }

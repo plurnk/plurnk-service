@@ -60,10 +60,8 @@
         "@plurnk/plurnk-providers-xai": "0.2.4",
         "@plurnk/plurnk-schemes": "0.3.0",
         "@possumtech/sqlrite": "5.1.1",
-        "@xmldom/xmldom": "^0.9.10",
         "diff": "^9.0.0",
-        "ws": "^8.20.1",
-        "xpath": "^0.0.34"
+        "ws": "^8.20.1"
     },
     "devDependencies": {
         "@plurnk/plurnk-mimetypes-application-pdf": "0.6.0",
