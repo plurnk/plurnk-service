@@ -1,54 +1,16 @@
-// Path-extension mimetype resolver for entry schemes per plurnk-grammar
-// 0.14.0 §Paths: "Path suffix (`.json`, `.md`, `.txt`, etc.) declares
-// mimetype; absent suffix defers to scheme default."
+// Path-extension mimetype resolver for entry schemes — single source of truth
+// is @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the
+// daughter's function; call sites stay `PathMimetype.resolveEntryMimetype(...)`.
 //
-// Plurnk-service implements this uniformly across entry schemes: a
-// pathname's extension drives the effective mimetype (via the sibling
-// Mimetypes detect service), and the scheme manifest's channel default
-// is the fallback when no extension is present.
-//
-// This makes structural ops (`<L>` item-index, matcher dialect dispatch)
-// fire correctly without content-sniffing: a model writing JSON to
-// `known://users.json` opts into JSON treatment via the `.json` suffix,
-// while `known://notes` (no suffix) stays at Known's default of
-// `text/markdown`.
-//
-// Consistent across:
-//   - known://users.json     → application/json
-//   - known://notes.md       → text/markdown
-//   - known://config.yaml    → application/yaml
-//   - known://users          → scheme default (text/markdown for Known)
-
+// A pathname's extension drives the effective mimetype (via the sibling
+// Mimetypes detect service); the scheme manifest's channel default is the
+// fallback when no extension is present. `known://users.json` →
+// application/json; `known://notes` → scheme default.
+import { resolveEntryMimetype as _resolveEntryMimetype } from "@plurnk/plurnk-schemes";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import MimetypeBinary from "./mimetype-binary.ts";
 
 export default class PathMimetype {
-    // Extract the suffix (everything after the last dot in the last segment)
-    // from a pathname. Empty if no dot in the last segment.
-    static #extractExtension(pathname: string): string {
-        const lastSlash = pathname.lastIndexOf("/");
-        const lastSegment = lastSlash === -1 ? pathname : pathname.slice(lastSlash + 1);
-        const lastDot = lastSegment.lastIndexOf(".");
-        if (lastDot <= 0) return "";  // leading-dot files (".env") aren't an extension
-        return lastSegment.slice(lastDot);  // includes the leading "."
-    }
-
-    // Resolve a pathname → effective mimetype.
-    // 1. If the pathname has an extension, query Mimetypes.detect({ ext })
-    //    and use what comes back (normalized via the text-primitive rule —
-    //    text/plain → text/markdown).
-    // 2. Otherwise (no extension or no Mimetypes service), fall back to
-    //    `schemeDefault` (typically the scheme manifest's channel default).
-    static async resolveEntryMimetype(
-        pathname: string,
-        schemeDefault: string,
-        mimetypes: Mimetypes | undefined,
-    ): Promise<string> {
-        const ext = PathMimetype.#extractExtension(pathname);
-        if (ext.length > 0 && mimetypes !== undefined) {
-            const detected = await mimetypes.detect({ ext });
-            if (detected !== null) return MimetypeBinary.normalizeAutoTextMimetype(detected);
-        }
-        return schemeDefault;
+    static resolveEntryMimetype(pathname: string, schemeDefault: string, mimetypes: Mimetypes | undefined): Promise<string> {
+        return _resolveEntryMimetype(pathname, schemeDefault, mimetypes);
     }
 }
