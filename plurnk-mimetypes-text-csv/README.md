@@ -11,7 +11,7 @@ npm i @plurnk/plurnk-mimetypes-text-csv
 ## what it does
 
 - `validate(content)` walks all records with the bundled RFC 4180 tokenizer; throws on unbalanced quotes or non-uniform column count.
-- `extract(content)` emits one `field` symbol per header column (the first record), at line 1.
+- `extractRaw(content)` emits one `field` symbol per header column (the first record), at line 1.
 
 CSV's structural signal is the header row's column names — that's what surfaces in `symbols`. The actual data body is best previewed via the framework's raw-content fallback.
 
