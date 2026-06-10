@@ -48,5 +48,8 @@ VALUES ($entry_id, $name, $content, $mimetype, $tokens, $state);
 -- PREP: crud_write_tag
 INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
 
+-- PREP: crud_delete_tag
+DELETE FROM entry_tags WHERE entry_id = $entry_id AND tag = $tag;
+
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;

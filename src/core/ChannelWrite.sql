@@ -16,6 +16,13 @@ UPDATE entry_channels
 SET state = $state
 WHERE entry_id = $entry_id AND name = $channel;
 
+-- PREP: replace_channel_content
+-- Full content swap for one channel (ChannelCaps.replace). Re-tokenizes at
+-- write (unlike append_to_channel, which defers token count to render).
+UPDATE entry_channels
+SET content = $content, tokens = $tokens
+WHERE entry_id = $entry_id AND name = $channel;
+
 -- PREP: open_subscription
 INSERT INTO subscriptions (run_id, entry_id, scheme, handle)
 VALUES ($run_id, $entry_id, $scheme, $handle)
