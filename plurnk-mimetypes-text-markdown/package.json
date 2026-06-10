@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "description": "text/markdown mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -43,11 +43,14 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes": "0.9.0",
         "marked": "^15.0.0"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-mimetypes": "^0.14.1"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.14.1"
     }
 }
