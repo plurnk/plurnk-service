@@ -39,7 +39,7 @@ const setupContext = async () => {
     return { db, sessionId, runId };
 };
 
-test("Known.edit: new entry — inserts entries row, body channel, tags, visibility", async () => {
+test("Known.edit: new entry — inserts entries row, body channel, tags", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const stmt = editStatement({
@@ -63,8 +63,6 @@ test("Known.edit: new entry — inserts entries row, body channel, tags, visibil
         assert.equal(channel?.state, "static");
         const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: result.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france"]);
-        const vis = await (db.test_get_visibility as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: result.entryId, channel: "body" });
-        assert.equal(vis?.indexed, 1);
     } finally { await db.close(); }
 });
 
@@ -213,32 +211,6 @@ test("Known.edit: null path returns 400", async () => {
         const result = await new Known().edit(stmt, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(result.status, 400);
         assert.equal(result.entryId, null);
-    } finally { await db.close(); }
-});
-
-test("[§6.1-indexed] Known.edit: visibility rows idempotent across multiple EDITs of same path", async () => {
-    const { db, sessionId, runId } = await setupContext();
-    try {
-        const k = new Known();
-        const target = urlPath("known", "/vis");
-        const r = await k.edit(editStatement({ target, body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
-        await k.edit(editStatement({ target, body: "b" }), makeSchemeCtx({ db, sessionId, runId }));
-        await k.edit(editStatement({ target, body: "c" }), makeSchemeCtx({ db, sessionId, runId }));
-        const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
-        assert.equal(count, 1, "INSERT OR IGNORE produces exactly one visibility row per channel (body)");
-    } finally { await db.close(); }
-});
-
-test("Known.edit: visibility is per-run — same entry edited in different runs gets fresh rows", async () => {
-    const { db, sessionId, runId } = await setupContext();
-    try {
-        const runB = await insertRun(db, sessionId);
-        const k = new Known();
-        const target = urlPath("known", "/multirun");
-        const r = await k.edit(editStatement({ target, body: "a" }), makeSchemeCtx({ db, sessionId, runId }));
-        await k.edit(editStatement({ target, body: "b" }), makeSchemeCtx({ db, sessionId, runId: runB }));
-        const count = (await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: r.entryId }))?.n;
-        assert.equal(count, 2, "2 runs × 1 channel (body) = 2 visibility rows");
     } finally { await db.close(); }
 });
 

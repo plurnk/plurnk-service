@@ -38,9 +38,6 @@ const seedExecEntry = async (
     await (db.test_seed_channel as PrepMethod).run({
         entry_id: entryId, name: "stderr", content: stderr, mimetype: "text/stream", state: "static",
     });
-    await (db.test_seed_visibility as PrepMethod).run({
-        run_id: runId, entry_id: entryId, channel: "stderr", indexed: 1,
-    });
     return entryId;
 };
 

@@ -20,11 +20,6 @@ const setup = async () => {
     return { db, sessionId, runId };
 };
 
-const visibilityOf = async (db: Db, runId: number, entryId: number): Promise<number | undefined> => {
-    const row = await (db.test_get_visibility as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: entryId, channel: "body" });
-    return row?.indexed;
-};
-
 test("Unknown.edit: writes entry with scope='session' and scheme='unknown'", async () => {
     const { db, sessionId, runId } = await setup();
     try {
@@ -88,7 +83,7 @@ test("Unknown.edit: lineMarker <-1> appends to existing entry", async () => {
     } finally { await db.close(); }
 });
 
-test("Unknown.edit: tags merge additively; visibility set to indexed=1", async () => {
+test("Unknown.edit: tags merge additively", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const u = new Unknown();
@@ -96,7 +91,6 @@ test("Unknown.edit: tags merge additively; visibility set to indexed=1", async (
         await u.edit(editStmt(urlPath("unknown", "/x"), "b", ["geography"]), makeSchemeCtx({ db, sessionId, runId }));
         const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: r.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["france", "geography"]);
-        assert.equal(await visibilityOf(db, runId, r.entryId!), 1);
     } finally { await db.close(); }
 });
 

@@ -30,9 +30,6 @@ SELECT name, type FROM pragma_table_info('entry_tags');
 -- PREP: test_align_cols_log_entries
 SELECT name, type FROM pragma_table_info('log_entries');
 
--- PREP: test_align_cols_visibility
-SELECT name, type FROM pragma_table_info('visibility');
-
 -- PREP: test_align_cols_schemes
 SELECT name, type FROM pragma_table_info('schemes');
 

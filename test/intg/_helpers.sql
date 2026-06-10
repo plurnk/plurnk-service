@@ -69,18 +69,6 @@ WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
 SELECT content, mimetype, state FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
--- PREP: test_get_visibility
-SELECT indexed FROM visibility
-WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
-
--- PREP: test_get_visibility_by_channel
--- Across all entries in a run for a single channel name.
-SELECT indexed FROM visibility WHERE run_id = $run_id AND channel = $channel;
-
--- PREP: test_count_visibility_indexed
-SELECT COUNT(*) AS n FROM visibility
-WHERE run_id = $run_id AND entry_id = $entry_id AND indexed = 1;
-
 -- PREP: test_list_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
@@ -104,10 +92,6 @@ RETURNING id;
 -- PREP: test_seed_channel
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
-
--- PREP: test_seed_visibility
-INSERT INTO visibility (run_id, entry_id, channel, indexed)
-VALUES ($run_id, $entry_id, $channel, $indexed);
 
 -- PREP: test_seed_entry_tag
 INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
@@ -145,9 +129,6 @@ SELECT COUNT(*) AS n FROM entry_channels WHERE entry_id = $entry_id;
 
 -- PREP: test_list_channels_for_entry
 SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
-
--- PREP: test_list_visibility_for_run
-SELECT entry_id, channel, indexed FROM visibility WHERE run_id = $run_id ORDER BY entry_id, channel;
 
 -- PREP: test_count_log_entries_by_run
 SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id;
@@ -198,9 +179,6 @@ SELECT id FROM entries WHERE pathname = $pathname;
 -- PREP: test_count_entry_tags
 SELECT COUNT(*) AS n FROM entry_tags WHERE entry_id = $entry_id;
 
--- PREP: test_count_visibility_for_entry
-SELECT COUNT(*) AS n FROM visibility WHERE entry_id = $entry_id;
-
 -- PREP: test_get_entry_by_pathname_scheme
 SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
 
@@ -225,14 +203,8 @@ JOIN entry_tags t ON t.entry_id = e.id
 WHERE e.pathname = $pathname
 ORDER BY tag;
 
--- PREP: test_set_visibility_indexed
-UPDATE visibility SET indexed = $indexed WHERE run_id = $run_id AND entry_id = $entry_id;
-
 -- PREP: test_list_entry_schemes
 SELECT scheme FROM entries ORDER BY scheme;
-
--- PREP: test_get_visibility_no_channel
-SELECT indexed FROM visibility WHERE run_id = $run_id AND entry_id = $entry_id LIMIT 1;
 
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
@@ -273,5 +245,3 @@ SELECT scheme, pathname FROM entries WHERE session_id = $session_id ORDER BY sch
 -- PREP: test_count_log_entries_run_origin
 SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id AND origin = $origin;
 
--- PREP: test_visibility_for_entry_indexed
-SELECT indexed FROM visibility WHERE entry_id = $entry_id;

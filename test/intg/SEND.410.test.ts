@@ -118,7 +118,7 @@ test("SEND[410](skill://x) deletes skill entry", async () => {
     } finally { await db.close(); }
 });
 
-test("SEND[410] cascades — channels, tags, visibility all removed", async () => {
+test("SEND[410] cascades — channels and tags all removed", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
@@ -127,13 +127,11 @@ test("SEND[410] cascades — channels, tags, visibility all removed", async () =
         const entryId = entryRow!.id;
         assert.ok(((await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
         assert.ok(((await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
-        assert.ok(((await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
 
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(410, urlPath("known", "doomed")));
         assert.equal(r.status, 200);
 
         assert.equal((await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n, 0);
         assert.equal((await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n, 0);
-        assert.equal((await (db.test_count_visibility_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n, 0);
     } finally { await db.close(); }
 });

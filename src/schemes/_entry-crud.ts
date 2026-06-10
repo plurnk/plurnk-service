@@ -46,7 +46,7 @@ export default class EntryCrud {
     }
 
     static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null): Promise<WriteEntryResult> {
-        const { db, sessionId, runId, tokenize } = ctx;
+        const { db, sessionId, tokenize } = ctx;
         if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
         const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
@@ -70,7 +70,6 @@ export default class EntryCrud {
                 tokens: tokenize(channelData.content),
                 state: channelData.state ?? "static",
             });
-            await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: channelName });
         }
         for (const tag of entry.tags) {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
@@ -84,7 +83,7 @@ export default class EntryCrud {
         const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
         if (existing === undefined) return { status: 404 };
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
-        // CASCADE on entry_channels, entry_tags, visibility per FK constraints.
+        // CASCADE on entry_channels, entry_tags per FK constraints.
         return { status: 200 };
     }
 }

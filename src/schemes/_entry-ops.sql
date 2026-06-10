@@ -1,6 +1,6 @@
 -- Session-entry op handlers for entry-bearing schemes (SPEC §3, §5.5).
 -- Some queries reuse PREPs declared in _entry-crud.sql:
---   crud_find_session_entry, crud_write_visibility, crud_write_tag
+--   crud_find_session_entry, crud_write_tag
 
 -- PREP: ops_upsert_channel
 -- EDIT semantics: replace channel content if it exists.

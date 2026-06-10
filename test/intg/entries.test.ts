@@ -364,7 +364,7 @@ test("entry_channels: ON DELETE CASCADE via entry", async () => {
         const entryId = await insertAgentEntry(db, "exec", "ls");
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stderr", content: "b", mimetype: "text/plain" });
-        await (db.test_visibility_delete_entry as PrepMethod).run({ id: entryId });
+        await (db.test_delete_entry as PrepMethod).run({ id: entryId });
         const remaining = (await (db.test_entry_channels_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
@@ -432,7 +432,7 @@ test("entry_tags: ON DELETE CASCADE via entry", async () => {
         const entryId = await insertAgentEntry(db, "known", "france");
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "geography" });
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "europe" });
-        await (db.test_visibility_delete_entry as PrepMethod).run({ id: entryId });
+        await (db.test_delete_entry as PrepMethod).run({ id: entryId });
         const remaining = (await (db.test_entry_tags_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

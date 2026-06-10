@@ -48,7 +48,7 @@ export default class EntryOps {
     static async editSessionEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> {
         if (statement.target === null) return { status: 400, entryId: null, channel: null };
 
-        const { db, sessionId, runId } = ctx;
+        const { db, sessionId } = ctx;
         const { name: scheme, channels, defaultChannel } = manifest;
 
         const fragment = EntryOps.#fragmentOf(statement);
@@ -142,7 +142,6 @@ export default class EntryOps {
 
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
-        await (db.crud_write_visibility as PrepMethod).run({ run_id: runId, entry_id: entryId, channel: targetChannel });
 
         if (Array.isArray(statement.signal)) {
             for (const tag of statement.signal) {

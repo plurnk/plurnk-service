@@ -91,11 +91,6 @@ const MAPPING: Record<string, SchemaMapping> = {
             state: direct("state"), outcome: direct("outcome"),
         },
     },
-    Visibility: {
-        kind: "table", table: "visibility", fields: {
-            entry_id: direct("entry_id"), channel: direct("channel"), indexed: direct("indexed"),
-        },
-    },
     SchemeRegistration: {
         kind: "table", table: "schemes", fields: {
             name: direct("name"), model_visible: direct("model_visible"), category: direct("category"),
@@ -119,6 +114,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     Packet:          { kind: "skip", reason: "embedded in turns.packet JSON column" },
     TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.user.telemetry.events[] JSON" },
+    Visibility:      { kind: "skip", reason: "visibility table removed (index teardown); grammar's Visibility schema removal is a pending plurnk-grammar issue" },
     Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
 };
 
@@ -131,7 +127,6 @@ const TABLE_PREP: Record<string, string> = {
     entry_channels: "test_align_cols_entry_channels",
     entry_tags: "test_align_cols_entry_tags",
     log_entries: "test_align_cols_log_entries",
-    visibility: "test_align_cols_visibility",
     schemes: "test_align_cols_schemes",
     providers: "test_align_cols_providers",
 };

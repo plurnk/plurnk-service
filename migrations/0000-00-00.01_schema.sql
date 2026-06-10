@@ -203,19 +203,6 @@ BEGIN
     SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/indexed may change');
 END;
 
--- INIT: visibility
--- Per-(run, entry, channel) visibility for the index. SHOW/HIDE toggle
--- the indexed bit; render-time queries filter where indexed=1.
-CREATE TABLE IF NOT EXISTS visibility (
-    run_id   INTEGER NOT NULL,
-    entry_id INTEGER NOT NULL,
-    channel  TEXT    NOT NULL           CHECK (length(channel) > 0),
-    indexed  INTEGER NOT NULL DEFAULT 1 CHECK (indexed IN (0, 1)),
-    PRIMARY KEY (run_id, entry_id, channel),
-    FOREIGN KEY (run_id)   REFERENCES runs(id)    ON DELETE CASCADE,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
-) STRICT, WITHOUT ROWID;
-
 -- INIT: schemes_providers
 -- Scheme/provider catalog. Schemes are static (registered at boot);
 -- providers carry per-model metadata for cost accounting and selection.

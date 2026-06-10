@@ -148,7 +148,6 @@ export const seedEntryWithChannel = async (
         content?: string;
         mimetype?: string;
         state?: "static" | "active" | "closed" | "errored";
-        indexed?: 0 | 1;
     },
 ): Promise<number> => {
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
@@ -164,13 +163,5 @@ export const seedEntryWithChannel = async (
         mimetype: opts.mimetype ?? "text/plain",
         state: opts.state ?? "static",
     });
-    if (opts.runId !== undefined) {
-        await (db.test_seed_visibility as PrepMethod).run({
-            run_id: opts.runId,
-            entry_id: entry.id,
-            channel: opts.channel ?? "body",
-            indexed: opts.indexed ?? 1,
-        });
-    }
     return entry.id;
 };

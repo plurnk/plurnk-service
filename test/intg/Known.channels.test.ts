@@ -34,16 +34,6 @@ test("[§5.1-edit-writes-only-body] Known.edit writes only the body channel; pre
     } finally { await db.close(); }
 });
 
-test("Known.edit indexes only the body channel in visibility", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const r = await new Known().edit(editStmt(urlPath("known", "x"), "hello"), makeSchemeCtx({ db, sessionId, runId }));
-        const rows = await (db.test_list_visibility_for_run as PrepMethod).all<{ entry_id: number; channel: string; indexed: number }>({ run_id: runId });
-        const channels = rows.filter((r2) => r2.entry_id === r.entryId).map((r2) => r2.channel);
-        assert.deepEqual(channels, ["body"]);
-    } finally { await db.close(); }
-});
-
 test("[§5.5-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
     const { db, sessionId, runId } = await setup();
     try {

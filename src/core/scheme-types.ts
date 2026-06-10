@@ -25,7 +25,7 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 // concrete Db type) and the notifier hooks.
 //
 // PR-2 (schemes 0.3.0, ctx.ts) ships the DB-free capability contract —
-// SchemeCtx + entries/channels/visibility/tags/notify/subscriptions caps —
+// SchemeCtx + entries/channels/tags/notify/subscriptions caps —
 // as INTERFACES only, so a third-party `@plurnk/plurnk-schemes-*` sibling
 // never has to touch db. The service is meant to inject a db-backed impl
 // behind that seam, cutting schemes over one at a time. Deferred until a

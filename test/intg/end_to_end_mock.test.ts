@@ -159,20 +159,4 @@ test("e2e: Mock queue exhaustion throws after expected runs", async () => {
     } finally { await db.close(); }
 });
 
-test("e2e: visibility row from EDIT survives into subsequent reads", async () => {
-    const db = await openMigrated();
-    try {
-        const env = await seedEnvelopeNoTurn(db, "ws-e2e-vis");
-        const provider = new Mock({
-            contextSize: 100000,
-            responses: [response([editStmt("/vis", "v"), sendStmt(102, "")])],
-        });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await dispatchTurn(engine, provider, db, env);
-        const vis = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({
-            run_id: env.runId, channel: "body",
-        });
-        assert.ok(vis.length >= 1);
-        assert.equal(vis[0]?.indexed, 1, "Known.edit's visibility row sets indexed=1 by default");
-    } finally { await db.close(); }
-});
+// (e2e visibility test removed — entries carry no visibility)
