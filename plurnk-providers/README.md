@@ -14,6 +14,8 @@ Framework + contract for `@plurnk/plurnk-providers-*` sibling packages (LLM tran
 - `OpenAICompatProvider` (+ `OpenAICompatConfig`, `ReasoningStyle`, `effortFromBudget`) — shared OpenAI-compatible transport spine; siblings extend it (SPEC §11).
 - `chatCompletionStream`, `OpenAiHttpError`, `StreamResponse` — the shared SSE client.
 - `parseRequiredInt`, `parseOptionalInt`, `requireEnv` — env helpers.
+- `normalizeUsage`, `computeCost` (+ `RawUsage`, `TokenRates`) — usage normalization to the §2 invariant and the single cost formula (SPEC §11).
+- `ProviderError`, `classifyProviderError`, `toProviderError`, `providerSource` (+ `TelemetryEvent`, `ProviderTelemetryKind`) — the TelemetryEvent envelope for transport failures (SPEC §12).
 - `tokenizerFor`, `tokenizerByPublisher`, `parseTokenizerFamily` (+ `TokenizerFamily`, `CountTokens`) — synchronous tokenizer strategies.
 - `STANDARD_PROVIDERS`, `isStandardProvider`, `standardProviderFromEnv` — pure-config OpenAI-compatible providers (no sibling package needed).
 - `Mock` — reference implementation + test fixture (dual-purpose).

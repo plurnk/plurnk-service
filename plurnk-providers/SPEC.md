@@ -181,7 +181,7 @@ A sibling package satisfies the contract when:
 2. Instance exposes `contextSize: number | null` and `model: string` (non-empty).
 3. Instance exposes `countTokens(text): number` and `costFor(usage): number`.
 4. `countTokens("")` returns `0`; `countTokens("…")` returns a non-negative integer.
-5. `costFor({prompt:0,completion:0,cached:0,total:0})` returns `0` (or non-negative pico-USD for non-free models).
+5. `costFor({prompt:0,completion:0,reasoning:0,cached:0,total:0})` returns `0` (or non-negative pico-USD for non-free models).
 6. Identity getters return stable values across reads.
 7. `generate` resolves with a valid `ProviderResponse` shape.
 8. `generate` invoked with a pre-aborted `signal` rejects without making a wire call.
