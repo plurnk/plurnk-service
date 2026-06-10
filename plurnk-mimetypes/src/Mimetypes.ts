@@ -2,10 +2,11 @@ import fs from "node:fs/promises";
 import { defaultTokenize } from "./defaults.ts";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
-import { fitPreview } from "./fit.ts";
+import { fitPreview, TRUNCATION_MARKER_TAIL } from "./fit.ts";
 import { parseBodyMatcher } from "./parseBodyMatcher.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
-import type BaseHandler from "./BaseHandler.ts";
+import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
+import BaseHandler from "./BaseHandler.ts";
 import type {
     DetectInput,
     DiscoverOptions,
@@ -256,14 +257,16 @@ export default class Mimetypes {
         let material: Preview;
         let deepJsonValue: unknown;
         let extentValue: number;
+        let deepXml: string;
         try {
             [material, deepJsonValue, extentValue] = await Promise.all([
                 handler.preview(content),
                 handler.deepJson(content),
                 handler.extent(content),
             ]);
+            deepXml = await projectDeepXml(handler, deepJsonValue, content);
         } catch (err) {
-            if ((err as { name?: string })?.name === "GrammarNotInstalledError" && !options.strict) {
+            if (isGrammarNotInstalled(err) && !options.strict) {
                 return await this.#degradedResult(
                     mimetype,
                     content,
@@ -289,12 +292,6 @@ export default class Mimetypes {
         // reasoning. Editor-convention count for text content; 0 for binary
         // content (PDF etc.) since lines aren't a meaningful unit there.
         const totalLines = typeof content === "string" ? countLines(content) : 0;
-        // Deep-XML projection (issue #10). The framework owns this projection
-        // so handlers never write XML serialization logic — guarantees the
-        // two views can't drift.
-        const deepXml = deepJsonValue === null || deepJsonValue === undefined
-            ? ""
-            : projectJsonToXml(deepJsonValue);
 
         return {
             mimetype,
@@ -413,14 +410,34 @@ function renderPreviewForConsumer(material: Preview, preview: string): string {
     return prefixLinesWithSourceNumbers(preview, startLine);
 }
 
-const TAIL_MARKER = "[[TRUNCATED]]...";
+// Deep-XML channel (issue #10). Honors handler `deepXml` overrides (text-html
+// and application-xml serve real source markup) so the persisted channel and
+// the live query() xpath target can't disagree. The default projection is
+// computed from the already-built deepJson value to avoid re-parsing the
+// content; handlers from packages bundle their own BaseHandler copy, so
+// prototype identity can't be checked across realms — those route through
+// the handler method, whose inherited default produces the same projection.
+function projectDeepXml(
+    handler: BaseHandler,
+    deepJsonValue: unknown,
+    content: string | Uint8Array,
+): string | Promise<string> {
+    if (handler.deepXml === BaseHandler.prototype.deepXml) {
+        return deepJsonValue === null || deepJsonValue === undefined
+            ? ""
+            : projectJsonToXml(deepJsonValue);
+    }
+    return handler.deepXml(content);
+}
 
 // Compute the source line of the first surviving character in a tail-oriented
 // preview. Strips the leading truncation marker (if present), finds where the
 // surviving slice starts in the original material text, and counts newlines
 // before that point.
 function tailStartLine(original: string, preview: string): number {
-    const slice = preview.startsWith(TAIL_MARKER) ? preview.slice(TAIL_MARKER.length) : preview;
+    const slice = preview.startsWith(TRUNCATION_MARKER_TAIL)
+        ? preview.slice(TRUNCATION_MARKER_TAIL.length)
+        : preview;
     const sliceStart = original.length - slice.length;
     if (sliceStart <= 0) return 1;
     let line = 1;

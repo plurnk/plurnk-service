@@ -94,7 +94,14 @@ export function queryJsonpathObject(
 export function queryXpathString(xml: string, pattern: string, mimetype: string): QueryMatch[] {
     let doc: Document;
     try {
-        doc = new DOMParser({ errorHandler: () => undefined })
+        // The deep-xml input is framework-generated (projectJsonToXml) or a
+        // handler's own serialization — a malformed document is a producer
+        // bug, not a content problem. Surface non-fatal parse errors instead
+        // of letting xmldom silently repair the DOM; warnings stay quiet.
+        const onError = (level: string, message: string): void => {
+            if (level !== "warn") throw new Error(`deep-xml parse ${level}: ${message}`);
+        };
+        doc = new DOMParser({ onError })
             .parseFromString(xml, "text/xml") as unknown as Document;
     } catch (cause) {
         throw new QueryParseFailureError({ mimetype, cause });

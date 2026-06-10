@@ -51,7 +51,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         if (typeof content !== "string") return [];
         let parser: TreeSitterParser;
         try {
-            parser = await this.#getParser();
+            parser = await this.getParser();
         } catch (err) {
             // GrammarNotInstalledError is signal-bearing — propagates so
             // Mimetypes.process() can degrade to text-plain with a
@@ -87,7 +87,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         if (typeof content !== "string") return null;
         let parser: TreeSitterParser;
         try {
-            parser = await this.#getParser();
+            parser = await this.getParser();
         } catch (err) {
             if (isGrammarNotInstalled(err)) throw err;
             return null;
@@ -110,10 +110,11 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
 
     // Primed-promise cache: subsequent calls reuse the parser. The parser
     // owns the WASM grammar; we keep it alive for the handler's lifetime.
-    async #getParser(): Promise<TreeSitterParser> {
-        if (this.#parserPromise === null) {
-            this.#parserPromise = this.loadParser();
-        }
+    // Protected so subclasses that override extractRaw/deepJson (e.g.
+    // TreeSitterLanguageHandler) share the same cache instead of growing
+    // their own.
+    protected getParser(): Promise<TreeSitterParser> {
+        this.#parserPromise ??= this.loadParser();
         return this.#parserPromise as Promise<TreeSitterParser>;
     }
 }
@@ -126,8 +127,10 @@ export interface TreeSitterParser {
 
 // Duck-typed check for GrammarNotInstalledError without a circular import.
 // The error itself is defined in src/treesitter/handler.ts which depends on
-// this file; we just look for the marker.
-function isGrammarNotInstalled(err: unknown): boolean {
+// this file; we just look for the marker. Duck-typing (not instanceof) is
+// also what keeps the check correct when the error originates from a handler
+// package's bundled copy of the framework — instanceof fails across realms.
+export function isGrammarNotInstalled(err: unknown): boolean {
     return typeof err === "object"
         && err !== null
         && (err as { name?: string }).name === "GrammarNotInstalledError";

@@ -40,17 +40,10 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         return parser as unknown as TreeSitterParser;
     }
 
-    protected override extractFromTree(tree: TreeSitterTree, content: string): MimeSymbol[] {
-        // The mapping module is lazy too — first call awaits the import.
-        // After that we have a cached promise; we can't extract synchronously
-        // without it. So we synchronously check whether the cache is primed;
-        // if not, we kick off the import and return [] (the next call will
-        // see the cached mapping).
-        //
-        // This trades correctness on the very first call for keeping
-        // extractFromTree synchronous (which TreeSitterExtractor's contract
-        // expects). For mapping we go async instead — see the override of
-        // extractRaw below.
+    protected override extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {
+        // Required by the abstract base but unreachable: this class overrides
+        // extractRaw entirely (the mapping module is an async import, so the
+        // sync extractFromTree path can't serve it).
         throw new Error("internal: TreeSitterLanguageHandler uses async extractRaw override");
     }
 
@@ -61,18 +54,17 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         let parser: TreeSitterParser;
         let mapping: TreeSitterLanguageMapping;
         try {
+            // The base's primed-promise parser cache + the lazy mapping import,
+            // awaited together.
             [parser, mapping] = await Promise.all([
-                // Reach into the base's primed-promise cache via the protected
-                // loadParser path. We can call loadParser directly here because
-                // we're inside the subclass.
-                this.#getParserCached(),
+                this.getParser(),
                 this.#getMappingCached(),
             ]);
         } catch (err) {
             // GrammarNotInstalledError propagates so Mimetypes.process() can
             // degrade to text-plain per #14. Other errors route to empty
             // symbols per the long-standing handler error policy.
-            if ((err as { name?: string })?.name === "GrammarNotInstalledError") throw err;
+            if (err instanceof GrammarNotInstalledError) throw err;
             return [];
         }
         let tree: TreeSitterTree | null;
@@ -111,9 +103,9 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         }
         let parser: TreeSitterParser;
         try {
-            parser = await this.#getParserCached();
+            parser = await this.getParser();
         } catch (err) {
-            if ((err as { name?: string })?.name === "GrammarNotInstalledError") throw err;
+            if (err instanceof GrammarNotInstalledError) throw err;
             return null;
         }
         let tree: TreeSitterTree | null;
@@ -130,13 +122,6 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         } finally {
             tree.delete?.();
         }
-    }
-
-    // Cached parser load — mirrors the base class's pattern.
-    #parserCache: Promise<TreeSitterParser> | null = null;
-    #getParserCached(): Promise<TreeSitterParser> {
-        if (this.#parserCache === null) this.#parserCache = this.loadParser();
-        return this.#parserCache;
     }
 
     #getMappingCached(): Promise<TreeSitterLanguageMapping> {

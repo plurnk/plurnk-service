@@ -356,7 +356,7 @@ For tree-sitter-backed handlers:
 1. The `web-tree-sitter` runtime ships with the framework as a direct dependency (since v0.14.0); no handler-side install needed.
 2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (Tier 2 pattern, §13.6-style reproducible build).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
-4. Implement `grammarPath()` (return the path to the language's `.wasm` file) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles WASM init, parser lifecycle, and async coordination via a primed-promise cache.
+4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
 Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy.
 
@@ -456,7 +456,7 @@ Per plurnk-mimetypes#10, every `ProcessResult` carries three channels of structu
 |---|---|---|---|---|
 | `symbols` | `preview` (string) | Model-facing | Comprehension surface — the coarse, legibility-optimized outline the model sees in the index tile. Source for "what is this entry about?" reasoning. | Handler via `extractRaw()` → `MimeSymbol[]`; framework renders via `format.ts` and fits to budget. |
 | `deep-json` | `deepJson` (unknown) | Tool-facing | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. The model never sees this directly; it issues jsonpath queries that the tool evaluates against the tree. | Handler via `deepJson()`. |
-| `deep-xml` | `deepXml` (string) | Tool-facing | Query target for the xpath body-matcher tool. Mechanical projection of `deep-json` via the framework's `projectJsonToXml()`. Same conceptual tree, different syntax — drift-impossible by construction. | Framework; handlers never write XML serialization logic. |
+| `deep-xml` | `deepXml` (string) | Tool-facing | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
 
 Different masters, different fidelity, different visibility. The `symbols` channel is comprehension-optimized; the deep channels are extraction-optimized.
 

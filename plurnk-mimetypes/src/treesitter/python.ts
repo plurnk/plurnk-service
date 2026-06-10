@@ -22,7 +22,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
 }
 
 function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
-    for (let i = 0; i < node.childCount; i += 1) {
+    for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
         // expression_statement wraps top-level/class-body assignments — peek
@@ -72,7 +72,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             // The decorated definition's inner definition is the actual
             // declaration. Find the function_definition or class_definition
             // child and dispatch.
-            for (let i = 0; i < node.childCount; i += 1) {
+            for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (!child) continue;
                 if (child.type === "function_definition"
@@ -117,7 +117,7 @@ function identifierText(node: TreeSitterNode): string | null {
     if (node.type === "identifier") return node.text;
     // Patterns like `x: int = 1` have `typed_default_parameter` or similar
     // wrappers. Look for the first identifier child.
-    for (let i = 0; i < node.childCount; i += 1) {
+    for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (child?.type === "identifier") return child.text;
     }
@@ -142,7 +142,7 @@ function isScreamingSnake(name: string): boolean {
 function extractParameters(parametersNode: TreeSitterNode | null): string[] {
     if (!parametersNode) return [];
     const out: string[] = [];
-    for (let i = 0; i < parametersNode.childCount; i += 1) {
+    for (let i = 0; i < parametersNode.namedChildCount; i += 1) {
         const child = parametersNode.namedChild(i);
         if (!child) continue;
         const name = parameterName(child);
@@ -159,7 +159,7 @@ function parameterName(node: TreeSitterNode): string | null {
         case "default_parameter":
         case "typed_default_parameter": {
             // First identifier child is the param name.
-            for (let i = 0; i < node.childCount; i += 1) {
+            for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (child?.type === "identifier") return child.text;
             }

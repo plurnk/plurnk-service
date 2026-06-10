@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
     TREE_SITTER_REGISTRY,
     lookupTreeSitterLanguage,
-    lookupTreeSitterByExtension,
 } from "./registry.ts";
 
 describe("TreeSitter registry", () => {
@@ -20,19 +19,6 @@ describe("TreeSitter registry", () => {
 
     it("lookupTreeSitterLanguage returns null for unknown mimetype", () => {
         const entry = lookupTreeSitterLanguage("text/x-unknown-language");
-        assert.equal(entry, null);
-    });
-
-    it("lookupTreeSitterByExtension matches a known extension (case-insensitive)", () => {
-        const entry = lookupTreeSitterByExtension(".py");
-        assert.ok(entry);
-        assert.equal(entry.mimetype, "text/x-python");
-        const upper = lookupTreeSitterByExtension(".PY");
-        assert.equal(upper?.mimetype, "text/x-python", "extension match is case-insensitive");
-    });
-
-    it("lookupTreeSitterByExtension returns null for unclaimed extension", () => {
-        const entry = lookupTreeSitterByExtension(".unknownext");
         assert.equal(entry, null);
     });
 

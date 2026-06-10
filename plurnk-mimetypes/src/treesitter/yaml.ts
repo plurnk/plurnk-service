@@ -56,10 +56,6 @@ function scalarText(node: TreeSitterNode): string | null {
         const inner = node.namedChild(0);
         if (inner) return scalarText(inner);
     }
-    if (node.type === "plain_scalar") {
-        const inner = node.namedChild(0);
-        if (inner) return scalarText(inner);
-    }
     // Fallback: source text — strip surrounding quotes if any.
     const text = node.text;
     return text.replace(/^['"]|['"]$/g, "");

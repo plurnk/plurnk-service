@@ -313,18 +313,3 @@ export function lookupTreeSitterLanguage(mimetype: string): TreeSitterLanguageEn
     }
     return null;
 }
-
-// Look up a registry entry by extension or special-filename. Used by
-// detection. Returns null if no entry claims the extension.
-export function lookupTreeSitterByExtension(ext: string): TreeSitterLanguageEntry | null {
-    const lowered = ext.toLowerCase();
-    for (const entry of TREE_SITTER_REGISTRY) {
-        for (const e of entry.extensions) {
-            if (e === lowered) return entry;
-            // Special-filename match (Dockerfile, Makefile, CMakeLists.txt) —
-            // case-sensitive verbatim, no leading dot.
-            if (!e.startsWith(".") && e === ext) return entry;
-        }
-    }
-    return null;
-}

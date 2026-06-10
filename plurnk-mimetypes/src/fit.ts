@@ -14,7 +14,10 @@ const FIT_CONTENT_RATIO_MARGIN = 0.9;
 // Distinctive enough to be unambiguous in agent output; reserved budget so
 // the model knows the preview is incomplete and a fetch reveals more.
 const TRUNCATION_MARKER_HEAD = "...[[TRUNCATED]]";
-const TRUNCATION_MARKER_TAIL = "[[TRUNCATED]]...";
+// Exported because Mimetypes.tailStartLine must strip this exact sentinel to
+// recover the slice offset — a silent mismatch would shift every tail-preview
+// line number without crashing.
+export const TRUNCATION_MARKER_TAIL = "[[TRUNCATED]]...";
 
 // Top-level dispatcher for Preview material. Handlers return a Preview; the
 // framework calls this to produce the final budgeted string.
