@@ -104,10 +104,11 @@ const probeNctx = async (chatUrl: string, headers: Record<string, string>, model
     try {
         const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
         if (!res.ok) return null;
-        const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number }> };
+        // llama-server nests the window under `meta`; vLLM reports it top-level.
+        const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }> };
         const rows = data.data ?? [];
         const row = rows.find((r) => r.id === model) ?? rows[0];
-        const n = row?.n_ctx;
+        const n = row?.meta?.n_ctx ?? row?.n_ctx;
         return typeof n === "number" && n > 0 ? n : null;
     } catch {
         return null;

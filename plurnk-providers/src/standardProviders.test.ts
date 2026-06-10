@@ -6,13 +6,17 @@ const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_REASON: "
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
-const mockEndpoint = ({ nctx, modelId = "m" }: { nctx?: number; modelId?: string } = {}) => {
+const mockEndpoint = ({ nctx, metaNctx, modelId = "m" }: { nctx?: number; metaNctx?: number; modelId?: string } = {}) => {
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (url: string) => {
         const u = String(url);
         calls.push(u);
         if (u.endsWith("/models")) {
-            const row = { id: modelId, ...(nctx !== undefined ? { n_ctx: nctx } : {}) };
+            const row = {
+                id: modelId,
+                ...(nctx !== undefined ? { n_ctx: nctx } : {}),
+                ...(metaNctx !== undefined ? { meta: { n_vocab: 262144, n_ctx: metaNctx } } : {}),
+            };
             return new Response(JSON.stringify({ data: [row] }), { status: 200 });
         }
         const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
@@ -63,6 +67,18 @@ test("openai: defaults to heuristic tokenizer", async () => {
 test("openai: derives contextSize from endpoint n_ctx when env unset", async () => {
     mockEndpoint({ nctx: 49152, modelId: "macher.gguf" });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
+    assert.equal(p!.contextSize, 49152);
+});
+
+test("openai: derives contextSize from llama-server's nested meta.n_ctx (issue #7)", async () => {
+    mockEndpoint({ metaNctx: 49152, modelId: "macher.gguf" });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
+    assert.equal(p!.contextSize, 49152);
+});
+
+test("openai: meta.n_ctx wins over a top-level n_ctx", async () => {
+    mockEndpoint({ nctx: 8192, metaNctx: 49152 });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
     assert.equal(p!.contextSize, 49152);
 });
 
