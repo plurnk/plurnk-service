@@ -19,11 +19,20 @@ interface Handler {
     readonly extensions: readonly string[];
     validate(content: HandlerContent): void | Promise<void>;
     preview(content: HandlerContent): Preview | Promise<Preview>;
-    // Optional escape hatches (used by callers that want to bypass framework
-    // fitting — notably plurnk-service's passive radar index path). Default
-    // implementations exist on BaseHandler.
-    extractRaw(content: HandlerContent): MimeSymbol[];
-    symbolsRaw(content: HandlerContent): string;
+    // Structural channels (§12): extractRaw feeds the model-facing symbols
+    // channel; deepJson/deepXml are the tool-facing query targets. Default
+    // deepXml = projectJsonToXml(deepJson) — handlers never write XML
+    // serialization.
+    extractRaw(content: HandlerContent): MimeSymbol[] | Promise<MimeSymbol[]>;
+    deepJson(content: HandlerContent): unknown | Promise<unknown>;
+    deepXml(content: HandlerContent): Promise<string>;
+    // Navigation bound (§12.5) — line count for text, item count for structured.
+    extent(content: HandlerContent): number | Promise<number>;
+    // Body-matcher dispatch (§11). Default implementation on BaseHandler.
+    query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]>;
+    // Escape hatch (used by callers that want unfitted outlines — notably
+    // plurnk-service's passive radar index path). Default = format(extractRaw).
+    symbolsRaw(content: HandlerContent): Promise<string>;
 }
 ```
 
@@ -244,7 +253,7 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
-`ProcessResult = { mimetype, preview, previewTokens, totalLines, ok }` — no `symbols` field. Handlers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+`ProcessResult = { mimetype, preview, previewTokens, totalLines, extent, ok, deepJson, deepXml, grammarMissing? }` — no `symbols` field. The deep channels and `extent` are specified in §12; `grammarMissing` in §13.5. Consumers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
 
 `previewTokens` is the token count of the returned `preview` string, measured with the same `tokenize` function the orchestrator was constructed with. Exposed so consumers (notably plurnk-service's tokenomics ledger) don't have to re-tokenize the preview to recover its render cost. Always present; `0` for empty previews (every error path, plus the `null` handler return). Empty previews short-circuit without paying a `tokenize` call.
 
@@ -269,6 +278,7 @@ The line-numbering format (`N:\t<line>`) is the family-wide convention; consumer
 | Detection returns null | `{ mimetype: null, preview: "", ok: false }` |
 | Content read fails (path missing/unreadable) | `{ mimetype, preview: "", ok: false }` |
 | Handler package not loadable | `{ mimetype, preview: "", ok: false }` |
+| Grammar package not installed (#14) | Degrades to text-plain fallback: `{ mimetype, ok: true, grammarMissing: "@plurnk/plurnk-mimetypes-grammar-{slug}" }`. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
 | `validate()` throws | **Propagates** to the caller — contract violation |
 | `preview()` (handler) throws | Contained per handler discipline (`AntlrExtractor` catches inside `extractRaw`; HTML/PDF return `null` on parse failure). Framework does not catch. |
 | `preview()` returns `null` | `{ mimetype, preview: "", ok: true }` — handler explicitly declines, by design |
@@ -322,9 +332,9 @@ ANTLR-backed handlers shipped at 0.1.x stay on ANTLR. The hierarchy applies forw
 For ANTLR-backed handlers (existing pattern, still supported):
 
 1. Vendor `.g4` files in `grammar/` at the handler repo root.
-2. Add the compiler and runtime to your own devDependencies (the framework declares both as optional peer deps; only ANTLR-backed handlers need them):
+2. Add the compiler to your own devDependencies (the `antlr4ng` runtime ships with the framework as a direct dependency since v0.14.0; the `antlr-ng` compiler is the framework's only optional peer):
    ```
-   npm install --save-dev antlr-ng@^1.0.10 antlr4ng@^3.0.0
+   npm install --save-dev antlr-ng@^1.0.10
    ```
 3. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass). Invoke via `npx` so node_modules/.bin/ is on PATH when the spawn happens.
 4. Extend `AntlrExtractor` instead of `BaseHandler`.
@@ -343,8 +353,8 @@ Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRa
 
 For tree-sitter-backed handlers:
 
-1. Add `web-tree-sitter` to your devDependencies (framework declares it as optional peer; only tree-sitter-backed handlers need it).
-2. Add the language's WASM grammar to your `dependencies` (e.g. `tree-sitter-haskell`, `tree-sitter-ruby`, `tree-sitter-commonlisp`). These ship the prebuilt `.wasm` file.
+1. The `web-tree-sitter` runtime ships with the framework as a direct dependency (since v0.14.0); no handler-side install needed.
+2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (Tier 2 pattern, §13.6-style reproducible build).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `grammarPath()` (return the path to the language's `.wasm` file) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles WASM init, parser lifecycle, and async coordination via a primed-promise cache.
 
@@ -511,9 +521,8 @@ Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` 
 Tree-sitter grammars (Tier 1 in §9.1) are no longer pulled from upstream `tree-sitter-{lang}` packages. Each grammar lives in its own plurnk package shipping only the pre-built WASM:
 
 ```
-@plurnk/plurnk-mimetypes                          (framework, slim)
+@plurnk/plurnk-mimetypes                          (framework: floor handlers + loaders)
 @plurnk/plurnk-mimetypes-grammar-{slug}           (per-grammar, one each)
-@plurnk/plurnk-mimetypes-grammars-all             (kitchen-sink meta)
 ```
 
 The framework's `TreeSitterLanguageHandler.loadParser()` resolves WASMs by trying `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm` first, falling back to the legacy upstream `{wasmPackage}/{wasmFile}` for compatibility with consumers mid-transition. Neither resolved → throws `GrammarNotInstalledError` (exported from `index.ts`) with the plurnk package name as the install hint.
@@ -562,9 +571,10 @@ The legacy `wasmPackage`/`wasmFile` fields are deprecated but kept populated for
 
 ### 13.5 Install patterns
 
-- **Slim:** `npm i @plurnk/plurnk-mimetypes` plus only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
-- **Kitchen sink:** `npm i @plurnk/plurnk-mimetypes-grammars-all` — pulls every published grammar.
-- **Coverage discovery:** `Mimetypes.detect()` returns `null` (or routes to default) for mimetypes whose grammar isn't installed; `Mimetypes.process()` will throw `GrammarNotInstalledError` (or surface it on `ProcessResult.ok = false`) so consumers can show an actionable install hint.
+- **Floor:** `npm i @plurnk/plurnk-mimetypes` alone gives a working framework for the floor types (`text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv`) — the floor handler packages and both parser loaders are direct dependencies (v0.14.0, issue #14).
+- **Slim:** add only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
+- **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
+- **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
 
 ### 13.6 Reproducibility
 
