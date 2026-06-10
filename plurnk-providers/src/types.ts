@@ -38,7 +38,12 @@ export interface ProviderResponse {
 }
 
 export interface Provider {
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;
+    // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-grammar's
+    // plurnk.gbnf, possibly root-substituted by the consumer). Backends that
+    // support grammar-constrained sampling attach it verbatim; all others
+    // ignore it. The provider never chooses or modifies the grammar — whether
+    // to constrain and which root variant to send is consumer policy (SPEC §13).
+    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.

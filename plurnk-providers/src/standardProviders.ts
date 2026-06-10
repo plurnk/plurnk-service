@@ -32,10 +32,12 @@ type StandardProviderSpec = {
     reasoningStyle: ReasoningStyle;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
-    // When true and PLURNK_PROVIDER_CONTEXT_SIZE is unset, probe GET /v1/models
-    // for the endpoint-reported context window (`n_ctx`). Set for providers
-    // that may front a local OpenAI-compat server (llama-server, vLLM, …) which
-    // reports its loaded window there. Cloud endpoints don't report it → null.
+    // When true, probe GET /v1/models at construction. Two reads off one call:
+    // the endpoint-reported context window (`n_ctx`, used when
+    // PLURNK_PROVIDER_CONTEXT_SIZE is unset) and the llama-server fingerprint
+    // (a `meta` block on the model row) that enables grammar-constrained
+    // sampling (SPEC §13). Set for providers that may front a local
+    // OpenAI-compat server; cloud endpoints report neither → null / false.
     probeNctx?: boolean;
 };
 
@@ -94,24 +96,29 @@ const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: s
     return `${trimmed}${spec.chatPath}`;
 };
 
-// Context-window resolution: PLURNK_PROVIDER_CONTEXT_SIZE → endpoint n_ctx
-// (probe, opt-in per spec) → null. llama-server / vLLM report the loaded window
-// as `n_ctx` on GET /v1/models; cloud endpoints don't, so the probe yields null
-// there. Best-effort: any failure (unreachable, no field, non-2xx) → null,
-// which is a legitimate "context unknown", not a swallowed contract violation.
-const probeNctx = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<number | null> => {
+// GET /v1/models probe. Yields the reported context window (llama-server nests
+// it under `meta`, vLLM reports it top-level, cloud endpoints omit it) and the
+// llama-server fingerprint — only llama-server rows carry a `meta` block, and
+// llama-server is the backend whose chat-completions accepts a `grammar` field.
+// Best-effort: any failure (unreachable, no field, non-2xx) degrades to
+// { null, false } — a legitimate "unknown", not a swallowed contract violation.
+type EndpointProbe = { nCtx: number | null; llamaServer: boolean };
+
+const probeModels = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
     const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
     try {
         const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
-        if (!res.ok) return null;
-        // llama-server nests the window under `meta`; vLLM reports it top-level.
+        if (!res.ok) return { nCtx: null, llamaServer: false };
         const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }> };
         const rows = data.data ?? [];
         const row = rows.find((r) => r.id === model) ?? rows[0];
         const n = row?.meta?.n_ctx ?? row?.n_ctx;
-        return typeof n === "number" && n > 0 ? n : null;
+        return {
+            nCtx: typeof n === "number" && n > 0 ? n : null,
+            llamaServer: row?.meta !== undefined,
+        };
     } catch {
-        return null;
+        return { nCtx: null, llamaServer: false };
     }
 };
 
@@ -133,10 +140,15 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const url = resolveUrl(spec, env, name);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
 
-    // Explicit env wins; otherwise probe the endpoint when the spec opts in.
+    // The probe always runs for probeNctx specs — grammar capability must not
+    // hinge on whether the operator pinned PLURNK_PROVIDER_CONTEXT_SIZE. For
+    // contextSize itself, explicit env still wins over the probed n_ctx.
     let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
-    if (contextSize === null && spec.probeNctx === true) {
-        contextSize = await probeNctx(url, headers, model, fetchTimeoutMs);
+    let supportsGrammar = false;
+    if (spec.probeNctx === true) {
+        const probe = await probeModels(url, headers, model, fetchTimeoutMs);
+        supportsGrammar = probe.llamaServer;
+        contextSize ??= probe.nCtx;
     }
 
     return new OpenAICompatProvider({
@@ -149,5 +161,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         reasoningStyle: spec.reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),
+        supportsGrammar,
     });
 };

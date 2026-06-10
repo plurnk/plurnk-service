@@ -30,8 +30,9 @@ interface Provider {
     countTokens(text: string): number;
     costFor(usage: ProviderUsage): number;  // pico-USD (1e-12 USD)
 
-    // Transport
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse>;
+    // Transport. `grammar` is an optional GBNF string for grammar-constrained
+    // sampling (§13) — attached verbatim by capable backends, ignored by all others.
+    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -66,6 +67,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `costFor` is **pure**, returns pico-USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.
+- `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
 
 ## §3 `fromEnv(env, model)` factory
 
@@ -189,6 +191,7 @@ A sibling package satisfies the contract when:
 10. `assistantRaw` is present (any value, including `null`).
 11. No DB access, no imports from `@plurnk/plurnk-service`.
 12. No runtime import of `@plurnk/plurnk-grammar` parser entry points.
+13. `generate` invoked with `grammar` against a backend without grammar support sends no grammar-related wire fields and does not error (§13).
 
 Sibling-specific behavioral tests (wire-format compliance, model-family quirks, retry logic) live in each package's own test surface.
 
@@ -206,6 +209,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       contextSize,           // number | null
       reasonBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort"
       countTokens, costFor,  // strategies; default heuristic / free
+      supportsGrammar,       // backend accepts a `grammar` body field (§13); default false
   });
   ```
 
@@ -217,7 +221,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base URL, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest.
 
-`contextSize` for a standard provider resolves: `PLURNK_PROVIDER_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server/vLLM report their loaded window there; cloud endpoints don't, yielding `null`) → `null`. The probe is best-effort: any failure resolves to `null` (a legitimate "context unknown"), never throws.
+`contextSize` for a standard provider resolves: `PLURNK_PROVIDER_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't, yielding `null`) → `null`. The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws.
 
 ## §12 Telemetry — provider failures
 
@@ -233,3 +237,17 @@ Transport failures surface as a `ProviderError` (extends `Error`, so existing ca
 - **Caller-initiated abort is NOT telemetry** — an aborted `signal` rethrows the original abort, never a `ProviderError`.
 
 The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structurally matching `@plurnk/plurnk-grammar`'s `TelemetryEvent.json`, so the framework keeps zero grammar dependency (§11). Consumers route provider events through the same `source`+`kind` discriminator as parse/rail events.
+
+## §13 Grammar-constrained sampling (GBNF)
+
+`@plurnk/plurnk-grammar` ships `@plurnk/plurnk-grammar/plurnk.gbnf` — a generated llama.cpp grammar constraining sampling to the canonical plurnk form. Ownership splits three ways:
+
+- **plurnk-grammar** owns the artifact (canonical-form GBNF, `L(GBNF) ⊂ L(ANTLR)` invariant, tests).
+- **This layer** owns capability detection + transport: `generate({ …, grammar })` attaches the string **verbatim** as the `grammar` body field when the backend supports it, and sends no grammar-related field otherwise (cloud APIs reject unknown params). The provider never chooses or modifies the grammar.
+- **The consumer** owns policy: whether to constrain a given call, and which root variant to send (e.g. the `root ::= statement` single-statement substitution that forces EOS at the close tag — the shipped `statement+` root never forces EOS, so greedy generation runs to `max_tokens`).
+
+**Sampling guard.** Greedy decoding under hard constraint masks degenerates into repetition loops at `repeat_penalty: 1.0`, so `OpenAICompatProvider` sends a per-request `repeat_penalty: 1.15` floor alongside every attached grammar — never relying on server launch flags. (Probed live on llama.cpp b894 + gemma-4-26B; reference: plurnk-grammar `test/llama/gbnf-live.test.ts`.)
+
+**Capability detection.** `OpenAICompatConfig.supportsGrammar` (default `false`). The `openai` standard provider detects it from the §11 probe: only llama-server rows on `GET /v1/models` carry a `meta` block, and llama-server is the backend whose chat-completions accepts `grammar`. vLLM speaks a different guided-decoding dialect and is deliberately excluded. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal — no `ProviderDeclaration` schema field until the consumer actually needs to branch on it.
+
+Zero grammar dependency (§11) is preserved: the GBNF string arrives per call; this package never imports the artifact.

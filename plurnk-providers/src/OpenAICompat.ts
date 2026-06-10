@@ -31,7 +31,15 @@ export type OpenAICompatConfig = {
     countTokens?: (text: string) => number;   // default chars/4 heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
+    supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
 };
+
+// Sampling guard under an active grammar (SPEC §13): greedy decoding under
+// hard constraint masks degenerates into repetition loops at the server
+// default of 1.0, so the floor rides per-request with every attached grammar —
+// never rely on server launch flags. Probed on llama.cpp b894 + gemma-4-26B
+// (plurnk-providers#9; reference: plurnk-grammar test/llama/gbnf-live.test.ts).
+const GRAMMAR_REPEAT_PENALTY_FLOOR = 1.15;
 
 // SPEC §2 closed set. Wire values outside it (provider-specific or absent)
 // collapse to null — the consumer treats null as "no signal".
@@ -59,6 +67,7 @@ export default class OpenAICompatProvider implements Provider {
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
+    #supportsGrammar: boolean;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -71,6 +80,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
+        this.#supportsGrammar = config.supportsGrammar ?? false;
     }
 
     get contextSize(): number | null { return this.#contextSize; }
@@ -89,13 +99,21 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    async generate({ messages, signal }: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<ProviderResponse> {
+    // Grammar transport (SPEC §13): attach the caller-supplied GBNF verbatim
+    // when the backend supports it, with the repeat-penalty floor it requires.
+    // Unsupported backend → no wire field at all (cloud APIs 400 on unknowns).
+    #grammarBody(grammar: string | undefined): Record<string, unknown> {
+        if (grammar === undefined || !this.#supportsGrammar) return {};
+        return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
+    }
+
+    async generate({ messages, signal, grammar }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse> {
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
         const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
         const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
-        const body: Record<string, unknown> = { model: this.#model, messages, ...this.#reasoningBody() };
+        const body: Record<string, unknown> = { model: this.#model, messages, ...this.#reasoningBody(), ...this.#grammarBody(grammar) };
 
         let raw;
         try {

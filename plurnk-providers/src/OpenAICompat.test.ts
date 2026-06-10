@@ -109,6 +109,35 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
 });
 
+// — grammar-constrained sampling (SPEC §13, issues #8/#9) —
+
+test("grammar transport: attaches the GBNF verbatim plus the repeat-penalty floor", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, supportsGrammar: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ messages: [], grammar: "root ::= statement" });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.grammar, "root ::= statement");
+    assert.equal(body.repeat_penalty, 1.15);
+});
+
+test("grammar transport: unsupported backend ignores the grammar (no wire fields)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000 }); // default: no support
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ messages: [], grammar: "root ::= statement" });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal("grammar" in body, false);
+    assert.equal("repeat_penalty" in body, false);
+});
+
+test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, supportsGrammar: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ messages: [] });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal("grammar" in body, false);
+    assert.equal("repeat_penalty" in body, false);
+});
+
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, source: "provider:test" });

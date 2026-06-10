@@ -135,6 +135,52 @@ test("groq: applies PLURNK_PROVIDER_CONTEXT_SIZE", async () => {
     assert.equal(p!.contextSize, 131072);
 });
 
+// — grammar capability detection (SPEC §13, issue #8) —
+
+test("openai: llama-server fingerprint (meta block) enables grammar transport", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_vocab: 262144, n_ctx: 49152 } }] }), { status: 200 });
+        }
+        bodies.push(String(init?.body));
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    await p!.generate({ messages: [], grammar: "root ::= statement" });
+    const sent = JSON.parse(bodies[0]);
+    assert.equal(sent.grammar, "root ::= statement");
+    assert.equal(sent.repeat_penalty, 1.15);
+});
+
+test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "m", n_ctx: 8192 }] }), { status: 200 });
+        }
+        bodies.push(String(init?.body));
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(p!.contextSize, 8192); // window still read
+    await p!.generate({ messages: [], grammar: "root ::= statement" });
+    assert.equal("grammar" in JSON.parse(bodies[0]), false);
+});
+
+test("openai: env-pinned context size does not disable grammar detection (probe still runs)", async () => {
+    const calls = mockEndpoint({ metaNctx: 49152 });
+    const p = await standardProviderFromEnv(
+        "openai",
+        { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDER_CONTEXT_SIZE: "400000" },
+        "m",
+    );
+    assert.equal(p!.contextSize, 400000); // env wins for the window
+    assert.equal(calls.some((u) => u.endsWith("/models")), true); // probe still fired for capability
+});
+
 // — URL resolution —
 
 test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/completions", async () => {
