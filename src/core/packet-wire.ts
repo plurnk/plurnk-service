@@ -21,14 +21,6 @@ import { MimetypeBinary } from "../content/index.ts";
 // the runtime `typeof` narrowing below validates them (boundaries validate).
 // The full Packet is Engine-only and contract-guaranteed (RequestPacket), so it
 // is typed strict — no system/user defaulting.
-interface ChannelView { content?: unknown; mimetype?: unknown; tokens?: unknown; lines?: unknown }
-interface IndexEntry {
-    scheme?: string | null;
-    pathname?: string | null;
-    defaultChannel?: string;
-    tags?: string[];
-    channels?: Record<string, ChannelView>;
-}
 interface ActionTarget { scheme?: string | null; pathname?: string | null }
 interface StatementTx {
     op?: unknown;
@@ -52,7 +44,6 @@ interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [ke
 interface SystemSection {
     system_definition: string;
     persona?: unknown;
-    index?: unknown;
     log?: unknown;
     tokens?: number;
 }
@@ -69,15 +60,11 @@ export default class PacketWire {
     // Render packet.system → system message content (markdown string).
     //   {system_definition verbatim}
     //   # Plurnk System Instructions   (persona)
-    //   # Plurnk System Index          (entries — only when present)
     //   # Plurnk System Log            (log entries — only when present)
     static renderSystemContent(system: SystemSection): string {
         const parts: string[] = [system.system_definition];
         if (typeof system.persona === "string" && system.persona.length > 0) {
             parts.push(`# Plurnk System Instructions\n\n${system.persona}`);
-        }
-        if (Array.isArray(system.index) && system.index.length > 0) {
-            parts.push(`# Plurnk System Index\n\n${PacketWire.#renderIndexEntries(system.index)}`);
         }
         if (Array.isArray(system.log) && system.log.length > 0) {
             parts.push(`# Plurnk System Log\n\n${PacketWire.#renderLogEntries(system.log)}`);
@@ -119,31 +106,21 @@ export default class PacketWire {
         ];
     }
 
-    // Measure the wire-rendered token cost of the curatable sections (index,
-    // log) plus the assembled total, using the provider's tokenizer. The budget
+    // Measure the wire-rendered token cost of the curatable log section plus
+    // the assembled total, using the provider's tokenizer. The budget
     // readout uses this so its subtotals match what actually ships — meta lines
     // and fences included — not a serialized approximation. `total` is measured
     // over whatever the packet currently holds, so the caller renders the budget
     // with a `{{tokensFree}}` placeholder, measures, then substitutes (the
     // placeholder/number length delta is negligible).
     static measureBudgetSections(packet: Packet, countTokens: CountTokens): {
-        index: { channels: number; tokens: number };
         log: { entries: number; tokens: number; byScheme: Array<{ scheme: string; entries: number; tokens: number }> };
         total: number;
     } {
         const system: SystemSection = packet.system;
         const user: UserSection = packet.user;
-        const indexEntries: IndexEntry[] = Array.isArray(system.index) ? system.index : [];
         const logEntries: LogEntryView[] = Array.isArray(system.log) ? system.log : [];
-        const indexBody = indexEntries.length > 0 ? PacketWire.#renderIndexEntries(indexEntries) : "";
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
-        // A channel renders iff its content is a non-empty string (renderIndexEntries).
-        const indexChannels = indexEntries.reduce(
-            (n, e) => n + Object.values(e.channels ?? {}).filter(
-                (ch) => typeof ch.content === "string" && ch.content.length > 0,
-            ).length,
-            0,
-        );
         // Per-scheme log breakdown (§14.2 {§14.2-per-scheme-balance}): each entry's
         // render-weight grouped by the scheme it acted on, heaviest first — the
         // model's "what's eating my window" signal and its HIDE target. Render-
@@ -158,10 +135,6 @@ export default class PacketWire {
             byScheme.set(scheme, acc);
         }
         return {
-            index: {
-                channels: indexChannels,
-                tokens: indexBody ? countTokens(`# Plurnk System Index\n\n${indexBody}`) : 0,
-            },
             log: {
                 entries: logEntries.length,
                 tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
@@ -294,41 +267,6 @@ export default class PacketWire {
         const path = pathname ?? "";
         if (scheme === null || scheme === undefined) return path;
         return `${scheme}://${path}`;
-    }
-
-    // Render one Index entry → `* {meta}` line followed by per-channel
-    // heredoc blocks. meta describes the entry; nested `channels` carries
-    // per-channel mimetype/tokens so the model doesn't have to READ to
-    // learn the shape of a channel's content.
-    //
-    // Empty channels are omitted entirely (no meta entry, no body block) —
-    // an empty stderr is an infohazard: the model has to read it and infer
-    // "this is intentionally blank." Absence carries the same information
-    // with zero tokens spent.
-    static #renderIndexEntries(entries: IndexEntry[]): string {
-        return entries.map((e) => {
-            const uri = PacketWire.#renderModelUri(e.scheme, e.pathname);
-            const defaultChannel = e.defaultChannel ?? "";
-            const meta: Record<string, unknown> = { path: uri };
-            if (Array.isArray(e.tags) && e.tags.length > 0) meta.tags = e.tags;
-            const channelsMeta: Record<string, Record<string, unknown>> = {};
-            const blocks: string[] = [];
-            for (const [channelName, ch] of Object.entries(e.channels ?? {})) {
-                const content = ch.content;
-                if (typeof content !== "string" || content.length === 0) continue;
-                const channelInfo: Record<string, unknown> = {};
-                if (typeof ch.mimetype === "string") channelInfo.mimetype = ch.mimetype;
-                if (typeof ch.tokens === "number") channelInfo.tokens = ch.tokens;
-                if (typeof ch.lines === "number") channelInfo.lines = ch.lines;
-                channelsMeta[channelName] = channelInfo;
-                const fenceChannel = channelName === defaultChannel ? null : channelName;
-                blocks.push(PacketWire.#renderHeredoc(uri, fenceChannel, content));
-            }
-            if (Object.keys(channelsMeta).length > 0) meta.channels = channelsMeta;
-            return blocks.length > 0
-                ? `* ${PacketWire.#canonicalJson(meta)}\n${blocks.join("\n")}`
-                : `* ${PacketWire.#canonicalJson(meta)}`;
-        }).join("\n\n");
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.

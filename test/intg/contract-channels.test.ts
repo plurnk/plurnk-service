@@ -111,42 +111,6 @@ test("[§5.5-fragment-targeted-show-hide] fragment-targeted HIDE flips only the 
     } finally { await db.close(); }
 });
 
-test("[§5.5-wire-omits-suffix-on-default-channel] default channel renders path-only; non-default carries #name", () => {
-    // Single-channel entry → path-only fence (no #channel suffix at all).
-    const single = PacketWire.renderSystemContent({
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "known",
-            pathname: "france/capital",
-            defaultChannel: "body",
-            channels: { body: { content: "Paris", mimetype: "text/markdown", tokens: 1 } },
-        }],
-        log: [],
-    });
-    assert.match(single, /<<:::known:\/\/france\/capital\nParis\n:::known:\/\/france\/capital/, "single-channel default is path-only");
-    assert.doesNotMatch(single, /#body/, "default channel never carries its #name suffix");
-
-    // Multi-channel entry → default (stdout) path-only, non-default (stderr) keeps #stderr.
-    const multi = PacketWire.renderSystemContent({
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "exec",
-            pathname: "run/abc",
-            defaultChannel: "stdout",
-            channels: {
-                stdout: { content: "ok", mimetype: "text/stream", tokens: 1 },
-                stderr: { content: "warn", mimetype: "text/stream", tokens: 1 },
-            },
-        }],
-        log: [],
-    });
-    assert.match(multi, /<<:::exec:\/\/run\/abc\nok\n:::exec:\/\/run\/abc/, "multi-channel default (stdout) is path-only");
-    assert.match(multi, /<<:::exec:\/\/run\/abc#stderr\nwarn\n:::exec:\/\/run\/abc#stderr/, "non-default (stderr) keeps #stderr");
-    assert.doesNotMatch(multi, /#stdout/, "default channel name is never suffixed");
-});
-
 test("[§5-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
     const { db, sessionId, runId } = await setup();
     try {

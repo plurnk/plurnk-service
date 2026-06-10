@@ -6,90 +6,6 @@ import PacketWire from "../../src/core/packet-wire.ts";
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("index entry: null scheme renders bare path (file scheme normalized to null at storage)", () => {
-    // file-scheme rows store scheme=NULL per Engine.#extractTarget; the
-    // renderer's only job here is to honor null → bare pathname. The
-    // literal "file" string never reaches packet-wire — that's the
-    // architectural guarantee (entries.scheme never holds "file").
-    const system = {
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: null,
-            pathname: "notes.md",
-            defaultChannel: "body",
-            channels: { body: { content: "hello", mimetype: "text/markdown", tokens: 1 } },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    assert.doesNotMatch(out, /file:\/\//, "file:// must never appear in model-facing output");
-    assert.match(out, /<<:::notes\.md\n/, "fence carries bare pathname");
-    assert.match(out, /:::notes\.md$/m, "closing fence matches opening");
-    assert.doesNotMatch(out, /#body/, "no #body anywhere — it is the default channel");
-});
-
-test("[regression] entry projection wears the non-emittable <<:::path marker, never the op-lookalike <<path: (demo.sh fence-leak guard)", () => {
-    const system = {
-        system_definition: "",
-        persona: "",
-        index: [{
-            scheme: null,
-            pathname: "demo.sh",
-            defaultChannel: "body",
-            channels: { body: { content: "#!/bin/bash\necho hi", mimetype: "text/plain", tokens: 1 } },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    // The projection wears the `<<:::path` packet-rendering marker, which
-    // cannot parse as an emittable op (op tags are words, never `:::`).
-    assert.match(out, /<<:::demo\.sh\n/, "opening :::path marker");
-    assert.match(out, /\n:::demo\.sh/, "closing :::path marker");
-    // It must NOT wear the old `<<path:…:path` op-lookalike — that form made
-    // the model copy the `:demo.sh` close into an EDIT body, the parser
-    // greedy-swallowed the rest of the emission, and the garbage hit disk
-    // and broke exec. See the fence-leak postmortem.
-    assert.doesNotMatch(out, /<<demo\.sh:/, "no op-lookalike opening");
-    assert.doesNotMatch(out, /\n:demo\.sh/, "no op-lookalike closing");
-});
-
-test("index entry: non-default channel keeps #suffix", () => {
-    const system = {
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "exec",
-            pathname: "build/log",
-            defaultChannel: "stdout",
-            channels: { stderr: { content: "warn: ...", mimetype: "text/plain", tokens: 1 } },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<:::exec:\/\/build\/log#stderr\n/, "non-default channel keeps #stderr");
-});
-
-test("index entry: multi-channel entry omits suffix on default, keeps it on others", () => {
-    const system = {
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "exec",
-            pathname: "run",
-            defaultChannel: "stdout",
-            channels: {
-                stdout: { content: "ok", mimetype: "text/plain", tokens: 1 },
-                stderr: { content: "warn", mimetype: "text/plain", tokens: 1 },
-            },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<:::exec:\/\/run\nok\n:::exec:\/\/run/, "stdout fence is path-only");
-    assert.match(out, /<<:::exec:\/\/run#stderr\nwarn\n:::exec:\/\/run#stderr/, "stderr fence keeps #stderr");
-});
-
 test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
@@ -324,76 +240,19 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
     assert.match(out, /<<EDIT\(known:\/\/x#preview\):summary:EDIT/);
 });
 
-test("index entry: body ending in newline does NOT produce a doubled trailing newline", () => {
-    // Shell streams (ls, find, etc.) end with \n. The preview renders
-    // verbatim; wrapHeredocBody must not add a second \n before the closing
-    // fence (a doubled \n\n reads as a trailing blank line that isn't there).
-    const system = {
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "exec",
-            pathname: "sh/1/2/1",
-            defaultChannel: "stdout",
-            channels: { stdout: { content: "data/\nnotes.md\npackage.json\nsrc/\n", mimetype: "text/stream", tokens: 0 } },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    // Expect exactly one newline between `src/` and the closing fence.
-    assert.match(out, /src\/\n:::exec:\/\/sh\/1\/2\/1/);
-    assert.doesNotMatch(out, /src\/\n\n:::exec:\/\/sh\/1\/2\/1/);
-});
-
-test("[regression] index preview renders verbatim — service does not re-number (mime owns preview formatting)", () => {
-    // mimetypes 0.7.3 bakes line numbers / symbol outlines into the preview
-    // string (plurnk-mimetypes#8). The service renders it as-is; re-applying
-    // numberLines would double-prefix (`1:\t1:\tfoo`) and mis-number outlines.
-    const system = {
-        system_definition: "SD",
-        persona: "",
-        index: [{
-            scheme: "file",
-            pathname: "a.ts",
-            defaultChannel: "content",
-            channels: { content: { content: "1:\tclass Foo\n2:\t  bar()", mimetype: "text/typescript", tokens: 5 } },
-        }],
-        log: [],
-    };
-    const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<:::file:\/\/a\.ts\n1:\tclass Foo\n2:\t  bar\(\)\n:::file:\/\/a\.ts/);
-    assert.doesNotMatch(out, /1:\t1:\t/, "no double-numbering");
-});
-
-test("measureBudgetSections: per-section render tokens + assembled total, non-empty channels only", () => {
+test("measureBudgetSections: per-section render tokens + assembled total (log only)", () => {
     const tk = (s: string) => s.length; // deterministic: one token per char
     const packet = {
         system: {
             system_definition: "SD",
             persona: "",
-            index: [
-                {
-                    scheme: "known", pathname: "plan", defaultChannel: "content",
-                    channels: { content: { content: "do the thing", mimetype: "text/markdown", tokens: 3 } },
-                },
-                {
-                    scheme: "exec", pathname: "sh/1/1/1", defaultChannel: "stdout",
-                    channels: {
-                        stdout: { content: "ok", mimetype: "text/plain", tokens: 1 },
-                        stderr: { content: "", mimetype: "text/plain", tokens: 0 }, // empty → not rendered, not counted
-                    },
-                },
-            ],
             log: [],
         },
         user: { prompt: "go", telemetry: { budget: "{{tokensFree}}", errors: [] }, system_requirements: "" },
     };
     const m = PacketWire.measureBudgetSections(packet, tk);
-    assert.equal(m.index.channels, 2, "empty stderr is excluded from the channel count");
     assert.equal(m.log.entries, 0);
     assert.equal(m.log.tokens, 0, "no log section → zero tokens");
-    assert.ok(m.index.tokens > 0);
-    assert.ok(m.total > m.index.tokens, "total includes the index section plus the rest");
     // total is the real assembled wire (placeholder budget included), proving
     // it measures the render rather than a serialized stand-in.
     assert.equal(m.total, PacketWire.renderSystemContent(packet.system).length + PacketWire.renderUserContent(packet.user).length);

@@ -62,54 +62,9 @@ const setup = async () => {
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
     const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
     return JSON.parse(row?.packet ?? "{}") as {
-        system: { index: Array<{ scheme: string | null; pathname: string }> };
         user: { prompt: string; telemetry: { budget: string; errors: Array<Record<string, unknown>> } };
     };
 };
-
-test("[§15-current-prompt-foist] turn-1 prompt is foisted into packet.user.prompt; prior-loop prompt stays index-addressable", async () => {
-    const { db, engine, sessionId, runId, loopId: loop1Id } = await setup();
-    try {
-        // Loop 1: writes plurnk://prompt/<loop1>/1 on loop start.
-        const r1 = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [opsResponse([...sendDone])] }),
-            sessionId, runId, loopId: loop1Id, messages: [],
-        });
-
-        // (a) The prompt is a first-class system-origin EDIT entry on disk.
-        const promptEntry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "plurnk", pathname: `prompt/${loop1Id}/1`,
-        });
-        assert.ok(promptEntry !== undefined, "plurnk://prompt/<loop>/1 entry written on loop start");
-
-        const p1 = await getPacket(db, r1.turnId);
-        // (b) Foisted IN: the current loop's prompt body materializes in user.prompt.
-        assert.equal(p1.user.prompt, "what is the capital of france?");
-        // (c) Foisted OUT: the current loop's prompt entry is absent from the index render.
-        const foistedOut = p1.system.index.find(
-            (e) => e.scheme === "plurnk" && e.pathname.startsWith(`prompt/${loop1Id}/`),
-        );
-        assert.equal(foistedOut, undefined, "current loop's prompt NOT in packet.system.index");
-
-        // Loop 2: from its vantage, loop 1's prompt is "previous" — it MUST
-        // remain in the index (READ/HIDE-able), while loop 2's own prompt foists.
-        const loop2Id = await insertLoop(db, runId, 2, "second loop prompt");
-        const r2 = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [opsResponse([...sendDone])] }),
-            sessionId, runId, loopId: loop2Id, messages: [],
-        });
-        const p2 = await getPacket(db, r2.turnId);
-        assert.equal(p2.user.prompt, "second loop prompt", "loop 2's own prompt foisted into user.prompt");
-        const loop1Indexed = p2.system.index.find(
-            (e) => e.scheme === "plurnk" && e.pathname.startsWith(`prompt/${loop1Id}/`),
-        );
-        const loop2Indexed = p2.system.index.find(
-            (e) => e.scheme === "plurnk" && e.pathname.startsWith(`prompt/${loop2Id}/`),
-        );
-        assert.ok(loop1Indexed !== undefined, "prior loop's prompt stays in index, addressable for READ/HIDE");
-        assert.equal(loop2Indexed, undefined, "current loop's prompt foisted out of index");
-    } finally { await db.close(); }
-});
 
 test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();

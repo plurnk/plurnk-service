@@ -1,9 +1,9 @@
 // Regression guard for the live/demo exec failure: a model runs an EXEC,
-// the entry is created + indexed in the DB — but it must also appear in the
-// NEXT turn's rendered index, or the model is blind to its own output and
-// loops forever. The bug hid because it only manifested in the e2e tier
-// (model-in-loop); this reproduces it deterministically with a Mock model so
-// it runs in the normal intg suite. No live model required.
+// the entry is created in the DB — but its result must also surface in the
+// NEXT turn's LOG (the EXEC log row's target is exec://<coord>), or the model
+// is blind to its own output and loops forever. The bug hid because it only
+// manifested in the e2e tier (model-in-loop); this reproduces it determin-
+// istically with a Mock model so it runs in the normal intg suite.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,7 +32,7 @@ const sendStmt = (status: number): SendStatement => ({
 });
 const response = (ops: PlurnkStatement[]) => ({ assistant: { content: "", ops, reasoning: null } });
 
-test("regression: a model's EXEC result appears in the NEXT turn's index, not just the DB", async () => {
+test("regression: a model's EXEC result surfaces in the NEXT turn's log, not just the DB", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -46,8 +46,8 @@ test("regression: a model's EXEC result appears in the NEXT turn's index, not ju
         const loopId = await insertLoop(db, runId, 1, "run a command");
         await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
 
-        // Turn 1: EXEC. Turn 2: SEND (terminate). The Mock model is blind to
-        // the index — we assert the ENGINE put the exec result in turn 2's packet.
+        // Turn 1: EXEC. Turn 2: SEND (terminate). We assert the ENGINE put the
+        // exec result into turn 2's packet — via the log now, not an index.
         const mock = new Mock({ contextSize: 100000, responses: [
             response([execStmt("sh", "echo plurnk-index-probe")]),
             response([sendStmt(200)]),
@@ -61,11 +61,11 @@ test("regression: a model's EXEC result appears in the NEXT turn's index, not ju
         assert.ok(result.turnIds.length >= 2, `expected at least 2 turns; got ${result.turnIds.length}`);
         const turn2 = result.turnIds[1];
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { index?: Array<{ scheme: string | null; pathname: string }> } };
-        const paths = (packet.system?.index ?? []).map((e) => `${e.scheme}://${e.pathname}`);
+        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { log?: Array<{ target?: { scheme?: string | null; pathname?: string } | null }> } };
+        const targets = (packet.system?.log ?? []).map((e) => `${e.target?.scheme}://${e.target?.pathname}`);
         assert.ok(
-            paths.some((p) => p.startsWith("exec://")),
-            `turn-2 index must contain the exec result so the model can read it; got ${JSON.stringify(paths)}`,
+            targets.some((t) => t.startsWith("exec://")),
+            `turn-2 log must reference the exec result so the model can READ it; got ${JSON.stringify(targets)}`,
         );
     } finally { await db.close(); }
 });
@@ -97,11 +97,11 @@ test("regression-replica: under the FULL base context (sysprompt + persona + req
 
         const turn2 = result.turnIds[1];
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { index?: Array<{ scheme: string | null; pathname: string }> } };
-        const paths = (packet.system?.index ?? []).map((e) => `${e.scheme}://${e.pathname}`);
+        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { log?: Array<{ target?: { scheme?: string | null; pathname?: string } | null }> } };
+        const targets = (packet.system?.log ?? []).map((e) => `${e.target?.scheme}://${e.target?.pathname}`);
         assert.ok(
-            paths.some((p) => p.startsWith("exec://")),
-            `demo-replica: exec result must surface under full base context; got ${JSON.stringify(paths)}`,
+            targets.some((t) => t.startsWith("exec://")),
+            `demo-replica: exec result must surface in the log under full base context; got ${JSON.stringify(targets)}`,
         );
     } finally { await db.close(); }
 });

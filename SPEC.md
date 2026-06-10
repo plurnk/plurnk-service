@@ -252,7 +252,7 @@ Engine → scheme guarantees:
 
 Author-facing contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). Below: firing semantics + consumption surface.
 
-**Firing semantics.** Render-time consumers. Engine invokes during packet assembly; handlers read current channel content (possibly mid-stream), produce structural view, result lands in model's context. {§4-handlers-fire-render-time} Schemes do NOT call mimetype handlers at write time. {§4-schemes-do-not-invoke-handlers}
+**Firing semantics.** Render-time consumers. Engine invokes during packet assembly; handlers read current channel content (possibly mid-stream), produce structural view, result lands in the manifest catalog. Schemes do NOT call mimetype handlers at write time. {§4-schemes-do-not-invoke-handlers}
 
 ### §4.1 Manifest
 
@@ -335,15 +335,13 @@ Every entry has named channels. **Channels are append-only content stores** keye
 
 EDIT writes one channel per call — the channel resolved from the path's fragment (or the scheme's `defaultChannel` when no fragment). {§5.1-edit-writes-only-body}
 
-No stored `preview` channel. Preview is render-time output via `Mimetypes.process()` at packet-build; lands in `packet.system.index[].channels[name].content`. {§5.1-preview-is-handler-output}
+No stored `preview` channel — channel content is pulled on READ, never previewed.
 
 Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently.
 
 ### §5.2 Visibility lattice
 
 Per-`(run, entry, channel)` bit in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of target entry to 1; HIDE flips to 0. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment per §5.5.
-
-Render-time index includes only `indexed=1` channels for the current run. {§5.2-render-filters-by-indexed}
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
@@ -380,7 +378,7 @@ Op implications:
 
 RPC params carry fragments inline via the `target` string (`{ target: "known://x#stderr" }`).
 
-**Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`. {§5.5-wire-omits-suffix-on-default-channel}
+**Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
 ```
 <<notes.md:...:notes.md             — file scheme (bare)
@@ -398,7 +396,7 @@ Each channel has `state ∈ {static, active, closed, errored}`. Metadata only, n
 - `closed` — stream ended cleanly. Content final.
 - `errored` — stream ended in error. Content may be partial; reads return what accumulated.
 
-Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. {§5.6-schemes-own-state-transitions} Engine does NOT branch on state during rendering — reads `content` and `state`, includes both. {§5.6-engine-does-not-branch-on-state}
+Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. {§5.6-schemes-own-state-transitions} State does not gate reads — schemes return accumulated `content` regardless (§5.6-state-is-metadata).
 
 Model uses state to anticipate growth between turns. Clients use state for UI (spinner / red border / etc.).
 
@@ -895,7 +893,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk assembles directly in `Engine.#buildIndex` / `#buildLog`.
 
-**Decision.** Engine-direct. Plugin-driven assembly is out of scope. {§14.1-engine-direct-assembly}
+**Decision.** Engine-direct. Plugin-driven assembly is out of scope.
 
 **Rationale.** Channel + mimetype split already extends rendering; visibility lattice owns inclusion. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
 
@@ -916,7 +914,7 @@ Each entry: question, answer, rationale, migration path.
 - **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price previews; render-weight is the accurate measure. {§14.2-render-weight-budget}
 - **Per-scheme balance.** A markdown table groups the model's context by scheme — `indexed`/`archived` counts and render-weight `tokens` — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§14.2-per-scheme-balance}
 - **Context-window percent.** The headline carries usage as a percent of the ceiling — `usage Y (P%)` — a fullness gauge beside the absolutes. Reads the ceiling already in hand; no extra provider call. {§14.2-context-percent}
-- **Depth re-counted at render.** The manifest re-tokenizes each entry's `tokens` through the live provider at build — never the write-time snapshot — so a model change between loops can't stale the catalog. Every token figure in the packet is render-fresh, manifest and budget alike; nothing trusts a cross-loop cached total. {§14.2-depth-render-fresh}
+- **Depth re-counted at render.** The manifest re-tokenizes each entry's `tokens` through the live provider at build — never the write-time snapshot — so a model change between loops can't stale the catalog. Every token figure in the packet is render-fresh, manifest and budget alike; nothing trusts a cross-loop cached total.
 - **Over-budget is honest.** When usage exceeds the ceiling, `free` floors at 0 and the percent passes 100 — the readout shows the overshoot rather than a negative free, so the model knows it's over and curates down. {§14.2-over-budget-floor}
 
 **Rejected / obviated.**
@@ -995,9 +993,9 @@ type Packet = {
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's entry is foisted out of `packet.system.index` into `packet.user.prompt` — no duplicate rendering. Previous loops' prompts remain in the index, addressable for READ/HIDE. {§15-current-prompt-foist}
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/HIDE-able like any other.
 
-**The entry catalog.** `plurnk://manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's indexed, READable, and queryable. Body is `application/json`: a flat array, one item per entry across all schemes (hidden ones included — the model sees what it could pull in), each `{ path, shown, channels: { <name>: { mimetype, tokens, lines } } }`. `shown` is whether the entry is in this turn's index — `[?(@.shown==false)]` gives the hidden inventory to SHOW; `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself. {§15-manifest-catalog}
+**The entry catalog.** `plurnk://manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's indexed, READable, and queryable. Body is `application/json`: a flat array, one item per entry across all schemes (hidden ones included — the model sees what it could pull in), each `{ path, shown, channels: { <name>: { mimetype, tokens, lines } } }`. `shown` is whether the entry is in this turn's index — `[?(@.shown==false)]` gives the hidden inventory to SHOW; `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself.
 
 ### §15.1 user.telemetry — model-facing runtime telemetry
 

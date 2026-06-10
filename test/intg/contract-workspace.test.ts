@@ -1,15 +1,8 @@
-// SPEC §14 architectural-decision contract tests. Two tags that had zero
-// coverage before this file:
-//
-//   §14.1-engine-direct-assembly  — the engine assembles packet.system.index
-//       directly in Engine.#buildIndex (a DB query, no plugin/filter chain).
-//       Plugin-driven assembly is explicitly out of scope; the only migration
-//       path is a FUTURE `packet.augment` hook that does not exist yet.
-//       Asserted positively below. EXPECTED: PASS.
+// SPEC §14 architectural-decision contract tests.
 //
 //   §14.3-git-membership  — git-substrate workspace membership. git-tracked
-//       files are members with no client `add`; active members are indexed +
-//       materialized into packet.system.index. BUILT — the two tests below pass.
+//       files are members with no client `add`; active members are READable
+//       through the file scheme. BUILT — the two tests below pass.
 //
 //   §14.3-constraint-overlay / §14.3-emi-divergence-signal  — the client
 //       supersede (add/ignore/read-only) and the out-of-band divergence signal.
@@ -57,63 +50,6 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 
 const mockResponse = (ops: PlurnkStatement[]) => ({
     assistant: { content: "", ops, reasoning: null },
-});
-
-// ───────────────────────────── §14.1 ─────────────────────────────
-
-test("[§14.1-engine-direct-assembly] Engine assembles packet.system.index directly — seeded entry surfaces with no plugin augmentation", async () => {
-    const db = await openMigrated();
-    try {
-        const env = await seedEnvelope(db, `engine-direct-${crypto.randomUUID()}`);
-        // Bare SchemeRegistry — NO plugins, NO filter chain, NO augment hook
-        // registered. If assembly were plugin-driven, this entry would need a
-        // plugin in the path to reach the index. Engine-direct means the
-        // #buildIndex DB query alone materializes it.
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-
-        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: env.sessionId, scheme: "known", pathname: "direct-assembly",
-        });
-        if (entry === undefined) throw new Error("seed returned no row");
-        await (db.test_seed_channel as PrepMethod).run({
-            entry_id: entry.id, name: "body", content: "# Title\n\nbody", mimetype: "text/markdown", state: "static",
-        });
-        await (db.test_seed_visibility as PrepMethod).run({
-            run_id: env.runId, entry_id: entry.id, channel: "body", indexed: 1,
-        });
-
-        const provider = new Mock({ contextSize: 100000, responses: [mockResponse([sendStmt(200)])] });
-        const result = await engine.runTurn({
-            provider, sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, messages: [],
-        });
-
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        if (row === undefined) throw new Error("turn packet not found");
-        const packet = JSON.parse(row.packet) as {
-            system: { index: Array<{ pathname: string }> };
-        };
-
-        // The seeded entry must be present in the engine-assembled index.
-        // (plurnk://manifest.json is the only other always-present row.)
-        const pathnames = packet.system.index.map((e) => e.pathname);
-        assert.ok(
-            pathnames.includes("direct-assembly"),
-            `engine-direct index must contain the seeded entry; got ${JSON.stringify(pathnames)}`,
-        );
-
-        // §14.1 decision: plugin-driven assembly is out of scope. The migration
-        // path is a FUTURE additive `packet.augment` hook — it must not exist on
-        // the Engine surface today. Its presence would mark a filter-chain /
-        // plugin-augmentation path the decision explicitly rejects.
-        assert.equal(
-            (engine as unknown as { augment?: unknown }).augment, undefined,
-            "no packet.augment hook should exist — assembly is engine-direct, not plugin-augmented",
-        );
-        assert.equal(
-            (engine as unknown as { registerFilter?: unknown }).registerFilter, undefined,
-            "no filter-chain registration surface — assembly is engine-direct",
-        );
-    } finally { await db.close(); }
 });
 
 // ───────────────────────────── §14.3 ─────────────────────────────
@@ -187,29 +123,6 @@ test("[§14.3-git-membership] git-tracked file (never client-added) is a workspa
             "READ of a git-tracked member must succeed; 404 means git membership was not established",
         );
         assert.equal(result.content, "# Tracked by git\n\nThis file is a git member.\n");
-    });
-});
-
-test("[§14.3-git-membership] active git members get indexed + materialized into packet.system.index", async () => {
-    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        // Per §14.3, git members of the workspace are indexed and materialized
-        // so the model sees them — without any client `add`. Drive a real turn
-        // and assert the tracked file appears in the engine-assembled index;
-        // git members are seeded into entries/visibility, so the index has it.
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [mockResponse([sendStmt(200)])] });
-        const result = await engine.runTurn({
-            provider, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, messages: [],
-        });
-
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        if (row === undefined) throw new Error("turn packet not found");
-        const packet = JSON.parse(row.packet) as { system: { index: Array<{ pathname: string }> } };
-        const pathnames = packet.system.index.map((e) => e.pathname);
-        assert.ok(
-            pathnames.includes(trackedPath),
-            `git-tracked member must be indexed + materialized into packet.system.index (SPEC §14.3); got ${JSON.stringify(pathnames)}`,
-        );
     });
 });
 

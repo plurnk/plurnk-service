@@ -118,7 +118,6 @@ type RequestPacket = {
         tokens: number;
         system_definition: string;
         persona: string;
-        index: object[];
         log: object[];
     };
     user: {
@@ -938,7 +937,6 @@ export default class Engine {
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
-        const index = await this.#buildIndex(runId, loopId);
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
@@ -956,7 +954,7 @@ export default class Engine {
         // headline omitted, section lines still shown).
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
-            system: { system_definition, persona, index, log },
+            system: { system_definition, persona, log },
             user: { prompt, telemetry: { budget: "", errors: telemetryErrors }, system_requirements: requirements },
         };
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
@@ -970,7 +968,7 @@ export default class Engine {
                 .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                 .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-        const system = { tokens: 0, system_definition, persona, index, log };
+        const system = { tokens: 0, system_definition, persona, log };
         const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors }, system_requirements: requirements };
         system.tokens = countTokens(PacketWire.renderSystemContent(system));
         user.tokens = countTokens(PacketWire.renderUserContent(user));
@@ -983,14 +981,12 @@ export default class Engine {
     // placeholder here — buildSystem substitutes it after measuring the packet.
     #renderBudget(
         sections: {
-            index: { channels: number; tokens: number };
             log: { entries: number; tokens: number; byScheme: Array<{ scheme: string; entries: number; tokens: number }> };
         },
         ceiling: number | null,
     ): string {
         const lines: string[] = [];
         if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · free ${TOKENS_FREE_PLACEHOLDER}`);
-        if (sections.index.channels > 0) lines.push(`Index previews: ${sections.index.channels} channels, ${sections.index.tokens} tokens`);
         if (sections.log.entries > 0) {
             lines.push(`Log entries: ${sections.log.entries} entries, ${sections.log.tokens} tokens`);
             if (sections.log.byScheme.length > 0) {
