@@ -1,0 +1,57 @@
+{
+    "name": "@plurnk/plurnk-execs-wasm",
+    "version": "0.1.0",
+    "description": "WebAssembly runtime executor for plurnk-service's exec scheme — in-process sandboxed execution of WAT (text) and wasm (binary) modules.",
+    "keywords": ["plurnk", "exec", "runtime", "executor", "webassembly", "wasm", "wat", "sandbox"],
+    "homepage": "https://github.com/plurnk/plurnk-execs-wasm#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-wasm/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-wasm.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            { "name": "wat", "glyph": "🧩" },
+            { "name": "wasm", "glyph": "🧩" }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs": "0.4.1",
+        "wabt": "^1.0.39"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
