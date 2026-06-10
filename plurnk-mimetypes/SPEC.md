@@ -581,7 +581,9 @@ interface MimeRef {
 }
 ```
 
-The `RefKind` taxonomy is a working set; it freezes against plurnk-service's draft `symbol_refs` schema and the concrete `@<` / `@>` / `@` result shapes (plurnk-service#186) before any extraction engine ships.
+**The `RefKind` taxonomy is FROZEN** (2026-06-10, against plurnk-service's `symbol_defs`/`symbol_refs` schema and the worked `@<` / `@>` / `@` queries — plurnk-service#186): `import | call | instantiate | inherit | type | use`. Traversal is kind-agnostic (every ref is an edge); `kind` rides as edge metadata and the seam for future kind-filtered dialect forms.
+
+**`ref.container` is the enclosing definition's FULL qualified path** — a call inside method `parse` of class `Parser` carries `container: "Parser.parse"`, exactly equal to the source def's composed `container + "." + name`. That equality is the join key for `@>` (edge source → def) — emitting only the immediate class would break it. Module-top-level references omit the key.
 
 **Extraction mechanism (issue #19).** Tree-sitter-backed languages use per-language query files (`src/treesitter/queries/{slug}.scm`) with `@ref.<kind>` capture conventions, executed by one framework engine via web-tree-sitter's Query API. Queries are data — declarative, reviewable, the ecosystem-standard mechanism (tags/locals/highlights). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
 

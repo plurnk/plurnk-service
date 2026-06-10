@@ -246,6 +246,21 @@ export default class Mimetypes {
         //
         // GrammarNotInstalledError routes to the degradation path per issue
         // #14 unless options.strict is set. Anything else propagates.
+        // Pre-0.15 handler packages bundle an old framework copy whose
+        // BaseHandler lacks the newer channel methods. A handler that can't
+        // serve a requested channel is a contract violation — crash with the
+        // cause and the fix, not "undefined is not a function" (#21).
+        for (const method of ["deepXml", "references"] as const) {
+            if (channels.has(method === "deepXml" ? "deepXml" : "references")
+                && typeof handler[method] !== "function") {
+                throw new TypeError(
+                    `Handler for ${mimetype} does not implement ${method}() — its `
+                    + `@plurnk/plurnk-mimetypes-* package predates the 0.15 duck `
+                    + `contract. Update the handler package to a 0.15-compatible `
+                    + `release (the floor handlers shipped 0.15 patches).`,
+                );
+            }
+        }
         const needsDeepJson = channels.has("deepJson")
             || (channels.has("deepXml") && handler.deepXml === BaseHandler.prototype.deepXml);
         let symbols: MimeSymbol[] | undefined;
