@@ -3,11 +3,11 @@
 // function (mandate: static-method class); call sites stay
 // `ResolveForLoop.resolveForLoop(...)`. Schemes opt into flag affinity via
 // `manifest.flags`; absence = always active.
-import { resolveForLoop as _resolveForLoop } from "@plurnk/plurnk-schemes";
+import { SchemeResolver } from "@plurnk/plurnk-schemes";
 import type { LoopFlags } from "./types.ts";
 
 export default class ResolveForLoop {
     static resolveForLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string> {
-        return _resolveForLoop(handlers, flags);
+        return SchemeResolver.forLoop(handlers, flags);
     }
 }

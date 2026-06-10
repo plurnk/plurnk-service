@@ -9,14 +9,7 @@
 // proposal (file/exec), passthrough (log, future http). `error` is a grammar
 // `TelemetryEvent`, present iff `status >= 400`; the consumer mirrors it into
 // `packet.user.telemetry.errors[]` unchanged.
-import {
-    isEntryResult as _isEntryResult,
-    isProposalResult as _isProposalResult,
-    isPassthroughResult as _isPassthroughResult,
-    isErrorStatus as _isErrorStatus,
-    schemeError as _schemeError,
-    logCoordinate as _logCoordinate,
-} from "@plurnk/plurnk-schemes";
+import { Results as _Results } from "@plurnk/plurnk-schemes";
 import type {
     EntryResult, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase, TelemetryEvent,
 } from "@plurnk/plurnk-schemes";
@@ -25,19 +18,19 @@ import type { LogCoordinate } from "@plurnk/plurnk-grammar";
 export type { EntryResult, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase, TelemetryEvent };
 
 export default class Results {
-    static isEntryResult(r: SchemeResult): r is EntryResult { return _isEntryResult(r); }
-    static isProposalResult(r: SchemeResult): r is ProposalResult { return _isProposalResult(r); }
-    static isPassthroughResult(r: SchemeResult): r is PassthroughResult { return _isPassthroughResult(r); }
+    static isEntryResult(r: SchemeResult): r is EntryResult { return _Results.isEntry(r); }
+    static isProposalResult(r: SchemeResult): r is ProposalResult { return _Results.isProposal(r); }
+    static isPassthroughResult(r: SchemeResult): r is PassthroughResult { return _Results.isPassthrough(r); }
 
     // A result is an error result iff its status is in the 4xx/5xx range; the
     // `error` envelope is expected on those and absent otherwise.
-    static isErrorStatus(status: number): boolean { return _isErrorStatus(status); }
+    static isErrorStatus(status: number): boolean { return _Results.isErrorStatus(status); }
 
     // Build a scheme-sourced TelemetryEvent (`source: scheme:<name>`).
     static schemeError(scheme: string, kind: string, message?: string | null, position?: TelemetryEvent["position"]): TelemetryEvent {
-        return _schemeError(scheme, kind, message, position);
+        return _Results.error(scheme, kind, message, position);
     }
 
     // Build a LogCoordinate position pointing at an action's log row.
-    static logCoordinate(coordinate: string, op?: string): LogCoordinate { return _logCoordinate(coordinate, op); }
+    static logCoordinate(coordinate: string, op?: string): LogCoordinate { return _Results.logCoordinate(coordinate, op); }
 }

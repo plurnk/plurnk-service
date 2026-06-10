@@ -6,11 +6,11 @@
 // Mimetypes detect service); the scheme manifest's channel default is the
 // fallback when no extension is present. `known://users.json` →
 // application/json; `known://notes` → scheme default.
-import { resolveEntryMimetype as _resolveEntryMimetype } from "@plurnk/plurnk-schemes";
+import { PathMimetype as _PathMimetype } from "@plurnk/plurnk-schemes";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export default class PathMimetype {
     static resolveEntryMimetype(pathname: string, schemeDefault: string, mimetypes: Mimetypes | undefined): Promise<string> {
-        return _resolveEntryMimetype(pathname, schemeDefault, mimetypes);
+        return _PathMimetype.resolve(pathname, schemeDefault, mimetypes);
     }
 }
