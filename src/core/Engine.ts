@@ -26,7 +26,6 @@ import PacketWire from "./packet-wire.ts";
 // SHOW/HIDE/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
 
-const DEFAULT_PREVIEW_BUDGET = 256;
 const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
 const DEFAULT_BUDGET_CEILING = 0.9;
@@ -36,14 +35,6 @@ const DEFAULT_BUDGET_CEILING = 0.9;
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
-
-const readBudget = (): number => {
-    const raw = process.env.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS;
-    if (raw === undefined || raw.length === 0) return DEFAULT_PREVIEW_BUDGET;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n <= 0) return DEFAULT_PREVIEW_BUDGET;
-    return n;
-};
 
 // PLURNK_BUDGET_CEILING is dual-mode: <=1 is a fraction of the provider's
 // context window, >1 is an absolute token wall — lets a demo pin a tiny
@@ -321,7 +312,6 @@ export default class Engine {
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    #previewBudget: number;
     #budgetCeiling: number;
     // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
     // contract (§2.1). Populated from the active provider's countTokens via
@@ -390,7 +380,6 @@ export default class Engine {
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
-        this.#previewBudget = readBudget();
         this.#budgetCeiling = readCeiling();
         // Tripwire default matches the Mimetypes boot affordance (SPEC §4.5):
         // the divisor stands in only until the provider-backed tokenizer is
@@ -681,7 +670,7 @@ export default class Engine {
         await GitMembership.indexGitMembership(systemCtx);
 
         await EntryCrud.writeEntry("manifest.json", {
-            channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx, this.#previewBudget), mimetype: "application/json" } },
+            channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx), mimetype: "application/json" } },
             tags: [],
         }, systemCtx, "plurnk");
 

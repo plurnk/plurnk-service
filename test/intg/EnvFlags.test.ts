@@ -14,15 +14,15 @@ PLURNK_DB_PATH=./plurnk.db`;
 });
 
 test("parseEnvExampleContent: multi-line description joins with spaces", () => {
-    const content = `# Per-channel head/tail token budget for index preview tiles. The scheme
-# declares orientation (head/tail) via SchemeRegistration.channel_orientations;
-# this knob decides how many tokens to render from that orientation.
-PLURNK_ENTRY_SIZE_DEFAULT_TOKENS=256`;
+    const content = `# A description that spans several comment lines
+# and should fold into a single string,
+# joined with single spaces.
+PLURNK_SOME_KNOB=256`;
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags.length, 1);
-    assert.equal(flags[0].flagName, "--entry-size-default-tokens");
-    assert.match(flags[0].description ?? "", /^Per-channel head\/tail token budget/);
-    assert.match(flags[0].description ?? "", /how many tokens to render/);
+    assert.equal(flags[0].flagName, "--some-knob");
+    assert.match(flags[0].description ?? "", /^A description that spans several comment lines and should/);
+    assert.match(flags[0].description ?? "", /joined with single spaces/);
 });
 
 test("parseEnvExampleContent: section delimiter resets description buffer", () => {
@@ -97,23 +97,16 @@ test("parseEnvExampleContent: parses the actual plurnk-service .env.example shap
 # SQLite file path.
 PLURNK_DB_PATH=./plurnk_dev.db
 
-# --- Rendering ---
-# Per-channel head/tail token budget for index preview tiles. The scheme declares
-# orientation (head/tail).
-PLURNK_ENTRY_SIZE_DEFAULT_TOKENS=256
-
 # --- Diagnostics ---
 # When 1, enables debug.
 PLURNK_DEBUG=0`;
 
     const flags = EnvFlags.parseEnvExampleContent(content);
-    assert.equal(flags.length, 3);
+    assert.equal(flags.length, 2);
 
     const byEnv = Object.fromEntries(flags.map((f) => [f.envName, f]));
     assert.equal(byEnv.PLURNK_DB_PATH.flagName, "--db-path");
     assert.equal(byEnv.PLURNK_DB_PATH.description, "SQLite file path.");
-    assert.equal(byEnv.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS.flagName, "--entry-size-default-tokens");
-    assert.match(byEnv.PLURNK_ENTRY_SIZE_DEFAULT_TOKENS.description ?? "", /Per-channel/);
     assert.equal(byEnv.PLURNK_DEBUG.flagName, "--debug");
 });
 

@@ -26,7 +26,7 @@ export default class EntryManifest {
         return scheme === null ? pathname : `${scheme}://${pathname}`;
     }
 
-    static async buildManifestBody(ctx: PlurnkSchemeContext, previewBudget: number): Promise<string> {
+    static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
@@ -37,7 +37,7 @@ export default class EntryManifest {
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
-            const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { budget: previewBudget });
+            const result = await mimetypes.process({ content: r.content, hint: r.mimetype });
             entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
         return JSON.stringify([...byEntry.values()], null, 2);
