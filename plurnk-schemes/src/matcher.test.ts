@@ -21,7 +21,7 @@ const stubMimetypes = (impl: (input: object, expression: string) => Promise<Quer
 
 const regexBody: MatcherBody = { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" };
 
-test("matcher: framework returns matches → status 200 with JSON-array body", async () => {
+test("matcher: matches render as lean N:\\t<value> lines, one per match", async () => {
     const mts = stubMimetypes(async () => [
         { line: 3, matched: "foo" },
         { line: 7, matched: "foo" },
@@ -29,10 +29,7 @@ test("matcher: framework returns matches → status 200 with JSON-array body", a
     const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
-    assert.deepEqual(JSON.parse(r.body ?? ""), [
-        { line: 3, matched: "foo" },
-        { line: 7, matched: "foo" },
-    ]);
+    assert.equal(r.body, "3:\tfoo\n7:\tfoo");
 });
 
 test("matcher: framework returns empty array → status 204", async () => {
@@ -52,18 +49,16 @@ test("matcher: baseLine offset shifts framework lines into source coordinates", 
     // we report source line 10.
     const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 10);
     assert.equal(r.status, 200);
-    const rows = JSON.parse(r.body ?? "") as Array<{ line: number }>;
-    assert.deepEqual(rows.map((r) => r.line), [10, 12]);
+    assert.equal(r.body, "10:\tfoo\n12:\tfoo");
 });
 
 test("matcher: baseLine=1 (no slice) leaves lines unmodified", async () => {
     const mts = stubMimetypes(async () => [{ line: 5, matched: "foo" }]);
     const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 1);
-    const rows = JSON.parse(r.body ?? "") as Array<{ line: number }>;
-    assert.equal(rows[0].line, 5);
+    assert.equal(r.body, "5:\tfoo");
 });
 
-test("matcher: matching field preserved when framework provides it", async () => {
+test("matcher: `matching` (resolved path) is dropped from the rendering (schemes#12)", async () => {
     const mts = stubMimetypes(async () => [
         { line: 3, matched: "Alice", matching: "$.users[0].name" },
         { line: 7, matched: "Bob", matching: "$.users[1].name" },
@@ -72,9 +67,24 @@ test("matcher: matching field preserved when framework provides it", async () =>
         { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
         "irrelevant", "application/json", mts,
     );
-    const rows = JSON.parse(r.body ?? "") as Array<{ matching?: string }>;
-    assert.equal(rows[0].matching, "$.users[0].name");
-    assert.equal(rows[1].matching, "$.users[1].name");
+    // The structured {matched, matching} wrapper was the legibility barrier;
+    // output is bare line-numbered values, no resolved-path noise.
+    assert.equal(r.body, "3:\tAlice\n7:\tBob");
+    assert.equal((r.body ?? "").includes("$.users"), false);
+});
+
+test("matcher: object/multi-line values are JSON-encoded to keep one match per line", async () => {
+    const mts = stubMimetypes(async () => [
+        { line: 3, matched: { name: "Alice", role: "admin" } },
+        { line: 5, matched: "two\nlines" },
+    ]);
+    const r = await Matcher.matchAgainstContent(
+        { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody,
+        "irrelevant", "application/json", mts,
+    );
+    assert.equal(r.body, `3:\t{"name":"Alice","role":"admin"}\n5:\t"two\\nlines"`);
+    // one line per match — split count equals match count
+    assert.equal((r.body ?? "").split("\n").length, 2);
 });
 
 test("matcher: UnsupportedDialectError → 415", async () => {

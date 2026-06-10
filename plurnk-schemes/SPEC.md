@@ -121,7 +121,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
   - `InvalidExpressionError` → status 400
   - `QueryParseFailureError` → status 203 (soft fallback: raw content as text/markdown with `reason`)
   - Empty match array → status 204
-  - Match array → status 200
+  - Matches → status 200, body rendered as lean `<source-line>:\t<value>` lines (one match per line, the `N:\t` convention READ emits). Value bare for a single-line string, JSON-encoded otherwise so the one-match-per-line invariant holds (preserves `<L><K>` pick-Kth composition). The resolved query path (`matching`) is dropped — the structured `{matched, matching}` wrapper was a model-legibility barrier (schemes#12).
 
 ### §3.bis Capability ctx — the DB-free authoring surface
 

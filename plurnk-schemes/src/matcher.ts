@@ -31,16 +31,30 @@ import { TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
 
 export interface MatchResult {
     status: number;
-    body?: string;          // JSON-array of matches (status 200) or raw fallback content (status 203)
+    body?: string;          // N:\t<value> lines (status 200) or raw fallback content (status 203)
     matches?: number;       // hit count (status 200 or 204); omitted on 203
     error?: string;         // status >= 400 paths (framework dialect errors; not a scheme TelemetryEvent)
-    mimetype?: string;      // overrides default application/json on the 203 fallback path
+    mimetype?: string;      // overrides default text/markdown on the 203 fallback path
     reason?: string;        // 203 fallback: framework's parse-failure reason for the model
 }
 
 export default class Matcher {
-    static #prettyJson(value: unknown): string {
-        return JSON.stringify(value, null, 2);
+    // Render one match's value for the model-facing line. Bare for a single-
+    // line string; JSON-encoded otherwise so the one-match-per-line invariant
+    // holds (a multi-line value would otherwise break the `<L><K>` pick-Kth
+    // composition that matcher-then-slice depends on).
+    static #renderValue(value: unknown): string {
+        return typeof value === "string" && !value.includes("\n") ? value : JSON.stringify(value);
+    }
+
+    // Render matches as the model-facing line-numbered form `<source-line>:\t<value>`,
+    // one match per line — the same `N:\t` convention READ emits. The structured
+    // `{matched, matching}` wrapper was a legibility barrier (schemes#12: a gemma
+    // demo couldn't see `Alice` inside it and re-emitted the READ five times).
+    // `matching` (the resolved query path) is dropped from the rendering; the
+    // grammar `QueryMatch` keeps it, we just don't surface it.
+    static #renderMatches(matches: readonly QueryMatch[]): string {
+        return matches.map((m) => `${m.line}:\t${Matcher.#renderValue(m.matched)}`).join("\n");
     }
 
     // Apply a `<L>`-slice baseLine offset to per-match line numbers. The
@@ -74,7 +88,7 @@ export default class Matcher {
             const adjusted = Matcher.#shiftLines(rawMatches, baseLine);
             return {
                 status: 200,
-                body: Matcher.#prettyJson(adjusted),
+                body: Matcher.#renderMatches(adjusted),
                 matches: adjusted.length,
             };
         } catch (err) {
