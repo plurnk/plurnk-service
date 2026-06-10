@@ -72,25 +72,6 @@ const readMaxCommands = (): number => {
     return n;
 };
 
-interface IndexedRow {
-    entry_id: number;
-    version: number;
-    scope: "agent" | "session";
-    session_id: number | null;
-    scheme: string | null;
-    username: string | null;
-    password: string | null;
-    hostname: string | null;
-    port: number | null;
-    pathname: string;
-    params: string | null;
-    attributes: string;
-    channel: string;
-    content: string;
-    mimetype: string;
-    tokens: number;
-}
-
 type Origin = "model" | "client" | "system" | "plugin";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -1149,81 +1130,6 @@ export default class Engine {
             tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
             mimetype_tx: r.mimetype_tx,
         }));
-    }
-
-    async #buildIndex(runId: number, currentLoopId: number): Promise<object[]> {
-        const rows = await (this.#db.engine_render_index as PrepMethod).all<IndexedRow>({ run_id: runId });
-        const tagsStmt = this.#db.engine_entry_tags as PrepMethod;
-        // Foist the CURRENT loop's prompt entries out of the index render —
-        // their bodies are materialized in packet.user.prompt instead. With
-        // multi-turn injection, a loop can have multiple prompt entries at
-        // plurnk://prompt/<loop_id>/<N>; all of them get foisted, leaving
-        // only previous loops' prompts (still addressable for HIDE).
-        const foistedPrefix = `prompt/${currentLoopId}/`;
-        // Backward compat: legacy single-slot path. Tests / older runs may
-        // still have a `prompt/<loop_id>` entry (no trailing /N); foist it too.
-        const foistedExact = `prompt/${currentLoopId}`;
-
-        const entries = new Map<number, {
-            id: number; version: number; scope: "agent" | "session"; session_id: number | null;
-            scheme: string | null; username: string | null; password: string | null;
-            hostname: string | null; port: number | null; pathname: string;
-            params: Record<string, string> | null;
-            channels: Record<string, { content: string; mimetype: string; tokens: number; lines: number }>;
-            defaultChannel: string;
-            attributes: Record<string, unknown>;
-            tags: string[];
-        }>();
-
-        for (const row of rows) {
-            if (row.scheme === "plurnk"
-                && (row.pathname === foistedExact || row.pathname.startsWith(foistedPrefix))) continue;
-            let entry = entries.get(row.entry_id);
-            if (entry === undefined) {
-                const tagRows = await tagsStmt.all<{ tag: string }>({ entry_id: row.entry_id });
-                // defaultChannel pulled from the row's scheme manifest. The
-                // wire renderer uses it to omit `#channel` on fences whose
-                // channel is the scheme's default — that absence is the
-                // addressing of the default channel.
-                const handler = this.#schemes.get(row.scheme ?? "");
-                const manifest = (handler?.constructor as { manifest?: SchemeManifest } | undefined)?.manifest;
-                entry = {
-                    id: row.entry_id,
-                    version: row.version,
-                    scope: row.scope,
-                    session_id: row.session_id,
-                    scheme: row.scheme,
-                    username: row.username,
-                    password: row.password,
-                    hostname: row.hostname,
-                    port: row.port,
-                    pathname: row.pathname,
-                    params: row.params === null ? null : JSON.parse(row.params),
-                    channels: {},
-                    defaultChannel: manifest?.defaultChannel ?? "",
-                    attributes: JSON.parse(row.attributes),
-                    tags: tagRows.map((r) => r.tag),
-                };
-                entries.set(row.entry_id, entry);
-            }
-            // Mimetypes.process owns the full preview pipeline: detect (or
-            // honor the hint), resolve handler, validate, extract → symbols,
-            // budget-truncate via the framework's fit/fitContent. Passing
-            // `hint: row.mimetype` short-circuits detection — service already
-            // knows what each channel is.
-            const result = await this.#mimetypes.process(
-                { content: row.content, hint: row.mimetype },
-                { budget: this.#previewBudget },
-            );
-            entry.channels[row.channel] = {
-                content: result.preview,
-                mimetype: row.mimetype,
-                tokens: row.tokens,
-                lines: result.totalLines,
-            };
-        }
-
-        return [...entries.values()];
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {

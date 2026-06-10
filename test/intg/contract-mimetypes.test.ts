@@ -9,7 +9,7 @@
 //                     + Log.read structural <L> compose over the matcher result.
 //   - §3.5 — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
 //   - §4.2 / §4 — Mimetypes.process shape + a spy handler proving write (detect)
-//                 never fires preview, but render (#buildIndex.process) does.
+//                 never fires preview, but render (manifest build → process) does.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -187,7 +187,7 @@ test("[§4.2-process-entry-point] Mimetypes.process returns { mimetype, preview,
 // --- §4 schemes do NOT invoke mimetype handlers at write time --------------
 // A spy handler instrumented on preview/query. Writing (Known.edit) resolves
 // the mimetype via Mimetypes.detect — it must NOT fire the handler. Rendering
-// (Engine #buildIndex → Mimetypes.process) MUST fire it. Same handler, two
+// (the manifest build → Mimetypes.process) MUST fire it. Same handler, two
 // phases: 0 firings after write, >0 after render.
 
 test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firing the handler; render fires it", async () => {
@@ -239,15 +239,15 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
         assert.equal(previewCalls.length, 0, "§4: scheme write did NOT invoke the handler's preview");
         assert.equal(queryCalls.length, 0, "§4: scheme write did NOT invoke the handler's query");
 
-        // RENDER phase: a turn assembles the packet; #buildIndex routes the
-        // spy channel through Mimetypes.process → handler.preview fires.
+        // RENDER phase: a turn assembles the packet; the manifest build routes
+        // the spy channel through Mimetypes.process → handler.preview fires.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
         const provider = new Mock({
             contextSize: 100000,
             responses: [{ assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } }],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        assert.ok(previewCalls.length > 0, "§4: render-time #buildIndex DID invoke the handler's preview");
+        assert.ok(previewCalls.length > 0, "§4: render-time manifest build DID invoke the handler's preview");
         assert.ok(previewCalls.includes("alpha\nbeta\ngamma"), "handler saw the stored channel content at render time");
     } finally { await db.close(); }
 });
