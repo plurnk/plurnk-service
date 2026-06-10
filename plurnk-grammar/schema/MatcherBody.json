@@ -2,12 +2,12 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` rag, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },
         { "$ref": "#/$defs/JsonPathBody" },
-        { "$ref": "#/$defs/RagBody" },
+        { "$ref": "#/$defs/SemanticBody" },
         { "$ref": "#/$defs/GraphBody" },
         { "$ref": "#/$defs/GlobBody" }
     ],
@@ -47,14 +47,14 @@
                 "raw": { "type": "string", "minLength": 1 }
             }
         },
-        "RagBody": {
-            "title": "RagBody",
-            "description": "Semantic similarity query. Body is `~query text` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; top-K narrowing via `<L>` on the host statement.",
+        "SemanticBody": {
+            "title": "SemanticBody",
+            "description": "Semantic similarity query. Body is `~query text` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; top-K narrowing via `<Result>` on the host statement.",
             "type": "object",
             "required": ["dialect", "raw"],
             "additionalProperties": false,
             "properties": {
-                "dialect": { "const": "rag" },
+                "dialect": { "const": "semantic" },
                 "raw": { "type": "string", "minLength": 1 }
             }
         },

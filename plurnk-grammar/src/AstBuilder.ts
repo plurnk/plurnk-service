@@ -375,7 +375,8 @@ export default class AstBuilder {
     // fall through to glob. Same robustness principle for every prefix — dispatch is a
     // hint, not a gate. Lets literal `//`-comments, `/path/`-strings, and `$`-prefixed
     // shell-ish text reach the model as glob matches instead of hard-erroring.
-    // RAG (`~`) has no parse step — any text is a valid query — so it dispatches directly.
+    // Semantic (`~`) and graph (`@`) have no parse step — any text is a valid query
+    // — so they dispatch directly.
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
             try { xpath.parse(body); return { dialect: "xpath", raw: body }; }
@@ -387,7 +388,7 @@ export default class AstBuilder {
             try { JSONPath({ path: body, json: {} }); return { dialect: "jsonpath", raw: body }; }
             catch { /* fall through to glob */ }
         } else if (body.startsWith("~")) {
-            return { dialect: "rag", raw: body };
+            return { dialect: "semantic", raw: body };
         } else if (body.startsWith("@")) {
             return { dialect: "graph", raw: body };
         }

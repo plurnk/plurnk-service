@@ -60,11 +60,11 @@ On structured entries, `<Result>` addresses result index, not line number.
 | `//`           | xpath    | `//selector`                      |
 | `/`            | regex    | `/pattern/[igmsu]?`               |
 | `$`            | jsonpath | `$.field`                         |
-| `~`            | rag      | `~query text`                     |
+| `~`            | semantic | `~query text`                     |
 | `@`            | graph    | `@<symbol`, `@>symbol`, `@symbol` |
 | otherwise      | glob     | `pattern`                         |
 
-Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. RAG narrows top-K via `<Result>` on the host statement.
+Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. Semantic search narrows top-K via `<Result>` on the host statement.
 
 ## Paths
 
