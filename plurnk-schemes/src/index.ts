@@ -46,5 +46,4 @@ export type {
     SubscriptionCaps,
     SubscriptionHandle,
     TagCaps,
-    VisibilityCaps,
 } from "./ctx.ts";

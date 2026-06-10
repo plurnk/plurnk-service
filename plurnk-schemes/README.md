@@ -13,7 +13,7 @@ Framework + contract for `@plurnk/plurnk-schemes-*` URI handler packages. Consum
 
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Result families: `SchemeResult` / `EntryResult` / `ProposalResult` / `PassthroughResult` / `SchemeResultBase` / `TelemetryEvent`.
-- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `VisibilityCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware`.
+- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware`.
 
 ### Helpers (`export default class`, static methods)
 

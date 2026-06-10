@@ -14,12 +14,14 @@
 // during transition; the cap impl is a thin adapter over the same
 // `_entry-*.ts` / `ChannelWrite` helpers, cut over scheme-by-scheme.
 //
-// SIX live namespaces decompose what `ctx.db` is used for today:
-//   entries / channels / visibility / tags / notify  — map 1:1 onto the
-//     `_entry-*.ts` + `ChannelWrite` helpers; wrap cleanly.
-//   subscriptions                                     — the streaming
-//     lifecycle (open/notifyChunk/close); design against Exec, the proven
+// FIVE live namespaces decompose what `ctx.db` is used for today:
+//   entries / channels / tags / notify  — map 1:1 onto the `_entry-*.ts` +
+//     `ChannelWrite` helpers; wrap cleanly.
+//   subscriptions                       — the streaming lifecycle
+//     (open/notifyChunk/close); design against Exec, the proven
 //     two-channel cancel-tested case.
+// (No `visibility`: entry-level SHOW/HIDE was removed in plurnk-service's
+//  index/visibility teardown — SHOW/HIDE now act on `log://` rows. #180.)
 //
 // NOT a namespace:
 //   proposals   — collapses to "return a ProposalResult (202) + implement
@@ -67,15 +69,12 @@ export interface ChannelCaps {
     setState(pathname: string, channel: string, state: ChannelState): Promise<{ status: number }>;
 }
 
-// ── visibility ───────────────────────────────────────────────────────────
-// The per-(run, entry, channel) index bit (SPEC §5.2). `channel` omitted =
-// all channels of the entry (fragment-less SHOW/HIDE). Returns 200 on
-// transition, 304 on no-op, 404 if absent — same status vocabulary the
-// SHOW/HIDE ops already use.
-export interface VisibilityCaps {
-    show(pathname: string, channel?: string): Promise<{ status: number }>;
-    hide(pathname: string, channel?: string): Promise<{ status: number }>;
-}
+// NOTE: there is no `visibility` capability. Entry-level SHOW/HIDE no longer
+// exists in plurnk-service — the `visibility` table was removed in the
+// index/visibility teardown; SHOW/HIDE now collapse/expand `log://` rows, a
+// log-side concern with no entry-visibility for a scheme to set (per
+// plurnk-service#180). If a sibling ever needs to influence what the model
+// retains, that's a log capability, not an entry one — designed if/when forced.
 
 // ── tags ─────────────────────────────────────────────────────────────────
 // Entry-tag add/remove/list. `add`/`remove` are additive/subtractive sets
@@ -158,7 +157,6 @@ export interface SchemeCtx {
 
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
-    readonly visibility: VisibilityCaps;
     readonly tags: TagCaps;
     readonly notify: NotifyCaps;
     readonly subscriptions: SubscriptionCaps;

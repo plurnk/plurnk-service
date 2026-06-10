@@ -12,7 +12,6 @@ import type {
     SchemeCtx,
     EntryCaps,
     ChannelCaps,
-    VisibilityCaps,
     TagCaps,
     NotifyCaps,
     SubscriptionCaps,
@@ -73,11 +72,6 @@ const makeCtx = () => {
         },
     };
 
-    const visibility: VisibilityCaps = {
-        async show(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
-        async hide(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
-    };
-
     const tags: TagCaps = {
         async add(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
         async remove(pathname) { return { status: store.has(pathname) ? 200 : 404 }; },
@@ -109,7 +103,7 @@ const makeCtx = () => {
 
     const ctx: SchemeCtx = {
         sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, visibility, tags, notify, subscriptions, crossScheme,
+        entries, channels, tags, notify, subscriptions, crossScheme,
     };
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };
@@ -138,9 +132,8 @@ test("ctx: channels append accumulates (append-only store)", async () => {
     assert.equal(r.entry?.channels.body.content, "foobar");
 });
 
-test("ctx: visibility/tags return 404 for absent entries", async () => {
+test("ctx: tags return 404 for absent entries", async () => {
     const { ctx } = makeCtx();
-    assert.equal((await ctx.visibility.show("known://nope")).status, 404);
     assert.equal((await ctx.tags.list("known://nope")).status, 404);
 });
 
