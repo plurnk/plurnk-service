@@ -25,13 +25,15 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 // concrete Db type) and the notifier hooks.
 //
 // PR-2 (schemes 0.3.0, ctx.ts) ships the DB-free capability contract —
-// SchemeCtx + entries/channels/tags/notify/subscriptions caps —
-// as INTERFACES only, so a third-party `@plurnk/plurnk-schemes-*` sibling
-// never has to touch db. The service is meant to inject a db-backed impl
-// behind that seam, cutting schemes over one at a time. Deferred until a
-// real sibling exists: the daughter sanctions in-tree schemes on `db`
-// "during transition", the adapter is zero-behavior-change over the same
-// _entry-*/ChannelWrite helpers, and crossScheme has no shape yet (#180).
+// SchemeCtx + entries/channels/tags/notify/subscriptions caps — as INTERFACES
+// only, so a third-party `@plurnk/plurnk-schemes-*` sibling never has to touch
+// db. plurnk-service injects the db-backed impl behind that seam
+// (`core/caps/Db*Caps.ts`), one cap at a time, over the same
+// _entry-*/ChannelWrite helpers the in-tree schemes use during transition.
+// In progress (#180): entries first (`DbEntryCaps`); channels/tags/notify
+// follow. `visibility` is dropped — entry visibility is gone post-teardown
+// (SHOW/HIDE is log-only). crossScheme stays the deferred stub until a
+// cross-scheme COPY/MOVE forces the FROM/TO shape.
 export interface PlurnkSchemeContext {
     readonly db: Db;
     readonly sessionId: number;
