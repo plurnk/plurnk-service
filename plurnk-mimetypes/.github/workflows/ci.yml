@@ -15,8 +15,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - uses: actions/setup-node@v6
         with:
@@ -24,14 +22,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Build (compile grammars)
+      - name: Build
         run: npm run build
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit + E2E tests
+      - name: Test
         run: npm test
-
-      - name: Language grammar zoo tests
-        run: npm run test:languages

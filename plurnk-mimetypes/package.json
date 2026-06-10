@@ -42,37 +42,20 @@
     "README.md",
     "SPEC.md"
   ],
-  "workspaces": [
-    "languages/*"
-  ],
   "scripts": {
-    "scaffold": "node scripts/scaffold.js",
-    "init-language": "node scripts/init-language.js",
-    "build:legacy": "node scripts/compile.js",
     "build:dist": "tsc -p tsconfig.build.json",
     "build": "npm run build:dist",
     "prepare": "npm run build",
     "test:lint": "tsc --noEmit",
     "test:unit": "node --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
     "test:intg": "node --test test/integration/**/*.test.ts",
-    "test:legacy": "node --test test/e2e/**/*.test.js",
-    "test:languages": "node --test languages/*/map.test.js",
-    "test:all": "node --test test/e2e/**/*.test.js languages/*/map.test.js",
-    "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:legacy"
+    "test": "npm run test:lint && npm run test:unit && npm run test:intg"
   },
   "peerDependencies": {
-    "antlr-ng": "^1.0.10",
-    "antlr4ng": "^3.0.0",
-    "web-tree-sitter": "^0.25.0"
+    "antlr-ng": "^1.0.10"
   },
   "peerDependenciesMeta": {
     "antlr-ng": {
-      "optional": true
-    },
-    "antlr4ng": {
-      "optional": true
-    },
-    "web-tree-sitter": {
       "optional": true
     }
   },
@@ -83,10 +66,7 @@
     "@tree-sitter-grammars/tree-sitter-yaml": "^0.7.1",
     "@tree-sitter-grammars/tree-sitter-zig": "^1.1.2",
     "@types/node": "^25.8.0",
-    "antlr-ng": "^1.0.10",
-    "antlr4": "^4.13.2",
     "antlr4ng": "^3.0.16",
-    "smol-toml": "^1.6.1",
     "tree-sitter-bash": "^0.25.1",
     "tree-sitter-c": "^0.24.1",
     "tree-sitter-cpp": "^0.23.4",
@@ -108,8 +88,7 @@
     "tree-sitter-scala": "^0.24.0",
     "tree-sitter-typescript": "^0.23.2",
     "typescript": "^6.0.3",
-    "web-tree-sitter": "^0.25.10",
-    "yaml": "^2.9.0"
+    "web-tree-sitter": "^0.25.10"
   },
   "dependencies": {
     "@plurnk/plurnk-mimetypes-application-json": "^0.5.0",
@@ -121,7 +100,9 @@
     "@xmldom/xmldom": "^0.9.10",
     "antlr4ng": "^3.0.16",
     "jsonpath-plus": "^10.4.0",
+    "smol-toml": "^1.6.1",
     "web-tree-sitter": "^0.25.10",
-    "xpath": "^0.0.34"
+    "xpath": "^0.0.34",
+    "yaml": "^2.9.0"
   }
 }
