@@ -150,31 +150,35 @@ describe("TextMarkdown", () => {
         assert.ok(out.includes("### Subsection"));
     });
 
-    it("preview returns a SymbolPreview when headings are present", async () => {
-        const h = new TextMarkdown(metadata);
-        const preview = await h.preview("# Top\n\n## Section\n");
-        assert.equal(preview?.kind, "symbols");
-        if (preview?.kind !== "symbols") return;
-        const names = [...preview.symbols].map((s) => s.name);
-        assert.deepEqual(names, ["Top", "Section"]);
-    });
-
-    it("preview falls back to TextPreview head when no headings/code blocks (poem case)", async () => {
+    it("extractRaw returns [] for prose with no headings or code blocks (poem case)", async () => {
         const h = new TextMarkdown(metadata);
         const poem = "Some prose without headings.\nMore prose. Still no structure.";
-        const preview = await h.preview(poem);
-        assert.equal(preview?.kind, "text");
-        if (preview?.kind !== "text") return;
-        assert.equal(preview.text, poem);
-        assert.equal(preview.orientation, "head");
+        assert.deepEqual(h.extractRaw(poem), []);
     });
 
-    it("preview returns SymbolPreview when only a code block is present (no headings)", async () => {
+    it("headings carry ancestor-heading container paths (issue #18)", async () => {
         const h = new TextMarkdown(metadata);
-        const src = "Some intro.\n\n```ts\nconst x = 1;\n```\n\nMore prose.";
-        const preview = await h.preview(src);
-        // Code block IS a structural symbol → SymbolPreview wins over text fallback.
-        assert.equal(preview?.kind, "symbols");
+        const src = "# A\n\n## B\n\n### C\n\n## D\n";
+        const syms = h.extractRaw(src);
+        const byName = new Map(syms.map((s) => [s.name, s]));
+        assert.equal("container" in byName.get("A")!, false, "top-level heading: container absent");
+        assert.equal(byName.get("B")!.container, "A");
+        assert.equal(byName.get("C")!.container, "A.B");
+        assert.equal(byName.get("D")!.container, "A", "level-2 D closes B and C");
+    });
+
+    it("code blocks carry the innermost open heading as container (issue #18)", async () => {
+        const h = new TextMarkdown(metadata);
+        const src = "# A\n\n## B\n\n```ts\nconst x = 1;\n```\n";
+        const syms = h.extractRaw(src);
+        assert.equal(syms.find((s) => s.kind === "module")!.container, "A.B");
+    });
+
+    it("code block before any heading has no container (issue #18)", async () => {
+        const h = new TextMarkdown(metadata);
+        const src = "```ts\nconst x = 1;\n```\n\n# After\n";
+        const syms = h.extractRaw(src);
+        assert.equal("container" in syms.find((s) => s.kind === "module")!, false);
     });
 
     it("deepJson returns the marked AST as a document tree with line annotations", async () => {

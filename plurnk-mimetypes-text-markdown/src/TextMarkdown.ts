@@ -1,5 +1,5 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol, Preview } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
 
 // text/markdown handler. Replaces the legacy regex heading scanner with
@@ -11,16 +11,19 @@ import { Lexer, type Token } from "marked";
 //   - module:  every fenced code block, named by its language tag (or "code"
 //              when no language), with line range covering the full fence
 //
-// Hybrid preview: returns SymbolPreview when extractRaw finds structural
-// signals (headings or code blocks), TextPreview head-oriented over the raw
-// markdown body when it doesn't. The fallback handles the "poem case" —
-// markdown content with no headings flat-renders rather than going dark.
+// container (SPEC §3, issue #18): the dotted path of the open ancestor
+// headings — a lower `level` opens an ancestor scope; a heading at level N
+// closes every open heading at level >= N. Top-level symbols omit the key.
+// Heading names are used verbatim as path segments (may contain dots).
+// Columns are omitted: marked's lexer exposes no position info.
 //
 // validate() inherits BaseHandler's no-op default (any string is valid markdown).
 export default class TextMarkdown extends BaseHandler {
     override extractRaw(content: string): MimeSymbol[] {
         const tokens = new Lexer().lex(content);
         const symbols: MimeSymbol[] = [];
+        // Stack of open headings, strictly increasing in level.
+        const open: Array<{ level: number; name: string }> = [];
         let currentLine = 1;
 
         for (const token of tokens) {
@@ -29,7 +32,7 @@ export default class TextMarkdown extends BaseHandler {
             const linesSpanned = countLinesSpanned(raw);
             const endLine = linesSpanned > 0 ? startLine + linesSpanned - 1 : startLine;
 
-            emitFor(token, startLine, endLine, symbols);
+            emitFor(token, startLine, endLine, symbols, open);
 
             // Advance the line cursor by one for each \n in raw — each newline
             // moves us off its line onto the next.
@@ -37,17 +40,6 @@ export default class TextMarkdown extends BaseHandler {
         }
 
         return symbols;
-    }
-
-    override preview(content: string | Uint8Array): Preview {
-        const text = typeof content === "string"
-            ? content
-            : new TextDecoder("utf-8").decode(content);
-        const symbols = this.extractRaw(text);
-        if (symbols.length > 0) {
-            return { kind: "symbols", symbols };
-        }
-        return { kind: "text", text, orientation: "head" };
     }
 
     // Deep-channel (issue #10). The markdown AST as nested objects — heading,
@@ -116,25 +108,36 @@ function emitFor(
     startLine: number,
     endLine: number,
     into: MimeSymbol[],
+    open: Array<{ level: number; name: string }>,
 ): void {
     if (token.type === "heading") {
         const headingToken = token as Token & { depth: number; text: string };
+        // A heading at level N closes every open heading at level >= N; its
+        // container is the dotted path of what remains open.
+        while (open.length > 0 && open[open.length - 1].level >= headingToken.depth) {
+            open.pop();
+        }
+        const container = open.map((o) => o.name).join(".");
         into.push({
             name: headingToken.text,
             kind: "heading",
             level: headingToken.depth,
             line: startLine,
             endLine: startLine,
+            ...(container.length > 0 && { container }),
         });
+        open.push({ level: headingToken.depth, name: headingToken.text });
         return;
     }
     if (token.type === "code") {
         const codeToken = token as Token & { lang?: string };
+        const container = open.map((o) => o.name).join(".");
         into.push({
             name: codeToken.lang && codeToken.lang.length > 0 ? codeToken.lang : "code",
             kind: "module",
             line: startLine,
             endLine,
+            ...(container.length > 0 && { container }),
         });
     }
 }
