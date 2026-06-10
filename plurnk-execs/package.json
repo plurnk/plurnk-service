@@ -34,7 +34,7 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/**/*.test.ts",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
