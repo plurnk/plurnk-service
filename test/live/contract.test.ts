@@ -82,18 +82,14 @@ const seed = async (s: LiveSetup, pathname: string, content: string, mimetype = 
     const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
     if (e === undefined) throw new Error("seed: insert returned no row");
     await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
-    await (s.db.crud_write_visibility as PrepMethod).run({ run_id: s.runId, entry_id: e.id, channel: "body" });
     return e.id;
 };
 
-// Like seed, but HIDDEN (visibility indexed=0): the entry exists and stays
-// READ/FIND-able, but is absent from the index/preview — so the model must emit
-// the op to reach it instead of answering from what it can already see.
-const seedHidden = async (s: LiveSetup, pathname: string, content: string, mimetype = "text/markdown"): Promise<number> => {
-    const id = await seed(s, pathname, content, mimetype);
-    await (s.db.test_set_visibility_indexed as PrepMethod).run({ run_id: s.runId, entry_id: id, indexed: 0 });
-    return id;
-};
+// Post-index, no entry's content is auto-shown: every seeded entry stays
+// READ/FIND-able, but the model must emit the op to reach it (never answering
+// from what it can already see). `seedHidden` is kept as a named alias for the
+// tests that lean on that — now equivalent to `seed`.
+const seedHidden = seed;
 
 // Forensic read-backs — assert what the OP did to the db, never what the model
 // said. readBody: an entry's body content (undefined once the channel/entry is

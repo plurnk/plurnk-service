@@ -80,7 +80,6 @@ const seed = async (s: LiveSetup, pathname: string, content: string, mimetype: s
     const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
     if (e === undefined) throw new Error("seed: insert returned no row");
     await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
-    await (s.db.crud_write_visibility as PrepMethod).run({ run_id: s.runId, entry_id: e.id, channel: "body" });
 };
 
 test("live: jsonpath $.field on known://config.json extracts a value", { timeout: TIMEOUT }, async () => {

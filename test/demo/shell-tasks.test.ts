@@ -94,14 +94,13 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
                 const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as {
                     assistant?: { content?: string };
-                    system?: { index?: object[] };
+                    system?: { log?: Array<{ op?: string; status?: number; target?: { scheme?: string | null; pathname?: string } | null }> };
                 };
                 console.error(`turn ${turnId} status=${row?.status}`);
                 console.error(`  emission: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
-                console.error(`  index entries: ${(packet.system?.index ?? []).map((e: object) => {
-                    const r = e as { scheme: string | null; pathname: string; channels?: Record<string, { content?: string }> };
-                    const stdout = r.channels?.stdout?.content ?? "";
-                    return `${r.scheme ?? "(file)"}://${r.pathname}${stdout !== "" ? ` stdout=${JSON.stringify(stdout.slice(0, 60))}` : ""}`;
+                console.error(`  log: ${(packet.system?.log ?? []).map((e) => {
+                    const t = e.target;
+                    return `${e.op ?? "?"}[${e.status ?? "?"}]${t ? ` ${t.scheme}://${t.pathname}` : ""}`;
                 }).join("; ")}`);
             }
         }
