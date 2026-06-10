@@ -167,11 +167,12 @@ test("streaming exec: subscription stays open during emission, closes after exit
     } finally { await db.close(); }
 });
 
-test("streaming exec: index render between samples picks up partial channel content", async () => {
-    // The packet's index render reads channels.content LIVE — so each
-    // turn build sees whatever bytes have landed by that moment. This
-    // proves the model would observe partial output across turn
-    // boundaries (rather than seeing nothing until close).
+test("streaming exec: the session catalog picks up partial channel content between samples", async () => {
+    // The session catalog (engine_list_session_entries, the manifest
+    // source) reads channels.content LIVE — so each turn build sees
+    // whatever bytes have landed by that moment. This proves the model
+    // would observe partial output across turn boundaries (rather than
+    // seeing nothing until close).
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -180,7 +181,7 @@ test("streaming exec: index render between samples picks up partial channel cont
         engine.setExecutors(await testExecutors());
         const sessionId = await insertSession(db, `exec-stream-idx-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "index render mid-stream");
+        const loopId = await insertLoop(db, runId, 1, "catalog mid-stream");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
@@ -192,31 +193,31 @@ test("streaming exec: index render between samples picks up partial channel cont
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
         await dispatchPromise;
 
-        const indexEntries = async (): Promise<Array<{ scheme: string | null; pathname: string; content: string }>> => {
-            // Mirror what packet build queries — engine_render_index
-            // joins visibility ↔ entries ↔ entry_channels and yields one
-            // row per (entry, channel) where indexed=1 for the run.
-            // (The state column isn't projected here — index render
-            // doesn't gate on state. Channel state we read separately.)
-            const rows = await (db.engine_render_index as PrepMethod).all<{
+        const execStdout = async (): Promise<Array<{ scheme: string | null; pathname: string; content: string }>> => {
+            // Read the exec entry's stdout channel from the session catalog
+            // (engine_list_session_entries, the source behind plurnk://manifest.json):
+            // one row per (entry, channel) with the channel's LIVE content.
+            // Streaming is a channel property — partial bytes must be observable
+            // mid-stream regardless of how they're later rendered.
+            const rows = await (db.engine_list_session_entries as PrepMethod).all<{
                 scheme: string | null; pathname: string;
                 channel: string; content: string;
-            }>({ run_id: runId });
+            }>({ session_id: sessionId });
             return rows
                 .filter((r) => r.scheme === "exec" && r.channel === "stdout")
                 .map((r) => ({ scheme: r.scheme, pathname: r.pathname, content: r.content }));
         };
 
-        // Mid-stream snapshot of the index.
+        // Mid-stream snapshot of the catalog.
         await new Promise((r) => setTimeout(r, 700));
-        const mid = await indexEntries();
-        assert.equal(mid.length, 1, "exec entry visible in the index render mid-stream");
-        assert.ok(mid[0].content.length > 0, `index render reflects partial content; got "${mid[0].content}"`);
+        const mid = await execStdout();
+        assert.equal(mid.length, 1, "exec stdout visible in the catalog mid-stream");
+        assert.ok(mid[0].content.length > 0, `catalog reflects partial content; got "${mid[0].content}"`);
         assert.ok(mid[0].content.length < 8, "partial content < full 8 bytes (4\\n3\\n2\\n1\\n)");
 
         // After completion.
         await exec.idle();
-        const end = await indexEntries();
+        const end = await execStdout();
         assert.equal(end[0].content, "4\n3\n2\n1\n");
     } finally { await db.close(); }
 });

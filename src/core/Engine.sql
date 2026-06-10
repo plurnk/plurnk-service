@@ -79,20 +79,6 @@ UPDATE turns SET
     model = $model
 WHERE id = $id;
 
--- PREP: engine_render_index
--- Render-time index assembly (SPEC §5.2 {§5.2-render-filters-by-indexed}).
--- Yields one row per (entry, channel) where visibility.indexed = 1 for the run.
-SELECT
-    e.id AS entry_id, e.version, e.scope, e.session_id,
-    e.scheme, e.username, e.password, e.hostname, e.port,
-    e.pathname, e.params, e.attributes,
-    ec.name AS channel, ec.content, ec.mimetype, ec.tokens
-FROM visibility v
-JOIN entries e ON e.id = v.entry_id
-JOIN entry_channels ec ON ec.entry_id = v.entry_id AND ec.name = v.channel
-WHERE v.run_id = $run_id AND v.indexed = 1
-ORDER BY e.id, ec.name;
-
 -- PREP: engine_list_session_entries
 -- Every entry of a session — all schemes, all channels — the source for
 -- plurnk://manifest.json, the flat catalog of everything the session holds.
