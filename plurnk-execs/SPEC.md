@@ -6,7 +6,7 @@ Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors tha
 
 A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.
 
-The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python). plurnk-service's exec scheme still consumes the lower-level `resolveRuntime` / `SpawnArgs` helper on its legacy `streamShellCommand` path; its migration onto `SubprocessExecutor` is phased and on service's own timeline (plurnk-service#174 Q2). Both paths coexist until that cutover.
+The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python), built on the lower-level `resolveRuntime` / `SpawnArgs` helper. plurnk-service's exec scheme has adopted `SubprocessExecutor`; the discovery-registry + `probe()`/`effect()` consumption is realized in service `0.9.0` (`ExecutorRegistry` boot-discovers and probes siblings; `EffectPolicy` gates the proposal lifecycle).
 
 ## §2 Executor contract
 
@@ -88,7 +88,7 @@ For `exec`, per-runtime `effect()` supersedes the static `Exec.manifest.flags.pr
 Runtime failures are emitted as a grammar `TelemetryEvent` via the `emit` sink (plurnk-service#174 Q3); the scheme routes it to the engine's telemetry buffer — the same path grammar's `parse_error` takes. Events are not encoded into `stderr` (that pollutes program output) nor returned on `ExecResult` (that loses mid-run events).
 
 - `source`: `"exec:<runtime>"` (e.g. `"exec:search"`) or `"scheme:exec"`.
-- `kind`: producer-minted — `runtime_not_configured`, `spawn_failed`, `exited_nonzero`, `aborted`, and runtime-specific kinds (search: `searxng_unreachable`, `searxng_http_<n>`).
+- `kind`: producer-minted, open vocabulary. What the shipped executors actually emit: `SubprocessExecutor` → `spawn_failed` (a failed *start*; a nonzero exit is the program's own result and stays on `stderr`, **not** telemetered); search → `searxng_not_configured` / `searxng_unreachable` / `searxng_timeout` / `searxng_http_<n>` / `external_bang_refused`; sqlite → `sqlite_open_failed` / `sqlite_error`. A cancellation (`signal` abort) is normal flow — **not** emitted.
 - `message`: terse, factual. `position`: typically null at the runtime layer.
 
 The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordinate`) so the framework needs no `@plurnk/plurnk-grammar` dependency; grammar's `dist/schema/TelemetryEvent.json` is the source of truth.
@@ -112,7 +112,7 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
 
 A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
 
-Each runtime exports its `BaseExecutor` subclass; the consumer instantiates it per matched tag with the tag + glyph from the registry. (Module-export convention for the subclass settles as the first siblings ship.)
+Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
 
 ## §4 Subprocess helper (legacy path)
 
@@ -131,16 +131,16 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; }
 
 `resolveRuntime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
 
-The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). The `plurnk-execs-sh` / `-node` / `-python` siblings subclass it and differ only in their claimed `runtimes[]` tags. plurnk-service consumes `resolveRuntime` directly on its legacy path today and adopts `SubprocessExecutor` when it migrates.
+The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). On abort it kills the whole **process group** (`detached` spawn + `process.kill(-pid, …)`, SIGTERM→SIGKILL grace) so shell grandchildren can't leak (plurnk-execs#4). The `plurnk-execs-sh` / `-node` / `-python` siblings subclass it and differ only in their claimed `runtimes[]` tags and their `binary` getter (for `probe()`). `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
 
 ## §5 Consumer surface (plurnk-service)
 
-Per plurnk-service#174, the exec scheme:
+Per plurnk-service#174/#181/#182, realized in service `0.9.0`, the exec scheme:
 
-1. Resolves the runtime tag against the discovery registry; routes `search` (and future siblings) through the executor's `run()`.
-2. Seeds the exec entry's channels from `executor.channels`.
+1. Boot-discovers executors (`discover()`), `probe()`s each per-package, and offers the model the positive available-runtimes list; an unavailable runtime returns 501 carrying `probe()` `detail`.
+2. Resolves the runtime tag to its executor and runs it through `run()`, seeding the exec entry's channels from `executor.channels`.
 3. Provides the `write` / `setState` / `emit` sinks bound to its channel-write, channel-state, and engine-telemetry machinery; bridges its AbortController to `args.signal`; maps the `ExecResult` to close-status + wake summary.
-4. Keeps the legacy `streamShellCommand` path (via `resolveRuntime`) for subprocess runtimes until the `SubprocessExecutor` migration.
+4. Gates the proposal lifecycle by `effect(target)` (`EffectPolicy`: `host → propose`, `read`/`pure → auto`), running auto-run runtimes inline (synchronous return) while still landing the result as a re-readable entry.
 
 ## §6 Forbidden (for siblings)
 
