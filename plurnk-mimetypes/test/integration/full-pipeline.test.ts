@@ -23,7 +23,6 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         return new Mimetypes({
             discoverOptions: { packageDirs: [fixtureDir] },
             loader: async (_packageName) => import(handlerPath),
-            tokenize: async (text) => text.length,
         });
     }
 
@@ -43,7 +42,7 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         assert.deepEqual([...handler.extensions], [".txt"]);
     });
 
-    it("processes inline content end-to-end and returns ok:true with empty preview", async () => {
+    it("processes inline content end-to-end: metadata + empty structural channels", async () => {
         const m = buildMimetypes();
         const result = await m.process({
             path: "greeting.txt",
@@ -51,12 +50,16 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
-        // text/plain has no structural extraction path; preview is empty by
-        // design. The body never enters the radar — fetch is required.
-        assert.equal(result.preview, "");
+        assert.equal(result.totalLines, 2);
+        assert.equal(result.extent, 2);
+        // text/plain has no structural extraction path — empty by design.
+        assert.deepEqual(result.symbols, []);
+        assert.equal(result.deepJson, null);
+        assert.equal(result.deepXml, "");
+        assert.deepEqual(result.references, []);
     });
 
-    it("processes content read from disk and returns empty preview", async () => {
+    it("processes content read from disk", async () => {
         const filePath = path.join(tmp, "from-disk.txt");
         await fs.writeFile(filePath, "disk content");
 
@@ -64,17 +67,21 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         const result = await m.process({ path: filePath });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.preview, "");
+        assert.equal(result.totalLines, 1);
     });
 
-    it("budget is irrelevant — empty preview regardless of budget size", async () => {
+    it("channels: [] returns metadata only", async () => {
         const m = buildMimetypes();
         const result = await m.process(
             { path: "long.txt", content: "any content at all" },
-            { budget: 1_000_000 },
+            { channels: [] },
         );
-        assert.equal(result.ok, true);
-        assert.equal(result.preview, "");
+        assert.deepEqual(result, {
+            mimetype: "text/plain",
+            ok: true,
+            totalLines: 1,
+            extent: 1,
+        });
     });
 
     it("returns ok:false when the file doesn't exist", async () => {
@@ -82,7 +89,7 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
         const result = await m.process({ path: "/nonexistent/path/foo.txt" });
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.ok, false);
-        assert.equal(result.preview, "");
+        assert.equal("symbols" in result, false);
     });
 
     it("returns ok:false with null mimetype for unknown extension", async () => {
@@ -103,7 +110,6 @@ describe("full pipeline — text/plain fixture (no structural signal)", () => {
                 loadCount += 1;
                 return import(handlerPath);
             },
-            tokenize: async (text) => text.length,
         });
         await m.process({ path: "a.txt", content: "a" });
         await m.process({ path: "b.txt", content: "b" });

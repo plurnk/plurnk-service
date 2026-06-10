@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";
-import type { MimeSymbol, Preview, SymbolPreview } from "./types.ts";
+import type { MimeSymbol } from "./types.ts";
 
 const metadata = {
     mimetype: "text/plain",
@@ -37,11 +37,9 @@ describe("BaseHandler", () => {
         assert.doesNotThrow(() => h.validate("anything"));
     });
 
-    it("returns a symbols Preview with an empty symbol list when extractRaw is empty", async () => {
+    it("returns an empty references list by default (#19 lands the engine)", async () => {
         const h = new BaseHandler(metadata);
-        const preview = (await h.preview("anything")) as SymbolPreview;
-        assert.equal(preview.kind, "symbols");
-        assert.deepEqual([...preview.symbols], []);
+        assert.deepEqual(await h.references("anything"), []);
     });
 
     it("renders symbolsRaw from a subclass's extractRaw via format", async () => {
@@ -54,7 +52,7 @@ describe("BaseHandler", () => {
         assert.equal(await h.symbolsRaw("anything"), "class Foo [1-10]");
     });
 
-    it("returns a symbols Preview carrying the extractRaw output", async () => {
+    it("exposes extractRaw output as the structured symbols surface", async () => {
         class TestHandler extends BaseHandler {
             extractRaw(_content: string): MimeSymbol[] {
                 return [
@@ -64,24 +62,12 @@ describe("BaseHandler", () => {
             }
         }
         const h = new TestHandler(metadata);
-        const preview = (await h.preview("anything")) as SymbolPreview;
-        assert.equal(preview.kind, "symbols");
         assert.deepEqual(
-            [...preview.symbols],
+            await h.extractRaw("anything"),
             [
                 { name: "A", kind: "class", line: 1, endLine: 5 },
                 { name: "B", kind: "class", line: 10, endLine: 15 },
             ],
         );
-    });
-
-    it("allows subclasses to return null when no preview material is appropriate", async () => {
-        class NullHandler extends BaseHandler {
-            override preview(_content: string | Uint8Array): Preview {
-                return null;
-            }
-        }
-        const h = new NullHandler(metadata);
-        assert.equal(await h.preview("anything"), null);
     });
 });

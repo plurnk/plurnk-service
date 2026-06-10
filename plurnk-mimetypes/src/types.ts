@@ -26,51 +26,36 @@ export interface HandlerMetadata {
     extensions: readonly string[];
 }
 
-// Tokenize functions may be sync or async. Sync providers (most WASM-backed
-// tokenizers — tiktoken-js, llama-tokenizer-js, cl100k, etc.) return number
-// directly; genuinely-async providers (e.g., Gemini's REST countTokens)
-// return Promise<number>. All internal call sites `await` the result, which
-// is a no-op for non-thenables. (plurnk/plurnk-mimetypes#1.)
-export type TokenizeFn = (text: string) => number | Promise<number>;
-
 export interface ExtractionVisitor {
     visit(tree: unknown): unknown;
     readonly symbols: MimeSymbol[];
 }
 
-// Preview material returned by Handler.preview(). The handler authors the
-// preview policy; the framework owns the budget math. Handlers never see the
-// token budget or the tokenize function.
-//
-// Three shapes:
-//   - SymbolPreview: structural outline (handler has structure to extract).
-//   - TextPreview: oriented text slice (content is inherently flat, or the
-//     handler's structural extraction came up empty and a body slice is
-//     better than nothing). Framework appends/prepends a [[TRUNCATED]] marker
-//     when the slice doesn't fit the full content so the model knows the
-//     preview is incomplete and a fetch is needed.
-//   - null: handler explicitly declines — no preview signal of any kind.
-export type Preview = SymbolPreview | TextPreview | null;
+// Classified reference kinds for the references channel (issue #19). Working
+// set — the taxonomy freezes against plurnk-service's symbol_refs schema and
+// the concrete @-dialect queries it must answer (plurnk-service#186) before
+// any extraction engine ships.
+export type RefKind =
+    | "import"
+    | "call"
+    | "instantiate"
+    | "inherit"
+    | "type"
+    | "use";
 
-// Structural preview: an outline of symbols. Framework fits via fitSymbols(),
-// dropping deepest-first then trailing roots until the budget is met.
-export interface SymbolPreview {
-    readonly kind: "symbols";
-    readonly symbols: readonly MimeSymbol[];
-}
-
-// Text preview: oriented content slice.
-//
-//   orientation: "head" — keep the start, trail with `...[[TRUNCATED]]` when
-//                          truncated. Documents, articles, source files,
-//                          prose — content read top-down.
-//   orientation: "tail" — keep the end, lead with `[[TRUNCATED]]...` when
-//                          truncated. Streams, logs, append-only feeds,
-//                          diffs — content where recency matters.
-export interface TextPreview {
-    readonly kind: "text";
-    readonly text: string;
-    readonly orientation: "head" | "tail";
+// One symbol *use* (never a definition — defs live in the symbols channel).
+// Produced by the references channel (issue #16 D4): the per-entry raw
+// material for plurnk-service's symbol_refs rows. `container` is the
+// qualified path of the enclosing definition — the source node of the graph
+// edge; absent for module-top-level references.
+export interface MimeRef {
+    name: string;
+    kind: RefKind;
+    line: number;       // 1-indexed
+    column: number;     // 1-indexed
+    endLine: number;
+    endColumn: number;
+    container?: string;
 }
 
 export interface Registry {

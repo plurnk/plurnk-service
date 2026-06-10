@@ -9,7 +9,6 @@ import type {
     Discovery,
     HandlerInfo,
     MimeSymbol,
-    Preview,
     Registry,
 } from "./types.ts";
 
@@ -42,14 +41,6 @@ class FakeStrictHandler extends BaseHandler {
     }
     override extractRaw(_content: string): MimeSymbol[] {
         return [{ name: "Strict", kind: "class", line: 1, endLine: 5 }];
-    }
-}
-
-// A handler that returns null — exercises the framework's
-// no-structural-signal path (mimetypes without extractable symbols).
-class FakeNullHandler extends BaseHandler {
-    override preview(_content: string | Uint8Array): Preview {
-        return null;
     }
 }
 
@@ -158,9 +149,7 @@ describe("Mimetypes — getHandler", () => {
         assert.equal(await m.getHandler("text/plain"), null);
     });
 
-    it("passes only metadata to handlers (no tokenize injection)", async () => {
-        // v0.4.0: handlers see only their HandlerMetadata. The framework owns
-        // tokenize entirely and never exposes it to the handler layer.
+    it("passes only metadata to handlers", async () => {
         let receivedArgs: unknown[] = [];
         class CapturingHandler extends BaseHandler {
             constructor(...args: unknown[]) {
@@ -171,7 +160,6 @@ describe("Mimetypes — getHandler", () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: CapturingHandler }),
-            tokenize: async (text) => text.length,
         });
         const h = await m.getHandler("text/plain");
         assert.ok(h);
@@ -181,120 +169,41 @@ describe("Mimetypes — getHandler", () => {
     });
 });
 
-describe("Mimetypes — process", () => {
-    it("returns ok:false with null mimetype when detection fails", async () => {
+describe("Mimetypes — process: metadata + error paths", () => {
+    it("returns ok:false metadata-only when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
         assert.deepEqual(result, {
             mimetype: null,
-            preview: "",
-            previewTokens: 0,
+            ok: false,
             totalLines: 0,
             extent: 0,
-            ok: false,
-            deepJson: null,
-            deepXml: "",
         });
     });
 
-    it("processes inline content (no fs read) when content is provided", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-        });
-        const result = await m.process({ path: "anything.txt", content: "hello" });
-        assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.preview, "module Plain [1]");
-        assert.equal(result.ok, true);
-    });
-
-    it("populates extent on the ok path (default: line count)", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-        });
-        const result = await m.process({ path: "anything.txt", content: "one\ntwo\nthree" });
-        assert.equal(result.extent, 3);
-        assert.equal(result.totalLines, 3);
-    });
-
-    it("deepJson default is null; deepXml is empty string when handler doesn't supply a tree", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-        });
-        const result = await m.process({ path: "anything.txt", content: "hello" });
-        assert.equal(result.deepJson, null);
-        assert.equal(result.deepXml, "");
-    });
-
-    it("populates deepJson and deepXml when handler supplies a tree (projection by framework)", async () => {
-        class WithDeepTree extends BaseHandler {
-            override extractRaw(): MimeSymbol[] {
-                return [{ name: "Plain", kind: "module", line: 1, endLine: 1 }];
-            }
-            override deepJson(): unknown {
-                return { type: "root", line: 1, endLine: 1, name: "Plain" };
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: WithDeepTree }),
-        });
-        const result = await m.process({ path: "anything.txt", content: "hello" });
-        assert.deepEqual(result.deepJson, { type: "root", line: 1, endLine: 1, name: "Plain" });
-        assert.equal(
-            result.deepXml,
-            '<root xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
-        );
-    });
-
-    it("reads content from disk when only path is provided", async () => {
-        const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-mt-"));
-        try {
-            const filePath = path.join(tmp, "test.txt");
-            await fs.writeFile(filePath, "file content");
-
-            const m = new Mimetypes({
-                discovery: makeDiscovery([plainInfo]),
-                loader: async () => ({ default: FakePlainHandler }),
-            });
-            const result = await m.process({ path: filePath });
-            assert.equal(result.mimetype, "text/plain");
-            assert.equal(result.ok, true);
-            assert.equal(result.preview, "module Plain [1]");
-        } finally {
-            await fs.rm(tmp, { recursive: true, force: true });
-        }
-    });
-
-    it("returns ok:false with empty preview when content cannot be read", async () => {
+    it("ok:false metadata-only when content cannot be read", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
         });
         const result = await m.process({ path: "/nonexistent/path/foo.txt" });
-        assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.ok, false);
-        assert.equal(result.preview, "");
+        assert.deepEqual(result, {
+            mimetype: "text/plain",
+            ok: false,
+            totalLines: 0,
+            extent: 0,
+        });
     });
 
-    it("returns ok:false with empty preview when handler is missing (no raw fallback)", async () => {
-        // v0.4.0: there is no raw-content fallback. Handler authority over
-        // preview material is absolute; if the handler is unreachable, the
-        // framework reports failure rather than inventing material.
+    it("ok:false metadata-only when handler is missing", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: undefined }),
-            tokenize: async (text) => text.length,
         });
-        const result = await m.process(
-            { path: "foo.txt", content: "raw fallback content" },
-            { budget: 1000 },
-        );
-        assert.equal(result.mimetype, "text/plain");
-        assert.equal(result.preview, "");
+        const result = await m.process({ path: "foo.txt", content: "raw" });
         assert.equal(result.ok, false);
+        assert.equal(result.mimetype, "text/plain");
+        assert.equal("symbols" in result, false, "error results carry no channel fields");
     });
 
     it("propagates validate errors per error policy", async () => {
@@ -308,62 +217,6 @@ describe("Mimetypes — process", () => {
             },
             /invalid content/,
         );
-    });
-
-    it("uses provided budget for preview", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-            tokenize: async (text) => text.length,
-        });
-        const result = await m.process(
-            { path: "foo.txt", content: "hello world" },
-            { budget: 1000 },
-        );
-        assert.equal(result.preview, "module Plain [1]");
-    });
-
-    it("framework returns empty preview (with ok:true) when handler returns null", async () => {
-        const nullInfo: HandlerInfo = {
-            mimetype: "text/sample",
-            glyph: "📄",
-            packageName: "@plurnk/plurnk-mimetypes-text-sample",
-            extensions: [".sample"],
-            binary: false,
-    source: "package",
-        };
-        const m = new Mimetypes({
-            discovery: makeDiscovery([nullInfo]),
-            loader: async () => ({ default: FakeNullHandler }),
-            tokenize: async (text) => text.length,
-        });
-        const result = await m.process(
-            { path: "foo.sample", content: "abcdefghij" },
-            { budget: 1000 },
-        );
-        assert.equal(result.ok, true);
-        assert.equal(result.preview, "");
-    });
-
-    it("treats missing budget as unbounded (no truncation when budget is unspecified)", async () => {
-        class BigHandler extends BaseHandler {
-            override extractRaw(_content: string): MimeSymbol[] {
-                return Array.from({ length: 50 }, (_, i) => ({
-                    name: `Sym${i}`,
-                    kind: "class" as const,
-                    line: i + 1,
-                    endLine: i + 1,
-                }));
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: BigHandler }),
-            tokenize: async (text) => text.length,
-        });
-        const result = await m.process({ path: "foo.txt", content: "x" });
-        assert.equal(result.ok, true);
-        assert.ok(result.preview.includes("Sym49"), "all 50 symbols should appear");
     });
 
     it("hint overrides extension during detection", async () => {
@@ -381,116 +234,153 @@ describe("Mimetypes — process", () => {
     });
 });
 
-describe("Mimetypes — process: N:\\t line-number rendering (#8)", () => {
-    class HeadTextHandler extends BaseHandler {
-        override preview(content: string | Uint8Array): Preview {
-            const text = typeof content === "string" ? content : "";
-            return { kind: "text", text, orientation: "head" };
-        }
-    }
-
-    class TailTextHandler extends BaseHandler {
-        override preview(content: string | Uint8Array): Preview {
-            const text = typeof content === "string" ? content : "";
-            return { kind: "text", text, orientation: "tail" };
-        }
-    }
-
-    it("symbols preview emitted unmodified — outline already carries source lines", async () => {
+describe("Mimetypes — process: channel selection (#17)", () => {
+    it("default materializes all four channels", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
         });
-        const r = await m.process({ path: "foo.txt", content: "anything" });
-        // FakePlainHandler emits one symbol → outline is "module Plain [1]".
-        // No N:\t prefix added (symbols carry their own line annotation).
-        assert.equal(r.preview, "module Plain [1]");
+        const r = await m.process({ path: "foo.txt", content: "hello" });
+        assert.deepEqual(r.symbols, [{ name: "Plain", kind: "module", line: 1, endLine: 1 }]);
+        assert.equal(r.deepJson, null);
+        assert.equal(r.deepXml, "");
+        assert.deepEqual(r.references, []);
+        assert.equal(r.ok, true);
     });
 
-    it("head-oriented text preview gets N:\\t prefixes starting at 1", async () => {
+    it("channels: [] yields metadata only — no channel fields, no extraction paid", async () => {
+        let extractCalls = 0;
+        class CountingHandler extends BaseHandler {
+            override extractRaw(): MimeSymbol[] {
+                extractCalls += 1;
+                return [];
+            }
+            override deepJson(): unknown {
+                extractCalls += 1;
+                return null;
+            }
+        }
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: HeadTextHandler }),
+            loader: async () => ({ default: CountingHandler }),
         });
-        const content = "first line\nsecond line\nthird line";
-        const r = await m.process({ path: "foo.txt", content });
-        assert.equal(r.preview, "1:\tfirst line\n2:\tsecond line\n3:\tthird line");
+        const r = await m.process({ path: "foo.txt", content: "a\nb\nc" }, { channels: [] });
+        assert.deepEqual(r, {
+            mimetype: "text/plain",
+            ok: true,
+            totalLines: 3,
+            extent: 3,
+        });
+        assert.equal(extractCalls, 0, "no channel work for channels: []");
     });
 
-    it("head-oriented text with a single line still gets numbered", async () => {
+    it("requesting a subset materializes exactly that subset", async () => {
+        class WithDeepTree extends BaseHandler {
+            override extractRaw(): MimeSymbol[] {
+                return [{ name: "Plain", kind: "module", line: 1, endLine: 1 }];
+            }
+            override deepJson(): unknown {
+                return { type: "root", line: 1, endLine: 1 };
+            }
+        }
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: HeadTextHandler }),
+            loader: async () => ({ default: WithDeepTree }),
         });
-        const r = await m.process({ path: "foo.txt", content: "just one line" });
-        assert.equal(r.preview, "1:\tjust one line");
+        const r = await m.process(
+            { path: "foo.txt", content: "hello" },
+            { channels: ["deepJson"] },
+        );
+        assert.deepEqual(r.deepJson, { type: "root", line: 1, endLine: 1 });
+        assert.equal("symbols" in r, false);
+        assert.equal("deepXml" in r, false);
+        assert.equal("references" in r, false);
     });
 
-    it("tail-oriented text preview with no truncation numbers from 1", async () => {
+    it("deepXml alone computes the projection without exposing deepJson", async () => {
+        class WithDeepTree extends BaseHandler {
+            override deepJson(): unknown {
+                return { type: "root", line: 1, endLine: 1, name: "Plain" };
+            }
+        }
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: TailTextHandler }),
-            tokenize: async (text) => text.length,
+            loader: async () => ({ default: WithDeepTree }),
         });
-        const content = "line 1\nline 2\nline 3";
-        // Big budget — no truncation needed; whole content surfaces.
-        const r = await m.process({ path: "foo.txt", content }, { budget: 10000 });
-        assert.equal(r.preview, "1:\tline 1\n2:\tline 2\n3:\tline 3");
+        const r = await m.process(
+            { path: "foo.txt", content: "hello" },
+            { channels: ["deepXml"] },
+        );
+        assert.equal(
+            r.deepXml,
+            '<root xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
+        );
+        assert.equal("deepJson" in r, false);
     });
 
-    it("tail-oriented text preview with truncation numbers from the surviving source line", async () => {
+    it("honors a handler deepXml() override for the deepXml channel", async () => {
+        class SourceMarkupHandler extends BaseHandler {
+            override deepJson(): unknown {
+                return { type: "ignored" };
+            }
+            override async deepXml(): Promise<string> {
+                return "<real-source-markup/>";
+            }
+        }
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: TailTextHandler }),
-            tokenize: async (text) => text.length,
+            loader: async () => ({ default: SourceMarkupHandler }),
         });
-        // 10 lines total; budget too small for everything so the tail
-        // truncates. Expect the surviving lines numbered with their original
-        // source-line numbers (not 1, 2, 3...).
-        const content = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
-        // Total length: 10 lines × ~7 chars + 9 newlines ≈ 79. Budget 50 forces truncation.
-        const r = await m.process({ path: "foo.txt", content }, { budget: 50 });
-        // The preview must include the [[TRUNCATED]] marker because tail
-        // orientation was truncated.
-        assert.ok(r.preview.includes("[[TRUNCATED]]"), `expected marker; got ${JSON.stringify(r.preview)}`);
-        // The first line of the preview should NOT be numbered 1 (because
-        // it's a tail slice — earlier source lines were dropped).
-        const firstLineLabel = parseInt(r.preview.split("\n")[0].split(":")[0]);
-        assert.ok(firstLineLabel > 1, `expected first-line label > 1 for tail truncation; got ${firstLineLabel}`);
-        // The last surviving line of the source should appear in the preview
-        // and carry a believable source-line label (~10).
-        assert.ok(r.preview.includes("line 10"), "expected line 10 to survive a tail-truncation preview");
+        const r = await m.process({ path: "foo.txt", content: "x" }, { channels: ["deepXml"] });
+        assert.equal(r.deepXml, "<real-source-markup/>");
     });
 
-    it("empty preview short-circuits — no rendering applied", async () => {
+    it("references channel defaults to [] (engine lands with #19)", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakeNullHandler }),
+            loader: async () => ({ default: FakePlainHandler }),
         });
-        const r = await m.process({ path: "foo.txt", content: "ignored" });
-        assert.equal(r.preview, "");
+        const r = await m.process(
+            { path: "foo.txt", content: "x" },
+            { channels: ["references"] },
+        );
+        assert.deepEqual(r.references, []);
+        assert.equal("symbols" in r, false);
     });
 
-    it("error paths leave preview empty (no rendering on null mimetype / missing handler)", async () => {
-        const m = new Mimetypes({ discovery: makeDiscovery([]) });
-        const r = await m.process({ path: "foo.unknown", content: "x" });
-        assert.equal(r.preview, "");
-    });
-
-    it("previewTokens reflects the line-numbered preview (includes prefix overhead)", async () => {
+    it("symbols channel carries the structured extractRaw output", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: HeadTextHandler }),
-            tokenize: async (text) => text.length,
+            loader: async () => ({ default: FakePlainHandler }),
         });
-        const r = await m.process({ path: "foo.txt", content: "a\nb\nc" });
-        // "1:\ta\n2:\tb\n3:\tc" = 15 chars. previewTokens should match.
-        assert.equal(r.preview, "1:\ta\n2:\tb\n3:\tc");
-        assert.equal(r.previewTokens, r.preview.length);
+        const r = await m.process(
+            { path: "foo.txt", content: "x" },
+            { channels: ["symbols"] },
+        );
+        assert.deepEqual(r.symbols, [{ name: "Plain", kind: "module", line: 1, endLine: 1 }]);
+    });
+
+    it("reads content from disk when only path is provided", async () => {
+        const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-mt-"));
+        try {
+            const filePath = path.join(tmp, "test.txt");
+            await fs.writeFile(filePath, "file content");
+
+            const m = new Mimetypes({
+                discovery: makeDiscovery([plainInfo]),
+                loader: async () => ({ default: FakePlainHandler }),
+            });
+            const result = await m.process({ path: filePath });
+            assert.equal(result.mimetype, "text/plain");
+            assert.equal(result.ok, true);
+            assert.deepEqual(result.symbols, [{ name: "Plain", kind: "module", line: 1, endLine: 1 }]);
+        } finally {
+            await fs.rm(tmp, { recursive: true, force: true });
+        }
     });
 });
 
-describe("Mimetypes — process: totalLines (#9)", () => {
+describe("Mimetypes — process: totalLines + extent (#9)", () => {
     it("returns 0 for empty content", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
@@ -535,15 +425,37 @@ describe("Mimetypes — process: totalLines (#9)", () => {
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
         });
-        // "\n" = one empty line (terminated)
         const r1 = await m.process({ path: "foo.txt", content: "\n" });
         assert.equal(r1.totalLines, 1);
-        // "\n\n" = two empty lines (both terminated)
         const r2 = await m.process({ path: "foo.txt", content: "\n\n" });
         assert.equal(r2.totalLines, 2);
-        // "a\n\nb" = three lines (a, empty, b)
         const r3 = await m.process({ path: "foo.txt", content: "a\n\nb" });
         assert.equal(r3.totalLines, 3);
+    });
+
+    it("populates extent on the ok path (default: line count)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const result = await m.process({ path: "anything.txt", content: "one\ntwo\nthree" });
+        assert.equal(result.extent, 3);
+        assert.equal(result.totalLines, 3);
+    });
+
+    it("extent honors a handler override (non-line units)", async () => {
+        class RowsHandler extends BaseHandler {
+            override extent(): number {
+                return 42;
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: RowsHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "a\nb" }, { channels: [] });
+        assert.equal(r.extent, 42);
+        assert.equal(r.totalLines, 2, "totalLines stays the editor convention");
     });
 
     it("returns 0 for binary content (lines not meaningful for binary mimetypes)", async () => {
@@ -553,22 +465,15 @@ describe("Mimetypes — process: totalLines (#9)", () => {
             packageName: "@plurnk/plurnk-mimetypes-application-octet-stream",
             extensions: [".bin"],
             binary: true,
-    source: "package",
+            source: "package",
         };
-        class BinaryHandler extends BaseHandler {
-            override preview(): Preview {
-                return null;
-            }
-        }
+        class BinaryHandler extends BaseHandler {}
         const m = new Mimetypes({
             discovery: makeDiscovery([binaryInfo]),
             loader: async () => ({ default: BinaryHandler }),
         });
-        // Pass Uint8Array directly (the orchestrator routes binary content
-        // through fs.readFile as Uint8Array; inline equivalent here).
         const bytes = new Uint8Array([0x00, 0x0a, 0x0a, 0xff, 0x0a]);
         const r = await m.process({ path: "foo.bin", content: bytes });
-        // Binary content → 0, regardless of how many \n bytes happen to be there.
         assert.equal(r.totalLines, 0);
     });
 
@@ -590,95 +495,6 @@ describe("Mimetypes — process: totalLines (#9)", () => {
         });
         const r3 = await noHandler.process({ path: "foo.txt", content: "anything" });
         assert.equal(r3.totalLines, 0);
-    });
-
-    it("is independent of how the preview was budget-fitted (totalLines = source, not preview)", async () => {
-        // A 20-line source, tail-truncated by a tight budget. totalLines
-        // should reflect ALL 20 source lines even though the preview only
-        // shows a few.
-        class HeadTextHandler extends BaseHandler {
-            override preview(content: string | Uint8Array): Preview {
-                const text = typeof content === "string" ? content : "";
-                return { kind: "text", text, orientation: "head" };
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: HeadTextHandler }),
-            tokenize: async (text) => text.length,
-        });
-        const content = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
-        const r = await m.process({ path: "foo.txt", content }, { budget: 50 });
-        assert.equal(r.totalLines, 20);
-        // The preview itself is truncated...
-        assert.ok(r.preview.includes("[[TRUNCATED]]"));
-        // ...but totalLines still reflects the full source.
-    });
-});
-
-describe("Mimetypes — process: previewTokens (#7)", () => {
-    it("returns previewTokens 0 when detection fails", async () => {
-        const m = new Mimetypes({ discovery: makeDiscovery([]) });
-        const r = await m.process({ path: "foo.unknown", content: "x" });
-        assert.equal(r.previewTokens, 0);
-    });
-
-    it("returns previewTokens 0 when content read fails", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-        });
-        const r = await m.process({ path: "/nonexistent.txt" });
-        assert.equal(r.previewTokens, 0);
-    });
-
-    it("returns previewTokens 0 when handler is missing", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: undefined }),
-        });
-        const r = await m.process({ path: "foo.txt", content: "raw" });
-        assert.equal(r.previewTokens, 0);
-    });
-
-    it("returns previewTokens 0 for empty preview without paying a tokenize call", async () => {
-        let tokenizeCalls = 0;
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakeNullHandler }),
-            tokenize: async (text) => { tokenizeCalls += 1; return text.length; },
-        });
-        const r = await m.process({ path: "foo.txt", content: "anything" });
-        assert.equal(r.previewTokens, 0);
-        // FakeNullHandler.preview returns null → fitPreview returns "" → we
-        // short-circuit. fitSymbols/fitContent never run, tokenize never runs.
-        assert.equal(tokenizeCalls, 0);
-    });
-
-    it("returns the token count of the fitted preview", async () => {
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-            tokenize: async (text) => text.length,
-        });
-        const r = await m.process({ path: "foo.txt", content: "anything" });
-        // FakePlainHandler emits one symbol; preview is "module Plain [1]".
-        assert.equal(r.previewTokens, r.preview.length);
-        assert.equal(r.previewTokens, "module Plain [1]".length);
-    });
-
-    it("matches the count a consumer would compute by tokenizing the returned preview", async () => {
-        // The whole point of #7: consumer skips re-tokenize. Verify the
-        // surfaced number is what they'd otherwise have to compute.
-        const tokenize = async (text: string) => text.length;
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: FakePlainHandler }),
-            tokenize,
-        });
-        const r = await m.process({ path: "foo.txt", content: "anything" });
-        const consumerWouldGet = await tokenize(r.preview);
-        assert.equal(r.previewTokens, consumerWouldGet);
     });
 });
 

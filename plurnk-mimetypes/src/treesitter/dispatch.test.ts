@@ -43,7 +43,8 @@ describe("tree-sitter registry — dispatch wiring", () => {
         });
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/x-python");
-        assert.ok(result.preview.includes("class Foo"));
-        assert.ok(result.preview.includes("method bar"));
+        const names = (result.symbols ?? []).map((s) => `${s.kind} ${s.name}`);
+        assert.ok(names.includes("class Foo"), `expected class Foo in ${names}`);
+        assert.ok(names.includes("method bar"), `expected method bar in ${names}`);
     });
 });

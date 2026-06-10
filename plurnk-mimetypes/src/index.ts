@@ -1,6 +1,7 @@
 // Top-level orchestrator
 export { default as Mimetypes } from "./Mimetypes.ts";
 export type {
+    Channel,
     HandlerLoader,
     MimetypesOptions,
     ProcessInput,
@@ -37,10 +38,6 @@ export {
 } from "./format.ts";
 export type { TreeNode } from "./format.ts";
 
-// Budget-fitting (Preview dispatcher + symbol/content primitives for handler
-// authors building their own orchestration on top of the framework).
-export { fitContent, fitPreview, fitSymbols } from "./fit.ts";
-
 // Body-matcher query (parseBodyMatcher + per-dialect primitives + the bare-
 // leaves outline builder + error classes). Used by handler authors building
 // custom dialect overrides.
@@ -66,10 +63,6 @@ export type {
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
 export type { CompileOptions } from "./compile.ts";
 
-// Sensible defaults exposed for tests, standalone use, and consumers building
-// their own orchestration on top of the primitives above.
-export { defaultTokenize } from "./defaults.ts";
-
 // Public types
 export type {
     DetectInput,
@@ -78,13 +71,11 @@ export type {
     ExtractionVisitor,
     HandlerInfo,
     HandlerMetadata,
+    MimeRef,
     MimeSymbol,
-    Preview,
     QueryDialect,
     QueryMatch,
+    RefKind,
     Registry,
     SymbolKind,
-    SymbolPreview,
-    TextPreview,
-    TokenizeFn,
 } from "./types.ts";

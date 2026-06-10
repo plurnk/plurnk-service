@@ -2,7 +2,7 @@
 
 Framework + detection service for the `@plurnk/plurnk-mimetypes-*` handler family. Sits between [plurnk-service](https://github.com/plurnk/plurnk-service) (the engine) and individual per-mimetype handler repos (the implementations).
 
-plurnk-service hands a path or content blob to `Mimetypes.process(...)` and gets back `{ mimetype, preview, previewTokens, totalLines, extent, ok, deepJson, deepXml }`. The service stays mimetype-illiterate; this helper owns detection, discovery, handler instantiation, outline formatting, token-budgeted preview fitting, the deep-channel projections, the duck contract spec, and the build utilities handler repos consume.
+plurnk-service hands a path or content blob to `Mimetypes.process(...)` and gets back metadata (`mimetype`, `ok`, `totalLines`, `extent`) plus the structural channels it asked for: `symbols` (structured definitions), `deepJson` (jsonpath target), `deepXml` (xpath target), `references` (classified symbol uses). The service stays mimetype-illiterate; this helper owns detection, discovery, handler instantiation, channel selection and projection, the duck contract spec, and the build utilities handler repos consume.
 
 ## install
 
@@ -58,7 +58,7 @@ npm install \
   @plurnk/plurnk-mimetypes-grammar-zig
 ```
 
-The framework auto-detects which grammars are installed; no code changes when you add or remove one. When a detected mimetype's grammar isn't installed, `process()` degrades to a text-plain fallback and reports the missing package on `ProcessResult.grammarMissing` — pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
+The framework auto-detects which grammars are installed; no code changes when you add or remove one. When a detected mimetype's grammar isn't installed, `process()` degrades — `ok` stays true, metadata is real, requested channels come back empty, and the missing package is reported on `ProcessResult.grammarMissing`. Pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
 
 ## use — orchestrator (plurnk-service side)
 
@@ -66,28 +66,26 @@ The framework auto-detects which grammars are installed; no code changes when yo
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const mimetypes = new Mimetypes({
-    tokenize: (text) => myProviderTokenizer(text),   // sync or async
-    defaultMimetype: "text/markdown",                // fall back when nothing matches
+    defaultMimetype: "text/markdown",   // fall back when nothing matches
 });
 
 const result = await mimetypes.process(
     { path: "src/main.py" },
-    { budget: 256 },
+    { channels: ["symbols", "deepJson", "deepXml"] },   // default: all four
 );
-// result.mimetype      === "text/x-python"
-// result.preview       === bounded outline within budget tokens (model-facing)
-// result.previewTokens === token count of the rendered preview
-// result.totalLines    === source line count; result.extent === navigation bound
-// result.deepJson      === structural tree (jsonpath query target, tool-facing)
-// result.deepXml       === XML projection of deepJson (xpath query target)
-// result.ok            === true
+// result.mimetype   === "text/x-python"
+// result.symbols    === MimeSymbol[] — structured definitions
+// result.deepJson   === structural tree (jsonpath query target)
+// result.deepXml    === XML projection of deepJson (xpath query target)
+// result.totalLines === source line count; result.extent === navigation bound
+// result.ok         === true
 ```
 
-Without a budget the preview is unbounded. plurnk-service supplies the real budget (sourced from `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`).
+Channels are materialized per call: unrequested channels are never computed and their fields are absent. `channels: []` is the cheap stat call — metadata only, no parse. The `references` channel (classified symbol uses for code-graph consumers) ships with its final shape and returns `[]` until the per-language extraction engine lands.
 
 `defaultMimetype` is the mimetype the orchestrator substitutes when detection finds no match. For LLM-driven systems where most content is model-generated, `"text/markdown"` is almost always the right default. Omit the option to preserve strict null-on-miss behavior.
 
-`tokenize` accepts sync or async signatures. Sync WASM-backed tokenizers (tiktoken-js, llama-tokenizer-js, etc.) don't need to be wrapped in `async`.
+To render symbols as an outline for human eyes, use `format(result.symbols)`.
 
 Body-matcher queries dispatch through `mimetypes.query(input, expression)` — regex (`/pattern/`), glob, jsonpath (`$.field`) against the deep-json channel, and xpath (`//selector`) against the deep-xml channel.
 
@@ -95,7 +93,7 @@ Pipeline failure modes are documented in [SPEC.md](SPEC.md#7-error-policy).
 
 ## use — handler authors
 
-A handler is a class extending `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtractor` for grammar-backed extraction). Implement `extractRaw(content)`; the framework derives `preview`, `symbolsRaw`, the deep channels, and query dispatch from the base classes.
+A handler is a class extending `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtractor` for grammar-backed extraction). Implement `extractRaw(content)`; the framework derives `symbolsRaw`, the deep channels, and query dispatch from the base classes.
 
 ```ts
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
@@ -147,9 +145,6 @@ The package exposes its full primitive surface for tools building on top of it:
 | `discover(options)` | scan installed `@plurnk/plurnk-mimetypes-*` packages |
 | `emptyRegistry()` | construct an empty `Registry` |
 | `format(symbols)` | `MimeSymbol[]` → indented outline string |
-| `fitPreview(preview, budget, tokenize)` | Preview dispatcher → fitted string |
-| `fitSymbols(symbols, budget, tokenize)` | drop-deepest-first token-budget truncation |
-| `fitContent(text, budget, tokenize, orientation)` | oriented text truncation with `[[TRUNCATED]]` marker |
 | `buildTree(symbols)` | flat `MimeSymbol[]` → nested `TreeNode[]` |
 | `renderTree(nodes)` | `TreeNode[]` → outline string |
 | `maxDepth(nodes)` / `pruneToMaxDepth(nodes, limit)` | tree depth primitives |
@@ -161,9 +156,8 @@ The package exposes its full primitive surface for tools building on top of it:
 | `GrammarNotInstalledError` | thrown by `process({ strict: true })` / `getHandler` when a grammar package is missing |
 | `runCompile(opts)` | invoke antlr-ng + post-process imports |
 | `rewriteImports(dir)` / `injectBaseImports(dir)` | generated-output post-processing utilities |
-| `defaultTokenize` | fallback heuristic (`text.length / 2`); biased toward safety |
 
-Public types: `MimeSymbol`, `SymbolKind`, `Preview`, `SymbolPreview`, `TextPreview`, `HandlerMetadata`, `HandlerContent`, `TokenizeFn`, `ExtractionVisitor`, `Registry`, `DetectInput`, `HandlerInfo`, `Discovery`, `DiscoverOptions`, `TreeNode`, `CompileOptions`, `HandlerLoader`, `MimetypesOptions`, `ProcessInput`, `ProcessOptions`, `ProcessResult`, `QueryDialect`, `QueryMatch`, `ParsedBodyMatcher`, `JsonOutline`, `DeepTreeNode`, `TreeSitterTree`, `TreeSitterNode`, `TreeSitterParser`, `TelemetryEvent`, `ContentOffset`, `LogCoordinate`.
+Public types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ExtractionVisitor`, `Registry`, `DetectInput`, `HandlerInfo`, `Discovery`, `DiscoverOptions`, `TreeNode`, `CompileOptions`, `HandlerLoader`, `MimetypesOptions`, `ProcessInput`, `ProcessOptions`, `ProcessResult`, `QueryDialect`, `QueryMatch`, `ParsedBodyMatcher`, `JsonOutline`, `DeepTreeNode`, `TreeSitterTree`, `TreeSitterNode`, `TreeSitterParser`, `TelemetryEvent`, `ContentOffset`, `LogCoordinate`.
 
 ## cli
 

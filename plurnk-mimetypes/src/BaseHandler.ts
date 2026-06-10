@@ -5,8 +5,8 @@ import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./
 import { InvalidExpressionError, UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
+    MimeRef,
     MimeSymbol,
-    Preview,
     QueryDialect,
     QueryMatch,
 } from "./types.ts";
@@ -17,15 +17,11 @@ import type {
 // reads files (or routes inline content) to the appropriate shape per handler.
 export type HandlerContent = string | Uint8Array;
 
-// Base class for mimetype handlers. Subclasses author preview policy by
-// overriding `preview(content)` (and `validate(content)` when the mimetype
-// has a real syntax check). The framework owns budget math and tokenization
-// entirely — handlers never see budget or tokenize values.
-//
-// Diagnostic access (extractRaw, symbolsRaw) is available via getHandler()
-// for consumers needing the unbudgeted structural data. Naming intentionally
-// signals "Plan B" — the canonical interface is `Mimetypes.process` which
-// returns the framework-fitted preview.
+// Base class for mimetype handlers. Subclasses override the structural
+// channels their algebra supports: extractRaw (symbols/defs), deepJson,
+// deepXml, references, extent — plus validate when the mimetype has a real
+// syntax check. The canonical consumer interface is `Mimetypes.process`,
+// which materializes the requested channels per call (issue #17).
 export default class BaseHandler {
     readonly mimetype: string;
     readonly glyph: string;
@@ -91,27 +87,21 @@ export default class BaseHandler {
         // Default: anything is valid.
     }
 
-    // Unbudgeted structural rendering — `format(await extractRaw(content))`
-    // by default. Diagnostic access; not the primary surface (see preview).
+    // Rendered outline — `format(await extractRaw(content))`. Diagnostic /
+    // human surface; the structured MimeSymbol[] is the consumer channel.
     async symbolsRaw(content: HandlerContent): Promise<string> {
         return format(await this.extractRaw(content));
     }
 
-    // The handler's preview policy. Returns:
-    //   - SymbolPreview: structural outline (framework fits via fit())
-    //   - null:          no preview (handler explicitly declines)
-    //
-    // Default: SymbolPreview wrapping awaited extractRaw output. Handlers whose
-    // structure isn't reachable through extractRaw (notably async ones like
-    // application-pdf) override preview directly. Return type stays a union
-    // so sync handlers can return Preview directly without ceremony; the
-    // default impl is async to handle async extractRaw transparently.
-    preview(content: HandlerContent): Preview | Promise<Preview> {
-        const raw = this.extractRaw(content);
-        if (raw instanceof Promise) {
-            return raw.then((symbols) => ({ kind: "symbols" as const, symbols }));
-        }
-        return { kind: "symbols", symbols: raw };
+    // Classified symbol uses for the references channel (issue #16 D4 / #19).
+    // Default: none. Tree-sitter-backed handlers gain an implementation via
+    // the framework's query-file engine as each language's .scm lands;
+    // ANTLR/hand-rolled handlers implement visitor-side when their language's
+    // turn comes. Never includes definitions (those are extractRaw's job) and
+    // never emits refs from string-literal or comment positions — conformance
+    // invariants in test/conformance enforce this per language.
+    references(_content: HandlerContent): MimeRef[] | Promise<MimeRef[]> {
+        return [];
     }
 
     // Body-matcher query. Plurnk-service calls this through Mimetypes.query

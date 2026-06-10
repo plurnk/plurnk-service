@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";
-import type { ExtractionVisitor, MimeSymbol, SymbolPreview } from "./types.ts";
+import type { ExtractionVisitor, MimeSymbol } from "./types.ts";
 
 const metadata = {
     mimetype: "application/x-test",
@@ -129,10 +129,8 @@ describe("AntlrExtractor", () => {
         }
         const e = new Extractor(metadata);
         assert.equal(await e.symbolsRaw("anything"), "class Foo [1-10]");
-        const preview = (await e.preview("anything")) as SymbolPreview;
-        assert.equal(preview.kind, "symbols");
         assert.deepEqual(
-            [...preview.symbols],
+            await e.extractRaw("anything"),
             [{ name: "Foo", kind: "class", line: 1, endLine: 10 }],
         );
     });

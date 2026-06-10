@@ -1,8 +1,6 @@
 import fs from "node:fs/promises";
-import { defaultTokenize } from "./defaults.ts";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
-import { fitPreview, TRUNCATION_MARKER_TAIL } from "./fit.ts";
 import { parseBodyMatcher } from "./parseBodyMatcher.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
@@ -12,18 +10,18 @@ import type {
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
-    Preview,
+    MimeRef,
+    MimeSymbol,
     QueryMatch,
-    TokenizeFn,
 } from "./types.ts";
 
-// No default budget in the helper. plurnk-service owns the real default
-// (PLURNK_ENTRY_SIZE_DEFAULT_TOKENS, runtime env, currently 256 tokens for the
-// channel preview portal) and passes it per call. When budget is unspecified
-// here, preview is unbounded — the handler's full material is returned as-is.
-// Baking a fallback number would silently shadow the env var and create drift
-// when plurnk-service changes its default.
-const UNBOUNDED_BUDGET = Number.POSITIVE_INFINITY;
+// The structural channels process() can materialize (issue #17). Each is
+// computed iff requested; unrequested channels pay no parse and are absent
+// from the result. Default is all of them — process() is the universal
+// projection surface (#11); callers that want less say less.
+export type Channel = "symbols" | "deepJson" | "deepXml" | "references";
+
+const ALL_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references"];
 
 // Loader hook: how to resolve a handler package to its default-exported class.
 // Production uses dynamic import(); tests inject a custom loader to avoid
@@ -33,7 +31,6 @@ export type HandlerLoader = (packageName: string) => Promise<unknown>;
 const defaultLoader: HandlerLoader = (packageName) => import(packageName);
 
 export interface MimetypesOptions {
-    tokenize?: TokenizeFn;
     discoverOptions?: DiscoverOptions;
     // Pre-built discovery — bypasses the filesystem scan. Useful for tests and
     // for consumers that build their registry programmatically.
@@ -59,7 +56,11 @@ export interface ProcessInput {
 }
 
 export interface ProcessOptions {
-    budget?: number;
+    // Channels to materialize on this call (issue #17). Default: all.
+    // Unrequested channels are not computed and their fields are absent from
+    // the result. `[]` is valid — metadata only (mimetype, ok, totalLines,
+    // extent), no parse paid.
+    channels?: readonly Channel[];
     // When true, missing grammar for a detected mimetype throws
     // GrammarNotInstalledError instead of degrading to a text-plain fallback.
     // Default false — see issue #14: in the a-la-carte world, a missing
@@ -70,46 +71,41 @@ export interface ProcessOptions {
 }
 
 export interface ProcessResult {
+    // ——— Always-on metadata (every call, every channel selection) ———
     mimetype: string | null;
-    preview: string;
-    // Token count of `preview` measured by the same `tokenize` function the
-    // orchestrator was constructed with. Exposed so consumers (notably
-    // plurnk-service's tokenomics ledger — see #7) don't have to re-tokenize
-    // the returned preview to recover its render cost. Always present; 0 for
-    // empty previews (every error path, plus `null` handler returns).
-    previewTokens: number;
-    // Editor-convention line count of the source content. Exposed so models
-    // can reason about context management — "this preview shows lines 8-12
-    // of a 200-line file" requires both the prefixes in `preview` (#8) and
-    // this total. For text content: `wc -l`-style count (`abc\ndef` → 2 lines;
-    // `abc\ndef\n` → 2 lines; empty string → 0). For binary content
-    // (PDF, etc.): `0` — binary mimetypes aren't line-oriented and service
-    // should reason about size differently for them (e.g., pages for PDF).
-    // 0 on every error path.
-    totalLines: number;
-    // Addressable extent of the content for the model's navigation bounds
-    // (issue #9). Per plurnk-grammar's `<L>` convention: line count for text
-    // entries, item count for structured entries (handlers like text-csv
-    // override extent() to return rows; future content-type-specific units
-    // similarly). Equal to totalLines for the default text path; handlers
-    // that override extent() may differ.
-    extent: number;
     ok: boolean;
-    // Deep-channel projections (issue #10). The full structural tree of the
-    // entry in both algebras. Hidden from the model — these are the query
-    // targets for the jsonpath and xpath tools, not preview material.
-    // Persisted by plurnk-service in sqlite; the framework's job is to
-    // produce them eagerly on every process() call. Empty string / null on
-    // every error path (consistent with preview).
-    deepJson: unknown;
-    deepXml: string;
+    // Editor-convention line count of the source content (`abc\ndef` → 2;
+    // `abc\ndef\n` → 2; "" → 0). Binary content: 0 — lines aren't a
+    // meaningful unit; consumers reason about size differently (pages for
+    // PDF). 0 on every error path. The one process() output plurnk-service's
+    // manifest hard-depends on (its `lines` field).
+    totalLines: number;
+    // Addressable extent for the model's navigation bounds (issue #9), per
+    // plurnk-grammar's `<L>` convention: line count for text, item count for
+    // structured entries (text-csv overrides extent() to return rows).
+    extent: number;
     // Per issue #14: when the detected mimetype's grammar package isn't
     // installed, process() degrades to a text-plain fallback and surfaces
     // the missing package name here so consumers can show an install hint.
     // Absent on the happy path. Independent of `ok` — degraded results
-    // still set ok:true (the framework successfully produced a usable
-    // text fallback; nothing is wrong).
+    // still set ok:true.
     grammarMissing?: string;
+
+    // ——— Channels (issue #17): present iff requested, absent otherwise ———
+    // Structured definitions — the graph's symbol_defs raw material and the
+    // outline source (render via format() when a human needs to read it).
+    symbols?: MimeSymbol[];
+    // Full structural tree, jsonpath query target (issue #10). null when the
+    // handler has no faithful tree for its algebra.
+    deepJson?: unknown;
+    // XML projection of the structural tree, xpath query target (issue #10).
+    // Handler deepXml() overrides are honored (text-html/application-xml
+    // serve real source markup).
+    deepXml?: string;
+    // Classified symbol uses (issue #16 D4) — the graph's symbol_refs raw
+    // material. [] until the per-language extraction engine lands (#19); the
+    // field ships now so consumers build against the final shape.
+    references?: MimeRef[];
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -117,7 +113,6 @@ export interface ProcessResult {
 // detect() and getHandler() are exposed for callers that want to drive the
 // pipeline manually.
 export default class Mimetypes {
-    readonly #tokenize: TokenizeFn;
     readonly #discoverOptions: DiscoverOptions;
     readonly #loader: HandlerLoader;
     readonly #defaultMimetype: string | null;
@@ -126,7 +121,6 @@ export default class Mimetypes {
     #readyPromise: Promise<void> | null = null;
 
     constructor(options: MimetypesOptions = {}) {
-        this.#tokenize = options.tokenize ?? defaultTokenize;
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader;
         this.#defaultMimetype = options.defaultMimetype ?? null;
@@ -207,20 +201,19 @@ export default class Mimetypes {
     }
 
     // The pipeline. Detection → content read → handler resolve → validate →
-    // preview material → fit. The handler is the sole authority on what
-    // material the preview is built from (structured symbols, oriented text,
-    // or nothing); the framework is the sole authority on fitting that
-    // material into the token budget. There is no fallback — if the handler
-    // returns null, the preview is empty by design.
+    // requested channels (issue #17). The handler is the sole authority on
+    // each channel's material; the framework owns selection, routing, and
+    // the default deep-xml projection.
     //
     // Error routing:
-    //   * detection fails → ok:false, empty preview
-    //   * content read fails → ok:false, empty preview
-    //   * handler missing → ok:false, empty preview
+    //   * detection fails → ok:false, metadata only
+    //   * content read fails → ok:false, metadata only
+    //   * handler missing → ok:false, metadata only
     //   * validate throws → propagates (caller's contract; bug in content or handler)
-    //   * preview throws inside handler → contained per handler's own discipline
+    //   * grammar missing → degrades to text-plain metadata + empty channels
+    //     with grammarMissing set (#14), unless options.strict
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
-        const budget = options.budget ?? UNBOUNDED_BUDGET;
+        const channels = new Set<Channel>(options.channels ?? ALL_CHANNELS);
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
@@ -246,62 +239,56 @@ export default class Mimetypes {
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
 
-        // Build all three channels and the metadata in parallel. The handler
-        // owns extractRaw caching (or its parser cache) so symbols + deepJson
-        // typically share work. Deep channels are eager per #10: every
-        // process() call materializes them for plurnk-service to persist.
+        // Materialize exactly the requested channels, in parallel. The
+        // default deep-xml projection needs the deep-json value, so deepJson
+        // is computed (but not exposed) when deepXml alone is requested and
+        // the handler hasn't overridden deepXml().
         //
-        // GrammarNotInstalledError catch routes to the text-plain degradation
-        // path per issue #14 unless options.strict is set. Anything else
-        // propagates per error policy.
-        let material: Preview;
+        // GrammarNotInstalledError routes to the degradation path per issue
+        // #14 unless options.strict is set. Anything else propagates.
+        const needsDeepJson = channels.has("deepJson")
+            || (channels.has("deepXml") && handler.deepXml === BaseHandler.prototype.deepXml);
+        let symbols: MimeSymbol[] | undefined;
         let deepJsonValue: unknown;
+        let references: MimeRef[] | undefined;
         let extentValue: number;
-        let deepXml: string;
+        let deepXml: string | undefined;
         try {
-            [material, deepJsonValue, extentValue] = await Promise.all([
-                handler.preview(content),
-                handler.deepJson(content),
+            [symbols, deepJsonValue, references, extentValue] = await Promise.all([
+                channels.has("symbols") ? handler.extractRaw(content) : undefined,
+                needsDeepJson ? handler.deepJson(content) : undefined,
+                channels.has("references") ? handler.references(content) : undefined,
                 handler.extent(content),
             ]);
-            deepXml = await projectDeepXml(handler, deepJsonValue, content);
+            if (channels.has("deepXml")) {
+                deepXml = handler.deepXml === BaseHandler.prototype.deepXml
+                    ? (deepJsonValue === null || deepJsonValue === undefined
+                        ? ""
+                        : projectJsonToXml(deepJsonValue))
+                    : await handler.deepXml(content);
+            }
         } catch (err) {
             if (isGrammarNotInstalled(err) && !options.strict) {
-                return await this.#degradedResult(
+                return this.#degradedResult(
                     mimetype,
                     content,
+                    channels,
                     (err as { plurnkPackage?: string }).plurnkPackage ?? "",
-                    budget,
                 );
             }
             throw err;
         }
-        const fitted = await fitPreview(material, budget, this.#tokenize);
-        // Pre-format the preview for verbatim rendering downstream (#8). Text
-        // previews get `N:\t` line prefixes per plurnk-grammar's plurnk.md
-        // §"Paths" convention; symbols outlines are emitted unmodified (they
-        // already carry source-line annotations like `[5-47]` inline). null
-        // material or empty preview pass through. Service renders the result
-        // as-is — no internal preview metadata needed at the consumer.
-        const preview = renderPreviewForConsumer(material, fitted);
-        // Tokenize the final (rendered) preview once and expose the count so
-        // consumers (plurnk-service tokenomics ledger — see #7) don't have to
-        // repeat the work. Empty preview short-circuits without paying.
-        const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
-        // Total source-line count for the model's context-management
-        // reasoning. Editor-convention count for text content; 0 for binary
-        // content (PDF etc.) since lines aren't a meaningful unit there.
         const totalLines = typeof content === "string" ? countLines(content) : 0;
 
         return {
             mimetype,
-            preview,
-            previewTokens,
+            ok: true,
             totalLines,
             extent: extentValue,
-            ok: true,
-            deepJson: deepJsonValue,
-            deepXml,
+            ...(channels.has("symbols") && { symbols }),
+            ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
+            ...(channels.has("deepXml") && { deepXml }),
+            ...(channels.has("references") && { references }),
         };
     }
 
@@ -341,39 +328,27 @@ export default class Mimetypes {
     }
 
     // Build a degraded ProcessResult when the detected mimetype's grammar
-    // isn't installed (issue #14). Routes content through text/plain so the
-    // consumer still gets a usable preview + line count, and sets
-    // grammarMissing as a structured install hint.
-    async #degradedResult(
+    // isn't installed (issue #14). The consumer still gets honest metadata
+    // (line count, extent) plus empty channels for whatever it requested, and
+    // grammarMissing as a structured install hint. ok stays true — in the
+    // a-la-carte world a missing grammar is a normal state, not an error.
+    #degradedResult(
         mimetype: string,
         content: string | Uint8Array,
+        channels: ReadonlySet<Channel>,
         plurnkPackage: string,
-        budget: number,
-    ): Promise<ProcessResult> {
-        const fallback = await this.getHandler("text/plain");
-        if (fallback === null) {
-            // Floor missing — the framework's own dep tree is broken; surface
-            // an honest error result rather than fabricating fake data.
-            return {
-                ...errorResult(mimetype),
-                grammarMissing: plurnkPackage,
-            };
-        }
-        const material = await fallback.preview(content);
-        const fitted = await fitPreview(material, budget, this.#tokenize);
-        const preview = renderPreviewForConsumer(material, fitted);
-        const previewTokens = preview.length === 0 ? 0 : await this.#tokenize(preview);
+    ): ProcessResult {
         const totalLines = typeof content === "string" ? countLines(content) : 0;
         return {
             mimetype,
-            preview,
-            previewTokens,
+            ok: true,
             totalLines,
             extent: totalLines,
-            ok: true,
-            deepJson: null,
-            deepXml: "",
             grammarMissing: plurnkPackage,
+            ...(channels.has("symbols") && { symbols: [] }),
+            ...(channels.has("deepJson") && { deepJson: null }),
+            ...(channels.has("deepXml") && { deepXml: "" }),
+            ...(channels.has("references") && { references: [] }),
         };
     }
 
@@ -390,87 +365,15 @@ export default class Mimetypes {
     }
 }
 
-// Apply plurnk-grammar's `N:\t` line-number convention (plurnk.md §"Paths" /
-// plurnk-service SPEC §16.6) to the fitted preview, so downstream renders
-// verbatim:
-//   - symbols / null material / empty preview → return unchanged
-//   - text head → number from 1; truncation marker rides on the final line
-//   - text tail → number from the source line of the first surviving char;
-//     truncation marker rides on the first line
-// Line numbers reflect positions in the handler's own `material.text` (which
-// for content-transforming handlers like text-html or application-pdf is the
-// post-transform text, not the raw bytes).
-function renderPreviewForConsumer(material: Preview, preview: string): string {
-    if (preview.length === 0 || material === null || material.kind === "symbols") {
-        return preview;
-    }
-    const startLine = material.orientation === "tail"
-        ? tailStartLine(material.text, preview)
-        : 1;
-    return prefixLinesWithSourceNumbers(preview, startLine);
-}
-
-// Deep-XML channel (issue #10). Honors handler `deepXml` overrides (text-html
-// and application-xml serve real source markup) so the persisted channel and
-// the live query() xpath target can't disagree. The default projection is
-// computed from the already-built deepJson value to avoid re-parsing the
-// content; handlers from packages bundle their own BaseHandler copy, so
-// prototype identity can't be checked across realms — those route through
-// the handler method, whose inherited default produces the same projection.
-function projectDeepXml(
-    handler: BaseHandler,
-    deepJsonValue: unknown,
-    content: string | Uint8Array,
-): string | Promise<string> {
-    if (handler.deepXml === BaseHandler.prototype.deepXml) {
-        return deepJsonValue === null || deepJsonValue === undefined
-            ? ""
-            : projectJsonToXml(deepJsonValue);
-    }
-    return handler.deepXml(content);
-}
-
-// Compute the source line of the first surviving character in a tail-oriented
-// preview. Strips the leading truncation marker (if present), finds where the
-// surviving slice starts in the original material text, and counts newlines
-// before that point.
-function tailStartLine(original: string, preview: string): number {
-    const slice = preview.startsWith(TRUNCATION_MARKER_TAIL)
-        ? preview.slice(TRUNCATION_MARKER_TAIL.length)
-        : preview;
-    const sliceStart = original.length - slice.length;
-    if (sliceStart <= 0) return 1;
-    let line = 1;
-    for (let i = 0; i < sliceStart; i += 1) {
-        if (original.charCodeAt(i) === 0x0a) line += 1;
-    }
-    return line;
-}
-
-// `<startLine>:\t<line>\n<startLine+1>:\t<line>\n...` per plurnk.md §"Paths".
-function prefixLinesWithSourceNumbers(text: string, startLine: number): string {
-    const lines = text.split("\n");
-    let out = "";
-    for (let i = 0; i < lines.length; i += 1) {
-        if (i > 0) out += "\n";
-        out += `${startLine + i}:\t${lines[i]}`;
-    }
-    return out;
-}
-
-// Error-path result. Centralized so every error route returns the same shape
-// (avoids the bug of forgetting to populate a new field when ProcessResult
-// grows).
+// Error-path result. Metadata only — channel fields stay absent, matching
+// the "present iff requested AND produced" contract. Centralized so every
+// error route returns the same shape.
 function errorResult(mimetype: string | null): ProcessResult {
     return {
         mimetype,
-        preview: "",
-        previewTokens: 0,
+        ok: false,
         totalLines: 0,
         extent: 0,
-        ok: false,
-        deepJson: null,
-        deepXml: "",
     };
 }
 

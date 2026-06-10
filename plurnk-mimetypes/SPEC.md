@@ -18,64 +18,35 @@ interface Handler {
     readonly glyph: string;
     readonly extensions: readonly string[];
     validate(content: HandlerContent): void | Promise<void>;
-    preview(content: HandlerContent): Preview | Promise<Preview>;
-    // Structural channels (§12): extractRaw feeds the model-facing symbols
-    // channel; deepJson/deepXml are the tool-facing query targets. Default
-    // deepXml = projectJsonToXml(deepJson) — handlers never write XML
-    // serialization.
+    // Structural channels (§12): extractRaw feeds the symbols channel
+    // (definitions); deepJson/deepXml are the jsonpath/xpath query targets;
+    // references carries classified symbol uses (§16). Default deepXml =
+    // projectJsonToXml(deepJson) — handlers never write XML serialization.
     extractRaw(content: HandlerContent): MimeSymbol[] | Promise<MimeSymbol[]>;
     deepJson(content: HandlerContent): unknown | Promise<unknown>;
     deepXml(content: HandlerContent): Promise<string>;
+    references(content: HandlerContent): MimeRef[] | Promise<MimeRef[]>;
     // Navigation bound (§12.5) — line count for text, item count for structured.
     extent(content: HandlerContent): number | Promise<number>;
     // Body-matcher dispatch (§11). Default implementation on BaseHandler.
     query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]>;
-    // Escape hatch (used by callers that want unfitted outlines — notably
-    // plurnk-service's passive radar index path). Default = format(extractRaw).
+    // Rendered outline — format(extractRaw). Diagnostic / human surface.
     symbolsRaw(content: HandlerContent): Promise<string>;
 }
 ```
 
-**Authority split (v0.7.0).** The handler owns *what* the preview is made of; the framework owns *how* it is fit to a budget. Handlers never see the token budget or the tokenize function — they return preview *material* and the framework fits it.
-
-```ts
-type Preview = SymbolPreview | TextPreview | null;
-
-interface SymbolPreview {
-    readonly kind: "symbols";
-    readonly symbols: readonly MimeSymbol[];
-}
-
-interface TextPreview {
-    readonly kind: "text";
-    readonly text: string;
-    readonly orientation: "head" | "tail";
-}
-```
-
-- `SymbolPreview` — structural outline. Framework fits via the symbol algorithm (drop-deepest-first, then drop-trailing-roots). An empty `symbols` array is fitted to an empty string.
-- `TextPreview` — oriented body slice. Framework fits via head/tail truncation and inserts a `[[TRUNCATED]]` marker when the slice doesn't cover the whole content. Used for inherently flat content (`text/plain`, `text/stream`) and as a hybrid fallback in handlers whose structural extraction came up empty (markdown without headings, HTML without h-tags or title, PDF without bookmark TOC).
-- `null` — handler explicitly declines. No preview signal of any kind.
-
-**Truncation contract.** A `TextPreview` whose content exceeds budget is sliced, then marked:
-
-- `orientation: "head"` → keep the start, append `...[[TRUNCATED]]`
-- `orientation: "tail"` → keep the end, prepend `[[TRUNCATED]]...`
-
-The marker's token cost is reserved up front so the final output stays within budget. A `TextPreview` whose content fits the budget as-is gets no marker. If the budget is so small that even the marker can't fit, the framework returns an empty string rather than a misleading silent truncation.
-
-**The radar is a structural-or-truncated signal.** The preview channel intentionally cannot serve as a substitute for fetching the full content. Structural previews are bounded by what the handler can extract; text previews carry an explicit incompleteness marker. Either way, the consumer knows the preview is partial and must fetch for substance.
+**Authority split (v0.15.0).** The handler is the sole authority on each channel's material; the framework owns channel selection (§5), routing, the default deep-xml projection, and the references query-file engine (§16). There is no token budget anywhere in the framework — budgeting, rendering, and tokenization are consumer concerns. (The pre-0.15 preview/fitting layer was removed when its only consumer, plurnk-service's index, was torn down.)
 
 **Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
 
-**Escape hatches.** `extractRaw` and `symbolsRaw` exist for callers that want unfitted structural data — they bypass `preview` entirely and are not part of the budgeted-render path. The `Raw` suffix signals "not Plan A": the framework's pipeline drives `preview` exclusively. Subclasses extending `BaseHandler` get `symbolsRaw` derived automatically from `extractRaw → format`.
+**Outline rendering.** `symbolsRaw` (= `format(await extractRaw(content))`) renders the structured symbols as an indented outline for humans and diagnostics. It is not budgeted and not part of the consumer pipeline — `Mimetypes.process` returns the structured `MimeSymbol[]` directly.
 
-In practice handlers extend `BaseHandler` (or `AntlrExtractor`):
+In practice handlers extend `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtractor`) and override the channels their algebra supports:
 
-- **Structured handlers** (JSON, YAML, TOML, CSV, source code) implement `extractRaw`; the default `preview` wraps the result as a `SymbolPreview` automatically.
-- **Hybrid handlers** (markdown, HTML, PDF) override `preview` to return a `SymbolPreview` when structure is found and a head-oriented `TextPreview` over the raw content (or extracted text for PDF) when it isn't.
-- **Inherently flat handlers** (`text/plain`, `text/stream`) override `preview` to always return a `TextPreview` — head-oriented for prose, tail-oriented for streams.
-- **Async-source handlers** (PDF, anything requiring I/O during extraction) override `preview` directly to return `Promise<Preview>`.
+- **Structured handlers** (JSON, YAML, TOML, CSV, source code) implement `extractRaw` and `deepJson`.
+- **Markup handlers** (HTML, XML) additionally override `deepXml` and/or `query` to serve real source markup for xpath.
+- **Flat handlers** (`text/plain`, `text/stream`) override nothing — empty symbols and null deepJson are the honest channels for unstructured content; such entries contribute metadata (`totalLines`, `extent`) only.
+- **Binary handlers** (PDF) override `extent` with a meaningful unit and `toText` for regex/glob query support.
 
 Identity (`mimetype`, `glyph`, `extensions`) is injected at construction time from the handler's `package.json` `plurnk` block.
 
@@ -217,33 +188,22 @@ class Parser [5-47]
 function topLevel(a, b) [50-60]
 ```
 
-## 5. `preview` — token-budgeted fitting
+## 5. Channel selection (framework v0.15.0, issue #17)
 
-`Mimetypes.process` accepts `{ budget?: number }`. When unspecified, budget is `Number.POSITIVE_INFINITY` (no fitting — the handler's full material renders as-is). The helper does NOT invent a magic default; plurnk-service supplies the real budget per call.
+`Mimetypes.process(input, { channels? })` materializes exactly the requested structural channels:
 
-**Budget unit is tokens, never characters.** The tokenize function is injected at `Mimetypes` construction time. `TokenizeFn` accepts both sync and async signatures — `(text: string) => number | Promise<number>` — so providers with WASM-backed sync tokenizers (tiktoken-js, cl100k, llama-tokenizer-js, etc.) don't pay an unnecessary microtask hop, while genuinely-async tokenizers (Gemini's REST `countTokens`) work without ceremony. The default fallback (`defaultTokenize`) is `Math.ceil(text.length / 2)` — conservative; biased toward overestimation, not the industry-standard `/4` heuristic.
+```ts
+type Channel = "symbols" | "deepJson" | "deepXml" | "references";
+```
 
-**Authority.** Handlers are the sole authority on preview material — symbols, oriented text, or nothing. The framework is the sole authority on fitting that material to the budget. The framework never substitutes shapes (won't convert symbols to text or vice versa) and never invents content beyond the truncation marker on a TextPreview.
+- **Default: all four.** `process()` remains the universal projection surface (#11); callers that want less say less.
+- **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
+- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`, `extent`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
+- The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
 
-**Dispatcher (`fitPreview`):**
-- `null` → `""`.
-- `SymbolPreview` → `fitSymbols(symbols, budget, tokenize)`.
-- `TextPreview` → `fitContent(text, budget, tokenize, orientation)`.
+Known consumer selections (plurnk-service): manifest → `[]`; body-matcher daughter → `["deepJson", "deepXml"]`; graph/semantic add-time pipeline → `["symbols", "references"]`.
 
-**Symbol fitting (`fitSymbols`):**
-1. Render full outline. If it fits, return it.
-2. Drop deepest tree level. Render. Repeat until fits or only roots remain.
-3. If even all-roots overflows, drop trailing root symbols one at a time until fits.
-4. If even a single root overflows, return empty string.
-
-**Text fitting (`fitContent`):**
-1. If the whole content fits in budget, return it as-is (no marker).
-2. Otherwise reserve marker tokens (`...[[TRUNCATED]]` for head, `[[TRUNCATED]]...` for tail) from the budget.
-3. Iteratively shrink the content slice toward the head- or tail-end until it fits the effective budget.
-4. Append or prepend the marker by orientation.
-5. If even the marker won't fit alone, return empty string rather than mislead with a silent partial.
-
-**Why the truncation marker.** The marker is what lets us responsibly offer text-body previews at all. Without it, a body slice in the preview channel teaches consumers (especially LLM consumers) to treat the preview as a substitute for fetching the content. The marker makes incompleteness *visible*: the model can read the slice for navigation but the sentinel says "fetch for substance." This unlocks previewing inherently flat content (`text/plain`, `text/stream`) and providing useful fallbacks for hybrid handlers (markdown without headings, HTML without h-tags, PDF without bookmark TOC) without giving up the radar-vs-fetch distinction.
+There is no token budget, no tokenizer, and no rendered preview anywhere in the pipeline. The pre-0.15 fitting layer (`fitPreview`/`fitSymbols`/`fitContent`, `TokenizeFn`, truncation markers, head/tail orientation) was removed with its only consumer, plurnk-service's index. Rendering structured symbols for humans is `format()` (§4), unbudgeted.
 
 ## 6. `validate`
 
@@ -253,38 +213,38 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
-`ProcessResult = { mimetype, preview, previewTokens, totalLines, extent, ok, deepJson, deepXml, grammarMissing? }` — no `symbols` field. The deep channels and `extent` are specified in §12; `grammarMissing` in §13.5. Consumers that want unfitted structural data call `getHandler(mimetype)` directly and invoke `symbolsRaw` / `extractRaw` themselves.
+`ProcessResult` (v0.15.0):
 
-`previewTokens` is the token count of the returned `preview` string, measured with the same `tokenize` function the orchestrator was constructed with. Exposed so consumers (notably plurnk-service's tokenomics ledger) don't have to re-tokenize the preview to recover its render cost. Always present; `0` for empty previews (every error path, plus the `null` handler return). Empty previews short-circuit without paying a `tokenize` call.
+```ts
+interface ProcessResult {
+    // always-on metadata
+    mimetype: string | null;
+    ok: boolean;
+    totalLines: number;
+    extent: number;            // §12.5
+    grammarMissing?: string;   // §13.5
+    // channels — present iff requested (§5)
+    symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
+    deepJson?: unknown;
+    deepXml?: string;
+    references?: MimeRef[];    // §16
+}
+```
 
-`totalLines` is the editor-convention line count of the source content. Exposed so the model can reason about context management (e.g., "this preview shows lines 8–12 of a 200-line file"). Conventions:
+`totalLines` is the editor-convention line count of the source content. Conventions:
 
 - `wc -l`-style — `abc\ndef` → `2`, `abc\ndef\n` → `2` (trailing newline is line terminator, not new line), `"\n"` → `1`, `""` → `0`.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block — PDF, future images/archives): `totalLines: 0`. Lines aren't a meaningful unit for binary mimetypes; service reasons about size differently (e.g., pages for PDF). `0` is the explicit "not line-oriented" signal.
 - `0` on every error path (detection null, content unreadable, handler missing).
-- Independent of preview fitting — a budget-truncated preview still reports the full source's `totalLines`. The preview shows what fit; `totalLines` says how big the full thing is.
-
-**Preview rendering (#8).** `Mimetypes.process` returns `preview` ready for verbatim rendering — consumers do no post-processing. Specifically:
-
-- **`SymbolPreview`** → outline emitted as-is. The outline already carries source-line annotations inline (`class Parser [5-47]`, `  method parse [10-20]`), so no further line-numbering is applied.
-- **`TextPreview` (head)** → each line prefixed with `${sourceLine}:\t` starting at 1, per plurnk-grammar's plurnk.md §"Paths" convention (also referenced by plurnk-service SPEC §16.6). The trailing `...[[TRUNCATED]]` marker rides on the final line.
-- **`TextPreview` (tail)** → each line prefixed with `${sourceLine}:\t` starting at the source line of the first surviving character (computed by finding the slice's offset in `material.text` and counting newlines before it). The leading `[[TRUNCATED]]...` marker rides on the first line — its source-line label reflects the source line that line begins in.
-- **`null` / empty** → emitted as `""`, no rendering applied.
-
-The line-numbering format (`N:\t<line>`) is the family-wide convention; consumers render `preview` directly. `previewTokens` reflects the count of the *rendered* string, including prefix overhead.
 
 | Failure | Behavior |
 |---|---|
-| Detection returns null | `{ mimetype: null, preview: "", ok: false }` |
-| Content read fails (path missing/unreadable) | `{ mimetype, preview: "", ok: false }` |
-| Handler package not loadable | `{ mimetype, preview: "", ok: false }` |
-| Grammar package not installed (#14) | Degrades to text-plain fallback: `{ mimetype, ok: true, grammarMissing: "@plurnk/plurnk-mimetypes-grammar-{slug}" }`. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
+| Detection returns null | `{ mimetype: null, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
+| Content read fails (path missing/unreadable) | `{ mimetype, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
+| Handler package not loadable | `{ mimetype, ok: false, totalLines: 0, extent: 0 }` — no channel fields |
+| Grammar package not installed (#14) | Degrades: `ok: true`, real `totalLines`/`extent`, requested channels present but empty, `grammarMissing` set to the package name. `{ strict: true }` throws `GrammarNotInstalledError` instead. |
 | `validate()` throws | **Propagates** to the caller — contract violation |
-| `preview()` (handler) throws | Contained per handler discipline (`AntlrExtractor` catches inside `extractRaw`; HTML/PDF return `null` on parse failure). Framework does not catch. |
-| `preview()` returns `null` | `{ mimetype, preview: "", ok: true }` — handler explicitly declines, by design |
-| `SymbolPreview` whose first root won't fit | `{ mimetype, preview: "", ok: true }` — symbols asked for, symbols would not fit; no substitution to text |
-| `TextPreview` whose content overflows budget | `{ mimetype, preview: "<slice><marker>" \| "<marker><slice>", ok: true }` — truncated and marked per orientation |
-| `TextPreview` whose budget can't fit even the marker | `{ mimetype, preview: "", ok: true }` — too small to convey incompleteness honestly |
+| Channel method throws inside handler | Contained per handler discipline (`AntlrExtractor`/`TreeSitterExtractor` catch parse failures inside `extractRaw`/`deepJson` and return empty/null). Framework does not catch. |
 
 ## 8. Detection priority
 
@@ -341,13 +301,13 @@ For ANTLR-backed handlers (existing pattern, still supported):
 5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
 6. Build the visitor by extending `withExtractor(GeneratedVisitor)` — the mixin adds `symbols`, `inBody`, `addSymbol(kind, name, ctx, params?, extra?)`, and `gateBody(ctx)` to the antlr4ng visitor.
 
-Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`. The default `preview` then returns a `SymbolPreview` with an empty `symbols` array, which the framework fits to an empty string — there is no substitution to text content.
+Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content.
 
 ### 9.4 Async `extractRaw` contract (framework v0.8.0)
 
 `BaseHandler.extractRaw(content)` returns `MimeSymbol[] | Promise<MimeSymbol[]>`. Existing synchronous handlers (all AntlrExtractor- and hand-roll-based handlers shipped at v0.1.x–v0.2.x) continue to return `MimeSymbol[]` directly — that's assignable to the union and no handler-side change is needed. New tree-sitter-based handlers return `Promise<MimeSymbol[]>` to honor WASM grammar init.
 
-**Consumer-side breaking change:** all consumers of `extractRaw` (including `Mimetypes.process`, `symbolsRaw`, `preview()`, query routes) must `await` the result. The framework's internal call sites are updated in v0.8.0; external consumers of the diagnostic `extractRaw` / `symbolsRaw` surfaces need their call sites updated when they move to ≥0.8.0.
+**Consumer-side breaking change:** all consumers of `extractRaw` (including `Mimetypes.process`, `symbolsRaw`, query routes) must `await` the result. The framework's internal call sites are updated in v0.8.0; external consumers of the diagnostic `extractRaw` / `symbolsRaw` surfaces need their call sites updated when they move to ≥0.8.0.
 
 ### 9.5 Tree-sitter extractor (framework v0.8.0)
 
@@ -364,22 +324,9 @@ Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to
 
 For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.5 nor §9.3 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
 
-## 10. Tokenization architecture
+## 10. Tokenization (removed in v0.15.0)
 
-The helper never reads any environment variable. Tokenization is a runtime injection from plurnk-service:
-
-```
-plurnk-providers-*           plurnk-service                @plurnk/plurnk-mimetypes
-─────────────────            ──────────────                ────────────────────────
-exports tokenize(text)  ─→   registers from active   ─→    receives at construction
-                              provider                      via { tokenize }
-                              caches by SHA256(text)
-                              budget per call sourced
-                              from PLURNK_ENTRY_SIZE_
-                              DEFAULT_TOKENS env (256)
-```
-
-Handlers never see the tokenize function or the budget — they return preview *material* (`SymbolPreview | null`) and the framework dispatches to the right fitter. This is what makes the authority split clean: handlers cannot accidentally double-count tokens, cannot pick the wrong tokenizer, and cannot leak budget logic into per-mimetype repos.
+The framework neither tokenizes nor budgets. The pre-0.15 tokenize-injection architecture served the preview fitting layer (§5, also removed); both died with their only consumer, plurnk-service's index. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts.
 
 ## 11. Body-matcher query
 
@@ -446,19 +393,20 @@ This is the symmetric design promised in issue #10: jsonpath dispatches against 
 
 All three error classes expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar 0.17.0. Consumers can route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`) surface as additional properties so consumers don't need to re-parse the message.
 
-## 12. Three-channel architecture (framework v0.9.0)
+## 12. Channel architecture (v0.9.0; channels selectable since v0.15.0)
 
-Per plurnk-mimetypes#10, every `ProcessResult` carries three channels of structural information about the entry — one model-facing, two tool-facing — built eagerly on every `process()` call. Plurnk-service persists all three in sqlite; the framework's job is to produce them.
+Per plurnk-mimetypes#10 and #17, `ProcessResult` carries up to four channels of structural information about the entry, materialized per the caller's `channels` selection (§5).
 
-### 12.1 The three channels
+### 12.1 The channels
 
-| Channel | Field on `ProcessResult` | Visibility | Purpose | Authored by |
-|---|---|---|---|---|
-| `symbols` | `preview` (string) | Model-facing | Comprehension surface — the coarse, legibility-optimized outline the model sees in the index tile. Source for "what is this entry about?" reasoning. | Handler via `extractRaw()` → `MimeSymbol[]`; framework renders via `format.ts` and fits to budget. |
-| `deep-json` | `deepJson` (unknown) | Tool-facing | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. The model never sees this directly; it issues jsonpath queries that the tool evaluates against the tree. | Handler via `deepJson()`. |
-| `deep-xml` | `deepXml` (string) | Tool-facing | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
+| Channel | Field on `ProcessResult` | Purpose | Authored by |
+|---|---|---|---|
+| `symbols` | `symbols` (`MimeSymbol[]`) | Structured definitions — `symbol_defs` raw material for the graph (`@` dialect), chunk boundaries for semantic embedding, outline source (`format()`). | Handler via `extractRaw()`. |
+| `deep-json` | `deepJson` (unknown) | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. | Handler via `deepJson()`. |
+| `deep-xml` | `deepXml` (string) | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
+| `references` | `references` (`MimeRef[]`) | Classified symbol uses — `symbol_refs` raw material for the graph. §16. | Handler via `references()`; tree-sitter handlers via the framework's query-file engine. |
 
-Different masters, different fidelity, different visibility. The `symbols` channel is comprehension-optimized; the deep channels are extraction-optimized.
+Different masters, different fidelity. The deep channels serve query dispatch; symbols + references serve the service's graph and semantic machinery.
 
 ### 12.2 `deep-json` conventions
 
@@ -506,13 +454,13 @@ Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", pa
 
 ### 12.4 Materialization policy
 
-Deep channels are built **eagerly** on every `process()` call. Lazy materialization would turn every bulk search across persisted entries into a custodial mission of re-parsing on demand. Eager build cost is paid once at index time; subsequent queries are O(scan of pre-built trees).
+Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy — plurnk-service's body-matcher daughter re-projects per query (content can't go stale), while its graph/semantic pipeline materializes at manifest-add time and caches in sqlite.
 
-The deep channels are **never model-visible**. They don't appear in the preview, the index tile, or any `READ` output. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
+The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
 ### 12.5 Addressable extent (`extent` on `ProcessResult`)
 
-Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so plurnk-service's index tile can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
+Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so consumers can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
 
 ## 13. Per-grammar package architecture (framework v0.11.0)
 
@@ -600,4 +548,35 @@ If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (is
 
 ## 15. Public API stability
 
-All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions.
+All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions. v0.15.0 is a deliberate clean break (issue #16/#17): the preview/fitting/tokenize surface was removed outright.
+
+## 16. References channel (framework v0.15.0, engine pending — issues #16/#19)
+
+The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the per-entry raw material for plurnk-service's `symbol_refs` graph rows; linking, traversal, and cross-entry identity are entirely service-side SQL.
+
+```ts
+type RefKind = "import" | "call" | "instantiate" | "inherit" | "type" | "use";
+
+interface MimeRef {
+    name: string;
+    kind: RefKind;
+    line: number;        // 1-indexed
+    column: number;      // 1-indexed
+    endLine: number;
+    endColumn: number;
+    container?: string;  // enclosing definition's qualified path — the edge's source node
+}
+```
+
+The `RefKind` taxonomy is a working set; it freezes against plurnk-service's draft `symbol_refs` schema and the concrete `@<` / `@>` / `@` result shapes (plurnk-service#186) before any extraction engine ships.
+
+**Extraction mechanism (issue #19).** Tree-sitter-backed languages use per-language query files (`src/treesitter/queries/{slug}.scm`) with `@ref.<kind>` capture conventions, executed by one framework engine via web-tree-sitter's Query API. Queries are data — declarative, reviewable, the ecosystem-standard mechanism (tags/locals/highlights). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
+
+**Invariants (conformance-enforced per language, issue #20):**
+- All positions 1-indexed; `endLine >= line`; columns always present.
+- Every `container` names an enclosing definition emitted by the same entry's symbols channel.
+- No ref whose position falls inside a string literal or comment.
+- No definitions — every row is a use.
+- Deterministic document order.
+
+A language participates in the service's graph only when its conformance suite is green.
