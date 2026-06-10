@@ -16,7 +16,7 @@ import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_hel
 // repo today, so content flows through the framework's fitContent raw-
 // content fallback (still budget-bounded).
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    const m = new Mimetypes();
     await m.ready();
     return m;
 };

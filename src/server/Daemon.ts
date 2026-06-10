@@ -105,7 +105,6 @@ export default class Daemon {
         // text-markdown handler is a hard dep so the default actually
         // resolves at runtime).
         this.#mimetypes = mimetypes ?? new Mimetypes({
-            tokenize: async (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
             defaultMimetype: "text/markdown",
         });
         this.#engine = new Engine({

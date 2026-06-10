@@ -221,7 +221,7 @@ test("Known.read: read against session A doesn't surface session B's entry", asy
 
 test("[§16.5-extension-mimetype] Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, sessionId, runId } = await setupContext();
-    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Known();
@@ -241,7 +241,7 @@ test("[§16.5-extension-mimetype] Known: path suffix `.json` declares mimetype; 
 
 test("Known: extension `.json` enables structural <L> dispatch on READ", async () => {
     const { db, sessionId, runId } = await setupContext();
-    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Known();
@@ -263,7 +263,7 @@ test("Known: extension `.json` enables structural <L> dispatch on READ", async (
 
 test("Known: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
     const { db, sessionId, runId } = await setupContext();
-    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    const mimetypes = new Mimetypes();
     await mimetypes.ready();
     try {
         const k = new Known();

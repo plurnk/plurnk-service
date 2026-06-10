@@ -25,7 +25,7 @@ import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    const m = new Mimetypes();
     await m.ready();
     return m;
 };

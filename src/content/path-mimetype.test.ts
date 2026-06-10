@@ -7,7 +7,7 @@ import { strict as assert } from "node:assert";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import PathMimetype from "./path-mimetype.ts";
 
-const mimetypes = new Mimetypes({ tokenize: async (text: string) => text.length });
+const mimetypes = new Mimetypes();
 await mimetypes.ready();
 
 test("PathMimetype.resolveEntryMimetype: no extension → scheme default", async () => {

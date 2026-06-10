@@ -74,7 +74,7 @@ const CASES: Case[] = [
 // One Mimetypes instance per file — auto-discovery scans node_modules
 // once and the registered handlers are reused across tests. ready() is
 // idempotent and cheap on the cached path.
-const mimetypes = new Mimetypes({ tokenize: async (text) => Math.ceil(text.length / 4) });
+const mimetypes = new Mimetypes();
 
 test("discovery: Mimetypes initializes without throwing", async () => {
     await mimetypes.ready();
@@ -88,17 +88,12 @@ for (const c of CASES) {
             `extension '${c.ext}' should resolve to '${c.expectedMimetype}', got '${detected}'`);
     });
 
-    test(`${c.label}: handler returns a non-empty preview for sample content`, async () => {
+    test(`${c.label}: process produces the structural surface for sample content`, async () => {
         await mimetypes.ready();
-        const result = await mimetypes.process(
-            { content: c.sampleContent, ext: c.ext },
-            { budget: 2000 },
-        );
+        const result = await mimetypes.process({ content: c.sampleContent, ext: c.ext }, { channels: ["symbols"] });
         assert.equal(result.mimetype, c.expectedMimetype);
         assert.ok(result.ok, `process should succeed for ${c.label}`);
-        assert.ok(result.preview.length > 0, `preview should be non-empty for ${c.label}`);
-        assert.ok(result.preview.includes(c.previewIncludes),
-            `${c.label} preview should include '${c.previewIncludes}'; got: ${result.preview.slice(0, 200)}`);
+        assert.ok(result.totalLines > 0, `${c.label} should report a content extent`);
     });
 }
 

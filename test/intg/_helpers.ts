@@ -13,9 +13,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 // in production. Tests exercise the same dispatch surface real callers do.
 // Exported for tests that build PlurnkSchemeContext directly (File.read,
 // SEND, Engine tests) instead of going through `makeSchemeCtx`.
-export const DEFAULT_MIMETYPES = new Mimetypes({
-    tokenize: async (text) => Math.ceil(text.length / 4),
-});
+export const DEFAULT_MIMETYPES = new Mimetypes();
 
 // Test helper: build a PlurnkSchemeContext with sensible defaults. Override
 // any field via the argument. Tests that don't exercise db ops can omit it

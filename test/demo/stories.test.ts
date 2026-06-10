@@ -33,7 +33,7 @@ import { seedDemoFixture } from "./_fixture.ts";
 const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    const m = new Mimetypes();
     await m.ready();
     return m;
 };

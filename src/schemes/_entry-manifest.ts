@@ -37,7 +37,10 @@ export default class EntryManifest {
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
-            const result = await mimetypes.process({ content: r.content, hint: r.mimetype });
+            // Metadata-only: the catalog needs totalLines (always-on), never the
+            // structural channels — and requesting none avoids handler.references()
+            // (mimetypes 0.15) on entries whose handler predates that method.
+            const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
             entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
         return JSON.stringify([...byEntry.values()], null, 2);

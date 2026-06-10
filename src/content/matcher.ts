@@ -73,9 +73,17 @@ export default class Matcher {
         } else {
             // Structural dialects query a projected channel, not the raw text.
             let deepJson: unknown;
-            let deepXml: string;
+            let deepXml: string | undefined;
             try {
-                ({ deepJson, deepXml } = await mimetypes.process({ content, hint: mimetype }));
+                // Channel-selective process() (mimetypes 0.15): request only the
+                // projection this dialect queries — never `references` (it calls
+                // handler.references(), which throws on pre-0.15 handlers), and
+                // keep jsonpath isolated from a deepXml-side throw.
+                if (body.dialect === "jsonpath") {
+                    ({ deepJson } = await mimetypes.process({ content, hint: mimetype }, { channels: ["deepJson"] }));
+                } else {
+                    ({ deepXml } = await mimetypes.process({ content, hint: mimetype }, { channels: ["deepXml"] }));
+                }
             } catch (err) {
                 // The SOURCE couldn't be parsed for its mimetype → 203 soft fallback:
                 // hand back the raw bytes as text so the model can regex/visual-parse.
@@ -87,9 +95,20 @@ export default class Matcher {
                 };
             }
             try {
-                matches = body.dialect === "jsonpath"
-                    ? queryJsonpathObject(deepJson, body.raw)
-                    : queryXpathString(deepXml, body.raw, mimetype);
+                if (body.dialect === "jsonpath") {
+                    matches = queryJsonpathObject(deepJson, body.raw);
+                } else if (deepXml === undefined) {
+                    // deep-xml is populated for any source type (#11) when requested;
+                    // absent → soft fallback to raw, same as an unparseable source.
+                    return {
+                        status: 203,
+                        body: content,
+                        mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
+                        reason: "no deep-xml projection for this content",
+                    };
+                } else {
+                    matches = queryXpathString(deepXml, body.raw, mimetype);
+                }
             } catch (err) {
                 // A throw from the QUERY is a malformed matcher expression the grammar
                 // didn't catch (model-facing → 400, not a system 500).

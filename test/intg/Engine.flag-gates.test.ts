@@ -16,7 +16,6 @@ import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map() },
-    tokenize: async (text) => Math.ceil(text.length / 4),
 });
 
 // Side-effecting scheme — opts into manifest.flags.excludedInAsk so it

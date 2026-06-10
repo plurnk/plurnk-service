@@ -20,7 +20,7 @@ import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_hel
 const TIMEOUT = 240_000;
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
+    const m = new Mimetypes();
     await m.ready();
     return m;
 };

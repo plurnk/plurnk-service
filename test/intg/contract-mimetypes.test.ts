@@ -39,7 +39,7 @@ const setup = async () => {
     const db = await openMigrated();
     const sessionId = await insertSession(db, `cm-${crypto.randomUUID()}`);
     const runId = await insertRun(db, sessionId);
-    const mimetypes = new Mimetypes({ tokenize: async (t: string) => t.length });
+    const mimetypes = new Mimetypes();
     await mimetypes.ready();
     return { db, sessionId, runId, mimetypes };
 };
@@ -163,24 +163,23 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
     } finally { await db.close(); }
 });
 
-// --- §4.2 Mimetypes.process is the packet-assembly entry point --------------
-// process(input, options) returns { mimetype, preview, ok } (plus totalLines /
-// previewTokens). Assert the documented shape against the real auto-discovered
-// service for both a known mimetype (markdown → outline preview) and an
-// unknown one (empty preview, ok:false).
+// --- §4.2 Mimetypes.process is the projection entry point -------------------
+// process(input, { channels }) returns the structural projections + extent
+// ({ mimetype, ok, totalLines, symbols?/deepJson?/deepXml? }) — no preview
+// post-0.15. Assert the shape against the real auto-discovered service for a
+// known mimetype (markdown → symbols) and an unknown one (ok:false).
 
-test("[§4.2-process-entry-point] Mimetypes.process returns { mimetype, preview, ok }", async () => {
+test("[§4.2-process-entry-point] Mimetypes.process returns the structural projections + extent", async () => {
     const md = "# Title\n\nbody paragraph\n\n## Sub\n\nmore";
-    const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { budget: 256 });
+    const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { channels: ["symbols"] });
     assert.equal(known.mimetype, "text/markdown", "process echoes the resolved mimetype");
-    assert.equal(typeof known.preview, "string", "preview is a string");
-    assert.equal(known.ok, true, "ok:true when a handler produced the preview");
-    assert.ok(known.preview.includes("Title"), "markdown preview carries the heading outline");
+    assert.equal(known.ok, true, "ok:true when a handler produced the projection");
+    assert.ok(known.totalLines > 0, "totalLines reports the content extent");
+    assert.notEqual(known.symbols, undefined, "the requested symbols channel is populated");
 
-    // Unknown mimetype: no handler → empty preview, ok:false (no throw).
-    const unknown = await DEFAULT_MIMETYPES.process({ content: "weird-bytes", hint: "application/x-unregistered" }, { budget: 256 });
+    // Unknown mimetype: no handler → ok:false (no throw, no projection).
+    const unknown = await DEFAULT_MIMETYPES.process({ content: "weird-bytes", hint: "application/x-unregistered" });
     assert.equal(unknown.mimetype, "application/x-unregistered", "hint survives even with no handler");
-    assert.equal(unknown.preview, "", "no handler → empty preview, not a crash");
     assert.equal(unknown.ok, false, "ok:false signals the handler-miss");
 });
 
@@ -200,11 +199,13 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
         const queryCalls: string[] = [];
         const BaseHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
         class SpyHandler extends BaseHandler {
-            override async preview(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<import("@plurnk/plurnk-mimetypes").Preview> {
+            // The render path (manifest build → process) always calls extent();
+            // overriding it records that the handler fired at render, not write.
+            override async extent(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<number> {
                 previewCalls.push(typeof content === "string" ? content : "");
-                return { kind: "symbols", symbols: [{ name: "[spy]", kind: "module", line: 1, endLine: 1 }] };
+                return 1;
             }
-            override async query(content: string, dialect: string, pattern: string, flags: string): Promise<never[]> {
+            override async query(content: import("@plurnk/plurnk-mimetypes").HandlerContent, dialect: import("@plurnk/plurnk-mimetypes").QueryDialect, pattern: string, flags?: string): Promise<never[]> {
                 queryCalls.push(`${dialect}:${pattern}:${flags}`);
                 return [];
             }
@@ -222,7 +223,6 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
                 }]]),
             },
             loader: async () => ({ default: SpyHandler }),
-            tokenize: async (t: string) => Math.ceil(t.length / 4),
         });
         await mimetypes.ready();
 

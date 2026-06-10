@@ -51,7 +51,7 @@
         "@plurnk/plurnk-execs-sh": "0.2.1",
         "@plurnk/plurnk-execs-sqlite": "0.1.1",
         "@plurnk/plurnk-grammar": "0.23.1",
-        "@plurnk/plurnk-mimetypes": "0.14.1",
+        "@plurnk/plurnk-mimetypes": "0.15.1",
         "@plurnk/plurnk-providers": "0.1.8",
         "@plurnk/plurnk-providers-cloudflare": "0.2.6",
         "@plurnk/plurnk-providers-google": "0.2.7",
