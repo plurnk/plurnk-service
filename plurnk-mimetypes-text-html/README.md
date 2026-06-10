@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-text-html
 
-`text/html` AND `application/xhtml+xml` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Converts HTML to markdown for LLM consumption via [turndown](https://www.npmjs.com/package/turndown).
+`text/html` AND `application/xhtml+xml` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Structural extraction via [parse5](https://www.npmjs.com/package/parse5); real-DOM xpath via [@xmldom/xmldom](https://www.npmjs.com/package/@xmldom/xmldom) + [xpath](https://www.npmjs.com/package/xpath).
 
 ## install
 
@@ -10,17 +10,15 @@ npm i @plurnk/plurnk-mimetypes-text-html
 
 ## what it does
 
-HTML's value for an LLM lives in its rendered content, not in a separate symbol outline. So this handler overrides `preview()` to return the markdown-converted content directly, budgeted via the framework's `fitContent`:
-
-- `preview(content, budget)` — turndown-converts to markdown, fit to budget tokens.
-- `symbols(content)` — empty (the preview *is* the structural signal).
+- `extractRaw(content)` — h1–h6 headings as `heading` symbols (with `level`), `<title>` as an h1 fallback when no headings exist, and code blocks as `module` symbols. Source line numbers come from parse5's location info.
+- `preview(content)` — hybrid per SPEC §1: a `SymbolPreview` when structural signals were found, otherwise a head-oriented `TextPreview` over the raw HTML (the framework truncates and marks it).
+- `deepJson(content)` — the parse5 DOM as a nested node tree, with source-algebra attributes under the `attrs` convention (framework projects this to the deep-xml channel).
+- `query(content, dialect, pattern)` — overrides xpath to dispatch against the real parsed DOM (XPath 1.0) instead of the projected deep-xml.
 - `validate(content)` — no-op (HTML is forgiving).
-
-Custom turndown rule (`safe-links`) salvaged from rummy.web: encodes parens in hrefs as `%28`/`%29` so URLs with literal parens don't break markdown's link syntax.
 
 ## not in scope
 
-Web-page denoising (Readability-style filtering of nav/ads/comments) belongs in the fetcher layer (`plurnk-schemes-http` when it lands), not in a mimetype handler. This handler does pure HTML→markdown on whatever HTML it receives.
+Web-page denoising (Readability-style filtering of nav/ads/comments) belongs in the fetcher layer (`plurnk-schemes-http` when it lands), not in a mimetype handler. Markdown conversion of rendered content likewise — the preview channel is a structural-or-truncated radar, not a substitute for fetching the content.
 
 ## license
 

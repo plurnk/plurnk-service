@@ -29,8 +29,8 @@ import * as xpath from "xpath";
 //   - <pre><code>        → module named "code"
 //
 // Pages with no headings, no title, and no code blocks produce an empty
-// SymbolPreview — the framework fits that to an empty preview string, which
-// is the correct outcome for navigation/login/empty pages.
+// symbol list; preview() then falls back to a head-oriented TextPreview over
+// the raw HTML (see the hybrid preview override below).
 
 type Element = DefaultTreeAdapterMap["element"];
 type ChildNode = DefaultTreeAdapterMap["childNode"];
