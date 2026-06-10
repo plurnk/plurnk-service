@@ -40,6 +40,15 @@ export default class Slicer {
             if (first > 0 && first <= totalLines) return { kind: "range", start: first, end: first };
             return { error: `line ${first} out of range (1..${totalLines})` };
         }
+        // Whole-content `<1,-1>` (and its `<0,-1>` alias) is valid even on
+        // empty content — it selects the entire, possibly-empty range. Without
+        // this, an EDIT that replaces-everything on a freshly-created empty
+        // entry would 416. start>end here yields an empty slice for READ and a
+        // full replacement for EDIT.
+        if (totalLines === 0) {
+            if ((first === 0 || first === 1) && last === -1) return { kind: "range", start: 1, end: 0 };
+            return { error: `range ${first},${last} out of range (content is empty)` };
+        }
         let n = first;
         let m = last;
         if (n === 0) n = 1;
@@ -102,6 +111,12 @@ export default class Slicer {
             if (first > 0 && first <= total) return { status: 200, body: JSON.stringify([items[first - 1]], null, 2) };
             return { status: 416, error: `item ${first} out of range (1..${total})` };
         }
+        // Whole-content `<1,-1>` is valid on an empty item list — it selects
+        // the entire, empty range (mirrors #normalize's empty-content rule).
+        if (total === 0) {
+            if ((first === 0 || first === 1) && last === -1) return { status: 200, body: "[]" };
+            return { status: 416, error: `range ${first},${last} out of range (no items)` };
+        }
         let n = first;
         let m = last;
         if (n === 0) n = 1;
@@ -149,14 +164,19 @@ export default class Slicer {
             else if (first === -1) result = [...source, ...items];
             else if (first > 0 && first <= total) result = [...source.slice(0, first - 1), ...items, ...source.slice(first)];
             else return { status: 416, error: `position ${first} out of range (1..${total})` };
+        } else if (total === 0) {
+            // Empty array: only whole-content `<1,-1>` (or `<0,-1>` alias) is
+            // valid — it replaces the (empty) whole with the body items. Any
+            // other range on an empty array is out of range.
+            if ((first !== 1 && first !== 0) || last !== -1) return { status: 416, error: `range on empty array` };
+            result = [...items];
         } else {
             let n = first;
             let m = last;
             if (n === 0) n = 1;
             if (m === -1) m = total;
-            if (total === 0 && (first !== 1 || last !== -1)) return { status: 416, error: `range on empty array` };
-            if (n < 1 || (total > 0 && n > total)) return { status: 416, error: `range start ${first} out of range (1..${total})` };
-            if (m < 1 || (total > 0 && m > total)) return { status: 416, error: `range end ${last} out of range (1..${total})` };
+            if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
+            if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
             if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
             result = [...source.slice(0, n - 1), ...items, ...source.slice(m)];
         }
@@ -184,14 +204,18 @@ export default class Slicer {
             else if (first === -1) result = [...entries, ...bodyEntries];
             else if (first > 0 && first <= total) result = [...entries.slice(0, first - 1), ...bodyEntries, ...entries.slice(first)];
             else return { status: 416, error: `position ${first} out of range (1..${total})` };
+        } else if (total === 0) {
+            // Empty object: only whole-content `<1,-1>` (or `<0,-1>` alias) is
+            // valid — replaces the (empty) whole with the body kv-pairs.
+            if ((first !== 1 && first !== 0) || last !== -1) return { status: 416, error: `range on empty object` };
+            result = [...bodyEntries];
         } else {
             let n = first;
             let m = last;
             if (n === 0) n = 1;
             if (m === -1) m = total;
-            if (total === 0 && (first !== 1 || last !== -1)) return { status: 416, error: `range on empty object` };
-            if (n < 1 || (total > 0 && n > total)) return { status: 416, error: `range start ${first} out of range (1..${total})` };
-            if (m < 1 || (total > 0 && m > total)) return { status: 416, error: `range end ${last} out of range (1..${total})` };
+            if (n < 1 || n > total) return { status: 416, error: `range start ${first} out of range (1..${total})` };
+            if (m < 1 || m > total) return { status: 416, error: `range end ${last} out of range (1..${total})` };
             if (n > m) return { status: 416, error: `range start ${first} > end ${last}` };
             result = [...entries.slice(0, n - 1), ...bodyEntries, ...entries.slice(m)];
         }

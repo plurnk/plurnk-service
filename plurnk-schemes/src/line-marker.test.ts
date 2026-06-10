@@ -37,6 +37,38 @@ test("sliceLines: <-1> sentinel is insertion point, returns empty", () => {
     assert.equal(r.text, "");
 });
 
+// Bug guard: <1,-1> ("whole content") is valid on EMPTY content — empty is
+// valid whole content. Previously 416'd at all four sites because normalized
+// m=0 tripped the lower-bound check. Replace-everything on a fresh empty
+// entry is a real model action.
+test("whole-content <1,-1> on empty succeeds across line + json paths", () => {
+    assert.equal(Slicer.lines("", { first: 1, last: -1 }).status, 200);
+    assert.equal(Slicer.lines("", { first: 1, last: -1 }).text, "");
+    assert.equal(Slicer.lines("", { first: 0, last: -1 }).status, 200); // <0,-1> alias
+
+    const lineEdit = Slicer.lineMarkerEdit("", { first: 1, last: -1 }, "new");
+    assert.equal(lineEdit.status, 200);
+    assert.equal(lineEdit.result, "new");
+
+    assert.equal(Slicer.jsonItems("[]", { first: 1, last: -1 }).status, 200);
+    assert.equal(Slicer.jsonItems("[]", { first: 1, last: -1 }).body, "[]");
+
+    const arrEdit = Slicer.jsonItemEdit("[]", { first: 1, last: -1 }, '"x"');
+    assert.equal(arrEdit.status, 200);
+    assert.deepEqual(JSON.parse(arrEdit.result ?? ""), ["x"]);
+
+    const objEdit = Slicer.jsonItemEdit("{}", { first: 1, last: -1 }, '{"k":1}');
+    assert.equal(objEdit.status, 200);
+    assert.deepEqual(JSON.parse(objEdit.result ?? ""), { k: 1 });
+});
+
+test("non-whole-content ranges on empty are still 416", () => {
+    assert.equal(Slicer.lines("", { first: 1, last: null }).status, 416);  // single pos
+    assert.equal(Slicer.lines("", { first: 2, last: 5 }).status, 416);
+    assert.equal(Slicer.lines("", { first: 1, last: 3 }).status, 416);     // m not -1
+    assert.equal(Slicer.jsonItemEdit("[]", { first: 2, last: 3 }, '"x"').status, 416);
+});
+
 test("sliceLines: out-of-range returns 416", () => {
     const r = Slicer.lines(TEXT, { first: 99, last: null });
     assert.equal(r.status, 416);
