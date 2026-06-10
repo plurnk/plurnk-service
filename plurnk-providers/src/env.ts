@@ -5,14 +5,14 @@
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
     const n = Number(raw);
-    if (!Number.isFinite(n)) throw new Error(`${label} provider: ${name} must be a number (got "${raw}")`);
+    if (!Number.isInteger(n) || n < 0) throw new Error(`${label} provider: ${name} must be a non-negative integer (got "${raw}")`);
     return n;
 };
 
 export const parseOptionalInt = (raw: string | undefined, name: string, label: string): number | null => {
     if (raw === undefined || raw.length === 0) return null;
     const n = Number(raw);
-    if (!Number.isFinite(n)) throw new Error(`${label} provider: ${name} must be a number (got "${raw}")`);
+    if (!Number.isInteger(n) || n < 0) throw new Error(`${label} provider: ${name} must be a non-negative integer (got "${raw}")`);
     return n;
 };
 
