@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TextHtml from "./TextHtml.ts";
-import type { SymbolPreview } from "@plurnk/plurnk-mimetypes";
+
 
 const metadata = {
     mimetype: "text/html",
@@ -12,9 +12,7 @@ const metadata = {
 const h = new TextHtml(metadata);
 
 async function symbolsOf(html: string | Uint8Array) {
-    const preview = (await h.preview(html)) as SymbolPreview;
-    assert.equal(preview.kind, "symbols");
-    return [...preview.symbols];
+    return h.extractRaw(html);
 }
 
 describe("TextHtml — heading extraction", () => {
@@ -52,20 +50,45 @@ describe("TextHtml — heading extraction", () => {
         assert.equal(syms[0].name, "Real");
     });
 
-    it("falls back to head-oriented TextPreview when no headings/title exist (hybrid)", async () => {
+    it("returns [] when no headings/title/code blocks exist", async () => {
         const html = "<html><body><p>Just a paragraph.</p></body></html>";
-        const preview = await h.preview(html);
-        assert.equal(preview?.kind, "text");
-        if (preview?.kind !== "text") return;
-        assert.equal(preview.text, html);
-        assert.equal(preview.orientation, "head");
+        assert.deepEqual(h.extractRaw(html), []);
     });
 
-    it("falls back to TextPreview for empty input rather than going dark", async () => {
-        const preview = await h.preview("");
-        // Empty input → no structural symbols → text fallback with empty content.
-        // Framework's fitContent returns "" for empty content anyway.
-        assert.equal(preview?.kind, "text");
+    it("returns [] for empty input", async () => {
+        assert.deepEqual(h.extractRaw(""), []);
+    });
+});
+
+describe("TextHtml — container + columns (issue #18)", () => {
+    it("headings carry ancestor-heading container paths", async () => {
+        const html = "<h1>A</h1><h2>B</h2><h3>C</h3><h2>D</h2>";
+        const syms = h.extractRaw(html);
+        const byName = new Map(syms.map((s) => [s.name, s]));
+        assert.equal("container" in byName.get("A")!, false);
+        assert.equal(byName.get("B")!.container, "A");
+        assert.equal(byName.get("C")!.container, "A.B");
+        assert.equal(byName.get("D")!.container, "A", "level-2 D closes B and C");
+    });
+
+    it("code blocks carry the innermost open heading as container", async () => {
+        const html = "<h1>A</h1><h2>B</h2><pre><code class=\"language-ts\">x</code></pre>";
+        const syms = h.extractRaw(html);
+        assert.equal(syms.find((s) => s.kind === "module")!.container, "A.B");
+    });
+
+    it("symbols carry 1-indexed columns from parse5 locations", async () => {
+        const html = "<h1>A</h1>";
+        const syms = h.extractRaw(html);
+        assert.equal(syms[0].column, 1);
+        assert.ok((syms[0].endColumn ?? 0) > 1);
+    });
+
+    it("title-as-h1 fallback carries no container", async () => {
+        const html = "<html><head><title>T</title></head><body><h2>S</h2></body></html>";
+        const syms = h.extractRaw(html);
+        const title = syms.find((s) => s.name === "T")!;
+        assert.equal("container" in title, false);
     });
 });
 
@@ -140,12 +163,6 @@ describe("TextHtml — content shape", () => {
         assert.doesNotThrow(() => h.validate(""));
     });
 
-    it("falls back to (empty) TextPreview for empty input", async () => {
-        // No structural signal → text fallback. The text is empty but the
-        // preview shape is text/head, not symbols.
-        const preview = await h.preview("");
-        assert.equal(preview?.kind, "text");
-    });
 });
 
 describe("TextHtml — xpath query", () => {

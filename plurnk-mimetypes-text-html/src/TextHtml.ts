@@ -6,7 +6,6 @@ import {
 import type {
     HandlerContent,
     MimeSymbol,
-    Preview,
     QueryDialect,
     QueryMatch,
 } from "@plurnk/plurnk-mimetypes";
@@ -16,21 +15,23 @@ import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 
 // text/html + application/xhtml+xml handler. Parses with parse5 and emits
-// structural symbols only — never a body slice. Per the framework's v0.5.0
-// rule, the preview channel is a passive structural signal; a body slice
-// (turndown'd markdown or otherwise) would teach LLM consumers to read the
-// preview as content and skip the fetch.
+// structural symbols.
 //
-// Symbols emitted (with source-position line numbers from parse5's
-// sourceCodeLocationInfo):
+// Symbols emitted (with source positions from parse5's
+// sourceCodeLocationInfo — 1-indexed line/endLine/column/endColumn):
 //   - <h1>-<h6>          → heading, level from tag
 //   - <title>            → heading level 1, only if no <h1> at document root
 //   - <pre><code class="language-X">  → module named X
 //   - <pre><code>        → module named "code"
 //
+// Container (SPEC §3): a heading carries the dotted path of its open
+// ancestor headings by level (document order, markdown-style — HTML headings
+// don't nest in the DOM). Code-block modules carry the qualified path of the
+// innermost open heading. Top-level symbols and the title-as-h1 fallback
+// carry no container key.
+//
 // Pages with no headings, no title, and no code blocks produce an empty
-// symbol list; preview() then falls back to a head-oriented TextPreview over
-// the raw HTML (see the hybrid preview override below).
+// symbol list — the honest channel for unstructured markup.
 
 type Element = DefaultTreeAdapterMap["element"];
 type ChildNode = DefaultTreeAdapterMap["childNode"];
@@ -90,23 +91,6 @@ export default class TextHtml extends BaseHandler {
             children: collectChildren(doc),
         };
         return root;
-    }
-
-    // Hybrid preview: SymbolPreview when headings (h1-h6) or a <title>
-    // surface, head-oriented TextPreview over the raw HTML otherwise. The
-    // fallback handles pages without structural markup — login forms, single
-    // <body>-of-text pages, fragments — by surfacing the raw HTML rather
-    // than going dark. The truncation marker keeps the model honest about
-    // it being a partial slice.
-    override preview(content: HandlerContent): Preview {
-        const html = typeof content === "string"
-            ? content
-            : new TextDecoder("utf-8").decode(content);
-        const symbols = this.extractRaw(html);
-        if (symbols.length > 0) {
-            return { kind: "symbols", symbols };
-        }
-        return { kind: "text", text: html, orientation: "head" };
     }
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
@@ -197,6 +181,10 @@ function collectStructural(
     out: MimeSymbol[],
 ): { name: string; line: number } | null {
     let title: { name: string; line: number } | null = null;
+    // Open ancestor headings, markdown-style: a heading at level N closes
+    // every open heading at level >= N (HTML headings don't nest in the DOM,
+    // so document order + level is the containment signal). SPEC §3.
+    const open: Array<{ level: number; name: string }> = [];
 
     function walk(node: ChildNode | ParentNode): void {
         if (!isElement(node)) {
@@ -219,23 +207,34 @@ function collectStructural(
             const text = collectText(node).trim();
             const loc = node.sourceCodeLocation;
             if (text.length > 0) {
+                const level = Number(tag[1]);
+                while (open.length > 0 && open[open.length - 1].level >= level) {
+                    open.pop();
+                }
+                const container = open.map((o) => o.name).join(".");
                 out.push({
                     name: text,
                     kind: "heading",
-                    level: Number(tag[1]),
+                    level,
                     line: loc?.startLine ?? 1,
                     endLine: loc?.endLine ?? loc?.startLine ?? 1,
+                    ...(loc && { column: loc.startCol, endColumn: loc.endCol }),
+                    ...(container.length > 0 && { container }),
                 });
+                open.push({ level, name: text });
             }
         } else if (tag === "pre") {
             const codeChild = findFirstElement(node, "code");
             const language = codeChild ? extractLanguage(codeChild) : "code";
             const loc = node.sourceCodeLocation;
+            const container = open.map((o) => o.name).join(".");
             out.push({
                 name: language,
                 kind: "module",
                 line: loc?.startLine ?? 1,
                 endLine: loc?.endLine ?? loc?.startLine ?? 1,
+                ...(loc && { column: loc.startCol, endColumn: loc.endCol }),
+                ...(container.length > 0 && { container }),
             });
             return;
         }
