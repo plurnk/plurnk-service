@@ -41,17 +41,18 @@ const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loo
     return { sessionId, runId, loopId };
 };
 
-const indexedOf = async (db: Db, runId: number, entryId: number): Promise<number | undefined> =>
-    (await (db.ops_get_visibility_for_channel as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: entryId, channel: "body" }))?.indexed;
-
 test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothing is hidden", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
-        const entryId = await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "hello", indexed: 1 });
         const engine = engineAt(db, WIDE);
-        await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES });
-        assert.equal(await indexedOf(db, runId, entryId), 1, "no overflow → catalog entry still shown, grinder inert");
+        const provider = new Mock({ contextSize: 4096, responses: okSends(2) });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        // Under the ceiling the grinder early-returns before pass 1, so turn 1's
+        // log stays shown — it would be hidden only on overflow.
+        const log = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ run_id: runId });
+        assert.ok(log.some((r) => r.turn_seq === 1), "no overflow → prior turn's log still shown, grinder inert");
     } finally { await db.close(); }
 });
 

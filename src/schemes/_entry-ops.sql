@@ -18,24 +18,3 @@ WHERE e.scope = 'session'
   AND e.pathname = $pathname
   AND ec.name = $channel;
 
--- PREP: bulk_upsert_visibility
--- SHOW/HIDE over a set: set $indexed for every channel in $channels (JSON array)
--- of every session entry whose pathname is in $pathnames (JSON array). Entries
--- resolve in SQL — no per-pathname lookup. ON CONFLICT skips rows already at the
--- target (WHERE indexed != excluded), so changes() is the real changed-count
--- (callers map 0 -> 304).
-INSERT INTO visibility (run_id, entry_id, channel, indexed)
-SELECT $run_id, e.id, c.value, $indexed
-FROM entries e
-CROSS JOIN json_each($channels) c
-WHERE e.scope = 'session' AND e.session_id = $session_id AND e.scheme = $scheme
-  AND e.pathname IN (SELECT value FROM json_each($pathnames))
-ON CONFLICT (run_id, entry_id, channel)
-DO UPDATE SET indexed = excluded.indexed
-WHERE visibility.indexed != excluded.indexed;
-
--- PREP: ops_get_visibility_for_channel
--- Read a single (run, entry, channel) visibility row — visibility-state inspection.
-SELECT indexed
-FROM visibility
-WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;

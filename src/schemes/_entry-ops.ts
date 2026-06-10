@@ -1,8 +1,7 @@
-import type { EditStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve } from "../content/index.ts";
-import EntryFind from "./_entry-find.ts";
 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -194,67 +193,5 @@ export default class EntryOps {
             mimetypes: ctx.mimetypes,
         });
         return { ...r, channel: targetChannel };
-    }
-
-    static async #setSessionEntryVisibility(
-        statement: ShowStatement | HideStatement,
-        ctx: PlurnkSchemeContext,
-        manifest: SchemeManifest,
-        target: 0 | 1,
-    ): Promise<ShowHideResult> {
-        if (statement.target === null) return { status: 400 };
-
-        const { db, sessionId, runId } = ctx;
-        const { name: scheme, channels, defaultChannel } = manifest;
-        const bulkVis = db.bulk_upsert_visibility as PrepMethod;
-
-        const fragment = EntryOps.#fragmentOf(statement);
-        const isMultiEntry = statement.body !== null
-            || (Array.isArray(statement.signal) && statement.signal.length > 0)
-            || statement.lineMarker !== null;
-
-        let pathnames: string[];
-        if (!isMultiEntry) {
-            // Single-entry path: exact pathname lookup gates the 404 (the bulk flip
-            // can't distinguish "no entry" from "no change").
-            const pathname = EntryOps.#pathnameOf(statement);
-            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-            if (entry === undefined) return { status: 404 };
-            pathnames = [pathname];
-        } else {
-            // Multi-entry path: scope + tags select candidates in SQL; the body
-            // matcher runs against each candidate's content, shared with FIND via
-            // matchPathnames.
-            const match = await EntryFind.matchPathnames(statement, ctx, manifest);
-            if (match.status !== 200) return { status: match.status };
-            if (match.pathnames.length === 0) return { status: 304 };
-            pathnames = match.pathnames;
-        }
-
-        // Channels to flip: the fragment's channel, or every channel of the scheme.
-        let channelNames: string[];
-        if (fragment === null) {
-            channelNames = Object.keys(channels);
-        } else {
-            const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-            if (targetChannel === null) return { status: 400 };
-            channelNames = [targetChannel];
-        }
-
-        // One bulk set-op flips (matched entries x channels), skipping rows already
-        // at the target; changes() is the real changed-count -> 304 when nothing moved.
-        const { changes } = await bulkVis.run({
-            run_id: runId, session_id: sessionId, scheme,
-            pathnames: JSON.stringify(pathnames), channels: JSON.stringify(channelNames), indexed: target,
-        });
-        return { status: changes === 0 ? 304 : 200 };
-    }
-
-    static async showSessionEntry(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> {
-        return EntryOps.#setSessionEntryVisibility(statement, ctx, manifest, 1);
-    }
-
-    static async hideSessionEntry(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ShowHideResult> {
-        return EntryOps.#setSessionEntryVisibility(statement, ctx, manifest, 0);
     }
 }

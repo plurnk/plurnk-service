@@ -1,5 +1,5 @@
 // FIND helper for entry-bearing schemes (SPEC §6.6; plurnk.md FIND row).
-// Shared by FIND and multi-entry SHOW/HIDE (EntryOps.#setSessionEntryVisibility).
+// Used by FIND (the body-matcher candidate selector).
 //
 // Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, SHOW, HIDE)"):
 //   target  — required scope (path or glob); selects which entries are candidates
