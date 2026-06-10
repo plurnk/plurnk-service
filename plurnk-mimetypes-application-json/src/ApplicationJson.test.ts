@@ -209,13 +209,31 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.ok(out.includes("field b"));
     });
 
-    it("preview returns a SymbolPreview wrapping extractRaw output", async () => {
+    it("keys carry the dotted ancestor-key path as container (issue #18)", async () => {
         const h = new ApplicationJson(jsonMetadata);
-        const preview = await h.preview(`{"a":1,"b":2}`);
-        assert.equal(preview?.kind, "symbols");
-        if (preview?.kind !== "symbols") return;
-        const names = [...preview.symbols].map((s) => s.name);
-        assert.deepEqual(names, ["a", "b"]);
+        const syms = h.extractRaw(`{"config":{"server":{"host":"x"}},"top":1}`);
+        const byName = new Map(syms.map((s) => [s.name, s]));
+        assert.equal("container" in byName.get("config")!, false, "top-level key: container absent");
+        assert.equal(byName.get("server")!.container, "config");
+        assert.equal(byName.get("host")!.container, "config.server");
+        assert.equal("container" in byName.get("top")!, false);
+    });
+
+    it("array indices contribute nothing to the container path (issue #18)", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        const syms = h.extractRaw(`{"users":[{"name":"a"},{"name":"b"}]}`);
+        const names = syms.filter((s) => s.name === "name");
+        assert.equal(names.length, 2);
+        assert.equal(names[0].container, "users");
+        assert.equal(names[1].container, "users");
+    });
+
+    it("keys carry 1-indexed columns spanning the quoted key token (issue #18)", async () => {
+        const h = new ApplicationJson(jsonMetadata);
+        const syms = h.extractRaw(`{"a":1}`);
+        const a = syms.find((s) => s.name === "a")!;
+        assert.equal(a.column, 2, "key token starts at the opening quote");
+        assert.equal(a.endColumn, 5, "just past the closing quote");
     });
 });
 

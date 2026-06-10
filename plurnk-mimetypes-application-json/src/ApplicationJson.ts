@@ -57,7 +57,7 @@ export default class ApplicationJson extends BaseHandler {
         if (tree === undefined) return [];
 
         const symbols: MimeSymbol[] = [];
-        collectKeys(tree, content, symbols);
+        collectKeys(tree, content, symbols, "");
         return symbols;
     }
 
@@ -148,28 +148,38 @@ function pathToSegments(path: string): Array<string | number> {
 // Walk a jsonc-parser Node tree and emit a field symbol for every property
 // key encountered at every depth. Each property node has a `children` pair:
 // [keyNode, valueNode]. The keyNode's offset gives the source position.
-function collectKeys(node: Node, content: string, into: MimeSymbol[]): void {
+//
+// `container` is the dotted path of enclosing emitted keys (SPEC §3): keys
+// inside this property's value carry the path extended by this key. Array
+// indices contribute nothing — arrays recurse with the path unchanged.
+function collectKeys(node: Node, content: string, into: MimeSymbol[], container: string): void {
     if (node.type === "property" && node.children && node.children.length >= 2) {
         const keyNode = node.children[0];
+        let inner = container;
         if (keyNode.type === "string" && typeof keyNode.value === "string") {
-            const line = offsetToLineCol(content, keyNode.offset).line;
+            const { line, column } = offsetToLineCol(content, keyNode.offset);
             into.push({
                 name: keyNode.value,
                 kind: "field",
                 line,
                 endLine: line,
+                column,
+                // Key token is single-line; just past its closing quote.
+                endColumn: column + keyNode.length,
+                ...(container.length > 0 && { container }),
             });
+            inner = container.length > 0 ? `${container}.${keyNode.value}` : keyNode.value;
         }
         // Recurse into the value to find nested keys.
         const valueNode = node.children[1];
-        if (valueNode) collectKeys(valueNode, content, into);
+        if (valueNode) collectKeys(valueNode, content, into, inner);
         return;
     }
 
     // Objects, arrays, and the root all recurse through children.
     if (node.children) {
         for (const child of node.children) {
-            collectKeys(child, content, into);
+            collectKeys(child, content, into, container);
         }
     }
 }
