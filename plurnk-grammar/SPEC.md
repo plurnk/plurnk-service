@@ -326,6 +326,10 @@ Suffix rules:
 - The body of a statement cannot contain its own exact close-tag
   literal; choose a suffix that does not collide.
 - Empty suffix is the default. Most statements need no suffix.
+- Generation-side canon dictates **digit** suffixes (`<<EDIT1 … :EDIT1`)
+  so the shipped GBNF (`dist/plurnk.gbnf`) can enumerate close tags —
+  the HEREDOC tag match is not context-free. The parser remains
+  permissive: any matching `[A-Za-z0-9_]*` suffix is valid.
 
 Example — nested EDIT inside an outer EDITa:
 

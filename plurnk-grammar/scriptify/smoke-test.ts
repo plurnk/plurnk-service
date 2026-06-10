@@ -4,7 +4,7 @@
 // of Node 25's node_modules type-stripping restriction).
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, rm, readdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -44,6 +44,12 @@ try {
         throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas}] vs source [${sourceSchemas}]`);
     }
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
+
+    const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-grammar");
+    const shippedGbnf = await readFile(join(installedRoot, "dist", "plurnk.gbnf"), "utf8");
+    const localGbnf = await readFile(join(grammarDir, "dist", "plurnk.gbnf"), "utf8");
+    if (shippedGbnf !== localGbnf) throw new Error("shipped dist/plurnk.gbnf diverges from the local build");
+    process.stdout.write(`[smoke] dist/plurnk.gbnf shipped intact (${shippedGbnf.length} bytes)\n`);
 
     await writeFile(join(tempDir, "consume.js"), `
 import { PlurnkParser, Validator, PlurnkParseError } from "@plurnk/plurnk-grammar";

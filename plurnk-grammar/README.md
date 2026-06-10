@@ -175,6 +175,14 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 
 Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `source` ∈ `lexer | parser | visitor`. Messages use protocol vocabulary (`unrecognized character '<<' in path`, `expected close tag; got end of input`).
 
+## gbnf
+
+`dist/plurnk.gbnf` ships in the package — a generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar for llama.cpp constrained sampling. It dictates the canonical form (digit suffixes, comma line markers, three-digit SEND signals); the parser remains the permissive contract — everything the GBNF can generate, the parser accepts.
+
+```ts
+import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")
+```
+
 ## spec
 
 [SPEC.md](SPEC.md) — full grammar specification: canonical form, per-OP semantics, matcher dialects, path decomposition, error model, whitespace rules, implementation notes.
