@@ -132,7 +132,7 @@ The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be autho
 - `entries` — CRUD over the scheme's own namespace (`read`/`write`/`delete`).
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
-- `notify` — between-turn client/engine signals (`streamEvent`, `wakeRun`); not model-facing.
+- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeRun`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a run, always via close.)
 - `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a run+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk)` is **fused** (append + stream/event in one call); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).

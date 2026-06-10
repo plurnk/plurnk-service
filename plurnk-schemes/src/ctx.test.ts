@@ -82,7 +82,6 @@ const makeCtx = () => {
         streamEvent(pathname, channel, state, contentLength) {
             events.push(`${pathname}#${channel}:${state}:${contentLength}`);
         },
-        wakeRun() { woken += 1; },
     };
 
     const subscriptions: SubscriptionCaps = {
@@ -94,7 +93,9 @@ const makeCtx = () => {
             chunks.push({ channel, chunk });
             notify.streamEvent("sub", channel, "active", chunk.length);
         },
-        async close(reason, outcome) { closed = { reason, outcome }; notify.wakeRun(); },
+        // close composites the run wake — there is no separate notify.wakeRun;
+        // the rich, summary-bearing wake lives where the close context is.
+        async close(reason, outcome) { closed = { reason, outcome }; woken += 1; },
     };
 
     const crossScheme: CrossSchemeCaps = {

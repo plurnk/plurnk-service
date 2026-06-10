@@ -86,14 +86,19 @@ export interface TagCaps {
 }
 
 // ── notify ───────────────────────────────────────────────────────────────
-// Out-of-band, between-turn signals to clients/engine — today's
-// `streamEventNotify` / `wakeRunNotify` hooks. NOT model-facing: the model
-// is turn-based and sees channel state at the next boundary (SPEC §7.9).
-// `streamEvent` is metadata-only (never content). `wakeRun` asks the engine
-// to schedule a turn for a run blocked on this scheme's progress.
+// Out-of-band, between-turn signal to clients — today's `streamEventNotify`
+// hook. NOT model-facing: the model is turn-based and sees channel state at
+// the next boundary (SPEC §7.9). `streamEvent` is metadata-only (never
+// content).
+//
+// There is no `wakeRun` here. The run-wake carries subscription-close
+// context (entryId / subscriptionId / closeStatus / scheme / summary) that
+// only exists at stream completion, so it belongs to `subscriptions.close`,
+// which already composites it (channel state + registry close + run wake).
+// Only streaming schemes wake a run, and always via close; synchronous entry
+// schemes return their turn and never wake. (plurnk-service#180.)
 export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
-    wakeRun(): void;
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────
