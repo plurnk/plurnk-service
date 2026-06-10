@@ -60,6 +60,7 @@
     }
   },
   "devDependencies": {
+    "@plurnk/plurnk-mimetypes-grammar-css": "^0.1.0",
     "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
     "@tree-sitter-grammars/tree-sitter-lua": "^0.4.1",
     "@tree-sitter-grammars/tree-sitter-toml": "^0.7.0",
