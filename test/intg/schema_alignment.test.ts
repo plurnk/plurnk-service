@@ -114,7 +114,6 @@ const MAPPING: Record<string, SchemaMapping> = {
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     Packet:          { kind: "skip", reason: "embedded in turns.packet JSON column" },
     TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.user.telemetry.events[] JSON" },
-    Visibility:      { kind: "skip", reason: "visibility table removed (index teardown); grammar's Visibility schema removal is a pending plurnk-grammar issue" },
     Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
 };
 
