@@ -51,21 +51,6 @@ test("Skill.read: existing → 200 with content; missing → 404", async () => {
     } finally { await db.close(); }
 });
 
-test("Skill.show/hide: round-trip alternates state and 200/304 statuses", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const s = new Skill();
-        const r = await s.edit(editStmt(urlPath("skill", "ping"), "ping skill"), makeSchemeCtx({ db, sessionId, runId }));
-        const path = urlPath("skill", "ping");
-        assert.equal((await s.show(showStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 304);
-        assert.equal((await s.hide(hideStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 200);
-        const visRow = await (db.test_get_visibility_no_channel as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: r.entryId });
-        assert.equal(visRow?.indexed, 0);
-        assert.equal((await s.hide(hideStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 304);
-        assert.equal((await s.show(showStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 200);
-    } finally { await db.close(); }
-});
-
 test("Skill.edit + read: idempotent on same path", async () => {
     const { db, sessionId, runId } = await setup();
     try {

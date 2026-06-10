@@ -1,4 +1,4 @@
-// Floor-scope capstone — drives every non-EXEC DSL op end-to-end through the
+// Floor-scope capstone — drives the non-EXEC entry DSL ops end-to-end through the
 // canonical grammar parser, real Engine, real SchemeRegistry, real SqlRite.
 
 import test from "node:test";
@@ -20,7 +20,7 @@ const parse = (dsl: string): PlurnkStatement[] => {
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, "capstone-ws");
-    // FIND/SHOW/HIDE body matchers now run content through the mimetypes daughter,
+    // FIND body matchers now run content through the mimetypes daughter,
     // so the end-to-end engine needs a real (discovering) Mimetypes — same as the
     // daemon wires in production; the bare default has no handlers.
     await DEFAULT_MIMETYPES.ready();
@@ -72,18 +72,6 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.equal(r7.status, 200);
         assert.deepEqual(r7.results, ["known://france/capital"]);
 
-        const [hideOp] = parse("<<HIDE(known://france/capital)::HIDE");
-        const r8 = await dispatch(hideOp, 7);
-        assert.equal(r8.status, 200);
-        const hiddenRows = await (db.test_visibility_for_entry_indexed as PrepMethod).all<{ indexed: number }>({ entry_id: knownEntryId });
-        assert.ok(hiddenRows.every((r) => r.indexed === 0));
-
-        const [showOp] = parse("<<SHOW(known://france/capital)::SHOW");
-        const r9 = await dispatch(showOp, 8);
-        assert.equal(r9.status, 200);
-        const shownRows = await (db.test_visibility_for_entry_indexed as PrepMethod).all<{ indexed: number }>({ entry_id: knownEntryId });
-        assert.ok(shownRows.every((r) => r.indexed === 1));
-
         const [moveOp] = parse("<<MOVE(known://france/capital):known://archive/france/capital:MOVE");
         const r10 = await dispatch(moveOp, 9);
         assert.equal(r10.status, 201);
@@ -109,9 +97,9 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.deepEqual(allEntries, [{ scheme: "known", pathname: "archive/france/capital" }]);
 
         const logCount = (await (db.test_count_log_entries_by_run as PrepMethod).get<{ n: number }>({ run_id: env.runId }))?.n;
-        assert.equal(logCount, 11);
+        assert.equal(logCount, 9);
 
         const clientLogCount = (await (db.test_count_log_entries_run_origin as PrepMethod).get<{ n: number }>({ run_id: env.runId, origin: "client" }))?.n;
-        assert.equal(clientLogCount, 11);
+        assert.equal(clientLogCount, 9);
     } finally { await db.close(); }
 });

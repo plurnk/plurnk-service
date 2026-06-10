@@ -2,12 +2,12 @@
 // Unknown) but its semantics are NOT yet designed.
 
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import type { EditStatement, FindStatement, HideStatement, ReadStatement, SendStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import EntryFind from "./_entry-find.ts";
-import type { EditResult, ReadResult, ShowHideResult } from "./_entry-ops.ts";
+import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
@@ -30,14 +30,6 @@ export default class Skill {
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         return EntryOps.readSessionEntry(statement, ctx, Skill.manifest);
-    }
-
-    async show(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return EntryOps.showSessionEntry(statement, ctx, Skill.manifest);
-    }
-
-    async hide(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return EntryOps.hideSessionEntry(statement, ctx, Skill.manifest);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {

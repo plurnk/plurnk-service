@@ -52,31 +52,6 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
-test("op.show / op.hide toggle visibility", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "session.create", { name: "vis-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "body" });
-
-            const hideRes = await rpcCall(ws, 3, "op.hide", { target: "known://x" });
-            assert.equal((hideRes.result as { status: number }).status, 200);
-
-            const visAfterHide = (await (db.test_get_visibility_no_channel as PrepMethod).get<{ indexed: number }>({ run_id: 1, entry_id: 1 }))?.indexed;
-            // Cannot rely on PK=1; use the channel-based PREP.
-            const visRows = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
-            assert.ok(visRows.some((r) => r.indexed === 0));
-
-            const showRes = await rpcCall(ws, 4, "op.show", { target: "known://x" });
-            assert.equal((showRes.result as { status: number }).status, 200);
-
-            const visAfterShow = await (db.test_get_visibility_by_channel as PrepMethod).all<{ indexed: number }>({ run_id: 1, channel: "body" });
-            assert.ok(visAfterShow.every((r) => r.indexed === 1));
-            void visAfterHide;
-        } finally { ws.close(); }
-    });
-});
-
 test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);

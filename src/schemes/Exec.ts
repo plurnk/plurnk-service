@@ -1,4 +1,4 @@
-import type { ExecStatement, FindStatement, HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import EffectPolicy from "./EffectPolicy.ts";
@@ -7,7 +7,7 @@ import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.t
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryFind from "./_entry-find.ts";
-import type { ReadResult, ShowHideResult } from "./_entry-ops.ts";
+import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
@@ -274,14 +274,6 @@ export default class Exec {
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         return EntryOps.readSessionEntry(statement, ctx, Exec.manifest);
-    }
-
-    async show(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return EntryOps.showSessionEntry(statement, ctx, Exec.manifest);
-    }
-
-    async hide(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
-        return EntryOps.hideSessionEntry(statement, ctx, Exec.manifest);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {

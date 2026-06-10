@@ -339,9 +339,9 @@ No stored `preview` channel — channel content is pulled on READ, never preview
 
 Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently.
 
-### §5.2 Visibility lattice
+### §5.2 Entries carry no visibility
 
-Per-`(run, entry, channel)` bit in the `visibility` table. EDIT-creating-new sets `indexed=1` for every channel of the new entry in the current run. SHOW flips all channels of target entry to 1; HIDE flips to 0. {§5.2-fragmentless-show-hide-flips-all} Channel-specific SHOW/HIDE via fragment per §5.5.
+Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable — entries have no per-run shown/hidden state. Context curation is the model's, on the **log** (SHOW/HIDE collapse/expand log rows, §6.3), never on entries.
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
@@ -360,8 +360,6 @@ Rules:
 3. Unknown channel name → 400. {§5.5-unknown-channel-400}
 4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
 5. Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. {§5.5-fragment-on-nonexistent-404}
-6. Fragment-targeted SHOW/HIDE flips only the named channel; fragment-less flips all per §5.2. {§5.5-fragment-targeted-show-hide}
-
 | URI | Channel |
 |---|---|
 | `known://france/capital` | body (default) |
@@ -429,8 +427,7 @@ AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineM
 
 AST: `{ op: "SHOW"|"HIDE", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
-- Flips `visibility.indexed` for the targeted channel(s) per §5.5 rules.
-- Returns 200 on transition {§6.3-flip-200}, 304 on no-op {§6.3-noop-304}, 404 if entry absent {§6.3-absent-404}.
+SHOW/HIDE operate on the **log** (`log://`) — the model's context-curation surface (§15). HIDE collapses a log row to its path; SHOW restores its body. Non-destructive: rows and bodies persist, re-SHOWable. Entries carry no visibility (§5.2), so SHOW/HIDE against an entry scheme returns 501.
 
 ### §6.4 COPY (engine-orchestrated)
 

@@ -85,32 +85,6 @@ test("[§5.5-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404;
     } finally { await db.close(); }
 });
 
-test("[§5.5-fragment-targeted-show-hide] fragment-targeted HIDE flips only the named channel; fragment-less flips all", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const entryId = await seedExecEntry(db, sessionId, runId, "run/xyz", "out", "err");
-        const exec = new Exec();
-
-        const visOf = async (channel: string): Promise<number | undefined> =>
-            (await (db.test_get_visibility as PrepMethod).get<{ indexed: number }>({ run_id: runId, entry_id: entryId, channel }))?.indexed;
-
-        assert.equal(await visOf("stdout"), 1);
-        assert.equal(await visOf("stderr"), 1);
-
-        // Fragment-targeted HIDE on #stderr flips ONLY stderr.
-        const h = await exec.hide(hideStmt(urlPath("exec", "run/xyz", "stderr")), makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(h.status, 200);
-        assert.equal(await visOf("stdout"), 1, "stdout untouched by fragment-targeted hide");
-        assert.equal(await visOf("stderr"), 0, "stderr flipped to hidden");
-
-        // Fragment-less HIDE flips ALL channels of the entry (§5.2).
-        const hAll = await exec.hide(hideStmt(urlPath("exec", "run/xyz")), makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(hAll.status, 200);
-        assert.equal(await visOf("stdout"), 0, "fragment-less hide flips stdout too");
-        assert.equal(await visOf("stderr"), 0);
-    } finally { await db.close(); }
-});
-
 test("[§5-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
     const { db, sessionId, runId } = await setup();
     try {

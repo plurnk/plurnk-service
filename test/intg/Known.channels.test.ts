@@ -74,28 +74,3 @@ test("Known.read with unknown channel returns 400", async () => {
         assert.equal(r.status, 400);
     } finally { await db.close(); }
 });
-
-test("[§5.2-fragmentless-show-hide-flips-all] Known.show/hide with no fragment flips ALL channels of the entry", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const k = new Known();
-        const r = await k.edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
-
-        let rows = (await (db.test_list_visibility_for_run as PrepMethod).all<{ entry_id: number; channel: string; indexed: number }>({ run_id: runId }))
-            .filter((row) => row.entry_id === r.entryId);
-        assert.equal(rows.length, 1);
-        assert.ok(rows.every((row) => row.indexed === 1));
-
-        const h = await k.hide(hideStmt(urlPath("known", "x")), makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(h.status, 200);
-        rows = (await (db.test_list_visibility_for_run as PrepMethod).all<{ entry_id: number; channel: string; indexed: number }>({ run_id: runId }))
-            .filter((row) => row.entry_id === r.entryId);
-        assert.ok(rows.every((row) => row.indexed === 0));
-
-        const s = await k.show(showStmt(urlPath("known", "x")), makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(s.status, 200);
-        rows = (await (db.test_list_visibility_for_run as PrepMethod).all<{ entry_id: number; channel: string; indexed: number }>({ run_id: runId }))
-            .filter((row) => row.entry_id === r.entryId);
-        assert.ok(rows.every((row) => row.indexed === 1));
-    } finally { await db.close(); }
-});

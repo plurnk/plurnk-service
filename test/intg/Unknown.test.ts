@@ -145,35 +145,3 @@ test("Unknown.read: lineMarker, body matcher, tag filter — positive coverage",
         assert.equal(miss.status, 404);
     } finally { await db.close(); }
 });
-
-test("Unknown.show/hide: round-trip", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const u = new Unknown();
-        const r = await u.edit(editStmt(urlPath("unknown", "/v"), "x"), makeSchemeCtx({ db, sessionId, runId }));
-        const path = urlPath("unknown", "/v");
-        assert.equal((await u.show(showStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 304);
-        assert.equal((await u.hide(hideStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 200);
-        assert.equal(await visibilityOf(db, runId, r.entryId!), 0);
-        assert.equal((await u.hide(hideStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 304);
-        assert.equal((await u.show(showStmt(path), makeSchemeCtx({ db, sessionId, runId }))).status, 200);
-        assert.equal(await visibilityOf(db, runId, r.entryId!), 1);
-    } finally { await db.close(); }
-});
-
-test("Unknown.show: nonexistent entry → 404", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const r = await new Unknown().show(showStmt(urlPath("unknown", "/nope")), makeSchemeCtx({ db, sessionId, runId }));
-        assert.equal(r.status, 404);
-    } finally { await db.close(); }
-});
-
-test("Unknown.show/hide: null path → 400", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const u = new Unknown();
-        assert.equal((await u.show(showStmt(null), makeSchemeCtx({ db, sessionId, runId }))).status, 400);
-        assert.equal((await u.hide(hideStmt(null), makeSchemeCtx({ db, sessionId, runId }))).status, 400);
-    } finally { await db.close(); }
-});
