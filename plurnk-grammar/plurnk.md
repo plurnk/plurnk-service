@@ -60,7 +60,7 @@ On structured entries, `<Result>` addresses result index, not line number.
 | `//`           | xpath    | `//selector`                      |
 | `/`            | regex    | `/pattern/[igmsu]?`               |
 | `$`            | jsonpath | `$.field`                         |
-| `~`            | semantic | `~query text`                     |
+| `~`            | semantic | `~phrase`                         |
 | `@`            | graph    | `@<symbol`, `@>symbol`, `@symbol` |
 | otherwise      | glob     | `pattern`                         |
 
