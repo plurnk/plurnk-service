@@ -127,28 +127,6 @@ UPDATE log_entries SET indexed = 0
 WHERE loop_id = $loop_id AND indexed = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
--- PREP: engine_grinder_catalog
--- §14.4 pass 2 (index collapse): indexed catalog entries eligible to hide — all
--- run-visible session entries except the plurnk://manifest.json lifeline.
-SELECT v.entry_id, v.channel, e.scheme, ec.tokens
-FROM visibility v
-JOIN entries e ON e.id = v.entry_id
-JOIN entry_channels ec ON ec.entry_id = v.entry_id AND ec.name = v.channel
-WHERE v.run_id = $run_id AND v.indexed = 1
-  AND e.scope = 'session' AND e.session_id = $session_id
-  AND NOT (e.scheme = 'plurnk' AND e.pathname = 'manifest.json')
-ORDER BY ec.tokens DESC;
-
--- PREP: engine_grinder_hide_catalog
--- §14.4 pass 2: hide exactly the catalog's (entry_id, channel) rows in one set-op.
--- $pairs is a JSON array of {entry_id, channel} from engine_grinder_catalog.
-UPDATE visibility SET indexed = 0
-WHERE run_id = $run_id
-  AND (entry_id, channel) IN (
-    SELECT json_extract(value, '$.entry_id'), json_extract(value, '$.channel')
-    FROM json_each($pairs)
-  );
-
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §15 packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working

@@ -1007,14 +1007,9 @@ export default class Engine {
             return { packet: current, fit: true, struck: turnNumber > 1 };
         }
 
-        // Pass 2 — index collapse: hide every catalog entry except the manifest.
-        const catalog = await (this.#db.engine_grinder_catalog as PrepMethod).all<{ entry_id: number; channel: string; scheme: string }>({ run_id: runId, session_id: sessionId });
-        for (const c of catalog) note(c.scheme);
-        if (catalog.length > 0) {
-            const pairs = JSON.stringify(catalog.map((c) => ({ entry_id: c.entry_id, channel: c.channel })));
-            await (this.#db.engine_grinder_hide_catalog as PrepMethod).run({ run_id: runId, pairs });
-        }
-        current = catalog.length > 0 ? await rebuild(errors) : current;
+        // Prior-turn rollback is the only budget lever now: entries don't render
+        // (no index), so there is no catalog to collapse. If pass 1 didn't fit,
+        // the packet is over and the caller hard-413s.
         this.#emitBudgetOverflow(sessionId, loopId, hidden);
         return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
     }

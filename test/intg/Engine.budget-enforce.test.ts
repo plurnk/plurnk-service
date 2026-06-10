@@ -55,19 +55,6 @@ test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothi
     } finally { await db.close(); }
 });
 
-test("[§14.4-layer2-index-collapse] on overflow, catalog entries are hidden except the manifest lifeline", async () => {
-    const db = await openMigrated();
-    try {
-        const { sessionId, runId, loopId } = await envelope(db);
-        const entryId = await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "x".repeat(200), indexed: 1 });
-        const engine = engineAt(db, TINY);
-        await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES });
-        assert.equal(await indexedOf(db, runId, entryId), 0, "overflow → catalog entry hidden");
-        const manifest = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ pathname: "manifest.json", scheme: "plurnk" });
-        assert.equal(await indexedOf(db, runId, manifest!.id), 1, "manifest lifeline preserved");
-    } finally { await db.close(); }
-});
-
 test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are hidden from the render", async () => {
     const db = await openMigrated();
     try {
@@ -119,12 +106,15 @@ test("[§14.4-event-model-terms] the overflow event names hidden entries by sche
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
-        await seedEntryWithChannel(db, { sessionId, runId, pathname: "doc", content: "x".repeat(200), indexed: 1 });
         const engine = engineAt(db, TINY);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });   // emits → buffer
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // drains into its packet
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        // Turn 1 leaves a shown log; turn 2 overflows and the prior-turn rollback
+        // hides it (pass 1), emitting budget_overflow into the buffer; turn 3
+        // drains that event into its packet.
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row!.packet) as { user: { telemetry: { errors: Array<Record<string, unknown>> } } };
         const evt = packet.user.telemetry.errors.find((e) => e.kind === "budget_overflow");
         assert.ok(evt, "budget_overflow event surfaced to the model");
