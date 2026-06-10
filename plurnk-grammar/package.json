@@ -28,7 +28,7 @@
   "scripts": {
     "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",
     "build:types": "node scriptify/generate-types.ts",
-    "build:dist": "tsc -p tsconfig.build.json",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
     "build": "npm run build:grammar && npm run build:types && npm run build:dist",
     "antlr:tokens": "testrig src/generated/plurnk document --tokens",
     "antlr:trace": "testrig src/generated/plurnk document --trace",

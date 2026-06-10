@@ -36,6 +36,15 @@ try {
     process.stdout.write(`[smoke] installing tarball...\n`);
     await run(`npm install --no-package-lock --no-audit --no-fund --silent ${tarballPath}`, { cwd: tempDir });
 
+    // Stale-artifact guard: the shipped dist/schema must mirror source schema/
+    // exactly — a deleted schema surviving in dist (issue #27) fails here.
+    const sourceSchemas = (await readdir(join(grammarDir, "schema"))).sort();
+    const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-grammar", "dist", "schema"))).sort();
+    if (JSON.stringify(sourceSchemas) !== JSON.stringify(shippedSchemas)) {
+        throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas}] vs source [${sourceSchemas}]`);
+    }
+    process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
+
     await writeFile(join(tempDir, "consume.js"), `
 import { PlurnkParser, Validator, PlurnkParseError } from "@plurnk/plurnk-grammar";
 
