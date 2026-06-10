@@ -270,35 +270,6 @@ test("Validator: ProviderDeclaration rejects zero contextSize", () => {
 });
 
 // -------------------------------------------------------------------------
-// Visibility
-// -------------------------------------------------------------------------
-
-test("Validator: Visibility accepts indexed body channel", () => {
-    const { valid } = Validator.validateVisibility({ entry_id: 1, channel: "body", indexed: true });
-    assert.equal(valid, true);
-});
-
-test("Validator: Visibility accepts archived stderr channel", () => {
-    const { valid } = Validator.validateVisibility({ entry_id: 1, channel: "stderr", indexed: false });
-    assert.equal(valid, true);
-});
-
-test("Validator: Visibility rejects missing channel", () => {
-    const { valid } = Validator.validateVisibility({ entry_id: 1, indexed: true });
-    assert.equal(valid, false);
-});
-
-test("Validator: Visibility rejects uppercase channel name", () => {
-    const { valid } = Validator.validateVisibility({ entry_id: 1, channel: "Body", indexed: true });
-    assert.equal(valid, false);
-});
-
-test("Validator: Visibility rejects non-boolean indexed", () => {
-    const { valid } = Validator.validateVisibility({ entry_id: 1, channel: "body", indexed: 1 });
-    assert.equal(valid, false);
-});
-
-// -------------------------------------------------------------------------
 // LogEntry
 // -------------------------------------------------------------------------
 

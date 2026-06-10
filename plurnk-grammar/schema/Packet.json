@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/Packet.json",
     "title": "Packet",
-    "description": "One turn's full exchange with the provider: { system, user, assistant, assistantRaw }. system aggregates durable + accumulating context (definition, persona, indexed entries, in-scope log rows). user carries the per-turn ephemera. assistant is the provider-normalized output. assistantRaw is opaque.",
+    "description": "One turn's full exchange with the provider: { system, user, assistant, assistantRaw }. system aggregates durable + accumulating context (definition, persona, in-scope log rows). user carries the per-turn ephemera. assistant is the provider-normalized output. assistantRaw is opaque.",
     "type": "object",
     "required": ["tokens", "system", "user", "assistant", "assistantRaw"],
     "additionalProperties": false,
@@ -14,16 +14,12 @@
         },
         "system": {
             "type": "object",
-            "required": ["tokens", "system_definition", "persona", "index", "log"],
+            "required": ["tokens", "system_definition", "persona", "log"],
             "additionalProperties": false,
             "properties": {
                 "tokens": { "type": "integer", "minimum": 0 },
                 "system_definition": { "type": "string", "description": "text/markdown — plurnk grammar + scheme registry refs." },
                 "persona": { "type": "string", "description": "text/markdown — identity / mission." },
-                "index": {
-                    "type": "array",
-                    "items": { "$ref": "https://schemas.plurnk.dev/v0/Entry.json" }
-                },
                 "log": {
                     "type": "array",
                     "items": { "$ref": "https://schemas.plurnk.dev/v0/LogEntry.json" }

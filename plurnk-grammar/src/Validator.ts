@@ -9,7 +9,6 @@ import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import entrySchema from "../schema/Entry.json" with { type: "json" };
 import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
-import visibilitySchema from "../schema/Visibility.json" with { type: "json" };
 import logEntrySchema from "../schema/LogEntry.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
 import turnSchema from "../schema/Turn.json" with { type: "json" };
@@ -29,7 +28,6 @@ const FOUNDATIONAL = [
     plurnkStatementSchema,
     entrySchema, logEntrySchema,
     schemeRegistrationSchema, providerDeclarationSchema,
-    visibilitySchema,
     telemetryEventSchema,
     packetSchema,
 ];
@@ -45,7 +43,6 @@ export default class Validator {
     static #entry = Validator.#buildWithRefs(entrySchema, [paramsSchema, channelContentSchema]);
     static #schemeRegistration = new CfValidator(schemeRegistrationSchema as Schema, "2020-12");
     static #providerDeclaration = new CfValidator(providerDeclarationSchema as Schema, "2020-12");
-    static #visibility = new CfValidator(visibilitySchema as Schema, "2020-12");
     static #logEntry = Validator.#buildWithRefs(logEntrySchema, [paramsSchema, lineMarkerSchema]);
     static #plurnkStatement = Validator.#buildWithRefs(
         plurnkStatementSchema,
@@ -80,7 +77,6 @@ export default class Validator {
     static validateEntry(obj: unknown): ValidationResult { return Validator.#run_(Validator.#entry, obj); }
     static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#schemeRegistration, obj); }
     static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#providerDeclaration, obj); }
-    static validateVisibility(obj: unknown): ValidationResult { return Validator.#run_(Validator.#visibility, obj); }
     static validateLogEntry(obj: unknown): ValidationResult { return Validator.#run_(Validator.#logEntry, obj); }
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#plurnkStatement, obj); }
     static validateTurn(obj: unknown): ValidationResult { return Validator.#run_(Validator.#turn, obj); }

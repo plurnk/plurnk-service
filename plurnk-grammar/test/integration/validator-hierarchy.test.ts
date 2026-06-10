@@ -25,21 +25,6 @@ const schemeReg = (name: string) => ({
     handler: null,
 });
 
-const entry = () => ({
-    id: 1,
-    version: 0,
-    scope: "agent" as const,
-    session_id: null,
-    scheme: "known",
-    username: null, password: null, hostname: "philosophy", port: null,
-    pathname: "/meaning", params: {},
-    channels: {
-        body: { content: "The meaning of life is 42.", mimetype: "text/markdown", tokens: 10 },
-    },
-    attributes: {},
-    tags: ["philosophy"],
-});
-
 const logEntry = () => ({
     id: 1, version: 0,
     run_id: 1, loop_id: 1, turn_id: 1, sequence: 1,
@@ -68,7 +53,6 @@ const packet = () => ({
         tokens: 60,
         system_definition: "# Plurnk\n\n...",
         persona: "# Persona\n\n...",
-        index: [entry()],
         log: [logEntry()],
     },
     user: {
@@ -270,9 +254,8 @@ test("Validator: Packet accepts well-formed end-to-end packet", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: Packet accepts empty index/log arrays", () => {
+test("Validator: Packet accepts empty log array", () => {
     const p = packet();
-    p.system.index = [];
     p.system.log = [];
     const { valid } = Validator.validatePacket(p);
     assert.equal(valid, true);
@@ -298,9 +281,9 @@ test("Validator: Packet rejects packet missing required section", () => {
     assert.equal(valid, false);
 });
 
-test("Validator: Packet rejects invalid Entry inside system.index[]", () => {
+test("Validator: Packet rejects system.index — slot removed with the visibility paradigm", () => {
     const p: any = packet();
-    p.system.index = [{ ...entry(), scope: "session", session_id: null }];
+    p.system.index = [];
     const { valid } = Validator.validatePacket(p);
     assert.equal(valid, false);
 });

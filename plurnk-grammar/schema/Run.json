@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/Run.json",
     "title": "Run",
-    "description": "A stretch of work within a session. Forkable via parent_run_id. Owns per-run logs and visibility state.",
+    "description": "A stretch of work within a session. Forkable via parent_run_id. Owns per-run logs.",
     "type": "object",
     "required": ["id", "version", "session_id", "name", "created_at", "parent_run_id", "cost_pico"],
     "additionalProperties": false,
