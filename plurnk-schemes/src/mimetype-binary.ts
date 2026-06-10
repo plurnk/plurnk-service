@@ -31,34 +31,6 @@ const TREE_NAVIGABLE_MIMETYPES: ReadonlySet<string> = new Set([
     "text/html",
 ]);
 
-export const isBinaryMimetype = (mimetype: string): boolean => {
-    if (mimetype.length === 0) return false;
-    const slash = mimetype.indexOf("/");
-    if (slash === -1) return true;
-    const type = mimetype.slice(0, slash);
-    if (type === "text") return false;
-    if (TEXT_APPLICATION_MIMETYPES.has(mimetype)) return false;
-    if (mimetype.endsWith("+json") || mimetype.endsWith("+xml") || mimetype.endsWith("+yaml")) return false;
-    return true;
-};
-
-// JSON-family check — used by `<L>` dispatch to pick structural slicer
-// (sliceJsonItems) over line slicer (sliceLines) for JSON sources.
-// Matches application/json plus +json suffix variants per RFC 6839.
-export const isJsonMimetype = (mimetype: string): boolean =>
-    mimetype === "application/json" || mimetype.endsWith("+json");
-
-export const isLineNavigableMimetype = (mimetype: string): boolean => {
-    if (mimetype.length === 0) return false;
-    if (isBinaryMimetype(mimetype)) return false;
-    if (TREE_NAVIGABLE_MIMETYPES.has(mimetype)) return false;
-    if (mimetype.endsWith("+json") || mimetype.endsWith("+xml")) return false;
-    // Everything text-ish that isn't tree-shaped is line-navigable.
-    // text/plain, text/markdown, text/csv, text/javascript, text/typescript,
-    // application/yaml, application/toml, application/javascript, etc.
-    return true;
-};
-
 // Text primitive for the agent contract: text/markdown is the default
 // text mimetype anywhere plurnk-service auto-derives a text result.
 // text/plain is reserved for explicit scheme-manifest declarations
@@ -67,14 +39,46 @@ export const isLineNavigableMimetype = (mimetype: string): boolean => {
 // — so the agent gets markdown-aware processing capability for free,
 // and never needs to decide "is this markdown enough to mark as
 // markdown?"
-//
-// Use this at any consumer-side auto-derivation point (file scheme
-// extension fallback, log rx wrap, etc.) to normalize text/plain → text/markdown.
 export const TEXT_PRIMITIVE_MIMETYPE = "text/markdown";
 
-export const normalizeAutoTextMimetype = (mimetype: string | null | undefined): string => {
-    if (mimetype === null || mimetype === undefined || mimetype === "" || mimetype === "text/plain") {
-        return TEXT_PRIMITIVE_MIMETYPE;
+export default class MimetypeClassifier {
+    static isBinary(mimetype: string): boolean {
+        if (mimetype.length === 0) return false;
+        const slash = mimetype.indexOf("/");
+        if (slash === -1) return true;
+        const type = mimetype.slice(0, slash);
+        if (type === "text") return false;
+        if (TEXT_APPLICATION_MIMETYPES.has(mimetype)) return false;
+        if (mimetype.endsWith("+json") || mimetype.endsWith("+xml") || mimetype.endsWith("+yaml")) return false;
+        return true;
     }
-    return mimetype;
-};
+
+    // JSON-family check — used by `<L>` dispatch to pick structural slicer
+    // (Slicer.jsonItems) over line slicer (Slicer.lines) for JSON sources.
+    // Matches application/json plus +json suffix variants per RFC 6839.
+    static isJson(mimetype: string): boolean {
+        return mimetype === "application/json" || mimetype.endsWith("+json");
+    }
+
+    static isLineNavigable(mimetype: string): boolean {
+        if (mimetype.length === 0) return false;
+        if (MimetypeClassifier.isBinary(mimetype)) return false;
+        if (TREE_NAVIGABLE_MIMETYPES.has(mimetype)) return false;
+        if (mimetype.endsWith("+json") || mimetype.endsWith("+xml")) return false;
+        // Everything text-ish that isn't tree-shaped is line-navigable.
+        // text/plain, text/markdown, text/csv, text/javascript, text/typescript,
+        // application/yaml, application/toml, application/javascript, etc.
+        return true;
+    }
+
+    // Normalize an auto-derived text mimetype to the text primitive.
+    // Use at any consumer-side auto-derivation point (file scheme
+    // extension fallback, log rx wrap, etc.): text/plain / null / undefined
+    // / empty → text/markdown.
+    static normalizeAutoText(mimetype: string | null | undefined): string {
+        if (mimetype === null || mimetype === undefined || mimetype === "" || mimetype === "text/plain") {
+            return TEXT_PRIMITIVE_MIMETYPE;
+        }
+        return mimetype;
+    }
+}

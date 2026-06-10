@@ -1,87 +1,87 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { isBinaryMimetype, isLineNavigableMimetype, normalizeAutoTextMimetype, TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
+import MimetypeClassifier, { TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
 
 test("text/* is text", () => {
-    assert.equal(isBinaryMimetype("text/plain"), false);
-    assert.equal(isBinaryMimetype("text/markdown"), false);
-    assert.equal(isBinaryMimetype("text/html"), false);
-    assert.equal(isBinaryMimetype("text/csv"), false);
+    assert.equal(MimetypeClassifier.isBinary("text/plain"), false);
+    assert.equal(MimetypeClassifier.isBinary("text/markdown"), false);
+    assert.equal(MimetypeClassifier.isBinary("text/html"), false);
+    assert.equal(MimetypeClassifier.isBinary("text/csv"), false);
 });
 
 test("application/json + relatives are text", () => {
-    assert.equal(isBinaryMimetype("application/json"), false);
-    assert.equal(isBinaryMimetype("application/yaml"), false);
-    assert.equal(isBinaryMimetype("application/toml"), false);
-    assert.equal(isBinaryMimetype("application/xml"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/json"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/yaml"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/toml"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/xml"), false);
 });
 
 test("+json / +xml / +yaml suffix is text", () => {
-    assert.equal(isBinaryMimetype("application/vnd.api+json"), false);
-    assert.equal(isBinaryMimetype("image/svg+xml"), false);
-    assert.equal(isBinaryMimetype("application/cloudevents+yaml"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/vnd.api+json"), false);
+    assert.equal(MimetypeClassifier.isBinary("image/svg+xml"), false);
+    assert.equal(MimetypeClassifier.isBinary("application/cloudevents+yaml"), false);
 });
 
 test("image/audio/video are binary", () => {
-    assert.equal(isBinaryMimetype("image/png"), true);
-    assert.equal(isBinaryMimetype("image/jpeg"), true);
-    assert.equal(isBinaryMimetype("audio/mpeg"), true);
-    assert.equal(isBinaryMimetype("video/mp4"), true);
+    assert.equal(MimetypeClassifier.isBinary("image/png"), true);
+    assert.equal(MimetypeClassifier.isBinary("image/jpeg"), true);
+    assert.equal(MimetypeClassifier.isBinary("audio/mpeg"), true);
+    assert.equal(MimetypeClassifier.isBinary("video/mp4"), true);
 });
 
 test("application/pdf and friends are binary", () => {
-    assert.equal(isBinaryMimetype("application/pdf"), true);
-    assert.equal(isBinaryMimetype("application/octet-stream"), true);
-    assert.equal(isBinaryMimetype("application/zip"), true);
+    assert.equal(MimetypeClassifier.isBinary("application/pdf"), true);
+    assert.equal(MimetypeClassifier.isBinary("application/octet-stream"), true);
+    assert.equal(MimetypeClassifier.isBinary("application/zip"), true);
 });
 
 test("malformed input", () => {
-    assert.equal(isBinaryMimetype(""), false);
-    assert.equal(isBinaryMimetype("noslashhere"), true);
+    assert.equal(MimetypeClassifier.isBinary(""), false);
+    assert.equal(MimetypeClassifier.isBinary("noslashhere"), true);
 });
 
 // --- isLineNavigableMimetype ---
 
 test("line-navigable: text/plain, text/markdown, text/csv, source code", () => {
-    assert.equal(isLineNavigableMimetype("text/plain"), true);
-    assert.equal(isLineNavigableMimetype("text/markdown"), true);
-    assert.equal(isLineNavigableMimetype("text/csv"), true);
-    assert.equal(isLineNavigableMimetype("text/javascript"), true);
-    assert.equal(isLineNavigableMimetype("text/typescript"), true);
-    assert.equal(isLineNavigableMimetype("application/javascript"), true);
-    assert.equal(isLineNavigableMimetype("application/yaml"), true);
-    assert.equal(isLineNavigableMimetype("application/toml"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/plain"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/markdown"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/csv"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/javascript"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/typescript"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/javascript"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/yaml"), true);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/toml"), true);
 });
 
 test("tree-navigable: JSON, XML, HTML, suffix variants", () => {
-    assert.equal(isLineNavigableMimetype("application/json"), false);
-    assert.equal(isLineNavigableMimetype("application/xml"), false);
-    assert.equal(isLineNavigableMimetype("text/html"), false);
-    assert.equal(isLineNavigableMimetype("application/vnd.api+json"), false);
-    assert.equal(isLineNavigableMimetype("image/svg+xml"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/json"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/xml"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("text/html"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/vnd.api+json"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("image/svg+xml"), false);
 });
 
 test("binary mimetypes are not line-navigable", () => {
-    assert.equal(isLineNavigableMimetype("image/png"), false);
-    assert.equal(isLineNavigableMimetype("application/pdf"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("image/png"), false);
+    assert.equal(MimetypeClassifier.isLineNavigable("application/pdf"), false);
 });
 
 // --- normalizeAutoTextMimetype ---
 
 test("normalizeAutoTextMimetype: text/plain → text/markdown (the text primitive)", () => {
-    assert.equal(normalizeAutoTextMimetype("text/plain"), TEXT_PRIMITIVE_MIMETYPE);
-    assert.equal(normalizeAutoTextMimetype("text/plain"), "text/markdown");
+    assert.equal(MimetypeClassifier.normalizeAutoText("text/plain"), TEXT_PRIMITIVE_MIMETYPE);
+    assert.equal(MimetypeClassifier.normalizeAutoText("text/plain"), "text/markdown");
 });
 
 test("normalizeAutoTextMimetype: null/empty → text/markdown", () => {
-    assert.equal(normalizeAutoTextMimetype(null), "text/markdown");
-    assert.equal(normalizeAutoTextMimetype(undefined), "text/markdown");
-    assert.equal(normalizeAutoTextMimetype(""), "text/markdown");
+    assert.equal(MimetypeClassifier.normalizeAutoText(null), "text/markdown");
+    assert.equal(MimetypeClassifier.normalizeAutoText(undefined), "text/markdown");
+    assert.equal(MimetypeClassifier.normalizeAutoText(""), "text/markdown");
 });
 
 test("normalizeAutoTextMimetype: passes other mimetypes through unchanged", () => {
-    assert.equal(normalizeAutoTextMimetype("text/markdown"), "text/markdown");
-    assert.equal(normalizeAutoTextMimetype("application/json"), "application/json");
-    assert.equal(normalizeAutoTextMimetype("image/png"), "image/png");
-    assert.equal(normalizeAutoTextMimetype("text/csv"), "text/csv");
+    assert.equal(MimetypeClassifier.normalizeAutoText("text/markdown"), "text/markdown");
+    assert.equal(MimetypeClassifier.normalizeAutoText("application/json"), "application/json");
+    assert.equal(MimetypeClassifier.normalizeAutoText("image/png"), "image/png");
+    assert.equal(MimetypeClassifier.normalizeAutoText("text/csv"), "text/csv");
 });

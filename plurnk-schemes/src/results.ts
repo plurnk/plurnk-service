@@ -60,36 +60,52 @@ export interface PassthroughResult extends SchemeResultBase {
 
 export type SchemeResult = EntryResult | ProposalResult | PassthroughResult;
 
-export const isEntryResult = (result: SchemeResult): result is EntryResult => result.shape === "entry";
-export const isProposalResult = (result: SchemeResult): result is ProposalResult => result.shape === "proposal";
-export const isPassthroughResult = (result: SchemeResult): result is PassthroughResult => result.shape === "passthrough";
+export default class Results {
+    static isEntry(result: SchemeResult): result is EntryResult {
+        return result.shape === "entry";
+    }
 
-// A result is an error result iff its status is in the 4xx/5xx range. The
-// `error` envelope is expected on those and absent otherwise.
-export const isErrorStatus = (status: number): boolean => status >= 400;
+    static isProposal(result: SchemeResult): result is ProposalResult {
+        return result.shape === "proposal";
+    }
 
-// Build a scheme-sourced TelemetryEvent. `source` is `scheme:<name>` per
-// the envelope's producer-namespacing convention (grammar TelemetryEvent
-// schema). Absent message/position are omitted rather than set to undefined
-// so the emitted object matches the wire shape exactly.
-export const schemeError = (
-    scheme: string,
-    kind: string,
-    message?: string | null,
-    position?: TelemetryEvent["position"],
-): TelemetryEvent => ({
-    source: `scheme:${scheme}`,
-    kind,
-    ...(message === undefined ? {} : { message }),
-    ...(position === undefined ? {} : { position }),
-});
+    static isPassthrough(result: SchemeResult): result is PassthroughResult {
+        return result.shape === "passthrough";
+    }
 
-// Build a LogCoordinate position pointing at an action's log row. The engine
-// knows the coordinate at result-time, so schemes rarely construct this
-// directly — it's here for the consumer-side mirror and for schemes that
-// surface errors against a known prior coordinate.
-export const logCoordinate = (coordinate: string, op?: string): LogCoordinate => ({
-    type: "log-coordinate",
-    coordinate,
-    ...(op === undefined ? {} : { op }),
-});
+    // A result is an error result iff its status is in the 4xx/5xx range. The
+    // `error` envelope is expected on those and absent otherwise.
+    static isErrorStatus(status: number): boolean {
+        return status >= 400;
+    }
+
+    // Build a scheme-sourced TelemetryEvent. `source` is `scheme:<name>` per
+    // the envelope's producer-namespacing convention (grammar TelemetryEvent
+    // schema). Absent message/position are omitted rather than set to
+    // undefined so the emitted object matches the wire shape exactly.
+    static error(
+        scheme: string,
+        kind: string,
+        message?: string | null,
+        position?: TelemetryEvent["position"],
+    ): TelemetryEvent {
+        return {
+            source: `scheme:${scheme}`,
+            kind,
+            ...(message === undefined ? {} : { message }),
+            ...(position === undefined ? {} : { position }),
+        };
+    }
+
+    // Build a LogCoordinate position pointing at an action's log row. The
+    // engine knows the coordinate at result-time, so schemes rarely construct
+    // this directly — it's here for the consumer-side mirror and for schemes
+    // that surface errors against a known prior coordinate.
+    static logCoordinate(coordinate: string, op?: string): LogCoordinate {
+        return {
+            type: "log-coordinate",
+            coordinate,
+            ...(op === undefined ? {} : { op }),
+        };
+    }
+}

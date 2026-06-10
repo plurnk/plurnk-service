@@ -33,70 +33,74 @@ export interface MatchResult {
     status: number;
     body?: string;          // JSON-array of matches (status 200) or raw fallback content (status 203)
     matches?: number;       // hit count (status 200 or 204); omitted on 203
-    error?: string;         // status >= 400 paths
+    error?: string;         // status >= 400 paths (framework dialect errors; not a scheme TelemetryEvent)
     mimetype?: string;      // overrides default application/json on the 203 fallback path
     reason?: string;        // 203 fallback: framework's parse-failure reason for the model
 }
 
-const prettyJson = (value: unknown): string => JSON.stringify(value, null, 2);
-
-// Apply a `<L>`-slice baseLine offset to per-match line numbers. The
-// framework returns line numbers relative to the content it received;
-// when the matcher runs inside an `<L>` slice, those need to be shifted
-// back to original-source coordinates.
-const shiftLines = (matches: readonly QueryMatch[], baseLine: number): QueryMatch[] => {
-    if (baseLine === 1) return [...matches];
-    const offset = baseLine - 1;
-    return matches.map((m) => ({ ...m, line: m.line + offset }));
-};
-
-export const matchAgainstContent = async (
-    body: MatcherBody,
-    content: string,
-    mimetype: string,
-    mimetypes: Mimetypes,
-    baseLine: number = 1,
-): Promise<MatchResult> => {
-    try {
-        // Framework dispatches dialect by leading prefix of `body.raw`.
-        // `hint` carries the source mimetype so the framework selects the
-        // right per-mimetype handler without re-detecting from content.
-        const rawMatches: QueryMatch[] = await mimetypes.query(
-            { content, hint: mimetype },
-            body.raw,
-        );
-        if (rawMatches.length === 0) {
-            return { status: 204, matches: 0 };
-        }
-        const adjusted = shiftLines(rawMatches, baseLine);
-        return {
-            status: 200,
-            body: prettyJson(adjusted),
-            matches: adjusted.length,
-        };
-    } catch (err) {
-        // Name-based dispatch tolerates dup-copy node_modules layouts where
-        // `instanceof` against the framework's exported classes can fail
-        // because the consumer loads a different physical copy. The framework
-        // sets each error subclass's `.name` to its class name.
-        const name = err instanceof Error ? err.name : "";
-        if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
-            return { status: 415, error: err instanceof Error ? err.message : String(err) };
-        }
-        if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
-            return { status: 400, error: err instanceof Error ? err.message : String(err) };
-        }
-        if (name === "QueryParseFailureError" || err instanceof QueryParseFailureError) {
-            // 203 soft fallback: return raw content as text so the model
-            // can fall back to regex/visual parsing or fix the source.
-            return {
-                status: 203,
-                body: content,
-                mimetype: TEXT_PRIMITIVE_MIMETYPE,
-                reason: err instanceof Error ? err.message : String(err),
-            };
-        }
-        // Unexpected — let it propagate so the engine logs it as a 500.
-        throw err;
+export default class Matcher {
+    static #prettyJson(value: unknown): string {
+        return JSON.stringify(value, null, 2);
     }
-};
+
+    // Apply a `<L>`-slice baseLine offset to per-match line numbers. The
+    // framework returns line numbers relative to the content it received;
+    // when the matcher runs inside an `<L>` slice, those need to be shifted
+    // back to original-source coordinates.
+    static #shiftLines(matches: readonly QueryMatch[], baseLine: number): QueryMatch[] {
+        if (baseLine === 1) return [...matches];
+        const offset = baseLine - 1;
+        return matches.map((m) => ({ ...m, line: m.line + offset }));
+    }
+
+    static async matchAgainstContent(
+        body: MatcherBody,
+        content: string,
+        mimetype: string,
+        mimetypes: Mimetypes,
+        baseLine: number = 1,
+    ): Promise<MatchResult> {
+        try {
+            // Framework dispatches dialect by leading prefix of `body.raw`.
+            // `hint` carries the source mimetype so the framework selects the
+            // right per-mimetype handler without re-detecting from content.
+            const rawMatches: QueryMatch[] = await mimetypes.query(
+                { content, hint: mimetype },
+                body.raw,
+            );
+            if (rawMatches.length === 0) {
+                return { status: 204, matches: 0 };
+            }
+            const adjusted = Matcher.#shiftLines(rawMatches, baseLine);
+            return {
+                status: 200,
+                body: Matcher.#prettyJson(adjusted),
+                matches: adjusted.length,
+            };
+        } catch (err) {
+            // Name-based dispatch tolerates dup-copy node_modules layouts where
+            // `instanceof` against the framework's exported classes can fail
+            // because the consumer loads a different physical copy. The framework
+            // sets each error subclass's `.name` to its class name.
+            const name = err instanceof Error ? err.name : "";
+            if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
+                return { status: 415, error: err instanceof Error ? err.message : String(err) };
+            }
+            if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
+                return { status: 400, error: err instanceof Error ? err.message : String(err) };
+            }
+            if (name === "QueryParseFailureError" || err instanceof QueryParseFailureError) {
+                // 203 soft fallback: return raw content as text so the model
+                // can fall back to regex/visual parsing or fix the source.
+                return {
+                    status: 203,
+                    body: content,
+                    mimetype: TEXT_PRIMITIVE_MIMETYPE,
+                    reason: err instanceof Error ? err.message : String(err),
+                };
+            }
+            // Unexpected — let it propagate so the engine logs it as a 500.
+            throw err;
+        }
+    }
+}

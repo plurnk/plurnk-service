@@ -81,33 +81,42 @@ Result-type definitions (`EditResult`, `ReadResult`, etc.) live in plurnk-servic
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
 - Capability ctx (PR-2, see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `VisibilityCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
 
-### Active-scheme resolution
+Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
-- `resolveForLoop(handlers: Map<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.
+### Active-scheme resolution — `SchemeResolver`
 
-### Mimetype classification
+- `SchemeResolver.forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.
 
-- `isBinaryMimetype(mimetype)` — enforces 415 boundary on binary entries (text/* is text; application/{json,yaml,toml,xml,javascript,typescript,sql} is text; `+json`/`+xml`/`+yaml` suffix variants are text; everything else with a slash is binary).
-- `isJsonMimetype(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch.
-- `isLineNavigableMimetype(mimetype)` — render-layer decides whether to prefix lines with `N:\t`.
-- `normalizeAutoTextMimetype(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
-- `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"`.
+### Mimetype classification — `MimetypeClassifier`
 
-### `<L>` slicing
+- `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries (text/* is text; application/{json,yaml,toml,xml,javascript,typescript,sql} is text; `+json`/`+xml`/`+yaml` suffix variants are text; everything else with a slash is binary).
+- `MimetypeClassifier.isJson(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch.
+- `MimetypeClassifier.isLineNavigable(mimetype)` — render-layer decides whether to prefix lines with `N:\t`.
+- `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
+- `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
 
-- `sliceLines(content, marker)` — line-navigable slice. Returns `{ status, text?, startLine?, error? }`.
-- `sliceLinesRaw(content, marker)` — same shape; no `N:\t` prefix.
-- `sliceJsonItems(content, marker)` — JSON-source item slice. Returns `{ status, body?, error? }`.
-- `applyLineMarkerEdit(content, marker, body)` — line-navigable EDIT.
-- `applyJsonItemEdit(content, marker, body)` — structural JSON EDIT.
+### `<L>` slicing — `Slicer`
 
-### Path-extension mimetype
+- `Slicer.lines(content, marker)` — line-navigable slice. Returns `{ status, text?, startLine?, error? }`.
+- `Slicer.linesRaw(content, marker)` — same shape; no `N:\t` prefix.
+- `Slicer.jsonItems(content, marker)` — JSON-source item slice. Returns `{ status, body?, error? }`.
+- `Slicer.lineMarkerEdit(content, marker, body)` — line-navigable EDIT.
+- `Slicer.jsonItemEdit(content, marker, body)` — structural JSON EDIT.
 
-- `resolveEntryMimetype(pathname, defaultMimetype, mimetypes)` — pathname extension → `Mimetypes.detect({ ext })`; falls back to `defaultMimetype` when no extension. text/plain auto-normalizes to text/markdown.
+### Path-extension mimetype — `PathMimetype`
 
-### Matcher dispatch
+- `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` — pathname extension → `Mimetypes.detect({ ext })`; falls back to `defaultMimetype` when no extension. text/plain auto-normalizes to text/markdown.
 
-- `matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher adapter over `Mimetypes.query`. Maps framework errors:
+### Result families — `Results`
+
+- `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — `shape` discriminator guards over `SchemeResult`.
+- `Results.isErrorStatus(status)` — `status >= 400`.
+- `Results.error(scheme, kind, message?, position?)` — build a scheme-sourced `TelemetryEvent` (`source: "scheme:<name>"`).
+- `Results.logCoordinate(coordinate, op?)` — build a `LogCoordinate` position.
+
+### Matcher dispatch — `Matcher`
+
+- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath, all served by the framework). Maps framework errors:
   - `UnsupportedDialectError` → status 415
   - `InvalidExpressionError` → status 400
   - `QueryParseFailureError` → status 203 (soft fallback: raw content as text/markdown with `reason`)
