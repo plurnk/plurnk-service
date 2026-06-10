@@ -17,8 +17,8 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | EDIT | tags        | required   | lines `N,M`         | content         |
 | COPY | apply tags  | required   | lines `N,M`         | destination URI |
 | MOVE | apply tags  | required   | lines `N,M`         | destination URI |
-| SHOW | filter tags | required   | results `N,M`       | matcher         |
-| HIDE | filter tags | required   | results `N,M`       | matcher         |
+| SHOW | filter tags | log path   | results `N,M`       | matcher         |
+| HIDE | filter tags | log path   | results `N,M`       | matcher         |
 | SEND | status code | recipient  | —                   | message body    |
 | EXEC | executor    | cwd        | —                   | command or code |
 
@@ -29,17 +29,15 @@ EXEC defaults to `sh`; override with an optional executor (`node`, `python`, `se
 
 ## Context
 
-The agent maintains two contexts for budgeting tokens for working memory and available storage:
+The agent maintains two surfaces for budgeting working-memory tokens:
 
-- **Index** — entries listed in the active index.
-- **Archive** — entries archived; out of working memory (HIDE), but promotable (SHOW) by path or pattern lookup.
+- **Log** — what you did: the chronological record of every operation. HIDE collapses a log row to its path and saves tokens; SHOW restores its body and spends tokens. Non-destructive — collapsed rows remain listed and re-SHOWable.
+- **`plurnk://manifest.json`** — what's available: the complete, unranked directory of every entry (items are `{ path, channels }`). Query it to discover what exists; the system never ranks for you.
 
-Index entries are previews; READ pulls the body (full, ranged, or matcher-filtered). `plurnk://manifest.json` is the full directory across both contexts.
+READ pulls an entry's content (full, ranged, or matcher-filtered) and appends a fresh log row. SHOW and HIDE operate on the log only; against an entry they return 501.
 
-`SHOW` promotes matching entries to the active index and spends tokens.
-`HIDE` demotes matching entries to archive and saves tokens.
-
-YOU SHOULD demote distilled and irrelevant entries to Archive with HIDE to save tokens and optimize context relevance.
+YOU SHOULD collapse distilled and irrelevant log rows with HIDE to save tokens and optimize context relevance.
+YOU SHOULD distill durable findings into `known://` entries with EDIT.
 YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
 
 ## `<Line> / <Result>`
@@ -102,7 +100,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<READ(lang/??.json):$.greeting:READ
 <<READ(README.md):$.Installation:READ
 <<READ(docs/api.md)://h2/text():READ
-<<READ(plurnk://manifest.json):$[?(@.shown==false)]:READ
+<<READ(plurnk://manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log://1/2/3):$[*].matched.codename:READ
 <<READ(/etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
@@ -122,7 +120,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
 <<MOVE(known://obsolete/note.md):/dev/null:MOVE
-<<SHOW[france](known://countries/**)<10>:Paris*:SHOW
+<<SHOW(log://**/get)<1,10>::SHOW
 <<FIND(known://**)<5>:~french revolutionary history:FIND
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND

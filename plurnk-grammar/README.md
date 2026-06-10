@@ -57,7 +57,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
 | EXEC | executor         | command or code       | n/a                |
 
-Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · else glob.
+Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · `~` semantic · `@` graph · else glob. A body that fails its prefix-indicated dialect falls back to glob.
 
 Path scheme detection: `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
 
@@ -71,7 +71,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 2. Read hello in every language
 	<<READ(lang/??.json):$.greeting:READ
 
-3. Write a known entry to the index
+3. Write a known entry
 	<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 
 4. Read an entry in full
@@ -108,11 +108,11 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 12. Clear entry contents (empty body between two colons)
 	<<EDIT(known://countries/france/capital)::EDIT
 
-13. Archive every distilled fetch log
+13. Collapse every distilled fetch-log row
 	<<HIDE(log://1/*/*/get)::HIDE
 
-14. Restore archived entries by tag filter
-	<<SHOW[france](known://**)::SHOW
+14. Restore collapsed log rows by tag filter
+	<<SHOW[france](log://**)::SHOW
 
 15. Rename a draft entry
 	<<MOVE(known://draft):known://final/answer:MOVE
@@ -147,10 +147,10 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	console.log(sum);
 	:EXEC
 
-25. Restore entries tagged france that contain "Paris" (combined filters)
-	<<SHOW[france](known://countries/**):Paris*:SHOW
+25. Restore log rows tagged france whose content matches (combined filters)
+	<<SHOW[france](log://**):Paris*:SHOW
 
-26. Archive the second hundred of stale fetch logs (pagination)
+26. Collapse the second hundred of stale fetch-log rows (pagination)
 	<<HIDE(log://**/get)<101-200>::HIDE
 
 27. Deliver a structured answer (JSON body)
@@ -184,7 +184,7 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 The `@plurnk/*` ecosystem pins peer versions exactly — no caret, no tilde, no ranges:
 
 ```json
-"@plurnk/plurnk-grammar": "0.18.0"
+"@plurnk/plurnk-grammar": "0.23.0"
 ```
 
 Greenfield, single-orchestrator-per-repo, closed ecosystem. Determinism beats flexibility at this stage: when versions drift, the npm install error tells you which package needs a release. Silent semver wiggling masks coordination gaps that surface as mystery failures later.

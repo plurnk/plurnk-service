@@ -75,12 +75,12 @@ test("ex 12: EDIT — clear entry contents (empty body)", () => {
     expectOneClean("<<EDIT(known://countries/france/capital)::EDIT");
 });
 
-test("ex 13: HIDE — archive every distilled fetch log", () => {
+test("ex 13: HIDE — collapse every distilled fetch-log row", () => {
     expectOneClean("<<HIDE(log://1/*/*/get)::HIDE");
 });
 
-test("ex 14: SHOW — restore archived entries by tag filter", () => {
-    expectOneClean("<<SHOW[france](known://**)::SHOW");
+test("ex 14: SHOW — restore collapsed log rows by tag filter", () => {
+    expectOneClean("<<SHOW[france](log://**)::SHOW");
 });
 
 test("ex 15: MOVE — rename a draft entry", () => {
@@ -127,10 +127,10 @@ console.log(sum);
 });
 
 test("ex 25: SHOW — combined filters (tag + body)", () => {
-    expectOneClean("<<SHOW[france](known://countries/**):Paris*:SHOW");
+    expectOneClean("<<SHOW[france](log://**):Paris*:SHOW");
 });
 
-test("ex 26: HIDE — paginated archive", () => {
+test("ex 26: HIDE — paginated collapse", () => {
     expectOneClean("<<HIDE(log://**/get)<101-200>::HIDE");
 });
 

@@ -137,10 +137,6 @@ EDIT line-marker semantics (single source of authority):
 - `<0>` + body: prepend body before line 1.
 - `<-1>` + body: append body after the last line.
 
-SHOW and HIDE filters are AND-combined: an entry is selected when its
-path matches `(path)`, its tags satisfy `[signal]` (if present), and its
-content matches `body` (if present).
-
 ### Per-OP Output (what each OP produces)
 
 | OP   | Produces |
@@ -150,8 +146,8 @@ content matches `body` (if present).
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |
 | MOVE | status; destination path on success |
-| SHOW | status; list of paths moved into the Index |
-| HIDE | status; list of paths moved into the Archive |
+| SHOW | status; list of log rows restored |
+| HIDE | status; list of log rows collapsed |
 | SEND | status; recipient ack if applicable |
 | EXEC | exit code, stdout, stderr |
 
@@ -193,13 +189,19 @@ For FIND, READ, SHOW, and HIDE, `body` is an optional pattern matcher.
 The lexer captures the body opaquely (between the `:body:` fences) —
 dialect dispatch is not a lexer concern. Dialect is determined by the
 body's leading characters, and validated by the Visitor using native
-JS facilities (`new RegExp()` etc.) where applicable:
+JS facilities (`new RegExp()` etc.) where applicable. Dispatch is a
+hint, not a gate: a body that fails its prefix-indicated dialect falls
+back to glob instead of erroring, so literal `//`-comments,
+`/path/`-strings, and `$`-prefixed text reach the runtime as glob
+matches.
 
 | Leading prefix | Dialect   | Canonical form            | Validation         |
 |----------------|-----------|---------------------------|--------------------|
-| `//`           | xpath     | `//…`                     | runtime (xpath lib) |
-| `/`            | regex     | `/pattern/flags` (trailing `/` required, flags `[a-z]*`) | `new RegExp()` in Visitor |
-| `$`            | jsonpath  | `$…`                      | runtime (jsonpath lib) |
+| `//`           | xpath     | `//…`                     | `xpath.parse()` in Visitor; glob on failure |
+| `/`            | regex     | `/pattern/flags` (trailing `/` required, flags `[a-z]*`) | `new RegExp()` in Visitor; glob on failure |
+| `$`            | jsonpath  | `$…`                      | `JSONPath()` in Visitor; glob on failure |
+| `~`            | semantic  | `~phrase`                 | none — any text is a valid query |
+| `@`            | graph     | `@symbol`, `@<symbol`, `@>symbol` | none — resolved service-side |
 | otherwise      | glob      | `…` (literal substring if no metacharacters) | runtime (glob library) |
 
 Dialect conventions (the Visitor uses these to construct typed AST
@@ -214,6 +216,11 @@ body fields; the lexer is unaware):
 - Regex anchors `^` and `$` go inside the slashes: `/^foo$/`.
 - Flag semantics (`i` case-insensitive, `m` multiline, `s` dotall,
   etc.) follow ECMAScript regex.
+- Semantic body is a free-text similarity query; top-K narrowing rides
+  the host statement's `<L>` slot.
+- Graph body is a code-graph reference query: `@symbol` (neighborhood),
+  `@<symbol` (inbound references), `@>symbol` (outbound references).
+  No parse step in grammar; resolution is service-side.
 - Glob is the catch-all and includes the literal-substring case when
   no metacharacters are present.
 
@@ -232,19 +239,17 @@ body fields; the lexer is unaware):
 - **Regex body** (matcher-body OPs only, leading `/` and not `//`):
   the Visitor extracts `pattern` and `flags` (respecting `\/` escapes)
   and calls `new RegExp(pattern, flags)`. On failure (missing closing
-  `/`, unterminated character class, invalid flag, etc.), a
-  `PlurnkParseError` with source `"visitor"` is emitted.
+  `/`, unterminated character class, invalid flag, etc.), the body
+  falls back to a glob matcher.
 - **XPath body** (matcher-body OPs only, leading `//`): the Visitor
   calls `xpath.parse()` from the `xpath` npm package (XPath 1.0
   parser-only, no DOM execution). On failure (unterminated predicate,
-  invalid operator, etc.), a `PlurnkParseError` with source `"visitor"`
-  is emitted.
+  invalid operator, etc.), the body falls back to a glob matcher.
 - **JsonPath body** (matcher-body OPs only, leading `$`): the Visitor
   calls `JSONPath({ path: body, json: {} })` from the `jsonpath-plus`
   npm package. The empty `{}` ensures syntax parsing happens without
-  document evaluation. Syntax errors (unclosed parens, malformed
-  filter expressions, etc.) throw and become `PlurnkParseError` with
-  source `"visitor"`.
+  document evaluation. On syntax failure (unclosed parens, malformed
+  filter expressions, etc.), the body falls back to a glob matcher.
 
 **Deferred validation:**
 
@@ -263,7 +268,7 @@ benefit over the native or library facilities.
 A line marker selects a position or range from the sequence an OP
 operates on or produces. The sequence type is OP-specific (see §4
 per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
-for READ, positions in the matched-paths list for FIND/SHOW/HIDE.
+for READ, positions in the matched result set for FIND/SHOW/HIDE.
 
 **Token shape:** `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`.
 
@@ -294,9 +299,8 @@ This falls out of standard ANTLR longest-match.
   per-OP at runtime.
 
 **Result-set ordering** (FIND, SHOW, HIDE): the runtime must produce a
-deterministic order so that `<N-M>` pagination is reproducible.
-Lexicographic ascending order over the matched path strings is the
-canonical ordering. Runtime guarantee, not a parser concern.
+deterministic order so that `<N-M>` pagination is reproducible. The
+choice of ordering is a runtime guarantee, not a parser concern.
 
 ## 8. Suffix Discipline
 
@@ -501,6 +505,8 @@ type MatcherBody =
     | { dialect: "xpath"; raw: string }
     | { dialect: "regex"; raw: string; pattern: string; flags: string; regexp: RegExp }
     | { dialect: "jsonpath"; raw: string }
+    | { dialect: "semantic"; raw: string }
+    | { dialect: "graph"; raw: string }
     | { dialect: "glob"; raw: string };
 
 // Typed body for SEND — best-effort JSON parse alongside raw.
