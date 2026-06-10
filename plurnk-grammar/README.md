@@ -183,6 +183,8 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")
 ```
 
+`npm run test:llama` validates the grammar against a live llama-server (`PLURNK_LLAMA_URL`, default `http://127.0.0.1:11435`) and demos constrained emission end-to-end. Opt-in; not part of `test:all`.
+
 ## spec
 
 [SPEC.md](SPEC.md) — full grammar specification: canonical form, per-OP semantics, matcher dialects, path decomposition, error model, whitespace rules, implementation notes.
