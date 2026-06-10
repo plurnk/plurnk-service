@@ -89,14 +89,6 @@ JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
 
--- PREP: engine_shown_entries
--- The (scheme, pathname) of entries with at least one channel indexed=1 for the
--- run — the manifest's `shown` flag (whether the entry is in the model's view).
-SELECT DISTINCT e.scheme, e.pathname
-FROM visibility v
-JOIN entries e ON e.id = v.entry_id
-WHERE v.run_id = $run_id AND v.indexed = 1 AND e.scope = 'session' AND e.session_id = $session_id;
-
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
