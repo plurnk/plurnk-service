@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationXml from "./ApplicationXml.ts";
-import type { SymbolPreview, TextPreview } from "@plurnk/plurnk-mimetypes";
+
 
 const metadata = {
     mimetype: "application/xml",
@@ -49,20 +49,18 @@ describe("ApplicationXml — symbols channel", () => {
     });
 });
 
-describe("ApplicationXml — preview", () => {
-    it("returns SymbolPreview when XML has a root element", async () => {
+describe("ApplicationXml — container (issue #18)", () => {
+    it("direct children carry the root element name as container", async () => {
         const h = new ApplicationXml(metadata);
-        const preview = await h.preview("<root><child/></root>") as SymbolPreview;
-        assert.equal(preview.kind, "symbols");
-        assert.equal(preview.symbols[0].name, "root");
+        const syms = h.extractRaw("<root><child/><other id='x'/></root>");
+        assert.equal("container" in syms[0], false, "root carries no container");
+        assert.equal(syms.find((s) => s.name === "child")?.container, "root");
+        assert.equal(syms.find((s) => s.name === "x")?.container, "root");
     });
 
-    it("falls back to TextPreview head when XML is empty", async () => {
+    it("returns [] for empty content", async () => {
         const h = new ApplicationXml(metadata);
-        const text = "";
-        const preview = await h.preview(text) as TextPreview;
-        assert.equal(preview.kind, "text");
-        assert.equal(preview.orientation, "head");
+        assert.deepEqual(h.extractRaw(""), []);
     });
 });
 

@@ -6,7 +6,6 @@ import {
 import type {
     HandlerContent,
     MimeSymbol,
-    Preview,
     QueryDialect,
     QueryMatch,
 } from "@plurnk/plurnk-mimetypes";
@@ -55,6 +54,8 @@ export default class ApplicationXml extends BaseHandler {
             { name: root.tagName, kind: "module", line: 1, endLine: 1 },
         ];
 
+        // Direct children carry the root element's name as container
+        // (SPEC §3, issue #18) — the mapping only walks one level deep.
         for (let i = 0; i < root.childNodes.length; i += 1) {
             const child = root.childNodes.item(i);
             if (child === null || child.nodeType !== ELEMENT_NODE) continue;
@@ -64,23 +65,10 @@ export default class ApplicationXml extends BaseHandler {
             const name = (idAttr && idAttr.length > 0)
                 ? idAttr
                 : ((nameAttr && nameAttr.length > 0) ? nameAttr : el.tagName);
-            symbols.push({ name, kind: "field", line: 1, endLine: 1 });
+            symbols.push({ name, kind: "field", line: 1, endLine: 1, container: root.tagName });
         }
 
         return symbols;
-    }
-
-    // Hybrid preview: SymbolPreview when the document parses and surfaces
-    // structural symbols; head-oriented TextPreview otherwise. Malformed XML
-    // still gets a TextPreview — the model can read the raw content rather
-    // than going dark.
-    override preview(content: HandlerContent): Preview {
-        const text = typeof content === "string"
-            ? content
-            : new TextDecoder("utf-8").decode(content);
-        const symbols = this.extractRaw(text);
-        if (symbols.length > 0) return { kind: "symbols", symbols };
-        return { kind: "text", text, orientation: "head" };
     }
 
     // Deep-channel (issue #10). DOM tree with attrs convention so xpath like
