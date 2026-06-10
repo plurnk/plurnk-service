@@ -37,13 +37,13 @@ test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
 test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is non-numeric", async () => {
     await assert.rejects(
         () => Ollama.fromEnv({ ...baseEnv, PLURNK_FETCH_TIMEOUT: "abc" }, "m"),
-        /PLURNK_FETCH_TIMEOUT must be a number/,
+        /PLURNK_FETCH_TIMEOUT must be a non-negative integer/,
     );
 });
 
 test("fromEnv: throws when PLURNK_REASON is non-numeric", async () => {
     mockShow({ model_info: { "qwen35.context_length": 262144 } });
-    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_REASON: "lots" }, "m"), /PLURNK_REASON must be a number/);
+    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_REASON: "lots" }, "m"), /PLURNK_REASON must be a non-negative integer/);
 });
 
 // — /api/show probe —
@@ -100,6 +100,23 @@ test("fromEnv: heuristic when details block is absent", async () => {
     mockShow({ model_info: { "phi.context_length": 8192 } });
     const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
     assert.equal(p.countTokens("abcde"), 2); // ceil(5/4)
+});
+
+test("generate failure carries the provider:ollama telemetry source (SPEC §12)", async () => {
+    const { ProviderError } = await import("@plurnk/plurnk-providers");
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/api/show")) {
+            return new Response(JSON.stringify({ model_info: { "phi.context_length": 8192 } }), { status: 200 });
+        }
+        return new Response("rate limited", { status: 429 });
+    });
+    const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
+    await assert.rejects(() => p.generate({ messages: [] }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "rate_limit");
+        assert.equal(err.toTelemetryEvent().source, "provider:ollama");
+        return true;
+    });
 });
 
 test("fromEnv: costFor returns 0 (local models are free)", async () => {

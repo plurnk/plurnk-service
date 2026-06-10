@@ -6,6 +6,7 @@
 import {
     OpenAICompatProvider,
     parseRequiredInt,
+    providerSource,
     requireEnv,
     tokenizerFor,
     type Provider,
@@ -42,6 +43,7 @@ export default class Ollama {
             reasonBudget,
             reasoningStyle: "think",
             countTokens: tokenizerFor(tokenizerFamilyFor(family)),
+            source: providerSource("ollama"),
         });
     }
 }
