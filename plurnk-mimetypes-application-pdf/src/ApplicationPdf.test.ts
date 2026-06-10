@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
 import { buildPdf } from "./buildPdf.ts";
-import type { MimeSymbol, SymbolPreview } from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
 const metadata = {
     mimetype: "application/pdf",
@@ -13,10 +13,7 @@ const metadata = {
 const h = new ApplicationPdf(metadata);
 
 async function symbolsOf(pdf: Uint8Array): Promise<MimeSymbol[]> {
-    const preview = await h.preview(pdf);
-    if (preview === null) return [];
-    assert.equal(preview.kind, "symbols");
-    return [...(preview as SymbolPreview).symbols];
+    return h.extractRaw(pdf);
 }
 
 describe("ApplicationPdf — validate", () => {
@@ -146,50 +143,48 @@ describe("ApplicationPdf — metadata title fallback", () => {
 });
 
 describe("ApplicationPdf — null returns (dark in the radar)", () => {
-    it("returns null preview for a PDF with no outline, no Title, AND no page text", async () => {
+    it("returns [] symbols for a PDF with no outline and no Title", async () => {
         // buildPdf({}) makes a structurally valid but textless PDF — no
-        // outline, no metadata Title, and no content stream on the page.
-        // No structure, no text → null preview, by design.
+        // outline, no metadata Title. Empty symbols, by design; the body
+        // stays reachable via toText for regex/glob queries.
         const pdf = buildPdf({});
-        const preview = await h.preview(pdf);
-        assert.equal(preview, null);
+        assert.deepEqual(await h.extractRaw(pdf), []);
     });
 
-    it("returns null preview on parse failure (handler authority — no raw byte leak)", async () => {
+    it("returns [] symbols on parse failure (handler authority — no raw byte leak)", async () => {
         const garbage = new Uint8Array([0x00, 0x01, 0x02, 0x03]);
-        const preview = await h.preview(garbage);
-        assert.equal(preview, null);
+        assert.deepEqual(await h.extractRaw(garbage), []);
     });
 });
 
-describe("ApplicationPdf — hybrid TextPreview fallback", () => {
-    it("falls back to head-oriented TextPreview when the PDF has page text but no outline/Title", async () => {
+describe("ApplicationPdf — body text stays reachable via toText (0.15)", () => {
+    it("page text serves regex queries even when no outline/Title exists", async () => {
         // The Hello-world fixture has a text content stream but no bookmark
-        // outline and no Info dict Title. The hybrid should surface the
-        // extracted page text rather than going dark.
-        const preview = await h.preview(helloWorldPdf());
-        assert.equal(preview?.kind, "text");
-        if (preview?.kind !== "text") return;
-        assert.equal(preview.orientation, "head");
-        assert.ok(preview.text.includes("Hello, world!"), `got: ${JSON.stringify(preview.text)}`);
+        // outline and no Info dict Title — symbols are empty, but the body
+        // remains reachable through the query path.
+        const out = await h.query(helloWorldPdf(), "regex", "Hello, world!");
+        assert.equal(out.length, 1);
     });
 
-    it("prefers structural SymbolPreview over text fallback when outline exists", async () => {
+    it("outline surfaces through extractRaw", async () => {
         const pdf = buildPdf({ outline: [{ title: "Chapter 1" }] });
-        const preview = await h.preview(pdf);
-        assert.equal(preview?.kind, "symbols");
+        const syms = await h.extractRaw(pdf);
+        assert.equal(syms[0].name, "Chapter 1");
     });
 });
 
 describe("ApplicationPdf — escape hatches", () => {
-    it("symbolsRaw returns empty string (PDFs surface structure through preview, not extractRaw)", async () => {
+    it("symbolsRaw renders the outline via extractRaw (0.15)", async () => {
         const pdf = buildPdf({ title: "X" });
-        assert.equal(await h.symbolsRaw(pdf), "");
+        const out = await h.symbolsRaw(pdf);
+        assert.ok(out.includes("X"));
     });
 
-    it("extractRaw returns empty array", () => {
+    it("extractRaw surfaces the metadata-Title fallback symbol (0.15)", async () => {
         const pdf = buildPdf({ title: "X" });
-        assert.deepEqual(h.extractRaw(pdf), []);
+        const syms = await h.extractRaw(pdf);
+        assert.equal(syms.length, 1);
+        assert.equal(syms[0].name, "X");
     });
 });
 

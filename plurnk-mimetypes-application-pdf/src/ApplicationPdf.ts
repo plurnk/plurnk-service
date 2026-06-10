@@ -6,7 +6,6 @@ import {
 } from "@plurnk/plurnk-mimetypes";
 import type {
     MimeSymbol,
-    Preview,
     QueryDialect,
     QueryMatch,
 } from "@plurnk/plurnk-mimetypes";
@@ -65,29 +64,17 @@ export default class ApplicationPdf extends BaseHandler {
         }
     }
 
-    override async preview(content: string | Uint8Array): Promise<Preview> {
+    // Symbols channel: the outline (bookmark TOC) plus the metadata Title
+    // fallback. PDFs without either are honestly empty — the body remains
+    // reachable via toText (regex/glob queries). Parse failures route to
+    // empty symbols per the handler error policy.
+    override async extractRaw(content: HandlerContent): Promise<MimeSymbol[]> {
         const bytes = toBytes(content);
-        let result: { symbols: MimeSymbol[]; text: string };
         try {
-            // Single pdfjs parse extracts BOTH structure and page text so the
-            // hybrid fallback doesn't pay for a second parse. pdfjs detaches
-            // the underlying buffer per call, so calling extractStructure
-            // and extractAllText separately on the same bytes would fail.
-            result = await extractBoth(bytes);
+            return await extractStructure(bytes);
         } catch {
-            return null;
+            return [];
         }
-        if (result.symbols.length > 0) {
-            return { kind: "symbols", symbols: result.symbols };
-        }
-        // Hybrid fallback: no outline and no metadata Title — surface
-        // extracted page text as a head-oriented TextPreview so the channel
-        // shows something rather than going dark. The framework's truncation
-        // marker keeps it honest about being a partial slice.
-        if (result.text.length > 0) {
-            return { kind: "text", text: result.text, orientation: "head" };
-        }
-        return null;
     }
 
     // Deep-channel (issue #10). PDF's structural content is its outline (the
@@ -170,31 +157,6 @@ function startsWith(haystack: Uint8Array, needle: Uint8Array): boolean {
 function toBytes(content: string | Uint8Array): Uint8Array {
     if (content instanceof Uint8Array) return content;
     return new TextEncoder().encode(content);
-}
-
-// Single-parse extractor: produces both structural symbols and page text from
-// one pdfjs.getDocument call. Used by preview's hybrid (symbols when present,
-// text fallback when not) so we don't double-parse — pdfjs detaches the
-// underlying buffer per call, so two separate parses on the same bytes would
-// fail anyway. extractStructure remains for the query() override which only
-// needs symbols.
-async function extractBoth(bytes: Uint8Array): Promise<{ symbols: MimeSymbol[]; text: string }> {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const params = {
-        data: bytes,
-        isEvalSupported: false,
-        verbosity: 0,
-    } as unknown as Parameters<typeof pdfjs.getDocument>[0];
-    const doc = await pdfjs.getDocument(params).promise;
-    try {
-        const symbols = await collectSymbols(doc);
-        // Only spend time on full-text extraction when we'll actually need the
-        // fallback. Symbols present → text not needed.
-        const text = symbols.length > 0 ? "" : await readAllPagesText(doc);
-        return { symbols, text };
-    } finally {
-        await doc.destroy();
-    }
 }
 
 async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
