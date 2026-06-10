@@ -94,7 +94,7 @@ test("malformed structural expression → 400 (model-facing, not a 500)", async 
     assert.ok((r.error ?? "").length > 0);
 });
 
-test("rag dialect → 501 (semantic similarity is parked)", async () => {
-    const r = await Matcher.matchAgainstContent({ dialect: "rag", raw: "~query" } as MatcherBody, "x", "text/markdown", noProcess);
+test("semantic dialect → 501 (semantic similarity is parked)", async () => {
+    const r = await Matcher.matchAgainstContent({ dialect: "semantic", raw: "~query" } as MatcherBody, "x", "text/markdown", noProcess);
     assert.equal(r.status, 501);
 });

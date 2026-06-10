@@ -59,11 +59,11 @@ export default class Matcher {
         mimetypes: Mimetypes,
         baseLine: number = 1,
     ): Promise<MatchResult> {
-        if (body.dialect === "rag") {
-            // Semantic similarity (grammar 0.21.0: `~query`, top-K via <L>). A
-            // service-side feature needing its own embedding/vector design — the
-            // resolution mechanism is ours, not the grammar's to prescribe. Parked.
-            return { status: 501, error: "rag matcher not yet implemented (semantic similarity — parked, needs its own embedding/vector design)" };
+        if (body.dialect === "semantic") {
+            // Semantic similarity (grammar `~query`, top-K via <L>). A service-side
+            // feature needing its own embedding/vector design — the resolution
+            // mechanism is ours, not the grammar's to prescribe. Parked.
+            return { status: 501, error: "semantic matcher not yet implemented (similarity — parked, needs its own embedding/vector design)" };
         }
         let matches: QueryMatch[];
         if (body.dialect === "glob") {

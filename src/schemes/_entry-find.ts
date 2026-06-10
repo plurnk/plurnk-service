@@ -63,10 +63,10 @@ export default class EntryFind {
         manifest: SchemeManifest,
     ): Promise<{ status: number; pathnames: string[] }> {
         if (statement.target === null) return { status: 400, pathnames: [] };
-        if (statement.body !== null && statement.body.dialect === "rag") {
-            // RAG is a cross-entry semantic ranking (grammar 0.21.0: top-K via <L>),
-            // not a per-candidate content match — a service-side feature needing its
-            // own embedding/vector design. Defined but not built; parked.
+        if (statement.body !== null && statement.body.dialect === "semantic") {
+            // Semantic is a cross-entry similarity ranking (grammar `~query`: top-K
+            // via <L>), not a per-candidate content match — a service-side feature
+            // needing its own embedding/vector design. Defined but not built; parked.
             return { status: 501, pathnames: [] };
         }
 

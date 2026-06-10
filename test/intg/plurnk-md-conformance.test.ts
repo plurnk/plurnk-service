@@ -207,7 +207,7 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
             ["a", "the french revolution and the storming of the bastille"],
             ["b", "a recipe for chocolate cake"],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "rag", raw: "~french revolutionary history" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, ["known://a"]);
     } finally { db.close(); }
