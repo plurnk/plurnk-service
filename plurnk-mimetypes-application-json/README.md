@@ -12,9 +12,9 @@ plurnk-service discovers this handler automatically via its `plurnk.kind: "mimet
 
 ## what it does
 
-- `validate(content)` throws on malformed JSON (via `JSON.parse`). Per framework error policy, this error propagates to the caller as a contract violation.
-- `extract(content)` returns the document's top-level keys as `field` symbols. Nested keys are out of scope; a JSON document's "API surface" is its top level. Line numbers come from a single-pass scan of the raw source.
-- Array and scalar JSON roots have no named top-level keys → empty `Symbol[]`.
+- `validate(content)` throws on malformed JSON via jsonc-parser — strict for `application/json`, permissive (comments + trailing commas) for `application/jsonc`. Per framework error policy, this error propagates to the caller as a contract violation.
+- `extractRaw(content)` returns every key occurrence at every depth as a `field` symbol, with line numbers from jsonc-parser's positional tree.
+- Array and scalar JSON roots have no named keys → empty `MimeSymbol[]`.
 
 ## development
 
