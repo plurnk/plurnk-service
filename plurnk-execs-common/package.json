@@ -1,0 +1,64 @@
+{
+    "name": "@plurnk/plurnk-execs-common",
+    "version": "0.1.0",
+    "description": "Common-REPL detection harness for plurnk-service's exec scheme — one package that exposes whichever common interpreters (perl, ruby, php, lua, awk, bc, …) exist on the host.",
+    "keywords": ["plurnk", "exec", "runtime", "executor", "repl", "perl", "ruby", "lua", "awk"],
+    "homepage": "https://github.com/plurnk/plurnk-execs-common#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-common/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-common.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            { "name": "perl", "glyph": "🐪" },
+            { "name": "ruby", "glyph": "💎" },
+            { "name": "php", "glyph": "🐘" },
+            { "name": "lua", "glyph": "🌙" },
+            { "name": "deno", "glyph": "🦕" },
+            { "name": "bun", "glyph": "🥟" },
+            { "name": "tcl", "glyph": "🪶" },
+            { "name": "bc", "glyph": "🧮" },
+            { "name": "awk", "glyph": "🪄" }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        ".env.example"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs": "0.4.1"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3"
+    }
+}
