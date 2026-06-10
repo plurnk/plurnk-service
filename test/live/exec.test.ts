@@ -16,7 +16,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "../intg/_helpers.ts";
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
     const m = new Mimetypes({ tokenize: async (text) => provider.countTokens(text) });
@@ -41,20 +41,21 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
+        engine.setExecutors(await testExecutors());
         Yolo.attachYolo(engine, db);
 
         const userPrompt = [
             "Two-turn probe.",
             "",
-            "If you see an `exec://r-...` entry already in the index with stdout containing",
+            "If you see an `exec://...` log entry with stdout containing",
             "`plurnk-exec-live-ok`, emit:",
             "  <<SEND[200]:plurnk-exec-live-ok:SEND",
             "",
             "Otherwise, emit a single EXEC to run `echo plurnk-exec-live-ok` so that the next turn's",
-            "index will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
+            "log will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
             "  <<EXEC[sh]:echo plurnk-exec-live-ok:EXEC",
             "",
-            "Do not repeat the EXEC once you see the exec://r-... entry in the index.",
+            "Do not repeat the EXEC once you see the exec://... entry in the log.",
         ].join("\n");
 
         const sessionId = await insertSession(db, `live-exec-${crypto.randomUUID()}`);
@@ -79,13 +80,13 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 400)}`);
                 // Debug aid — uncomment to diagnose exec-result-surfacing. Dumps
-                // what the model RECEIVED (the rendered index) and whether the
+                // what the model RECEIVED (the rendered log) and whether the
                 // exec entry reached it. The deterministic Mock tests (intg
                 // Engine.exec-surfaces) prove it does in-engine; this shows
                 // whether the LIVE path agrees, isolating engine vs live-path:
-                //   const sys = (JSON.parse(row?.packet ?? "{}") as { system?: { index?: Array<{ scheme: string | null; pathname: string; channels?: Record<string, { content?: string }> }> } }).system;
-                //   const recv = (sys?.index ?? []).map((e) => `${e.scheme}://${e.pathname}${(e.channels?.stdout?.content ?? "") !== "" ? " [stdout✓]" : ""}`).join("; ");
-                //   console.error(`  INDEX RECEIVED: ${recv || "(empty)"}`);
+                //   const sys = (JSON.parse(row?.packet ?? "{}") as { system?: { log?: Array<{ op?: string; status?: number; target?: { scheme?: string | null; pathname?: string } | null }> } }).system;
+                //   const recv = (sys?.log ?? []).map((e) => `${e.op}[${e.status}]${e.target ? ` ${e.target.scheme}://${e.target.pathname}` : ""}`).join("; ");
+                //   console.error(`  LOG RECEIVED: ${recv || "(empty)"}`);
             }
         };
         if (result.finalStatus !== 200) await dumpTurns();
