@@ -10,6 +10,9 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //                          interface_type → interface, else → type
 //   const_declaration    → constant (per const_spec)
 //   var_declaration      → variable (per var_spec)
+//
+// Container semantics (issue #18): flat — the mapping walks no nested scopes
+// and never emits the method receiver type, so no symbol carries a container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
@@ -39,8 +42,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             out.push({
                 name,
                 kind: "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -51,8 +53,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             out.push({
                 name,
                 kind: "method",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -142,11 +143,19 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
 function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
     });
 }

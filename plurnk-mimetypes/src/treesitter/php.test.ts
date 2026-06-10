@@ -56,3 +56,21 @@ describe("text/x-php via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("<?php class ((( broken"));
     });
 });
+
+describe("text/x-php — container + columns (issue #18)", () => {
+    it("members carry the enclosing class as container", async () => {
+        const src = "<?php\nclass User {\n  public string $name;\n  public function greet($prefix) { return $prefix; }\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "User")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "greet")?.container, "User");
+        assert.equal(syms.find((s) => s.name === "name")?.container, "User");
+    });
+
+    it("top-level symbols carry no container; columns are 1-indexed", async () => {
+        const syms = await h().extractRaw("<?php\nfunction add($a, $b) { return $a + $b; }\n");
+        const fn = syms.find((s) => s.name === "add");
+        assert.equal(fn?.container, undefined);
+        assert.equal(fn?.column, 1);
+        assert.ok((fn?.endColumn ?? 0) >= 1);
+    });
+});

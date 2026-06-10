@@ -14,10 +14,21 @@ export type SymbolKind =
 export interface MimeSymbol {
     name: string;
     kind: SymbolKind;
-    line: number;
+    line: number;        // 1-indexed
     endLine: number;
+    // 1-indexed start/end columns (issue #18). Emitted by tree-sitter and
+    // ANTLR extraction (both expose positions); optional because hand-rolled
+    // scanners may not track columns.
+    column?: number;
+    endColumn?: number;
     params?: string[];
     level?: number;
+    // Qualified path of the enclosing named symbols, dot-joined — `parse`
+    // inside class `Parser` carries container "Parser"; a method on a nested
+    // class carries "Outer.Inner". Absent for top-level symbols. This is the
+    // def-side identity the graph links on (issue #16 D3); line-range nesting
+    // (buildTree) remains the render-time mechanism.
+    container?: string;
 }
 
 export interface HandlerMetadata {

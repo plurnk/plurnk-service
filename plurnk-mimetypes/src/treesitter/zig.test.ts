@@ -42,3 +42,22 @@ describe("text/x-zig via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("fn ((( broken"));
     });
 });
+
+describe("text/x-zig — container + columns (issue #18)", () => {
+    it("struct fields and enum members carry the declared name as container", async () => {
+        const src = "const Point = struct { x: f32, y: f32 };\nconst Color = enum { red, green };\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Point")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "x")?.container, "Point");
+        assert.equal(syms.find((s) => s.name === "y")?.container, "Point");
+        assert.equal(syms.find((s) => s.name === "red")?.container, "Color");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const syms = await h().extractRaw("fn solo() void {}\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

@@ -3,7 +3,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Dart SPEC §3 mapping via tree-sitter-dart.
 //
-//   class_definition      → class (recurse, inClass=true)
+//   class_definition      → class (recurse into body as container)
 //   mixin_declaration     → class
 //   extension_declaration → class
 //   enum_declaration      → enum + constants
@@ -14,42 +14,51 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   setter_signature      → method
 //   constructor_signature → method
 //   type_alias            → type
+//
+// Container semantics (issue #18): members inside a class/mixin/extension
+// body carry its name (dotted for nesting); enum constants carry the enum
+// name. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "class_definition":
         case "mixin_declaration":
         case "extension_declaration": {
             const name = childFieldText(node, "name") ?? firstIdentifierText(node);
             if (!name) return;
-            push(out, "class", name, node);
+            push(out, "class", name, node, container);
             const body = node.childForFieldName("body") ?? findChildOfType(node, "class_body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "enum_declaration": {
             const name = firstIdentifierText(node);
-            if (name) push(out, "enum", name, node);
-            // enum constants are bare identifiers inside the enum body.
-            for (let i = 0; i < node.namedChildCount; i += 1) {
-                const child = node.namedChild(i);
+            if (name) push(out, "enum", name, node, container);
+            const constContainer = name
+                ? (container.length > 0 ? `${container}.${name}` : name)
+                : container;
+            // enum constants live under the enum_body child, not as direct
+            // children of the declaration.
+            const body = findChildOfType(node, "enum_body") ?? node;
+            for (let i = 0; i < body.namedChildCount; i += 1) {
+                const child = body.namedChild(i);
                 if (!child) continue;
                 if (child.type === "enum_constant") {
                     const ename = firstIdentifierText(child);
-                    if (ename) push(out, "constant", ename, child);
+                    if (ename) push(out, "constant", ename, child, constContainer);
                 }
             }
             return;
@@ -59,9 +68,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             if (!name) return;
             out.push({
                 name,
-                kind: inClass ? "method" : "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                kind: container.length > 0 ? "method" : "function",
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractParams(findChildOfType(node, "formal_parameter_list")),
             });
             return;
@@ -82,8 +91,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                         out.push({
                             name,
                             kind: "method",
-                            line: node.startPosition.row + 1,
-                            endLine: node.endPosition.row + 1,
+                            ...position(node),
+                            ...(container.length > 0 && { container }),
                             params: extractParams(findChildOfType(child, "formal_parameter_list")),
                         });
                     }
@@ -100,7 +109,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                     if (!child) continue;
                     if (child.type === "initialized_identifier") {
                         const name = firstIdentifierText(child);
-                        if (name) push(out, inClass ? "field" : "variable", name, node);
+                        if (name) push(out, container.length > 0 ? "field" : "variable", name, node, container);
                     }
                 }
             }
@@ -108,7 +117,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
         }
         case "type_alias": {
             const name = firstIdentifierText(node);
-            if (name) push(out, "type", name, node);
+            if (name) push(out, "type", name, node, container);
             return;
         }
         default:
@@ -154,11 +163,20 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

@@ -47,3 +47,20 @@ describe("text/x-c via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("int ((( broken"));
     });
 });
+
+describe("text/x-c — container + columns (issue #18)", () => {
+    it("enumerators carry the named enum as container", async () => {
+        const syms = await h().extractRaw("enum Color { RED, GREEN };\n");
+        assert.equal(syms.find((s) => s.name === "Color")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "RED")?.container, "Color");
+        assert.equal(syms.find((s) => s.name === "GREEN")?.container, "Color");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const syms = await h().extractRaw("int solo(void) { return 0; }\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

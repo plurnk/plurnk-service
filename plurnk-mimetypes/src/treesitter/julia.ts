@@ -13,28 +13,31 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   macro_definition          → function
 //   const_statement           → constant (assignment LHS identifier)
 //   assignment (top-level)    → variable / constant (SCREAMING → constant)
+//
+// Container semantics (issue #18): symbols inside a module carry the dotted
+// path of enclosing emitted module names. Top-level symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inModule*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inModule);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "module_definition":
         case "bare_module_definition": {
             const name = childFieldText(node, "name") ?? firstIdentifierText(node);
             if (!name) return;
-            push(out, "module", name, node);
-            walk(node, out, true);
+            push(out, "module", name, node, container);
+            walk(node, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "struct_definition":
@@ -42,13 +45,13 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
         case "primitive_definition": {
             const head = findChildOfType(node, "type_head");
             const name = head ? firstIdentifierText(head) : firstIdentifierText(node);
-            if (name) push(out, "class", name, node);
+            if (name) push(out, "class", name, node, container);
             return;
         }
         case "abstract_definition": {
             const head = findChildOfType(node, "type_head");
             const name = head ? firstIdentifierText(head) : firstIdentifierText(node);
-            if (name) push(out, "class", name, node);
+            if (name) push(out, "class", name, node, container);
             return;
         }
         case "function_definition":
@@ -75,9 +78,12 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
             }
             out.push({
                 name,
-                kind: inModule ? "method" : "function",
+                kind: container.length > 0 ? "method" : "function",
                 line: node.startPosition.row + 1,
                 endLine: node.endPosition.row + 1,
+                column: node.startPosition.column + 1,
+                endColumn: node.endPosition.column + 1,
+                ...(container.length > 0 && { container }),
                 params,
             });
             return;
@@ -86,7 +92,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
             const sig = findChildOfType(node, "signature");
             const call = sig ? findChildOfType(sig, "call_expression") : null;
             const name = call ? firstIdentifierText(call) : firstIdentifierText(node);
-            if (name) push(out, "function", name, node);
+            if (name) push(out, "function", name, node, container);
             return;
         }
         case "const_statement": {
@@ -94,7 +100,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
             const assign = findChildOfType(node, "assignment");
             const target = assign ? assign.namedChild(0) : null;
             if (target && target.type === "identifier") {
-                push(out, "constant", target.text, node);
+                push(out, "constant", target.text, node, container);
             }
             return;
         }
@@ -121,16 +127,19 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
                 }
                 out.push({
                     name: fname,
-                    kind: inModule ? "method" : "function",
+                    kind: container.length > 0 ? "method" : "function",
                     line: node.startPosition.row + 1,
                     endLine: node.endPosition.row + 1,
+                    column: node.startPosition.column + 1,
+                    endColumn: node.endPosition.column + 1,
+                    ...(container.length > 0 && { container }),
                     params,
                 });
                 return;
             }
             if (target.type !== "identifier") return;
             const name = target.text;
-            push(out, isScreamingSnake(name) ? "constant" : "variable", name, node);
+            push(out, isScreamingSnake(name) ? "constant" : "variable", name, node, container);
             return;
         }
         default:
@@ -171,11 +180,14 @@ function isScreamingSnake(name: string): boolean {
     return hasLetter;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+        ...(container.length > 0 && { container }),
     });
 }

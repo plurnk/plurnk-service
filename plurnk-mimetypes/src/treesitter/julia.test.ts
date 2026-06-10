@@ -39,3 +39,22 @@ describe("text/x-julia via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("module ((( broken"));
     });
 });
+
+describe("text/x-julia — container + columns (issue #18)", () => {
+    it("symbols carry the enclosing module path as container; nesting is dotted", async () => {
+        const src = "module Outer\nmodule Inner\nf(x) = x\nend\nstruct Point\n  x::Int\nend\nend\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "f")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "Point")?.container, "Outer");
+    });
+
+    it("top-level symbols carry no container; columns are 1-indexed", async () => {
+        const syms = await h().extractRaw("sq(x) = x * x\n");
+        const sq = syms.find((s) => s.name === "sq");
+        assert.equal(sq?.container, undefined);
+        assert.equal(sq?.column, 1);
+        assert.ok((sq?.endColumn ?? 0) >= 1);
+    });
+});

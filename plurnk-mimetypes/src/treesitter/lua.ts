@@ -8,6 +8,9 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   function_declaration with name: method_index_expression → method (Class:method)
 //   local_declaration → variable_declaration → assignment → identifier:
 //                                                          variable / constant
+//
+// Issue #18: flat mapping — no recursion into named scopes, so no containers;
+// symbols carry 1-indexed columns only.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
@@ -26,14 +29,16 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             const params = extractParams(node.childForFieldName("parameters"));
             const line = node.startPosition.row + 1;
             const endLine = node.endPosition.row + 1;
+            const column = node.startPosition.column + 1;
+            const endColumn = node.endPosition.column + 1;
             if (nameNode.type === "identifier") {
-                out.push({ name: nameNode.text, kind: "function", line, endLine, params });
+                out.push({ name: nameNode.text, kind: "function", line, endLine, column, endColumn, params });
             } else if (nameNode.type === "dot_index_expression") {
                 const field = nameNode.childForFieldName("field");
-                if (field) out.push({ name: field.text, kind: "method", line, endLine, params });
+                if (field) out.push({ name: field.text, kind: "method", line, endLine, column, endColumn, params });
             } else if (nameNode.type === "method_index_expression") {
                 const method = nameNode.childForFieldName("method");
-                if (method) out.push({ name: method.text, kind: "method", line, endLine, params });
+                if (method) out.push({ name: method.text, kind: "method", line, endLine, column, endColumn, params });
             }
             return;
         }
@@ -114,5 +119,7 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
     });
 }

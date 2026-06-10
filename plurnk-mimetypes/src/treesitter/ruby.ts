@@ -4,59 +4,68 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Ruby SPEC §3 mapping via tree-sitter-ruby.
 //
 //   module                              → module; recurse into body
-//   class                               → class; recurse into body with inClass=true
-//   method                              → method (in class) or function (top-level)
+//   class                               → class; recurse into body
+//   method                              → method (in module/class) or function (top-level)
 //   singleton_method (def self.foo)     → method (rendered with prefix)
 //   assignment of constant (UPPER_CASE) → constant
 //   call → attr_accessor / attr_reader  → field
+//
+// Container semantics (issue #18): symbols inside a module/class carry the
+// dotted path of enclosing emitted names. Top-level symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "module": {
             const name = firstNamedOfTypes(node, ["constant", "scope_resolution"]);
-            if (name) push(out, "module", name.text, node);
+            if (name) push(out, "module", name.text, node, container);
             const body = firstNamedOfTypes(node, ["body_statement"]);
-            if (body) walk(body, out, false);
+            const inner = name
+                ? (container.length > 0 ? `${container}.${name.text}` : name.text)
+                : container;
+            if (body) walk(body, out, inner);
             return;
         }
         case "class": {
             const name = firstNamedOfTypes(node, ["constant", "scope_resolution"]);
-            if (name) push(out, "class", name.text, node);
+            if (name) push(out, "class", name.text, node, container);
             const body = firstNamedOfTypes(node, ["body_statement"]);
-            if (body) walk(body, out, true);
+            const inner = name
+                ? (container.length > 0 ? `${container}.${name.text}` : name.text)
+                : container;
+            if (body) walk(body, out, inner);
             return;
         }
         case "method": {
             const id = firstNamedOfTypes(node, ["identifier", "constant", "operator"]);
             if (!id) return;
             const params = extractRubyParams(firstNamedOfTypes(node, ["method_parameters"]));
-            push(out, inClass ? "method" : "function", id.text, node, params);
+            push(out, container.length > 0 ? "method" : "function", id.text, node, container, params);
             return;
         }
         case "singleton_method": {
             const id = firstNamedOfTypes(node, ["identifier", "constant"]);
             if (!id) return;
             const params = extractRubyParams(firstNamedOfTypes(node, ["method_parameters"]));
-            push(out, "method", id.text, node, params);
+            push(out, "method", id.text, node, container, params);
             return;
         }
         case "assignment": {
             const left = firstNamedOfTypes(node, ["constant"]);
             if (!left) return;
-            push(out, "constant", left.text, node);
+            push(out, "constant", left.text, node, container);
             return;
         }
         case "call": {
@@ -72,7 +81,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 if (!arg) continue;
                 if (arg.type === "simple_symbol") {
                     const name = arg.text.startsWith(":") ? arg.text.slice(1) : arg.text;
-                    push(out, "field", name, arg);
+                    push(out, "field", name, arg, container);
                 }
             }
             return;
@@ -112,6 +121,7 @@ function push(
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,
+    container: string,
     params?: string[],
 ): void {
     const sym: MimeSymbol = {
@@ -119,7 +129,10 @@ function push(
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
     };
+    if (container.length > 0) sym.container = container;
     if (params !== undefined) sym.params = params;
     out.push(sym);
 }

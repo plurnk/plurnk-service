@@ -51,3 +51,34 @@ describe("text/css via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("{{{ not css"));
     });
 });
+
+describe("text/css — container + columns (issue #18)", () => {
+    it("rules inside @media carry the @media symbol name as container", async () => {
+        const src = "@media (max-width: 600px) {\n  .card { color: red; }\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(
+            syms.find((s) => s.name === "@media (max-width: 600px)")?.container,
+            undefined,
+        );
+        assert.equal(
+            syms.find((s) => s.name === ".card")?.container,
+            "@media (max-width: 600px)",
+        );
+    });
+
+    it(":root custom properties carry container \":root\"", async () => {
+        const src = ":root {\n  --brand: #f00;\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === ":root")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "--brand")?.container, ":root");
+    });
+
+    it("top-level rule_sets carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = ".top { margin: 0; }\n";
+        const syms = await h().extractRaw(src);
+        const top = syms.find((s) => s.name === ".top");
+        assert.equal(top?.container, undefined);
+        assert.equal(top?.column, 1);
+        assert.ok((top?.endColumn ?? 0) >= 1);
+    });
+});

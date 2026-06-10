@@ -27,3 +27,24 @@ describe("text/x-odin via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("proc ((( broken"));
     });
 });
+
+describe("text/x-odin — container + columns (issue #18)", () => {
+    it("struct fields and enum constants carry the owning type as container", async () => {
+        const src = "package main\nPoint :: struct { x: int, y: int }\nColor :: enum { Red, Green }\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Point")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "x")?.container, "Point");
+        assert.equal(syms.find((s) => s.name === "y")?.container, "Point");
+        assert.equal(syms.find((s) => s.name === "Color")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Red")?.container, "Color");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "package main\nadd :: proc(a, b: int) -> int { return a + b }\n";
+        const syms = await h().extractRaw(src);
+        const add = syms.find((s) => s.name === "add");
+        assert.equal(add?.container, undefined);
+        assert.equal(add?.column, 1);
+        assert.ok((add?.endColumn ?? 0) >= 1);
+    });
+});

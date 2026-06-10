@@ -52,3 +52,20 @@ describe("text/x-go via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("package ((( broken"));
     });
 });
+
+describe("text/x-go — container + columns (issue #18)", () => {
+    it("flat mapping: no symbol carries a container", async () => {
+        const src = "package x\ntype T struct{}\nfunc (t *T) Do() {}\nfunc free() {}\n";
+        const syms = await h().extractRaw(src);
+        assert.ok(syms.length > 0);
+        assert.ok(syms.every((s) => s.container === undefined));
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const syms = await h().extractRaw("package x\nfunc solo() {}\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

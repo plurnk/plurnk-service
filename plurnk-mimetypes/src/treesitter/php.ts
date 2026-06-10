@@ -12,58 +12,66 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   function_definition     → function
 //   property_declaration    → field (per property_element)
 //   const_declaration       → constant (per const_element)
+//
+// Container semantics (issue #18): symbols inside a namespace/class/interface/
+// trait/enum carry the dotted path of enclosing emitted names. Top-level
+// symbols carry none.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "namespace_definition": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "module", name, node);
+            if (name) push(out, "module", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, false);
+            const inner = name
+                ? (container.length > 0 ? `${container}.${name}` : name)
+                : container;
+            if (body) walk(body, out, inner);
             return;
         }
         case "class_declaration":
         case "trait_declaration": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "class", name, node);
+            push(out, "class", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "interface_declaration": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "interface", name, node);
+            push(out, "interface", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "enum_declaration": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "enum", name, node);
+            push(out, "enum", name, node, container);
             const body = node.childForFieldName("body");
             if (body) {
+                const inner = container.length > 0 ? `${container}.${name}` : name;
                 for (let i = 0; i < body.namedChildCount; i += 1) {
                     const child = body.namedChild(i);
                     if (!child) continue;
                     if (child.type === "enum_case") {
                         const ename = childFieldText(child, "name");
-                        if (ename) push(out, "constant", ename, child);
+                        if (ename) push(out, "constant", ename, child, inner);
                     }
                 }
             }
@@ -77,6 +85,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 kind: "function",
                 line: node.startPosition.row + 1,
                 endLine: node.endPosition.row + 1,
+                column: node.startPosition.column + 1,
+                endColumn: node.endPosition.column + 1,
+                ...(container.length > 0 && { container }),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -89,6 +100,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 kind: "method",
                 line: node.startPosition.row + 1,
                 endLine: node.endPosition.row + 1,
+                column: node.startPosition.column + 1,
+                endColumn: node.endPosition.column + 1,
+                ...(container.length > 0 && { container }),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -100,7 +114,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 if (!child) continue;
                 if (child.type === "property_element") {
                     const vname = firstVariableName(child);
-                    if (vname) push(out, "field", vname, child);
+                    if (vname) push(out, "field", vname, child, container);
                 }
             }
             return;
@@ -111,7 +125,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 if (!child) continue;
                 if (child.type === "const_element") {
                     const cname = childFieldText(child, "name") ?? firstIdentifierText(child);
-                    if (cname) push(out, "constant", cname, child);
+                    if (cname) push(out, "constant", cname, child, container);
                 }
             }
             return;
@@ -166,11 +180,14 @@ function firstIdentifierText(node: TreeSitterNode): string | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+        ...(container.length > 0 && { container }),
     });
 }

@@ -47,3 +47,22 @@ describe("text/x-haskell via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("module ((( broken"));
     });
 });
+
+describe("text/x-haskell — container + columns (issue #18)", () => {
+    it("class method signatures carry the type class as container; declarations are otherwise flat", async () => {
+        const src = "module Foo where\nclass Eq a where\n  eq :: a -> a -> Bool\ndata Maybe a = Nothing | Just a\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Eq")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "eq")?.container, "Eq");
+        assert.equal(syms.find((s) => s.name === "Maybe")?.container, undefined);
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "bar :: Int -> Int\nbar x = x + 1\n";
+        const syms = await h().extractRaw(src);
+        const bar = syms.find((s) => s.name === "bar");
+        assert.equal(bar?.container, undefined);
+        assert.equal(bar?.column, 1);
+        assert.ok((bar?.endColumn ?? 0) >= 1);
+    });
+});

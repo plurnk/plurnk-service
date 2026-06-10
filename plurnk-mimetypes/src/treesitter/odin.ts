@@ -11,6 +11,10 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   const_declaration     → constant
 //   variable_declaration  → variable
 //   type_declaration      → type
+//
+// Container semantics (issue #18): top-level declarations are flat (procs are
+// never nested in structs). Struct/union fields carry the struct name as
+// container; enum constants carry the enum name.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
@@ -25,7 +29,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
     switch (node.type) {
         case "package_declaration": {
             const ident = firstIdentifierText(node);
-            if (ident) push(out, "module", ident, node);
+            if (ident) push(out, "module", ident, node, "");
             return;
         }
         case "procedure_declaration": {
@@ -36,8 +40,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             out.push({
                 name: ident,
                 kind: "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
                 params,
             });
             return;
@@ -46,13 +49,13 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
         case "union_declaration": {
             const ident = firstIdentifierText(node);
             if (!ident) return;
-            push(out, "class", ident, node);
+            push(out, "class", ident, node, "");
             for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (!child) continue;
                 if (child.type === "field") {
                     const fname = firstIdentifierText(child);
-                    if (fname) push(out, "field", fname, child);
+                    if (fname) push(out, "field", fname, child, ident);
                 }
             }
             return;
@@ -64,25 +67,25 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
                 if (child && child.type === "identifier") idents.push(child);
             }
             if (idents.length === 0) return;
-            push(out, "enum", idents[0].text, node);
+            push(out, "enum", idents[0].text, node, "");
             for (let i = 1; i < idents.length; i += 1) {
-                push(out, "constant", idents[i].text, idents[i]);
+                push(out, "constant", idents[i].text, idents[i], idents[0].text);
             }
             return;
         }
         case "const_declaration": {
             const ident = firstIdentifierText(node);
-            if (ident) push(out, "constant", ident, node);
+            if (ident) push(out, "constant", ident, node, "");
             return;
         }
         case "variable_declaration": {
             const ident = firstIdentifierText(node);
-            if (ident) push(out, "variable", ident, node);
+            if (ident) push(out, "variable", ident, node, "");
             return;
         }
         case "type_declaration": {
             const ident = firstIdentifierText(node);
-            if (ident) push(out, "type", ident, node);
+            if (ident) push(out, "type", ident, node, "");
             return;
         }
         default:
@@ -122,11 +125,20 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

@@ -25,6 +25,10 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //                                            an instance body could
 //                                            optionally surface)
 //   import                                → excluded
+//
+// Container semantics (issue #18): module-level declarations are flat (the
+// header module is a sibling, not a structural parent). Only class-body
+// method signatures carry a container — the type class name.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     const emittedFns = new Set<string>();
@@ -38,8 +42,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
             out.push({
                 name: modId.text,
                 kind: "module",
-                line: modId.startPosition.row + 1,
-                endLine: modId.endPosition.row + 1,
+                ...position(modId),
             });
         }
     }
@@ -54,25 +57,25 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
             case "data_type":
             case "newtype": {
                 const name = findFirstNamedChild(node, "name");
-                if (name) push(out, "class", name.text, node);
+                if (name) push(out, "class", name.text, node, "");
                 break;
             }
             case "type_synomym": {
                 const name = findFirstNamedChild(node, "name");
-                if (name) push(out, "type", name.text, node);
+                if (name) push(out, "type", name.text, node, "");
                 break;
             }
             case "class": {
                 const name = findFirstNamedChild(node, "name");
-                if (name) push(out, "interface", name.text, node);
-                // Class-body signatures become methods.
+                if (name) push(out, "interface", name.text, node, "");
+                // Class-body signatures become methods, contained by the class.
                 const body = findFirstNamedChild(node, "class_declarations");
                 if (body) {
                     for (let j = 0; j < body.namedChildCount; j += 1) {
                         const sig = body.namedChild(j);
                         if (!sig || sig.type !== "signature") continue;
                         const v = findFirstNamedChild(sig, "variable");
-                        if (v) push(out, "method", v.text, sig);
+                        if (v) push(out, "method", v.text, sig, name ? name.text : "");
                     }
                 }
                 break;
@@ -82,7 +85,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
                 if (!v) break;
                 if (emittedFns.has(v.text)) break;
                 emittedFns.add(v.text);
-                push(out, "function", v.text, node);
+                push(out, "function", v.text, node, "");
                 break;
             }
             case "function": {
@@ -90,7 +93,7 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
                 if (!v) break;
                 if (emittedFns.has(v.text)) break;
                 emittedFns.add(v.text);
-                push(out, "function", v.text, node);
+                push(out, "function", v.text, node, "");
                 break;
             }
             default:
@@ -109,16 +112,26 @@ function findFirstNamedChild(node: TreeSitterNode, type: string): TreeSitterNode
     return null;
 }
 
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
 function push(
     out: MimeSymbol[],
     kind: "class" | "type" | "interface" | "function" | "method" | "module",
     name: string,
     node: TreeSitterNode,
+    container: string,
 ): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

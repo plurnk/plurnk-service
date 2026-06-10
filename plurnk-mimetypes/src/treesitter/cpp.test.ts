@@ -57,3 +57,34 @@ describe("text/x-cpp via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("class ((( broken"));
     });
 });
+
+describe("text/x-cpp — container + columns (issue #18)", () => {
+    it("class members carry the enclosing class as container; namespace nesting is dotted", async () => {
+        const src = "namespace ns {\nclass Box {\npublic:\n  int width;\n  void resize(int w) {}\n};\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "ns")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Box")?.container, "ns");
+        assert.equal(syms.find((s) => s.name === "width")?.container, "ns.Box");
+        assert.equal(syms.find((s) => s.name === "resize")?.container, "ns.Box");
+    });
+
+    it("functions inside namespaces stay function kind but carry the namespace container", async () => {
+        const syms = await h().extractRaw("namespace ns {\nvoid helper() {}\n}\n");
+        const helper = syms.find((s) => s.name === "helper");
+        assert.equal(helper?.kind, "function");
+        assert.equal(helper?.container, "ns");
+    });
+
+    it("enumerators carry the named enum as container", async () => {
+        const syms = await h().extractRaw("enum Color { RED, GREEN };\n");
+        assert.equal(syms.find((s) => s.name === "RED")?.container, "Color");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const syms = await h().extractRaw("void solo() {}\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

@@ -64,5 +64,7 @@ function push(
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
     });
 }

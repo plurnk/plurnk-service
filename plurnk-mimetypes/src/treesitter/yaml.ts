@@ -22,29 +22,35 @@ export async function deepJson(content: string): Promise<unknown> {
 
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[]): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
         if (child.type === "block_mapping_pair" || child.type === "flow_pair") {
-            handlePair(child, out);
+            handlePair(child, out, container);
             continue;
         }
-        walk(child, out);
+        walk(child, out, container);
     }
 }
 
-function handlePair(pair: TreeSitterNode, out: MimeSymbol[]): void {
+function handlePair(pair: TreeSitterNode, out: MimeSymbol[], container: string): void {
     const key = pair.childForFieldName("key");
     if (!key) return;
     const keyText = scalarText(key);
-    if (keyText) push(out, "field", keyText, pair);
+    if (keyText) push(out, "field", keyText, pair, container);
     const value = pair.childForFieldName("value");
-    if (value) walk(value, out);
+    if (!value) return;
+    // Keys emitted inside this pair's value carry the dotted path of
+    // enclosing emitted keys.
+    const inner = keyText
+        ? (container.length > 0 ? `${container}.${keyText}` : keyText)
+        : container;
+    walk(value, out, inner);
 }
 
 function scalarText(node: TreeSitterNode): string | null {
@@ -61,11 +67,20 @@ function scalarText(node: TreeSitterNode): string | null {
     return text.replace(/^['"]|['"]$/g, "");
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(
+    out: MimeSymbol[],
+    kind: SymbolKind,
+    name: string,
+    node: TreeSitterNode,
+    container: string,
+): void {
     out.push({
         name,
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+        ...(container.length > 0 && { container }),
     });
 }

@@ -58,3 +58,31 @@ describe("text/x-rust via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("fn ((( broken"));
     });
 });
+
+describe("text/x-rust — container + columns (issue #18)", () => {
+    it("impl methods carry the impl'd type as container; mod nesting is dotted", async () => {
+        const src = "mod inner {\n  struct S;\n  impl S { fn act(&self) {} }\n  fn deep() {}\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "inner")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "S")?.container, "inner");
+        assert.equal(syms.find((s) => s.name === "act")?.container, "inner.S");
+        const deep = syms.find((s) => s.name === "deep");
+        assert.equal(deep?.kind, "function");
+        assert.equal(deep?.container, "inner");
+    });
+
+    it("generic impl resolves container to the base type name; trait fns carry the trait", async () => {
+        const src = "struct Wrap<T>(T);\nimpl<T> Wrap<T> { fn get(&self) {} }\ntrait Tr { fn req(&self); }\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "get")?.container, "Wrap");
+        assert.equal(syms.find((s) => s.name === "req")?.container, "Tr");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const syms = await h().extractRaw("fn solo() {}\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

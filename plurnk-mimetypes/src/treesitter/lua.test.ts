@@ -36,3 +36,17 @@ describe("text/x-lua via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("function ((( broken"));
     });
 });
+
+describe("text/x-lua — container + columns (issue #18)", () => {
+    // Flat mapping: no recursion into named scopes, so no containers.
+    it("top-level symbols carry no container; columns are 1-indexed", async () => {
+        const syms = await h().extractRaw("local function bar(z) return z end\nlocal v = 1\n");
+        const bar = syms.find((s) => s.name === "bar");
+        assert.equal(bar?.container, undefined);
+        assert.equal(bar?.column, 1);
+        assert.ok((bar?.endColumn ?? 0) >= 1);
+        const v = syms.find((s) => s.name === "v");
+        assert.equal(v?.container, undefined);
+        assert.equal(v?.column, 1);
+    });
+});

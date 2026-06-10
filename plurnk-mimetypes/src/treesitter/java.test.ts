@@ -58,3 +58,25 @@ describe("text/x-java via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("class ((( broken"));
     });
 });
+
+describe("text/x-java — container + columns (issue #18)", () => {
+    it("members carry the enclosing class as container; nesting is dotted", async () => {
+        const src = "class Outer {\n  class Inner {\n    void deep() {}\n  }\n  void shallow() {}\n  int count;\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "shallow")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "count")?.container, "Outer");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "enum Color { RED }\n";
+        const syms = await h().extractRaw(src);
+        const color = syms.find((s) => s.name === "Color");
+        assert.equal(color?.container, undefined);
+        assert.equal(color?.column, 1);
+        assert.equal(syms.find((s) => s.name === "RED")?.container, "Color");
+        assert.ok((color?.endColumn ?? 0) >= 1);
+    });
+});

@@ -5,6 +5,7 @@ import {
     dispatch as dispatchJs,
     childFieldText,
     extractParams,
+    position,
 } from "./javascript.ts";
 
 // TypeScript SPEC §3 mapping via tree-sitter-typescript (and tree-sitter-tsx).
@@ -16,13 +17,17 @@ import {
 //   internal_module/module  → module (recurse)
 //   abstract_class_declaration → class (handled in JS dispatch)
 //   ambient_declaration     → unwrap and dispatch
+//
+// Container semantics (issue #18): symbols inside a class, interface, enum,
+// or namespace/module carry the dotted path of enclosing emitted scope names.
+// Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -30,33 +35,34 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
         // at top level — peek through.
         if (child.type === "expression_statement") {
             const inner = child.namedChild(0);
-            if (inner) dispatch(inner, out, inClass);
+            if (inner) dispatch(inner, out, container);
             continue;
         }
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "interface_declaration": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "interface", name, node);
+            push(out, "interface", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, qualify(container, name));
             return;
         }
         case "type_alias_declaration": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "type", name, node);
+            if (name) push(out, "type", name, node, container);
             return;
         }
         case "enum_declaration": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "enum", name, node);
+            if (name) push(out, "enum", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) {
+            if (body && name) {
+                const inner = qualify(container, name);
                 for (let i = 0; i < body.namedChildCount; i += 1) {
                     const child = body.namedChild(i);
                     if (!child) continue;
@@ -64,7 +70,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                         const ename = child.type === "enum_assignment"
                             ? childFieldText(child, "name")
                             : child.text;
-                        if (ename) push(out, "constant", ename, child);
+                        if (ename) push(out, "constant", ename, child, inner);
                     }
                 }
             }
@@ -73,16 +79,16 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
         case "internal_module":
         case "module": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "module", name, node);
+            if (name) push(out, "module", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, false);
+            if (body) walk(body, out, name ? qualify(container, name) : container);
             return;
         }
         case "ambient_declaration": {
             // declare <something>; unwrap to inner.
             for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
-                if (child) dispatch(child, out, inClass);
+                if (child) dispatch(child, out, container);
             }
             return;
         }
@@ -94,8 +100,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 out.push({
                     name,
                     kind: "method",
-                    line: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1,
+                    ...position(node),
+                    ...(container.length > 0 && { container }),
                     params: extractParams(node.childForFieldName("parameters")),
                 });
             }
@@ -104,24 +110,28 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
         case "property_signature": {
             // Inside an interface body: a field on the interface.
             const name = childFieldText(node, "name");
-            if (name) push(out, "field", name, node);
+            if (name) push(out, "field", name, node, container);
             return;
         }
         default:
             // Fall through to the JavaScript dispatch for JS-shared node types
             // (function_declaration, class_declaration, lexical_declaration,
             // export_statement, etc.).
-            dispatchJs(node, out, inClass);
+            dispatchJs(node, out, container);
             return;
     }
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function qualify(container: string, name: string): string {
+    return container.length > 0 ? `${container}.${name}` : name;
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }
 

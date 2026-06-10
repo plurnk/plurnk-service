@@ -14,21 +14,31 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   type_item             → type
 //   union_item            → class
 //   macro_definition      → function
+//
+// Container semantics (issue #18): impl blocks (the impl'd type name), trait
+// bodies (the trait name), and mod blocks (the mod name) are containers —
+// items inside carry the dotted path of enclosing scope names. `container`
+// is the path; `inImplOrTrait` stays a separate flag because mod members
+// keep the function kind.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inImplOrTrait*/ false);
+    walk(root, out, "", /*inImplOrTrait*/ false);
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inImplOrTrait: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string, inImplOrTrait: boolean): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inImplOrTrait);
+        dispatch(child, out, container, inImplOrTrait);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inImplOrTrait: boolean): void {
+function joined(container: string, name: string): string {
+    return container.length > 0 ? `${container}.${name}` : name;
+}
+
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string, inImplOrTrait: boolean): void {
     switch (node.type) {
         case "function_item":
         case "function_signature_item": {
@@ -37,8 +47,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inImplOrTrait: boolea
             out.push({
                 name,
                 kind: inImplOrTrait ? "method" : "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -46,51 +56,52 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inImplOrTrait: boolea
         case "struct_item":
         case "union_item": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "class", name, node);
+            if (name) push(out, "class", name, node, container);
             return;
         }
         case "enum_item": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "enum", name, node);
+            if (name) push(out, "enum", name, node, container);
             return;
         }
         case "trait_item": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "interface", name, node);
+            if (name) push(out, "interface", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, name ? joined(container, name) : container, true);
             return;
         }
         case "impl_item": {
             // impl blocks don't produce a symbol themselves — they decorate
             // an existing type. Recurse into the body so methods inside become
-            // method symbols.
+            // method symbols carrying the impl'd type name as container.
+            const typeName = implTypeName(node.childForFieldName("type"));
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, typeName ? joined(container, typeName) : container, true);
             return;
         }
         case "mod_item": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "module", name, node);
+            push(out, "module", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, false);
+            if (body) walk(body, out, joined(container, name), false);
             return;
         }
         case "const_item":
         case "static_item": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "constant", name, node);
+            if (name) push(out, "constant", name, node, container);
             return;
         }
         case "type_item": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "type", name, node);
+            if (name) push(out, "type", name, node, container);
             return;
         }
         case "macro_definition": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "function", name, node);
+            if (name) push(out, "function", name, node, container);
             return;
         }
         default:
@@ -101,6 +112,20 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inImplOrTrait: boolea
 function childFieldText(node: TreeSitterNode, field: string): string | null {
     const child = node.childForFieldName(field);
     return child ? child.text : null;
+}
+
+// impl_item's `type` field: type_identifier directly, generic_type wrapping
+// one (`impl<T> Wrap<T>`), or scoped_type_identifier (`impl crate::Foo`).
+function implTypeName(node: TreeSitterNode | null): string | null {
+    if (!node) return null;
+    if (node.type === "type_identifier") return node.text;
+    if (node.type === "generic_type" || node.type === "scoped_type_identifier") {
+        for (let i = 0; i < node.namedChildCount; i += 1) {
+            const child = node.namedChild(i);
+            if (child?.type === "type_identifier") return child.text;
+        }
+    }
+    return null;
 }
 
 function extractParams(parametersNode: TreeSitterNode | null): string[] {
@@ -134,11 +159,20 @@ function extractParams(parametersNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

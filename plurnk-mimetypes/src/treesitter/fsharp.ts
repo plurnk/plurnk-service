@@ -14,27 +14,31 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //      delegate_type_defn / type_abbrev_defn    → type
 //   member_defn                                 → method
 //   module_defn                                 → unwrap recursively
+//
+// Container semantics (issue #18): declarations inside a named module or
+// namespace carry its name; record fields, union cases, and members carry
+// the owning type appended to that path.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inModule*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inModule);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "named_module":
         case "namespace": {
             const name = moduleNameText(node);
-            if (name) push(out, "module", name, node);
-            walk(node, out, true);
+            if (name) push(out, "module", name, node, container);
+            walk(node, out, name ? appendPath(container, name) : container);
             return;
         }
         case "value_declaration": {
@@ -42,7 +46,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
                 const child = node.namedChild(i);
                 if (!child) continue;
                 if (child.type === "function_or_value_defn") {
-                    handleFnOrValue(child, out, inModule);
+                    handleFnOrValue(child, out, container);
                 }
             }
             return;
@@ -51,13 +55,14 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
             for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (!child) continue;
-                handleTypeDefnVariant(child, out);
+                handleTypeDefnVariant(child, out, container);
             }
             return;
         }
         case "module_defn": {
-            // Inline module — walk its body recursively.
-            walk(node, out, true);
+            // Inline module — walk its body recursively. The mapping does not
+            // emit inline modules as symbols, so the container is unchanged.
+            walk(node, out, container);
             return;
         }
         case "member_defn": {
@@ -69,8 +74,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
                     out.push({
                         name,
                         kind: "method",
-                        line: node.startPosition.row + 1,
-                        endLine: node.endPosition.row + 1,
+                        ...position(node),
+                        ...(container.length > 0 && { container }),
                         params: extractArgPatterns(findChildOfType(left, "argument_patterns")),
                     });
                 }
@@ -82,16 +87,16 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): v
     }
 }
 
-function handleFnOrValue(node: TreeSitterNode, out: MimeSymbol[], inModule: boolean): void {
+function handleFnOrValue(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     const fnLeft = findChildOfType(node, "function_declaration_left");
     if (fnLeft) {
         const name = firstIdentifierText(fnLeft);
         if (name) {
             out.push({
                 name,
-                kind: inModule ? "function" : "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                kind: "function",
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractArgPatterns(findChildOfType(fnLeft, "argument_patterns")),
             });
         }
@@ -100,7 +105,7 @@ function handleFnOrValue(node: TreeSitterNode, out: MimeSymbol[], inModule: bool
     const valLeft = findChildOfType(node, "value_declaration_left");
     if (valLeft) {
         const name = deepFirstIdentifier(valLeft);
-        if (name) push(out, "constant", name, node);
+        if (name) push(out, "constant", name, node, container);
     }
 }
 
@@ -120,18 +125,19 @@ function deepFirstIdentifier(node: TreeSitterNode): string | null {
     return null;
 }
 
-function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[]): void {
+function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "record_type_defn": {
             const name = typeName(node);
-            if (name) push(out, "class", name, node);
+            if (name) push(out, "class", name, node, container);
             const block = findChildOfType(node, "record_fields");
             if (block) {
+                const fieldContainer = name ? appendPath(container, name) : container;
                 for (let i = 0; i < block.namedChildCount; i += 1) {
                     const f = block.namedChild(i);
                     if (f && f.type === "record_field") {
                         const fname = firstIdentifierText(f);
-                        if (fname) push(out, "field", fname, f);
+                        if (fname) push(out, "field", fname, f, fieldContainer);
                     }
                 }
             }
@@ -139,14 +145,15 @@ function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[]): void {
         }
         case "union_type_defn": {
             const name = typeName(node);
-            if (name) push(out, "enum", name, node);
+            if (name) push(out, "enum", name, node, container);
             const cases = findChildOfType(node, "union_type_cases");
             if (cases) {
+                const caseContainer = name ? appendPath(container, name) : container;
                 for (let i = 0; i < cases.namedChildCount; i += 1) {
                     const c = cases.namedChild(i);
                     if (c && c.type === "union_type_case") {
                         const cname = firstIdentifierText(c);
-                        if (cname) push(out, "constant", cname, c);
+                        if (cname) push(out, "constant", cname, c, caseContainer);
                     }
                 }
             }
@@ -155,25 +162,29 @@ function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[]): void {
         case "object_type_defn":
         case "class_type_defn": {
             const name = typeName(node);
-            if (name) push(out, "class", name, node);
+            if (name) push(out, "class", name, node, container);
             // members are member_defn nodes inside the type body — walk descend.
-            walk(node, out, true);
+            walk(node, out, name ? appendPath(container, name) : container);
             return;
         }
         case "delegate_type_defn":
         case "type_abbrev_defn": {
             const name = typeName(node);
-            if (name) push(out, "type", name, node);
+            if (name) push(out, "type", name, node, container);
             return;
         }
         case "enum_type_defn": {
             const name = typeName(node);
-            if (name) push(out, "enum", name, node);
+            if (name) push(out, "enum", name, node, container);
             return;
         }
         default:
             return;
     }
+}
+
+function appendPath(container: string, name: string): string {
+    return container.length > 0 ? `${container}.${name}` : name;
 }
 
 function typeName(node: TreeSitterNode): string | null {
@@ -230,11 +241,20 @@ function extractArgPatterns(argsNode: TreeSitterNode | null): string[] {
     return out;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

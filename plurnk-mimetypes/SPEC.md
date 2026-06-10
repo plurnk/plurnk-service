@@ -137,8 +137,11 @@ interface MimeSymbol {
     kind: SymbolKind;
     line: number;        // 1-indexed start
     endLine: number;     // 1-indexed end (== line for single-line symbols)
+    column?: number;     // 1-indexed start column (issue #18); emitted by
+    endColumn?: number;  //   tree-sitter and ANTLR extraction
     params?: string[];   // present on functions and methods when names are available
     level?: number;      // present on heading kinds; 1-6
+    container?: string;  // qualified path of enclosing named symbols (issue #18)
 }
 
 type SymbolKind =
@@ -146,6 +149,16 @@ type SymbolKind =
     | "interface" | "enum" | "type" | "module"
     | "variable" | "constant" | "heading";
 ```
+
+### Container (issue #18, framework v0.15)
+
+`container` is the dot-joined path of the enclosing *emitted* named symbols: `parse` inside class `Parser` carries `container: "Parser"`; a method on a nested class carries `"Outer.Inner"`. Absent (not empty-string) for top-level symbols. Rules:
+
+- Only symbols the handler actually emits participate in the path — anonymous scopes and unemitted wrappers contribute nothing.
+- A segment whose own name is dotted (Elixir `defmodule Foo.Bar`, TOML `[database.options]`) is used verbatim as one segment; consumers must not assume segments are dot-free.
+- `container` is extraction-time truth and the def-side identity the code graph links on: `(entry, container, name)`. `buildTree`'s line-range containment remains the render-time nesting mechanism; the two usually agree but `container` wins when they don't.
+
+Columns follow the family convention: 1-indexed, `endColumn` is the position just past the last character on `endLine` (tree-sitter `endPosition.column + 1`).
 
 ### Inclusion policy
 

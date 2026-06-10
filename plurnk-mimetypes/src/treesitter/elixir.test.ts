@@ -51,3 +51,22 @@ describe("text/x-elixir via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("defmodule ((( broken"));
     });
 });
+
+describe("text/x-elixir — container + columns (issue #18)", () => {
+    it("defs carry the enclosing module path as container; dotted aliases are verbatim segments", async () => {
+        const src = "defmodule MyApp.User do\n  defmodule Inner do\n    def deep(x), do: x\n  end\n  def greet(name), do: name\nend\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "MyApp.User")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "MyApp.User");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "MyApp.User.Inner");
+        assert.equal(syms.find((s) => s.name === "greet")?.container, "MyApp.User");
+    });
+
+    it("top-level symbols carry no container; columns are 1-indexed", async () => {
+        const syms = await h().extractRaw("defmodule M do\nend\n");
+        const m = syms.find((s) => s.name === "M");
+        assert.equal(m?.container, undefined);
+        assert.equal(m?.column, 1);
+        assert.ok((m?.endColumn ?? 0) >= 1);
+    });
+});

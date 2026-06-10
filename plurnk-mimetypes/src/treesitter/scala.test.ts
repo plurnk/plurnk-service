@@ -47,3 +47,34 @@ describe("text/x-scala via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("class ((( broken"));
     });
 });
+
+describe("text/x-scala — container + columns (issue #18)", () => {
+    it("members carry the enclosing scope as container; nesting is dotted", async () => {
+        const src = "object Outer {\n  object Inner {\n    def deep() = 1\n  }\n  def shallow() = 1\n  val k = 1\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "shallow")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "k")?.container, "Outer");
+    });
+
+    it("package blocks qualify the container but keep top-level kinds", async () => {
+        const src = "package foo.bar {\n  class C {\n    def m() = 1\n  }\n  def free() = 1\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "C")?.container, "foo.bar");
+        assert.equal(syms.find((s) => s.name === "m")?.container, "foo.bar.C");
+        const free = syms.find((s) => s.name === "free");
+        assert.equal(free?.kind, "function");
+        assert.equal(free?.container, "foo.bar");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "def solo(x: Int) = x\n";
+        const syms = await h().extractRaw(src);
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

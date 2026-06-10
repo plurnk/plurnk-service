@@ -13,21 +13,30 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   type_definition / alias_decl  → type
 //   field_declaration             → field (in class)
 //   declaration (file-scope var)  → variable
+//
+// Container semantics (issue #18): classes/structs/unions, namespaces, and
+// named enums are containers — members carry the dotted path of enclosing
+// emitted scope names. `container` is the path; `inClass` stays a separate
+// flag because namespace members keep function/variable kinds.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "", /*inClass*/ false);
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inClass);
+        dispatch(child, out, container, inClass);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function joined(container: string, name: string): string {
+    return container.length > 0 ? `${container}.${name}` : name;
+}
+
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string, inClass: boolean): void {
     switch (node.type) {
         case "function_definition": {
             const name = declaratorName(node.childForFieldName("declarator"));
@@ -35,8 +44,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             out.push({
                 name,
                 kind: inClass ? "method" : "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractParamsFromDeclarator(node.childForFieldName("declarator")),
             });
             return;
@@ -47,20 +56,21 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             const name = childFieldText(node, "name");
             const body = node.childForFieldName("body");
             if (!name || !body) return;
-            push(out, "class", name, node);
-            walk(body, out, true);
+            push(out, "class", name, node, container);
+            walk(body, out, joined(container, name), true);
             return;
         }
         case "enum_specifier": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "enum", name, node);
+            if (name) push(out, "enum", name, node, container);
             const body = node.childForFieldName("body");
             if (body) {
+                const enumContainer = name ? joined(container, name) : container;
                 for (let i = 0; i < body.namedChildCount; i += 1) {
                     const child = body.namedChild(i);
                     if (child && child.type === "enumerator") {
                         const ename = childFieldText(child, "name") ?? firstIdentifierText(child);
-                        if (ename) push(out, "constant", ename, child);
+                        if (ename) push(out, "constant", ename, child, enumContainer);
                     }
                 }
             }
@@ -68,9 +78,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
         }
         case "namespace_definition": {
             const name = childFieldText(node, "name");
-            if (name) push(out, "module", name, node);
+            if (name) push(out, "module", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, false);
+            if (body) walk(body, out, name ? joined(container, name) : container, false);
             return;
         }
         case "template_declaration": {
@@ -80,7 +90,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 if (!child) continue;
                 if (child.type === "function_definition" || child.type === "class_specifier"
                     || child.type === "struct_specifier" || child.type === "union_specifier") {
-                    dispatch(child, out, inClass);
+                    dispatch(child, out, container, inClass);
                 }
             }
             return;
@@ -89,7 +99,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
         case "alias_declaration": {
             const declarator = node.childForFieldName("declarator");
             const name = declarator ? declaratorName(declarator) : childFieldText(node, "name");
-            if (name) push(out, "type", name, node);
+            if (name) push(out, "type", name, node, container);
             return;
         }
         case "field_declaration": {
@@ -104,8 +114,8 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                         out.push({
                             name,
                             kind: "method",
-                            line: node.startPosition.row + 1,
-                            endLine: node.endPosition.row + 1,
+                            ...position(node),
+                            ...(container.length > 0 && { container }),
                             params: extractParamsFromDeclarator(declarator),
                         });
                     }
@@ -113,7 +123,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 return;
             }
             const name = declaratorName(declarator);
-            if (name) push(out, inClass ? "field" : "variable", name, node);
+            if (name) push(out, inClass ? "field" : "variable", name, node, container);
             return;
         }
         case "declaration": {
@@ -121,7 +131,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             if (!declarator) return;
             if (declarator.type === "function_declarator") return;
             const name = declaratorName(declarator);
-            if (name) push(out, "variable", name, node);
+            if (name) push(out, "variable", name, node, container);
             return;
         }
         default:
@@ -182,11 +192,20 @@ function firstIdentifierText(node: TreeSitterNode): string | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

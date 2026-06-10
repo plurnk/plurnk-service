@@ -44,3 +44,24 @@ describe("text/x-kotlin via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("class ((( broken"));
     });
 });
+
+describe("text/x-kotlin — container + columns (issue #18)", () => {
+    it("members carry the enclosing class as container; nesting is dotted", async () => {
+        const src = "class Outer {\n  class Inner {\n    fun deep() = 1\n  }\n  fun shallow() = 1\n  val name: String = \"\"\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "shallow")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "name")?.container, "Outer");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "fun add(a: Int, b: Int): Int = a + b\n";
+        const syms = await h().extractRaw(src);
+        const add = syms.find((s) => s.name === "add");
+        assert.equal(add?.container, undefined);
+        assert.equal(add?.column, 1);
+        assert.ok((add?.endColumn ?? 0) >= 1);
+    });
+});

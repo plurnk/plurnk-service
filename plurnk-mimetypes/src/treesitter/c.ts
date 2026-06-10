@@ -9,6 +9,9 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   enum_specifier       → enum (only when named); enumerator → constant
 //   type_definition      → type (typedef)
 //   declaration          → variable (file-scope, named, not extern/static-fn-proto)
+//
+// Container semantics (issue #18): the mapping is flat except enum bodies —
+// enumerators of a *named* enum carry the enum name as container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
@@ -27,8 +30,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             out.push({
                 name,
                 kind: "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
                 params: extractParamsFromDeclarator(node.childForFieldName("declarator")),
             });
             return;
@@ -49,7 +51,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
                     const child = body.namedChild(i);
                     if (child && child.type === "enumerator") {
                         const ename = childFieldText(child, "name") ?? firstIdentifierText(child);
-                        if (ename) push(out, "constant", ename, child);
+                        if (ename) push(out, "constant", ename, child, name ?? "");
                     }
                 }
             }
@@ -129,11 +131,20 @@ function firstIdentifierText(node: TreeSitterNode): string | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

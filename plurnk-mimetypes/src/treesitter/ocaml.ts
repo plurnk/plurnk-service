@@ -11,30 +11,39 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   class_definition            → class
 //   exception_definition        → class
 //   signature                   → interface
+//
+// Container semantics (issue #18): symbols inside `module M = struct ... end`
+// carry the dotted path of enclosing module names; top-level symbols carry
+// no container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inModule*/ false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], _inModule: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "module_definition": {
             const binding = firstNamedOfType(node, "module_binding");
             if (binding) {
                 const name = firstNamedOfType(binding, "module_name");
-                if (name) push(out, "module", name.text, node);
-                // Recurse into the structure body to find nested types/lets.
+                if (name) push(out, "module", name.text, node, container);
+                // Recurse into the structure body to find nested types/lets,
+                // qualified by this module's name.
                 const struct = firstNamedOfTypeAnywhere(binding, "structure");
-                if (struct) walk(struct, out, true);
+                if (struct && name) {
+                    walk(struct, out, container.length > 0 ? `${container}.${name.text}` : name.text);
+                } else if (struct) {
+                    walk(struct, out, container);
+                }
             }
             return;
         }
@@ -42,7 +51,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             const binding = firstNamedOfType(node, "module_type_binding");
             if (binding) {
                 const name = firstNamedOfType(binding, "module_type_name");
-                if (name) push(out, "interface", name.text, node);
+                if (name) push(out, "interface", name.text, node, container);
             }
             return;
         }
@@ -57,7 +66,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
                         // Discriminate: record/variant → class; alias → type
                         const isRecord = firstNamedOfTypeAnywhere(child, "record_declaration") !== null;
                         const isVariant = firstNamedOfTypeAnywhere(child, "variant_declaration") !== null;
-                        push(out, (isRecord || isVariant) ? "class" : "type", name.text, child);
+                        push(out, (isRecord || isVariant) ? "class" : "type", name.text, child, container);
                     }
                 }
             }
@@ -77,12 +86,12 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
                         out.push({
                             name: id.text,
                             kind,
-                            line: child.startPosition.row + 1,
-                            endLine: child.endPosition.row + 1,
+                            ...position(child),
+                            ...(container.length > 0 && { container }),
                             params,
                         });
                     } else {
-                        push(out, "constant", id.text, child);
+                        push(out, "constant", id.text, child, container);
                     }
                 }
             }
@@ -92,14 +101,14 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             const binding = firstNamedOfType(node, "class_binding");
             if (binding) {
                 const name = firstNamedOfType(binding, "class_name");
-                if (name) push(out, "class", name.text, node);
+                if (name) push(out, "class", name.text, node, container);
             }
             return;
         }
         case "exception_definition": {
             // exception_definition → constructor_declaration → constructor_name
             const name = firstNamedOfTypeAnywhere(node, "constructor_name");
-            if (name) push(out, "class", name.text, node);
+            if (name) push(out, "class", name.text, node, container);
             return;
         }
         default:
@@ -144,16 +153,26 @@ function extractOcamlParams(binding: TreeSitterNode): string[] {
     return out;
 }
 
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
 function push(
     out: MimeSymbol[],
     kind: SymbolKind,
     name: string,
     node: TreeSitterNode,
+    container: string,
 ): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

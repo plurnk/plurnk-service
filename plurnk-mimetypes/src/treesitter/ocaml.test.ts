@@ -46,3 +46,25 @@ describe("text/x-ocaml via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("module ((( broken"));
     });
 });
+
+describe("text/x-ocaml — container + columns (issue #18)", () => {
+    it("struct-body declarations carry the enclosing module path as container", async () => {
+        const src = "module Outer = struct\n  module Inner = struct\n    let deep x = x\n  end\n  let shallow = 1\nend\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "shallow")?.container, "Outer");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "module M = struct\nend\nlet add x y = x + y\n";
+        const syms = await h().extractRaw(src);
+        const add = syms.find((s) => s.name === "add");
+        assert.equal(add?.container, undefined);
+        // `add` anchors on the let_binding, which starts after `let `.
+        assert.equal(add?.column, 5);
+        assert.ok((add?.endColumn ?? 0) >= 1);
+        assert.equal(syms.find((s) => s.name === "M")?.column, 1);
+    });
+});

@@ -10,6 +10,10 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 //   call defmodule/defprotocol  → module (recurse into do_block)
 //   call def/defp/defmacro/...  → function (no body recursion)
+//
+// Container semantics (issue #18): symbols inside a defmodule carry the
+// dotted path of enclosing emitted module names; module names are already
+// dotted aliases (`Foo.Bar`) and are used verbatim as path segments.
 const MODULE_MACROS = new Set(["defmodule", "defprotocol", "defimpl"]);
 const FUNCTION_MACROS = new Set([
     "def", "defp", "defdelegate", "defguard", "defguardp",
@@ -18,35 +22,38 @@ const FUNCTION_MACROS = new Set([
 
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[]): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
         if (child.type === "call") {
-            handleCall(child, out);
+            handleCall(child, out, container);
             continue;
         }
-        walk(child, out);
+        walk(child, out, container);
     }
 }
 
-function handleCall(call: TreeSitterNode, out: MimeSymbol[]): void {
+function handleCall(call: TreeSitterNode, out: MimeSymbol[], container: string): void {
     const target = call.childForFieldName("target");
     if (!target || target.type !== "identifier") {
-        walk(call, out);
+        walk(call, out, container);
         return;
     }
     const macro = target.text;
     if (MODULE_MACROS.has(macro)) {
         const name = extractModuleName(call);
-        if (name) push(out, "module", name, call);
+        if (name) push(out, "module", name, call, container);
         // Recurse into the do_block to find inner def/defp/nested modules.
         const doBlock = findDoBlock(call);
-        if (doBlock) walk(doBlock, out);
+        const inner = name
+            ? (container.length > 0 ? `${container}.${name}` : name)
+            : container;
+        if (doBlock) walk(doBlock, out, inner);
         return;
     }
     if (FUNCTION_MACROS.has(macro)) {
@@ -57,6 +64,9 @@ function handleCall(call: TreeSitterNode, out: MimeSymbol[]): void {
                 kind: "function" as SymbolKind,
                 line: call.startPosition.row + 1,
                 endLine: call.endPosition.row + 1,
+                column: call.startPosition.column + 1,
+                endColumn: call.endPosition.column + 1,
+                ...(container.length > 0 && { container }),
                 params: fnInfo.params,
             });
         }
@@ -64,7 +74,7 @@ function handleCall(call: TreeSitterNode, out: MimeSymbol[]): void {
     }
     // Other macros (use, import, alias, etc.) — recurse into args to surface
     // nested defs (e.g. inside `quote do ... def foo ... end`).
-    walk(call, out);
+    walk(call, out, container);
 }
 
 function extractModuleName(call: TreeSitterNode): string | null {
@@ -153,11 +163,14 @@ function findDoBlock(call: TreeSitterNode): TreeSitterNode | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+        ...(container.length > 0 && { container }),
     });
 }

@@ -127,3 +127,23 @@ describe("text/x-python via tree-sitter registry", () => {
         assert.ok(secondMs < firstMs, `second call (${secondMs.toFixed(1)}ms) should be faster than first (${firstMs.toFixed(1)}ms) — cache primed`);
     });
 });
+
+describe("text/x-python — container + columns (issue #18)", () => {
+    it("methods carry the enclosing class as container; nesting is dotted", async () => {
+        const src = "class Outer:\n    class Inner:\n        def deep(self):\n            pass\n    def shallow(self):\n        pass\n";
+        const syms = await makeHandler().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Outer")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "Inner")?.container, "Outer");
+        assert.equal(syms.find((s) => s.name === "deep")?.container, "Outer.Inner");
+        assert.equal(syms.find((s) => s.name === "shallow")?.container, "Outer");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "def solo():\n    pass\n";
+        const syms = await makeHandler().extractRaw(src);
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

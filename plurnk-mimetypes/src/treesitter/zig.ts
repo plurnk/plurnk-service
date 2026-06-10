@@ -11,6 +11,9 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     value = error_set_declaration → enum
 //     other (literal/builtin)    → constant (if SCREAMING) or variable
 //   test_declaration → function (Zig's test blocks)
+//
+// Container semantics (issue #18): container_fields of a named
+// struct/enum/union declaration carry the declared name as container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
     for (let i = 0; i < root.namedChildCount; i += 1) {
@@ -29,8 +32,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             out.push({
                 name,
                 kind: "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
                 params: extractParams(findChildOfType(node, "parameters")),
             });
             return;
@@ -46,17 +48,17 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
                 if (!child) continue;
                 if (child.type === "struct_declaration") {
                     push(out, "class", name, node);
-                    emitContainerFields(child, out, "field");
+                    emitContainerFields(child, out, "field", name);
                     return;
                 }
                 if (child.type === "enum_declaration") {
                     push(out, "enum", name, node);
-                    emitContainerFields(child, out, "constant");
+                    emitContainerFields(child, out, "constant", name);
                     return;
                 }
                 if (child.type === "union_declaration") {
                     push(out, "class", name, node);
-                    emitContainerFields(child, out, "field");
+                    emitContainerFields(child, out, "field", name);
                     return;
                 }
                 if (child.type === "error_set_declaration") {
@@ -81,13 +83,13 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
     }
 }
 
-function emitContainerFields(container: TreeSitterNode, out: MimeSymbol[], kind: SymbolKind): void {
-    for (let i = 0; i < container.namedChildCount; i += 1) {
-        const child = container.namedChild(i);
+function emitContainerFields(node: TreeSitterNode, out: MimeSymbol[], kind: SymbolKind, container: string): void {
+    for (let i = 0; i < node.namedChildCount; i += 1) {
+        const child = node.namedChild(i);
         if (!child) continue;
         if (child.type === "container_field") {
             const name = childFieldText(child, "name") ?? firstIdentifierText(child);
-            if (name) push(out, kind, name, child);
+            if (name) push(out, kind, name, child, container);
         }
     }
 }
@@ -139,11 +141,20 @@ function isScreamingSnake(name: string): boolean {
     return hasLetter;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
+}
+
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container = ""): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

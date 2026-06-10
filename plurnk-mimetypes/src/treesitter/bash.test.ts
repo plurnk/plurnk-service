@@ -39,3 +39,17 @@ describe("text/x-shellscript via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("function (((broken"));
     });
 });
+
+describe("text/x-shellscript — container + columns (issue #18)", () => {
+    it("all symbols carry 1-indexed columns; functions are flat (no container)", async () => {
+        const src = "greet() {\n  echo hi\n}\nDB_HOST=localhost\n";
+        const syms = await h().extractRaw(src);
+        const greet = syms.find((s) => s.name === "greet");
+        assert.equal(greet?.container, undefined);
+        assert.equal(greet?.column, 1);
+        assert.ok((greet?.endColumn ?? 0) >= 1);
+        const db = syms.find((s) => s.name === "DB_HOST");
+        assert.equal(db?.container, undefined);
+        assert.equal(db?.column, 1);
+    });
+});

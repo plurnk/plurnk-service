@@ -21,6 +21,7 @@ interface ExtractorMethods extends ExtractionVisitor {
         extra?: Partial<MimeSymbol>,
     ): void;
     gateBody(ctx: ParserRuleContext): null;
+    gateContainer(name: string, ctx: ParserRuleContext): null;
 }
 
 type MixedCtor<T extends VisitorCtor> = new (
@@ -35,6 +36,7 @@ type MixedCtor<T extends VisitorCtor> = new (
 export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
     const Mixed = class extends Base implements ExtractorMethods {
         readonly #symbols: MimeSymbol[] = [];
+        readonly #containers: string[] = [];
         #inBody = false;
 
         get symbols(): MimeSymbol[] {
@@ -60,6 +62,16 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
                 line: startLine,
                 endLine: stopLine,
             };
+            // antlr4ng columns are 0-indexed char positions; MimeSymbol columns
+            // are 1-indexed (issue #18). stop.column is the start of the last
+            // token — add its text length for the end position. Guarded per
+            // field: columns are optional on MimeSymbol and some grammar
+            // contexts lack position info.
+            if (typeof ctx.start?.column === "number") symbol.column = ctx.start.column + 1;
+            if (typeof ctx.stop?.column === "number") {
+                symbol.endColumn = ctx.stop.column + (ctx.stop.text?.length ?? 0) + 1;
+            }
+            if (this.#containers.length > 0) symbol.container = this.#containers.join(".");
             if (params !== undefined) symbol.params = params;
             if (extra !== undefined) Object.assign(symbol, extra);
             this.#symbols.push(symbol);
@@ -70,6 +82,20 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             this.#inBody = true;
             this.visitChildren(ctx);
             this.#inBody = was;
+            return null;
+        }
+
+        // Visit children inside a named container scope (issue #18): symbols
+        // added during the recursion carry `container` = the dotted path of
+        // enclosing gateContainer names. Call after addSymbol-ing the
+        // container's own symbol so it doesn't contain itself.
+        gateContainer(name: string, ctx: ParserRuleContext): null {
+            this.#containers.push(name);
+            try {
+                this.visitChildren(ctx);
+            } finally {
+                this.#containers.pop();
+            }
             return null;
         }
     };

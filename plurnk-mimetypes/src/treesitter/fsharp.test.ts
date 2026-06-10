@@ -34,3 +34,25 @@ describe("text/x-fsharp via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("module ((( broken"));
     });
 });
+
+describe("text/x-fsharp — container + columns (issue #18)", () => {
+    it("module members carry the module; record fields and union cases append the type", async () => {
+        const src = "module M\nlet add a b = a + b\ntype Person = { Name: string; Age: int }\ntype Color = Red | Green\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "M")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "add")?.container, "M");
+        assert.equal(syms.find((s) => s.name === "Person")?.container, "M");
+        assert.equal(syms.find((s) => s.name === "Name")?.container, "M.Person");
+        assert.equal(syms.find((s) => s.name === "Color")?.container, "M");
+        assert.equal(syms.find((s) => s.name === "Red")?.container, "M.Color");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "module M\nlet pi = 3.14\n";
+        const syms = await h().extractRaw(src);
+        const m = syms.find((s) => s.name === "M");
+        assert.equal(m?.container, undefined);
+        assert.equal(m?.column, 1);
+        assert.ok((m?.endColumn ?? 0) >= 1);
+    });
+});

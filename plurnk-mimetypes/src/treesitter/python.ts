@@ -1,4 +1,4 @@
-import type { MimeSymbol } from "../types.ts";
+import type { MimeSymbol, SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Python SPEC §3 mapping. Tree-sitter-python produces a `module` root whose
@@ -15,13 +15,17 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Function-body locals are excluded by not recursing into function bodies.
 // Class-body recursion is necessary to surface methods + class-level fields.
+//
+// Container semantics (issue #18): symbols inside a class carry the dotted
+// path of enclosing emitted class names (`Outer.Inner` for a method on a
+// nested class). Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, false);
+    walk(root, out, "");
     return out;
 }
 
-function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
@@ -29,14 +33,14 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
         // through it to the actual statement.
         if (child.type === "expression_statement") {
             const inner = child.namedChild(0);
-            if (inner) dispatch(inner, out, inClass);
+            if (inner) dispatch(inner, out, container);
             continue;
         }
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "function_definition":
         case "async_function_definition": {
@@ -45,9 +49,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             const params = extractParameters(node.childForFieldName("parameters"));
             out.push({
                 name,
-                kind: inClass ? "method" : "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                kind: container.length > 0 ? "method" : "function",
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params,
             });
             // Don't recurse into function bodies — gate locals.
@@ -59,13 +63,13 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             out.push({
                 name,
                 kind: "class",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
             });
-            // Recurse into the class body, marking inClass = true so nested
-            // functions become methods.
+            // Recurse into the class body with this class appended to the
+            // container path so nested declarations qualify correctly.
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "decorated_definition": {
@@ -78,7 +82,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
                 if (child.type === "function_definition"
                     || child.type === "async_function_definition"
                     || child.type === "class_definition") {
-                    dispatch(child, out, inClass);
+                    dispatch(child, out, container);
                     return;
                 }
             }
@@ -94,18 +98,27 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): vo
             const name = identifierText(left);
             if (!name) return;
             const kind: "field" | "constant" | "variable" =
-                inClass ? "field" : (isScreamingSnake(name) ? "constant" : "variable");
+                container.length > 0 ? "field" : (isScreamingSnake(name) ? "constant" : "variable");
             out.push({
                 name,
                 kind,
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
             });
             return;
         }
         default:
             return;
     }
+}
+
+function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
 }
 
 function childFieldText(node: TreeSitterNode, field: string): string | null {

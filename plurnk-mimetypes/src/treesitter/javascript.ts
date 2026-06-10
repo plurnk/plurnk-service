@@ -10,21 +10,24 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   lexical_declaration        → variable / constant (const → constant if SCREAMING, else variable)
 //   variable_declaration (var) → variable
 //   export_statement / export_default → unwrap and dispatch
+//
+// Container semantics (issue #18): symbols inside a class carry the dotted
+// path of enclosing emitted scope names. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
     const out: MimeSymbol[] = [];
-    walk(root, out, /*inClass*/ false);
+    walk(root, out, "");
     return out;
 }
 
-export function walk(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+export function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
         if (!child) continue;
-        dispatch(child, out, inClass);
+        dispatch(child, out, container);
     }
 }
 
-export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boolean): void {
+export function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "function_declaration":
         case "generator_function_declaration": {
@@ -33,8 +36,8 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
             out.push({
                 name,
                 kind: "function",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -43,9 +46,9 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
         case "abstract_class_declaration": {
             const name = childFieldText(node, "name");
             if (!name) return;
-            push(out, "class", name, node);
+            push(out, "class", name, node, container);
             const body = node.childForFieldName("body");
-            if (body) walk(body, out, true);
+            if (body) walk(body, out, container.length > 0 ? `${container}.${name}` : name);
             return;
         }
         case "method_definition": {
@@ -54,8 +57,8 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
             out.push({
                 name,
                 kind: "method",
-                line: node.startPosition.row + 1,
-                endLine: node.endPosition.row + 1,
+                ...position(node),
+                ...(container.length > 0 && { container }),
                 params: extractParams(node.childForFieldName("parameters")),
             });
             return;
@@ -65,12 +68,15 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
             // field_definition uses the `property` field; public_field_definition
             // uses `name`. Probe both.
             const name = childFieldText(node, "property") ?? childFieldText(node, "name");
-            if (name) push(out, "field", name, node);
+            if (name) push(out, "field", name, node, container);
             return;
         }
         case "lexical_declaration":
         case "variable_declaration": {
-            // const/let/var: iterate variable_declarator children.
+            // const/let/var: iterate variable_declarator children. Class bodies
+            // never contain lexical_declaration (members are method_definition /
+            // field_definition), so kinds here are scope-independent — a non-empty
+            // container only ever means a TS namespace body.
             const isConst = node.type === "lexical_declaration"
                 && node.text.startsWith("const");
             for (let i = 0; i < node.namedChildCount; i += 1) {
@@ -83,17 +89,15 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
                 if (value && (value.type === "function" || value.type === "arrow_function")) {
                     out.push({
                         name,
-                        kind: inClass ? "method" : "function",
-                        line: child.startPosition.row + 1,
-                        endLine: child.endPosition.row + 1,
+                        kind: "function",
+                        ...position(child),
+                        ...(container.length > 0 && { container }),
                         params: extractParams(value.childForFieldName("parameters")),
                     });
                     continue;
                 }
-                const kind: SymbolKind = inClass
-                    ? "field"
-                    : (isConst && isScreamingSnake(name) ? "constant" : "variable");
-                push(out, kind, name, child);
+                const kind: SymbolKind = isConst && isScreamingSnake(name) ? "constant" : "variable";
+                push(out, kind, name, child, container);
             }
             return;
         }
@@ -102,13 +106,22 @@ export function dispatch(node: TreeSitterNode, out: MimeSymbol[], inClass: boole
             for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (!child) continue;
-                dispatch(child, out, inClass);
+                dispatch(child, out, container);
             }
             return;
         }
         default:
             return;
     }
+}
+
+export function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    return {
+        line: node.startPosition.row + 1,
+        endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+    };
 }
 
 export function childFieldText(node: TreeSitterNode, field: string): string | null {
@@ -167,11 +180,11 @@ function isScreamingSnake(name: string): boolean {
     return hasLetter;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode, container: string): void {
     out.push({
         name,
         kind,
-        line: node.startPosition.row + 1,
-        endLine: node.endPosition.row + 1,
+        ...position(node),
+        ...(container.length > 0 && { container }),
     });
 }

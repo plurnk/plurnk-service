@@ -52,3 +52,24 @@ describe("text/typescript via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("interface ((( broken"));
     });
 });
+
+describe("text/typescript — container + columns (issue #18)", () => {
+    it("namespace members and class methods nest the container path", async () => {
+        const src = "namespace ns {\n  export class C {\n    m(x: number) {}\n  }\n  export function inner() {}\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "ns")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "C")?.container, "ns");
+        assert.equal(syms.find((s) => s.name === "m")?.container, "ns.C");
+        assert.equal(syms.find((s) => s.name === "inner")?.container, "ns");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "interface Doable {\n  run(x: number): void;\n}\n";
+        const syms = await h().extractRaw(src);
+        const doable = syms.find((s) => s.name === "Doable");
+        assert.equal(doable?.container, undefined);
+        assert.equal(doable?.column, 1);
+        assert.equal(syms.find((s) => s.name === "run")?.container, "Doable");
+        assert.ok((doable?.endColumn ?? 0) >= 1);
+    });
+});

@@ -33,14 +33,15 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
         case "table":
         case "table_array_element": {
             const key = firstKeyText(node);
-            if (key) push(out, "module", key, node);
-            // Pairs inside the table.
+            if (key) push(out, "module", key, node, "");
+            // Pairs inside the table carry the emitted table name verbatim
+            // as their container — dotted headers stay one segment.
             for (let i = 0; i < node.namedChildCount; i += 1) {
                 const child = node.namedChild(i);
                 if (!child) continue;
                 if (child.type === "pair") {
                     const pkey = firstKeyText(child);
-                    if (pkey) push(out, "field", pkey, child);
+                    if (pkey) push(out, "field", pkey, child, key ?? "");
                 }
             }
             return;
@@ -48,7 +49,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
         case "pair": {
             // Top-level pair (before any [table] header).
             const key = firstKeyText(node);
-            if (key) push(out, "field", key, node);
+            if (key) push(out, "field", key, node, "");
             return;
         }
         default:
@@ -68,11 +69,20 @@ function firstKeyText(node: TreeSitterNode): string | null {
     return null;
 }
 
-function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitterNode): void {
+function push(
+    out: MimeSymbol[],
+    kind: SymbolKind,
+    name: string,
+    node: TreeSitterNode,
+    container: string,
+): void {
     out.push({
         name,
         kind,
         line: node.startPosition.row + 1,
         endLine: node.endPosition.row + 1,
+        column: node.startPosition.column + 1,
+        endColumn: node.endPosition.column + 1,
+        ...(container.length > 0 && { container }),
     });
 }

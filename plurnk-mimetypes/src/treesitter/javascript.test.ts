@@ -54,3 +54,22 @@ describe("text/javascript via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("function ((( broken"));
     });
 });
+
+describe("text/javascript — container + columns (issue #18)", () => {
+    it("methods and fields carry the enclosing class as container", async () => {
+        const src = "class Counter {\n  count = 0;\n  increment(by) { this.count += by; }\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Counter")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "count")?.container, "Counter");
+        assert.equal(syms.find((s) => s.name === "increment")?.container, "Counter");
+    });
+
+    it("top-level symbols carry no container; all symbols carry 1-indexed columns", async () => {
+        const src = "function solo(a) { return a; }\n";
+        const syms = await h().extractRaw(src);
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});

@@ -44,3 +44,21 @@ describe("text/x-ruby via tree-sitter registry", () => {
         await assert.doesNotReject(h().extractRaw("class ((( broken"));
     });
 });
+
+describe("text/x-ruby — container + columns (issue #18)", () => {
+    it("symbols carry the enclosing module/class path as container; nesting is dotted", async () => {
+        const src = "module MyApp\n  class User\n    def initialize(name)\n      @name = name\n    end\n  end\nend\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "MyApp")?.container, undefined);
+        assert.equal(syms.find((s) => s.name === "User")?.container, "MyApp");
+        assert.equal(syms.find((s) => s.name === "initialize")?.container, "MyApp.User");
+    });
+
+    it("top-level symbols carry no container; columns are 1-indexed", async () => {
+        const syms = await h().extractRaw("def solo(x)\n  x\nend\n");
+        const solo = syms.find((s) => s.name === "solo");
+        assert.equal(solo?.container, undefined);
+        assert.equal(solo?.column, 1);
+        assert.ok((solo?.endColumn ?? 0) >= 1);
+    });
+});
