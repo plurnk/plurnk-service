@@ -84,11 +84,11 @@ Internal schemes:
 
 ## Suffix
 
-YOU MAY use an optional matching suffix on the opening and closing tags for disambiguation.
+YOU MUST use a matching digit suffix on the opening and closing tags when quoting plurnk operations in a body.
 
-<<EDITouter(known://demo):
+<<EDIT1(known://demo):
 quoted: <<EDIT(known://inner):hello:EDIT
-:EDITouter
+:EDIT1
 
 ## Body
 
