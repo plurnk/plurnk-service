@@ -1714,7 +1714,7 @@ export default class Engine {
             const dstNames = Object.keys(dstChannels).sort();
             const sameContent = writeNames.length === dstNames.length
                 && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
-            const sameTags = [...tags].sort().join(" ") === [...dstExisting.entry.tags].sort().join(" ");
+            const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
             if (sameContent && sameTags) return { status: 304 };
             return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
         }
