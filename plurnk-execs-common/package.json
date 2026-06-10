@@ -1,8 +1,8 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "0.1.0",
-    "description": "Common-REPL detection harness for plurnk-service's exec scheme — one package that exposes whichever common interpreters (perl, ruby, php, lua, awk, bc, …) exist on the host.",
-    "keywords": ["plurnk", "exec", "runtime", "executor", "repl", "perl", "ruby", "lua", "awk"],
+    "version": "0.2.0",
+    "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
+    "keywords": ["plurnk", "exec", "runtime", "executor", "subprocess", "repl", "shell", "node", "python"],
     "homepage": "https://github.com/plurnk/plurnk-execs-common#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-execs-common/issues"
@@ -23,6 +23,11 @@
     "plurnk": {
         "kind": "exec",
         "runtimes": [
+            { "name": "sh", "glyph": "🐚" },
+            { "name": "bash", "glyph": "🐚" },
+            { "name": "node", "glyph": "⬢" },
+            { "name": "python", "glyph": "🐍" },
+            { "name": "python3", "glyph": "🐍" },
             { "name": "perl", "glyph": "🐪" },
             { "name": "ruby", "glyph": "💎" },
             { "name": "php", "glyph": "🐘" },

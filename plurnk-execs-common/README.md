@@ -1,15 +1,18 @@
 # @plurnk/plurnk-execs-common
 
-A **detection harness** for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme: one package that exposes whichever common interpreters/REPLs exist on the host. Install it once and the model gets `perl`/`ruby`/`php`/`lua`/`awk`/`bc`/… — but only the ones actually present.
+The **universal subprocess executor** for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme: one package covering the shell + node + python floor *and* whichever host interpreters (`perl`/`ruby`/`php`/`lua`/`awk`/`bc`/…) are present. Install it once and the model gets every subprocess runtime the host can serve — `node` always, the rest detected.
 
-A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-execs) framework.
+A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-execs) framework. **Supersedes the former `-sh`, `-node`, `-python` packages** (folded in here).
 
 ## How it works
 
-The manifest claims a candidate set of common-REPL tags. The framework's `probe()` (per-tag, cheap `command -v`) lights up only the interpreters on PATH, so the consumer offers the model exactly the platform's runtimes. No per-language packages to install — one harness adapts to the host.
+The manifest claims the subprocess runtime tags. The framework's `probe()` (per-tag) lights up `node` unconditionally (the daemon *is* node) and detects the rest via a cheap `command -v`, so the consumer offers the model exactly the platform's runtimes. No per-language packages — one executor adapts to the host.
 
 | Tag | Binary | Command via |
 |---|---|---|
+| `sh` 🐚 / `bash` 🐚 | sh / bash | `-c <command>` |
+| `node` ⬢ | node | `-e <command>` (always available) |
+| `python` / `python3` 🐍 | python3 | `-c <command>` |
 | `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <command>` |
 | `php` 🐘 | php | `-r <command>` |
 | `deno` 🦕 | deno | `eval <command>` |

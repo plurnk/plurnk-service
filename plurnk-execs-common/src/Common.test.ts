@@ -26,7 +26,37 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
     assert.equal(pkg.plurnk.kind, "exec");
     const manifest = pkg.plurnk.runtimes.map((r: { name: string }) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
-    assert.deepEqual(manifest, ["perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk"]);
+    assert.deepEqual(manifest, [
+        "sh", "bash", "node", "python", "python3",
+        "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
+    ]);
+});
+
+test("spawnArgs: the subprocess floor (sh/node/python)", () => {
+    // @ts-expect-error exercise the protected hook
+    assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: "sh", args: ["-c", "echo hi"], useShell: false });
+    // @ts-expect-error
+    assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
+    // @ts-expect-error
+    assert.deepEqual(make("python").spawnArgs("python", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
+});
+
+test("probe: node is always available (not PATH-gated) and reports its version", async () => {
+    const r = await make("node").probe();
+    assert.equal(r.available, true);
+    assert.equal(r.detail, process.version);
+});
+
+test("live: sh runs a shell command", async () => {
+    const { result, out } = await run("sh", "echo plurnk");
+    assert.equal(result.status, 200);
+    assert.equal(out.stdout, "plurnk\n");
+});
+
+test("live: node runs -e", async () => {
+    const { result, out } = await run("node", "process.stdout.write(String(6*7))");
+    assert.equal(result.status, 200);
+    assert.equal(out.stdout, "42");
 });
 
 test("spawnArgs: eval-flag interpreters carry the command via their flag", () => {

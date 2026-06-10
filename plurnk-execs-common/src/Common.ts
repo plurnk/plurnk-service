@@ -12,9 +12,19 @@ interface Recipe {
     arg?: (command: string) => string[];
     stdin?: boolean;
     bare?: boolean;
+    // node is guaranteed (the daemon IS node) — reported available without a
+    // PATH probe. Everything else is detected.
+    alwaysAvailable?: boolean;
 }
 
 const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
+    // Subprocess floor (folded in from the former -sh / -node / -python packages).
+    sh: { bin: "sh", arg: (c) => ["-c", c] },
+    bash: { bin: "bash", arg: (c) => ["-c", c] },
+    node: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
+    python: { bin: "python3", arg: (c) => ["-c", c] },
+    python3: { bin: "python3", arg: (c) => ["-c", c] },
+    // Detected host interpreters.
     perl: { bin: "perl", arg: (c) => ["-e", c] },
     ruby: { bin: "ruby", arg: (c) => ["-e", c] },
     php: { bin: "php", arg: (c) => ["-r", c] },
@@ -65,6 +75,7 @@ export default class Common extends SubprocessExecutor {
         if (isDisabled(this.runtime)) {
             return { available: false, detail: `disabled (PLURNK_EXECS_${this.runtime.toUpperCase()}=0)` };
         }
+        if (r.alwaysAvailable) return { available: true, detail: r.bin === "node" ? process.version : r.bin };
         return onPath(r.bin)
             ? { available: true, detail: r.bin }
             : { available: false, detail: `${r.bin} not on PATH` };
