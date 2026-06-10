@@ -56,8 +56,7 @@ export default class EntryFind {
     // candidate's default-channel CONTENT via the mimetypes daughter
     // (Matcher.matchAgainstContent) — 200 (hit) includes the entry, 204/415/203
     // exclude it (no content hit), 400 (malformed matcher) fails the whole op.
-    // Path-scoping stays in the (target). Shared with EntryOps's multi-entry
-    // visibility.
+    // Path-scoping stays in the (target). Used by FIND.
     static async matchPathnames(
         statement: FindStatement | ShowStatement | HideStatement,
         ctx: PlurnkSchemeContext,

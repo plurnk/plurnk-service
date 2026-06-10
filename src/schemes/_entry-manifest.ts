@@ -1,7 +1,7 @@
 // The body of plurnk://manifest.json — the complete, unranked directory of
 // every entry the session holds, across all schemes. engine_list_session_entries
-// is not visibility-filtered: every entry is listed, uniformly READable, in no
-// relevance order. The model ranks/filters it itself by querying the catalog
+// lists every entry, uniformly READable, in no relevance order. The model
+// ranks/filters it itself by querying the catalog
 // (task-aware) — the catalog never ranks for it, or it would be an index again.
 // Each item: { path, channels: { <name>: { mimetype, tokens, lines } } }.
 // `tokens` is the live provider's count, re-counted at render — the write-time

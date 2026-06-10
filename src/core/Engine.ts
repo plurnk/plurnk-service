@@ -23,7 +23,7 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import PacketWire from "./packet-wire.ts";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
-// SHOW/HIDE/READ/FIND are not gated — they touch visibility metadata or read.
+// SHOW/HIDE/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
 
 const DEFAULT_PREVIEW_BUDGET = 256;
@@ -675,9 +675,9 @@ export default class Engine {
         // prompt-composition (EMI is eager + relevance-bounded). When the
         // session's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
-        // (disk → body channel + visibility) so they surface in the index
-        // below. No-ops on headless / non-git sessions. Runs BEFORE the
-        // manifest + index build so this turn's packet reflects them.
+        // (disk → body channel) so they appear in the manifest below. No-ops
+        // on headless / non-git sessions. Runs BEFORE the manifest write so
+        // this turn's packet reflects them.
         await GitMembership.indexGitMembership(systemCtx);
 
         await EntryCrud.writeEntry("manifest.json", {

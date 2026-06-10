@@ -19,7 +19,7 @@ export default class OpHideMethod {
                 const statement = Dsl.buildHide(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
-            description: "HIDE — demote an entry from the active index to the archive.",
+            description: "HIDE — collapse a log row to its path (drop its body from the render).",
             params: {
                 target: "string — entry path",
                 matcher: "string? — body matcher (glob/regex/xpath/jsonpath)",

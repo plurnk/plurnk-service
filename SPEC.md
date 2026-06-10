@@ -16,7 +16,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 |---|---|
 | **agent** | The plurnk runtime singleton. Owns agent-scoped state (default scheme registry, agent-wide entries). One per process. |
 | **session** | Durable user-named workspace. Persists across runs and process restarts. Identity: `sessions.id` + unique `sessions.name`. |
-| **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns visibility state and log entries. |
+| **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns the log entries. |
 | **loop** | One model-driven or client-driven iteration within a run. Status ∈ {102, 200, 499}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
 | **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `SHOW`, `HIDE`, `EXEC`. One turn produces zero or more ops. |
@@ -35,14 +35,13 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. Consumption surface §4.5; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
 | **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. Consumption surface §2; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
 
-### §0.3 State / visibility / status
+### §0.3 State / status
 
-Three independent axes on entries and channels. Confusion across them is a recurring source of bugs.
+Independent axes on entries and channels. Confusion across them is a recurring source of bugs.
 
 | Term | Type | Meaning |
 |---|---|---|
 | **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue (§3.5). |
-| **visibility** | `0 \| 1` | Per-`(run, entry, channel)` bit. `1 = indexed` (appears in `packet.system.index`), `0 = hidden` (not rendered, recallable via explicit READ). |
 | **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
 | **entry state** | `proposed \| resolved \| cancelled` | Proposal lifecycle. `proposed` = pending client accept; `resolved` = side effect happened; `cancelled` = client rejected. Distinct from channel state. |
 | **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
@@ -73,7 +72,6 @@ Three independent axes on entries and channels. Confusion across them is a recur
 | Term | Meaning |
 |---|---|
 | **packet** | The turn's full exchange shape: `{system, user, assistant, assistantRaw}`. Persisted on `turns.packet`. |
-| **index** | `packet.system.index`. Entry list visible to the model this turn. Built from `visibility` lattice + mimetype.preview. |
 | **log** | `packet.system.log`. Chronological list of `log_entries` in scope this turn. |
 | **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
 
@@ -284,7 +282,7 @@ No mimetype handlers ship in-tree. Framework + every handler are siblings.
 
 ### §4.5 Consumption surface
 
-plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label + budget to `Mimetypes.process({content, hint}, {budget})`; uses `result.preview` as the rendered output in `packet.system.index[].channels[name].content`.
+plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label + budget to `Mimetypes.process({content, hint}, {budget})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
 **Required dependencies** (hard deps in `package.json`):
 
@@ -438,7 +436,6 @@ Engine orchestrates over CRUD primitives (§3.2, §3.4):
 3. Mimetype compat — channels' mimetypes must be accepted by `dst_scheme.manifest.channels`. Mismatch → 415.
 4. Tags: `signal` non-null replaces source tags {§6.4-signal-replaces-source-tags}; null/empty carries source tags {§6.4-no-signal-carries-source-tags}.
 5. `dst_scheme.writeEntry({channels, tags})`.
-6. Dest `indexed=1` in current run.
 
 Returns 201 on success. Same- and cross-scheme COPY share the orchestrator. {§6.4-cross-scheme-copy}
 
@@ -510,10 +507,6 @@ Per-channel previews use `SchemeRegistration.channel_orientations` (grammar): `"
 
 `<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a slice into a log row when the model wants depth beyond the preview.
 
-### §7.6 HIDE is pure archive
-
-`<<HIDE(sse://feed/x)::HIDE` demotes from index. Connection persists; channels keep updating. HIDE never tears down a subscription.
-
 ### §7.7 SEND for stream control
 
 - **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme tears down via AbortController.
@@ -549,7 +542,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 ### §8.2 SQL/TS responsibility boundary
 
 **Lives in SQL:**
-- Visibility / index / archive lattice (CTEs).
+- Render queries — log assembly + the manifest catalog.
 - Cross-scope path collision (CHECK/trigger → 409).
 - Cost rollups (denormalized pico-units; atomic on turn close).
 - Sequence number issuance (1-based per grammar).
@@ -890,7 +883,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Decision.** Engine-direct. Plugin-driven assembly is out of scope.
 
-**Rationale.** Channel + mimetype split already extends rendering; visibility lattice owns inclusion. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
+**Rationale.** Channel + mimetype split already extends rendering. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
 
 **Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildIndex`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
 
@@ -907,7 +900,7 @@ Each entry: question, answer, rationale, migration path.
 
 - **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Engine.#writeLog`) are populated at write as a write-time snapshot. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§14.2-tokens-stored-at-write}
 - **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price previews; render-weight is the accurate measure. {§14.2-render-weight-budget}
-- **Per-scheme balance.** A markdown table groups the model's context by scheme — `indexed`/`archived` counts and render-weight `tokens` — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§14.2-per-scheme-balance}
+- **Per-scheme balance.** A markdown table groups the model's context by scheme — render-weight `tokens` per scheme — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§14.2-per-scheme-balance}
 - **Context-window percent.** The headline carries usage as a percent of the ceiling — `usage Y (P%)` — a fullness gauge beside the absolutes. Reads the ceiling already in hand; no extra provider call. {§14.2-context-percent}
 - **Depth re-counted at render.** The manifest re-tokenizes each entry's `tokens` through the live provider at build — never the write-time snapshot — so a model change between loops can't stale the catalog. Every token figure in the packet is render-fresh, manifest and budget alike; nothing trusts a cross-loop cached total.
 - **Over-budget is honest.** When usage exceeds the ceiling, `free` floors at 0 and the percent passes 100 — the readout shows the overshoot rather than a negative free, so the model knows it's over and curates down. {§14.2-over-budget-floor}
@@ -931,7 +924,7 @@ Each entry: question, answer, rationale, migration path.
 
 - **Identity on the session.** No `projects` table; `sessions.project_root TEXT` (nullable = headless). `entries.scope` unchanged (`∈ {'agent','session'}`). Workspace = session; no users/auth/multi-tenant.
 - **git-ls-files membership.** git present → tracked files (`git ls-files`) are members with no explicit `add` — channel-less markers, disk is truth. git absent → no fs-walk (non-git/headless get no substrate membership).
-- **EMI eager + relevance-bounded.** Materializes only the run's indexed members (`visibility.indexed=1`) at prompt-composition, re-reading disk so a divergent member reflects current content.
+- **EMI eager + relevance-bounded.** Materializes active git members at prompt-composition, re-reading disk so a divergent member reflects current content.
 - **Disk-read-first edits.** Disk writes route through `File.edit`, which reads disk before diffing — an untouched member's baseline is its real content, never empty. Silent overwrite is structurally prevented.
 
 **Deferred — promised, not yet built.** Each carries an anchor with a deliberately-red test so the deferral is tracked, never silently covered.
@@ -939,13 +932,13 @@ Each entry: question, answer, rationale, migration path.
 - **Constraint overlay — the client supersede.** {§14.3-constraint-overlay} A `session_constraints` table layering *add* (members git misses), *ignore* (drop ones it tracks), and *read-only* (member for read, writes rejected) over the git substrate; glob matching via `node:path.matchesGlob`. git-absent, these `effect='add'` constraints are the *sole* membership source — so this overlay is not merely the override knob, it is the entire membership mechanism without git.
 - **EMI divergence signal.** {§14.3-emi-divergence-signal} When EMI re-reads a member whose disk content changed out-of-band, emit a synthetic log entry so the model sees the change (the re-read is built; only the signal is deferred).
 
-**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps the model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale previews without per-turn full-repo cost.
+**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps the model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale content without per-turn full-repo cost.
 
 **Migration path.** Tenancy / cross-session shared workspaces require a `workspaces` table joining sessions to workspace id, with constraints lifted off `session_constraints`. Disk co-location semantics unchanged.
 
 ### §14.4 Budget enforcement: the grinder
 
-**Question.** §14.2 surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Three states defeat self-regulation, none of them the model's doing: a jumbo prompt, a jumbo repo (the index overflows before the model acts), an unexpectedly large read. What enforces the ceiling when the signal isn't enough?
+**Question.** §14.2 surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Two states defeat self-regulation, neither the model's doing: a jumbo prompt (the turn-0 environment), and an unexpectedly large read. (A jumbo repo is no longer its own case — with no index nothing auto-renders the repo; it surfaces only as a large `manifest.json` READ, which the model chunks like any big read.) What enforces the ceiling when the signal isn't enough?
 
 **Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`#buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§14.2) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§14.4-overflow-only} On overflow it reverts the prior turn, then hard-stops if that isn't enough:
 
@@ -956,7 +949,7 @@ Each entry: question, answer, rationale, migration path.
 
 **What the model sees.** A `budget_overflow` telemetry event (§15.1), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the per-scheme budget table (§14.2) is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§14.4-event-model-terms} Per the gamification policy (§15.1), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
 
-**Rationale.** The model owns curation (§14.2); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render, then the index scaffolding; nothing is deleted, so the model can SHOW any of it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it (and the §1316 index-collapse pass that doc never caught up to).
+**Rationale.** The model owns curation (§14.2); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render; nothing is deleted, so the model can SHOW it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
 
 **Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
 
@@ -1169,7 +1162,7 @@ Carried from the contract walk; durable.
 - **COPY `<L>`** → source range, symmetric with READ `<L>`.
 - **READ rx** prefixes each line with `N:\t` per §16.6. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via `Matcher.matchAgainstContent` → `Mimetypes.query` (status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
-- **SHOW/HIDE** has a single-entry path (exact pathname, no slots) and a multi-entry path (any of body/signal/`<L>` present). Multi-entry path treats target as pathname glob scope, applies the body matcher to entry content (shared with FIND via `matchPathnames`), filters by `signal` tags, paginates with `<L>`, and flips visibility on the resulting set.
+- **SHOW/HIDE** operate on the **log** (`log://`), not entries (§6.3) — HIDE collapses a log row to its path, SHOW restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §6.5): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
 

@@ -3,8 +3,8 @@
 // When a session's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
 // `add`. This module resolves that membership and (when token accounting is
-// available) materializes active members' disk content into a body channel +
-// visibility so they surface in packet.system.index.
+// available) materializes active members' disk content into a body channel,
+// so they appear in the manifest catalog (plurnk://manifest.json) and are READ-able.
 //
 // Decisions realized here:
 //   D1 — workspace identity lives on the session (project_root).
@@ -96,9 +96,9 @@ export default class GitMembership {
         return tracked;
     }
 
-    // Materialize a member's disk content into a body channel + visibility for the
-    // run via writeEntry (the entry-write paradigm) — so it surfaces in
-    // packet.system.index (D4/D5). Re-reads disk each call (eager + relevance-
+    // Materialize a member's disk content into a body channel via writeEntry (the
+    // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
+    // (D4/D5). Re-reads disk each call (eager + relevance-
     // bounded). Binary files are members but never materialized into a text
     // channel. Missing-on-disk (tracked but deleted in the working tree) is
     // skipped — membership stands, no channel.
@@ -119,12 +119,12 @@ export default class GitMembership {
         }
         // writeEntry finds the registered member (scheme=null) and refreshes its
         // body channel each turn, so a member edited out-of-band reflects current
-        // disk content (D5) — tokenization + visibility flow through the paradigm.
+        // disk content (D5) — tokenization flows through the paradigm.
         await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
     }
 
     // Full membership + materialization pass for a run. Registers git members,
-    // then materializes each active (on-disk, non-binary) member into the index
+    // then materializes each active (on-disk, non-binary) member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git sessions.
     static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<void> {

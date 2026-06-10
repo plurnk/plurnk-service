@@ -189,11 +189,11 @@ export default class File {
     // applyResolution — called by Engine.dispatch after a proposed log
     // entry resolves with decision=accept. Two responsibilities:
     //   1. Write the patched content to disk.
-    //   2. Register an entries+visibility row so the file appears in
-    //      the next packet's # Plurnk System Index. Without (2), the
+    //   2. Register the file as an entry so it appears in the manifest
+    //      and the model can READ its landed work. Without (2), the
     //      model has no artifact of completion to read and tends to
-    //      re-EDIT the same file across turns. The index is what tells
-    //      the model "your prior work landed."
+    //      re-EDIT the same file across turns. The log's EDIT row + the
+    //      manifest entry are what tell the model "your prior work landed."
     async applyResolution(args: ApplyArgs, ctx: PlurnkSchemeContext): Promise<ApplyResult> {
         const { attrs, body } = args;
         const canonical = attrs.canonical;
@@ -217,10 +217,9 @@ export default class File {
                 body: err instanceof Error ? err.message : String(err),
             };
         }
-        // Register the file as an indexed entry so the next packet's
-        // # Plurnk System Index shows it under file://<relPath> with
-        // the body content visible. mimetype is best-effort by file
-        // extension; .md → text/markdown, anything else → text/plain.
+        // Register the file as an entry so it appears in the manifest
+        // under file://<relPath> and is READ-able. mimetype is best-effort
+        // by file extension; .md → text/markdown, anything else → text/plain.
         const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
         try {
             // scheme=null: the "file" scheme is a routing internal only;
@@ -233,12 +232,12 @@ export default class File {
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
             // the write as 200 (file is on disk) but log the failure —
-            // index just won't reflect it until next time.
+            // the manifest just won't reflect it until next time.
             // (Could harden to roll back the file write; for v0,
             // disk-truth-of-record wins.)
             return {
                 status: 200,
-                outcome: "indexed_failed",
+                outcome: "materialize_failed",
                 body: err instanceof Error ? err.message : String(err),
             };
         }

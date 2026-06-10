@@ -19,7 +19,7 @@ export default class OpShowMethod {
                 const statement = Dsl.buildShow(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
-            description: "SHOW — promote an entry to the active index.",
+            description: "SHOW — restore a collapsed log row's body to the rendered log.",
             params: {
                 target: "string — entry path",
                 matcher: "string? — body matcher (glob/regex/xpath/jsonpath)",

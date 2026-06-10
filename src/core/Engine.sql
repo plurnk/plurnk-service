@@ -1,4 +1,4 @@
--- Engine SQL. SPEC §1 (architecture), §3 (op dispatch + log), §5.2 (render index).
+-- Engine SQL. SPEC §1 (architecture), §3 (op dispatch + log).
 
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
