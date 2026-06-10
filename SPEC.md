@@ -29,10 +29,10 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | Term | Meaning |
 |---|---|
 | **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
-| **channel** | A named content buffer on an entry. Examples: `body`, `preview`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
+| **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
 | **scope** | `"agent"` or `"session"`. Determines who reads. Agent-scope entries visible to every run; session-scope entries to that session's runs. |
 | **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. Consumption surface §3.6; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
-| **mimetype** | A channel's content type. Drives the render-time handler that produces `preview`/`symbols`. Consumption surface §4.5; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
+| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface §4.5; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
 | **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. Consumption surface §2; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
 
 ### §0.3 State / status
@@ -260,15 +260,15 @@ Per author contract. Manifest declares `kind: "mimetype"`; handler class declare
 
 Author contract owned by plurnk-mimetypes. plurnk-service consumes through two entry points:
 
-- `Mimetypes.process(input, options)` — packet-assembly; returns `{ mimetype, preview, ok }`. {§4.2-process-entry-point}
+- `Mimetypes.process(input)` — projection entry point; returns the structural projections + extent (`deepJson`/`deepXml` for matching, `totalLines` for the catalog). {§4.2-process-entry-point}
 - `Mimetypes.query(input, expression)` — body-matcher dispatch (§16.1); returns `QueryMatch[]`.
 
 Cross-cutting promises service relies on:
 
 - Render-time only. Schemes do not invoke.
-- Deterministic for a given (content, budget, mimetype) tuple.
+- Deterministic for a given (content, mimetype) tuple.
 - Validation errors propagate (fail-hard).
-- Empty preview rather than throw when handler can't produce one.
+- Degraded projection (a `grammarMissing` marker) rather than throw when a grammar is absent.
 
 ### §4.3 What handlers do NOT do
 
@@ -282,7 +282,7 @@ No mimetype handlers ship in-tree. Framework + every handler are siblings.
 
 ### §4.5 Consumption surface
 
-plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label + budget to `Mimetypes.process({content, hint}, {budget})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
+plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
 **Required dependencies** (hard deps in `package.json`):
 
@@ -305,23 +305,16 @@ new Mimetypes({
 
 Fallback heuristic is a boot-before-provider-resolved tripwire.
 
-**Render pipeline.** `Engine.#buildIndex`:
+**Manifest build.** `EntryManifest.buildManifestBody` calls `process({ content, hint })` per channel and reads `result.totalLines` for the catalog's `lines`:
 
 ```ts
-const result = await this.#mimetypes.process(
-    { content: row.content, hint: row.mimetype },
-    { budget: this.#previewBudget },
-);
-entry.channels[row.channel] = {
-    content: result.preview,
-    mimetype: row.mimetype,
-    tokens: row.tokens,
-};
+const result = await mimetypes.process({ content: r.content, hint: r.mimetype });
+entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
 ```
 
-`hint` short-circuits detection. plurnk-mimetypes 0.6.0+ dropped the fitContent raw-content fallback — handlers without symbols return empty preview. Per-mimetype handlers (text-plain) return content under budget directly.
+`hint` short-circuits detection. The service consumes only `totalLines` (extent) and the structural channels (`deepJson`/`deepXml`, for matcher dispatch); never a rendered preview — content reaches the model on READ.
 
-**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: engine routes through `Mimetypes.process` with right hint/budget; `result.preview` lands in the right packet slot; tests use auto-discovery (production handler set); custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
+**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ---
 
@@ -361,7 +354,7 @@ Rules:
 | URI | Channel |
 |---|---|
 | `known://france/capital` | body (default) |
-| `known://france/capital#preview` | preview |
+| `known://france/capital#symbols` | symbols |
 | `exec://sh/1/1/2#stdout` | stdout |
 | `exec://sh/1/1/2#stderr` | stderr |
 | `sse://feed/y#data` | data |
@@ -499,13 +492,9 @@ Channels are the source of truth for chunk content. Log captures lifecycle event
 
 Model sees lifecycle events in `packet.system.log[]` per turn.
 
-### §7.4 Index tile rendering
-
-Per-channel previews use `SchemeRegistration.channel_orientations` (grammar): `"head"` (front-anchored) or `"tail"` (most recent); default `"head"`. Renderer passes `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` budget (§12) to `Mimetypes.process()`; handler fits to budget per §14.2.
-
 ### §7.5 Deep slices on demand
 
-`<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a slice into a log row when the model wants depth beyond the preview.
+`<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a slice into a log row when the model wants a specific line-range of the stream.
 
 ### §7.7 SEND for stream control
 
@@ -619,7 +608,6 @@ Plugin discovery (§9) registers whatever's in `node_modules/@plurnk/*`.
 ### §11.2 What plurnk-service tracks (NOT in grammar)
 
 - Channel state (`active`/`closed`/`errored`) — subscription registry, not on `ChannelContent`.
-- Render budget per channel — `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS` (§12); tokenization per §14.2.
 - Backpressure caps — none (§7.8).
 - Stream cancel — `SEND[499]` (§7.7).
 - Delete — MOVE to `/dev/null` (§6.5); `SEND[410]` also deletes as a side-effect (§3.5).
@@ -650,7 +638,6 @@ Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_M
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
-| `PLURNK_ENTRY_SIZE_DEFAULT_TOKENS`   | `256`              | enforced   | Per-channel preview budget for index tiles (tokens; see §14.2 for the tokenization contract). |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
 
@@ -879,13 +866,13 @@ Each entry: question, answer, rationale, migration path.
 
 ### §14.1 Packet assembly: engine-direct, not filter-chain
 
-**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk assembles directly in `Engine.#buildIndex` / `#buildLog`.
+**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk assembles directly in `Engine.#buildRequestPacket` (`#buildLog` + the materialized manifest catalog).
 
 **Decision.** Engine-direct. Plugin-driven assembly is out of scope.
 
 **Rationale.** Channel + mimetype split already extends rendering. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
 
-**Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildIndex`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
+**Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildRequestPacket`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
 
 ### §14.2 Tokenomics: real provider tokens, render-weight budget, per-scheme balance
 
@@ -893,13 +880,13 @@ Each entry: question, answer, rationale, migration path.
 
 **Two measures, never conflated:**
 
-- **render-weight** — the tokens the model actually processes this turn (rendered previews + meta + fences). The budget is about this.
+- **render-weight** — the tokens the model actually processes this turn (the assembled packet — manifest, log, system sections — plus meta + fences). The budget is about this.
 - **content-depth** — an entry's full content size (`entry_channels.tokens`). The manifest's `tokens` is this.
 
 **Built.**
 
 - **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Engine.#writeLog`) are populated at write as a write-time snapshot. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§14.2-tokens-stored-at-write}
-- **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price previews; render-weight is the accurate measure. {§14.2-render-weight-budget}
+- **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price the rendered packet; render-weight is the accurate measure. {§14.2-render-weight-budget}
 - **Per-scheme balance.** A markdown table groups the model's context by scheme — render-weight `tokens` per scheme — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§14.2-per-scheme-balance}
 - **Context-window percent.** The headline carries usage as a percent of the ceiling — `usage Y (P%)` — a fullness gauge beside the absolutes. Reads the ceiling already in hand; no extra provider call. {§14.2-context-percent}
 - **Depth re-counted at render.** The manifest re-tokenizes each entry's `tokens` through the live provider at build — never the write-time snapshot — so a model change between loops can't stale the catalog. Every token figure in the packet is render-fresh, manifest and budget alike; nothing trusts a cross-loop cached total.
