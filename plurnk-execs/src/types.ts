@@ -116,6 +116,12 @@ export interface SpawnArgs {
     args: string[];
     /** When true, the command is interpreted as a shell line (cmd is the whole line, args ignored). */
     useShell: boolean;
+    /**
+     * When set, written to the child's stdin which is then closed. For filter-style
+     * runtimes that read their program/input from stdin (`bc`, `tclsh`) or that need
+     * EOF with no input (`awk` BEGIN-only). Omitted = stdin left at its default.
+     */
+    stdin?: string;
 }
 
 /**

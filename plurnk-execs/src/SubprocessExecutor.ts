@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import BaseExecutor from "./BaseExecutor.ts";
 import { resolveRuntime } from "./runtime.ts";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "./types.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
 // Grace period between SIGTERM and SIGKILL when tearing down an aborted process
 // group — long enough for a well-behaved process to clean up, bounded so a
@@ -58,8 +58,16 @@ export default class SubprocessExecutor extends BaseExecutor {
         });
     }
 
+    // Translate the matched tag + command into spawn args. Default delegates to
+    // resolveRuntime (sh/node/python); subclasses with their own interpreter
+    // table (e.g. the common-REPL harness) override this — and so inherit run()'s
+    // streaming + process-group abort handling rather than reimplementing it.
+    protected spawnArgs(runtime: string, command: string): SpawnArgs {
+        return resolveRuntime(runtime, command);
+    }
+
     run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
-        const { cmd, args, useShell } = resolveRuntime(runtime, command);
+        const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command);
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {
@@ -79,6 +87,10 @@ export default class SubprocessExecutor extends BaseExecutor {
             // drive cancellation manually rather than via spawn's `signal`
             // option, which only kills the direct child (plurnk-execs#4).
             const child = spawn(cmd, args, { shell: useShell, cwd: cwd ?? undefined, detached: true });
+
+            // Filter-style runtimes feed their program/input via stdin; closing
+            // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.
+            if (stdin !== undefined) child.stdin?.end(stdin);
 
             const killGroup = (sig: NodeJS.Signals): void => {
                 if (child.pid === undefined) return;

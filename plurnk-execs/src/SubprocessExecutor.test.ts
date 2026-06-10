@@ -41,6 +41,27 @@ test("effect: subprocess is always host (regardless of target)", () => {
     assert.equal(ex.effect("/work/dir"), "host");
 });
 
+// A subclass that overrides spawnArgs to feed the command via stdin — the
+// extension point the common-REPL harness uses.
+class StdinExec extends SubprocessExecutor {
+    protected override spawnArgs(_runtime: string, command: string) {
+        return { cmd: "cat", args: [] as string[], useShell: false, stdin: command };
+    }
+}
+
+test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
+    const out: Record<string, string> = { stdout: "", stderr: "" };
+    const args: ExecArgs = {
+        runtime: "x", command: "piped-through-stdin", cwd: null,
+        signal: new AbortController().signal,
+        write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
+        setState: () => {}, emit: () => {},
+    };
+    const result = await new StdinExec({ runtime: "x", glyph: "•" }).run(args);
+    assert.deepEqual(result, { status: 200, exitCode: 0 });
+    assert.equal(out.stdout, "piped-through-stdin");
+});
+
 // A SubprocessExecutor naming a real vs bogus binary, to exercise the probe path.
 class BinExec extends SubprocessExecutor {
     #bin: string;
