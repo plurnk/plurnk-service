@@ -2,12 +2,13 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` rag, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` rag, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },
         { "$ref": "#/$defs/JsonPathBody" },
         { "$ref": "#/$defs/RagBody" },
+        { "$ref": "#/$defs/GraphBody" },
         { "$ref": "#/$defs/GlobBody" }
     ],
     "$defs": {
@@ -54,6 +55,17 @@
             "additionalProperties": false,
             "properties": {
                 "dialect": { "const": "rag" },
+                "raw": { "type": "string", "minLength": 1 }
+            }
+        },
+        "GraphBody": {
+            "title": "GraphBody",
+            "description": "Code-graph reference query. Body is `@symbol` (neighborhood — both inbound and outbound edges), `@<symbol` (inbound — who references this), or `@>symbol` (outbound — what this references). Resolution happens service-side via a deep-graph channel; no parse step in grammar.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "graph" },
                 "raw": { "type": "string", "minLength": 1 }
             }
         },

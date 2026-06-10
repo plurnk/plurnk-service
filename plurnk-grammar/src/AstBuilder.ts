@@ -388,6 +388,8 @@ export default class AstBuilder {
             catch { /* fall through to glob */ }
         } else if (body.startsWith("~")) {
             return { dialect: "rag", raw: body };
+        } else if (body.startsWith("@")) {
+            return { dialect: "graph", raw: body };
         }
         return { dialect: "glob", raw: body };
     }

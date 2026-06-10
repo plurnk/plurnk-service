@@ -757,6 +757,36 @@ test("MatcherBody: rag accepts arbitrary text after tilde (no parse step)", () =
     assert.equal(b.dialect, "rag");
 });
 
+test("MatcherBody: graph inbound query (@<symbol) dispatches graph", () => {
+    const result = PlurnkParser.parse("<<FIND(src/**):@<createCoder:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "graph");
+    assert.equal(b.raw, "@<createCoder");
+});
+
+test("MatcherBody: graph outbound query (@>symbol) dispatches graph", () => {
+    const result = PlurnkParser.parse("<<FIND(src/**):@>createCoder:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "graph");
+    assert.equal(b.raw, "@>createCoder");
+});
+
+test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
+    const result = PlurnkParser.parse("<<FIND(src/**):@createCoder:FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const b = item.statement.body;
+    assert.ok(b);
+    assert.equal(b.dialect, "graph");
+    assert.equal(b.raw, "@createCoder");
+});
+
 test("MatcherBody: //-prefix code comment falls back to glob (xpath disambiguation)", () => {
     const result = PlurnkParser.parse("<<READ(src/app.js):// TODO: add error handling:READ");
     const item = result.items[0];

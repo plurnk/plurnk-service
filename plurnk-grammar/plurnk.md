@@ -55,13 +55,14 @@ On structured entries, `<Result>` addresses result index, not line number.
 
 ## Body matcher dispatch (FIND, READ, SHOW, HIDE)
 
-| leading prefix | dialect  | form                  |
-|----------------|----------|-----------------------|
-| `//`           | xpath    | `//selector`          |
-| `/`            | regex    | `/pattern/[igmsu]?`   |
-| `$`            | jsonpath | `$.field`             |
-| `~`            | rag      | `~query text`         |
-| otherwise      | glob     | `pattern`             |
+| leading prefix | dialect  | form                              |
+|----------------|----------|-----------------------------------|
+| `//`           | xpath    | `//selector`                      |
+| `/`            | regex    | `/pattern/[igmsu]?`               |
+| `$`            | jsonpath | `$.field`                         |
+| `~`            | rag      | `~query text`                     |
+| `@`            | graph    | `@<symbol`, `@>symbol`, `@symbol` |
+| otherwise      | glob     | `pattern`                         |
 
 Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. RAG narrows top-K via `<Result>` on the host statement.
 
@@ -126,6 +127,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<HIDE(log://**/get)<101,200>::HIDE
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 <<FIND(known://**):revolution:FIND
+<<FIND(src/**):@<createCoder:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
 echo "Hello, world!" > hello.txt
