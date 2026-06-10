@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TextPlain from "./TextPlain.ts";
-import type { TextPreview } from "@plurnk/plurnk-mimetypes";
 
 const plainMetadata = {
     mimetype: "text/plain",
@@ -15,26 +14,12 @@ const streamMetadata = {
     extensions: [] as const,
 };
 
-describe("TextPlain — text/plain (head-oriented prose)", () => {
+describe("TextPlain — text/plain (prose)", () => {
     it("instantiates with text/plain metadata", () => {
         const h = new TextPlain(plainMetadata);
         assert.equal(h.mimetype, "text/plain");
         assert.equal(h.glyph, "📄");
         assert.deepEqual([...h.extensions], [".txt"]);
-    });
-
-    it("preview returns a head-oriented TextPreview carrying the content", async () => {
-        const h = new TextPlain(plainMetadata);
-        const preview = (await h.preview("hello world")) as TextPreview;
-        assert.deepEqual(preview, { kind: "text", text: "hello world", orientation: "head" });
-    });
-
-    it("preview decodes Uint8Array content as utf-8", async () => {
-        const h = new TextPlain(plainMetadata);
-        const bytes = new TextEncoder().encode("from bytes");
-        const preview = (await h.preview(bytes)) as TextPreview;
-        assert.equal(preview.text, "from bytes");
-        assert.equal(preview.orientation, "head");
     });
 
     it("extractRaw is empty (no structural symbols in plain text)", () => {
@@ -53,7 +38,7 @@ describe("TextPlain — text/plain (head-oriented prose)", () => {
     });
 });
 
-describe("TextPlain — text/stream (tail-oriented live data)", () => {
+describe("TextPlain — text/stream (live data)", () => {
     it("instantiates with text/stream metadata and reports its own mimetype", () => {
         const h = new TextPlain(streamMetadata);
         assert.equal(h.mimetype, "text/stream");
@@ -61,12 +46,9 @@ describe("TextPlain — text/stream (tail-oriented live data)", () => {
         assert.deepEqual([...h.extensions], []);
     });
 
-    it("preview returns a tail-oriented TextPreview", async () => {
+    it("extractRaw is empty (no structural symbols in stream text)", () => {
         const h = new TextPlain(streamMetadata);
-        const preview = (await h.preview("log line 1\nlog line 2\nlog line 3")) as TextPreview;
-        assert.equal(preview.kind, "text");
-        assert.equal(preview.orientation, "tail");
-        assert.equal(preview.text, "log line 1\nlog line 2\nlog line 3");
+        assert.deepEqual(h.extractRaw("log line 1\nlog line 2"), []);
     });
 });
 
