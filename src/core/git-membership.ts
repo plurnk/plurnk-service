@@ -23,7 +23,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile } from "node:fs/promises";
+import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, matchesGlob } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
@@ -73,48 +73,85 @@ export default class GitMembership {
         return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
     }
 
-    // Register every git-tracked file as a bare session member (scheme=null),
-    // idempotently. Channel-less — disk is the truth (D3); the row is the
-    // membership marker File.read gates on. Returns the tracked pathnames so the
-    // caller can materialize them through writeEntry.
+    // Resolve a session's file membership: the desired set is (git ls-files ∪ add
+    // globs) − ignore globs (SPEC §14.3 overlay), reconciled against the registered
+    // overlay-owned members so entries == members. Channel-less rows — disk is the
+    // truth (D3); the row is the membership marker File.read gates on. Returns the
+    // desired pathnames so the caller can materialize them through writeEntry.
     //
-    // signal-respecting: the git shell-outs honor `signal`; on a non-git or
-    // headless root nothing is touched.
+    // signal-respecting: git shell-outs + the add scan honor `signal`. Headless
+    // (no project_root) yields nothing; a non-git root with add-globs still resolves.
     static async resolveGitMembership(
         db: Db,
         sessionId: number,
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
         const root = await GitMembership.#loadSessionRoot(db, sessionId);
-        if (root === null) return [];
-        if (!await GitMembership.#isGitWorkTree(root, signal)) return [];
+        if (root === null) return [];   // headless — no disk surface to resolve
 
-        const tracked = await GitMembership.#gitTrackedFiles(root, signal);
+        const constraints = await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
+        const ignoreGlobs = constraints.filter((c) => c.effect === "ignore").map((c) => c.glob);
+        const addGlobs = constraints.filter((c) => c.effect === "add").map((c) => c.glob);
 
-        // Constraint overlay (SPEC §14.3) — `ignore` drops git-tracked matches from
-        // membership. Desired = `git ls-files − ignore`. matchesGlob over the already-
-        // enumerated tracked set — a filter, not a disk scan.
-        const ignoreGlobs = (await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId }))
-            .filter((c) => c.effect === "ignore").map((c) => c.glob);
-        const desired = ignoreGlobs.length === 0
-            ? tracked
-            : tracked.filter((p) => !ignoreGlobs.some((g) => matchesGlob(p, g)));
+        // git substrate — empty when root isn't a git worktree, so `add` is then the
+        // SOLE membership source (SPEC §14.3). No early-return on non-git.
+        const tracked = await GitMembership.#isGitWorkTree(root, signal)
+            ? await GitMembership.#gitTrackedFiles(root, signal)
+            : [];
+
+        // `add` overlay — a targeted, client-dictated scan for untracked matches
+        // (node:fs glob over the client's pattern, never a blind walk).
+        const added = addGlobs.length === 0 ? [] : await GitMembership.#scanAddMembers(root, addGlobs, signal);
+
+        // Compose: (git ∪ add) − ignore, tracking origin for reconciliation — a path
+        // in `tracked` is 'git', an add-only match is 'constraint'.
+        const trackedSet = new Set(tracked);
+        const passesIgnore = (p: string): boolean => ignoreGlobs.length === 0 || !ignoreGlobs.some((g) => matchesGlob(p, g));
+        const desiredGit = tracked.filter(passesIgnore);
+        const desiredAdd = added.filter((p) => !trackedSet.has(p) && passesIgnore(p));
+        const desired = [...desiredGit, ...desiredAdd];
         const desiredSet = new Set(desired);
 
         // Reconcile so entries == members (the constitutive invariant): register the
-        // desired (idempotent, origin 'git'), then un-register any git-origin member
-        // no longer desired — untracked in git OR newly ignored. Only 'git' rows are
-        // git's to reclaim; model-created ('client') members are never touched.
-        for (const pathname of desired) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname });
+        // desired with their origin, then un-register any overlay-owned member ('git'
+        // or 'constraint') no longer desired — untracked, unmatched, or newly ignored.
+        // Model-created ('client') members are never reclaimed.
+        for (const pathname of desiredGit) {
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname, membership_origin: "git" });
         }
-        const registered = await (db.crud_list_git_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
+        for (const pathname of desiredAdd) {
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname, membership_origin: "constraint" });
+        }
+        const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
         for (const m of registered) {
             if (!desiredSet.has(m.pathname)) {
                 await (db.crud_delete_entry as PrepMethod).run({ entry_id: m.id });
             }
         }
         return desired;
+    }
+
+    // Targeted client-dictated scan (SPEC §14.3 `add`) — enumerate disk files
+    // matching the client's add-globs via node:fs glob (the pattern bounds the
+    // traversal; never a blind fs-walk). Files only — directories aren't members.
+    // Workspace-relative paths, the same shape as git ls-files.
+    static async #scanAddMembers(
+        root: string,
+        addGlobs: string[],
+        signal: AbortSignal | undefined,
+    ): Promise<string[]> {
+        const matches = new Set<string>();
+        for (const pattern of addGlobs) {
+            for await (const rel of glob(pattern, { cwd: root })) {
+                if (signal?.aborted) return [...matches];
+                try {
+                    if ((await stat(resolve(root, rel))).isFile()) matches.add(rel);
+                } catch {
+                    // raced away between glob and stat — not a member
+                }
+            }
+        }
+        return [...matches];
     }
 
     // Materialize a member's disk content into a body channel via writeEntry (the

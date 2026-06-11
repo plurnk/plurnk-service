@@ -1,13 +1,13 @@
 // SPEC §14 architectural-decision contract tests.
 //
-//   §14.3-git-membership / §14.3-edit-membership-gate / §14.3-constraint-ignore /
-//       §14.3-constraint-readonly — git-substrate membership, the membership-bound
-//       edit, the client's `ignore` supersede (with reconciliation), and `read-only`
-//       enforcement. BUILT — the tests below pass.
+//   §14.3-git-membership / §14.3-edit-membership-gate, and the full constraint
+//       overlay (§14.3-constraint-ignore / -readonly / -add) — git substrate, the
+//       membership-bound edit, and the client's ignore / read-only / add supersede
+//       (with reconciliation + the add scan). BUILT — the tests below pass.
 //
-//   §14.3-constraint-add / §14.3-emi-divergence-signal — the add-glob scan and the
-//       out-of-band divergence signal. DEFERRED; the red {todo} tests are the
-//       deferral ledger, EXPECTED TO FAIL until built. Do not weaken them to green.
+//   §14.3-emi-divergence-signal — the out-of-band divergence signal. DEFERRED; the
+//       red {todo} test is the deferral ledger, EXPECTED TO FAIL until built. Do
+//       not weaken it to green.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -181,16 +181,17 @@ test("[§14.3-constraint-ignore] an ignore-glob drops a tracked file from member
     });
 });
 
-test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", { todo: "DEFERRED — flips when the add-glob scan lands (SPEC §14.3)" }, async () => {
+test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
-        // `add` admits files git misses. Write an UNTRACKED file matching an add-glob;
-        // it should become a member via the targeted scan. The scan isn't built, so it
-        // stays a non-member. Red until built.
+        // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "add", glob: "*.md" });
         await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
         const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "untracked.md" });
-        assert.notEqual(member, undefined, "an add-glob must admit an untracked match (SPEC §14.3) — DEFERRED/UNBUILT");
+        assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
+        // And it's readable — admitted to the curated surface.
+        const read = await new File().read(readStmt(urlPath("file", "untracked.md")), ctx);
+        assert.equal(read.status, 200, "an added file is readable");
     });
 });
 
