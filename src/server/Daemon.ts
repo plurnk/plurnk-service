@@ -169,6 +169,10 @@ export default class Daemon {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh" });
         this.#engine.setExecutors(executors);
+        // Discover external @plurnk/plurnk-schemes-* siblings + register them
+        // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
+        // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
+        await this.#schemes.discoverExternal();
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });

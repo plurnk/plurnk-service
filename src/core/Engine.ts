@@ -20,6 +20,7 @@ import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./C
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
+import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -1720,6 +1721,13 @@ export default class Engine {
         const methodName = statement.op.toLowerCase();
         const method = handler[methodName];
         if (typeof method !== "function") return { status: 501 };
+        // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx
+        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §5). The dynamic
+        // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
+        // the sibling reads caps, the in-tree handler reads db.
+        if (this.#schemes.isExternal(schemeName)) {
+            return method.call(handler, statement, new SchemeCtxImpl(ctx, schemeName) as unknown as PlurnkSchemeContext);
+        }
         return method.call(handler, statement, ctx);
     }
 
@@ -1728,7 +1736,8 @@ export default class Engine {
     // file:// remains an optional explicit form for absolute paths.
     #schemeNameOf(path: ParsedPath | null): string | null {
         if (path === null) return null;
-        if (path.kind === "url") return path.scheme;
+        // http + https are one scheme — the http sibling owns both prefixes (#195).
+        if (path.kind === "url") return path.scheme === "https" ? "http" : path.scheme;
         return "file";  // local (bare) → file
     }
 
