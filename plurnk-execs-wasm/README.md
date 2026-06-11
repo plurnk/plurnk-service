@@ -6,12 +6,19 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 ## Runtime tags
 
-| Tag | Glyph | Input |
-|---|---|---|
-| `wat` | 🧩 | WebAssembly **Text** (S-expression module) — the model-facing form |
-| `wasm` | 🧩 | base64-encoded **binary** module (pre-compiled) |
+The module comes from the **EXEC body** (inline) or, when a `(target)` path is given, from a **file** — mirroring `sqlite`'s target-as-path:
 
-`wat` is the primary: a model emits text, not bytes. WAT is assembled to wasm via [wabt](https://github.com/AssemblyScript/wabt.js); `wasm` decodes base64. (`.wast` — the spec test-suite superset with `assert_*` commands — is deliberately *not* supported; this executes a module, not a test script.)
+| Tag | Glyph | `(target)` = file path | no target (body) |
+|---|---|---|---|
+| `wat` | 🧩 | read `.wat` file → compile | WebAssembly **Text** → compile |
+| `wasm` | 🧩 | read `.wasm` file → bytes | base64-encoded **binary** |
+
+```
+<<EXEC[wat]:(module (func (export "main") (result i32) (i32.const 42))):EXEC   # inline text
+<<EXEC[wasm](./build/mod.wasm)::EXEC                                            # built module from disk
+```
+
+`wat` is assembled to wasm via [wabt](https://github.com/AssemblyScript/wabt.js); `wasm` is the raw binary. (`.wast` — the spec test-suite superset with `assert_*` commands — is deliberately *not* supported; this executes a module, not a test script.)
 
 ## Execution model
 
@@ -23,9 +30,9 @@ Both forms instantiate in a sandbox whose only import is `env.log` (capture). Th
 
 to the `results` channel (`application/json`). A module that imports `(import "env" "log" (func $log (param i32)))` can emit intermediate values.
 
-- **`effect: pure`** — a module can't touch the host (only the imports it's handed), so it **auto-runs inline**, never proposal-gated.
+- **`effect`** — inline body → `pure` (sandboxed; **auto-runs inline**, never proposal-gated). File-path target → `read` (it touches the filesystem, even though execution stays sandboxed). Target-classified, never command-inspected.
 - **`probe`** — always available (`WebAssembly` builtin + bundled `wabt`).
-- **Errors** emit a `TelemetryEvent` (`source: "exec:wat"`/`"exec:wasm"`): `wat_parse_error`, `wasm_invalid`, `wasm_trap`, `wabt_init_failed`.
+- **Errors** emit a `TelemetryEvent` (`source: "exec:wat"`/`"exec:wasm"`): `wat_parse_error`, `wasm_invalid`, `wasm_trap`, `wasm_read_failed`, `wabt_init_failed`.
 
 ## Tests
 

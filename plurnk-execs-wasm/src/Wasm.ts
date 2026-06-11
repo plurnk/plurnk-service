@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import wabtInit from "wabt";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
@@ -36,30 +37,43 @@ export default class Wasm extends BaseExecutor {
         return { results: { mimetype: "application/json" } };
     }
 
-    override effect(_target: string | null): Effect {
-        return "pure";
+    // Inline body is sandboxed → `pure` (auto-run). A file-path target reads the
+    // host filesystem → `read` (execution stays sandboxed; the FS read is the
+    // only host interaction). Target-classified, never command-inspected.
+    override effect(target: string | null): Effect {
+        return target ? "read" : "pure";
     }
 
     override async probe(): Promise<RuntimeAvailability> {
         return { available: true, detail: "WebAssembly + wabt" };
     }
 
-    async run({ runtime, command, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, cwd, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const fail = (kind: string, message: string): ExecResult => {
             emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
             return { status: 500 };
         };
+        // The EXEC target slot, when set, is a module file path; otherwise the
+        // module rides the body (WAT text / base64). Mirrors sqlite's target.
+        const path = cwd && cwd.length > 0 ? cwd : null;
 
-        // 1. Obtain the module bytes.
+        // 1. Obtain the module bytes — from the file-path target, else the body.
         let bytes: Uint8Array;
         if (runtime === "wat") {
+            let watText: string;
+            if (path !== null) {
+                try { watText = await readFile(path, "utf8"); }
+                catch (err) { return fail("wasm_read_failed", `cannot read '${path}': ${(err as Error).message}`); }
+            } else {
+                watText = command;
+            }
             let wabt: Wabt;
             try { wabt = await getWabt(); }
             catch (err) { return fail("wabt_init_failed", (err as Error).message); }
             let mod: ReturnType<Wabt["parseWat"]> | undefined;
             try {
-                mod = wabt.parseWat("module.wat", command);
+                mod = wabt.parseWat(path ?? "module.wat", watText);
                 bytes = mod.toBinary({}).buffer;
             } catch (err) {
                 return fail("wat_parse_error", (err as Error).message);
@@ -67,7 +81,12 @@ export default class Wasm extends BaseExecutor {
                 mod?.destroy();
             }
         } else if (runtime === "wasm") {
-            bytes = Uint8Array.from(Buffer.from(command.trim(), "base64"));
+            if (path !== null) {
+                try { bytes = await readFile(path); }
+                catch (err) { return fail("wasm_read_failed", `cannot read '${path}': ${(err as Error).message}`); }
+            } else {
+                bytes = Uint8Array.from(Buffer.from(command.trim(), "base64"));
+            }
         } else {
             throw new Error(`plurnk-execs-wasm received unclaimed runtime tag '${runtime}'`);
         }
