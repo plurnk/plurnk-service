@@ -9,7 +9,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   enum_declaration      → enum + identifier children as constants
 //   union_declaration     → class
 //   const_declaration     → constant
-//   variable_declaration  → variable
+//   var(iable)_declaration → variable (typed `x: T` and inferred `x := e`)
 //   type_declaration      → type
 //
 // Container semantics (issue #18): top-level declarations are flat (procs are
@@ -78,6 +78,9 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[]): void {
             if (ident) push(out, "constant", ident, node, "");
             return;
         }
+        // var_declaration is the typed form (`x: T`), variable_declaration
+        // the inferred form (`x := expr`) — both are variables.
+        case "var_declaration":
         case "variable_declaration": {
             const ident = firstIdentifierText(node);
             if (ident) push(out, "variable", ident, node, "");
@@ -142,3 +145,5 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         ...(container.length > 0 && { container }),
     });
 }
+
+export { refsQuery } from "./queries/odin.ts";

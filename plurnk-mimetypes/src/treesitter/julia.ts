@@ -44,13 +44,13 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
         case "mutable_struct_definition":
         case "primitive_definition": {
             const head = findChildOfType(node, "type_head");
-            const name = head ? firstIdentifierText(head) : firstIdentifierText(node);
+            const name = head ? leftmostIdentifierText(head) : firstIdentifierText(node);
             if (name) push(out, "class", name, node, container);
             return;
         }
         case "abstract_definition": {
             const head = findChildOfType(node, "type_head");
-            const name = head ? firstIdentifierText(head) : firstIdentifierText(node);
+            const name = head ? leftmostIdentifierText(head) : firstIdentifierText(node);
             if (name) push(out, "class", name, node, container);
             return;
         }
@@ -58,7 +58,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
         case "short_function_definition": {
             const sig = findChildOfType(node, "signature");
             if (!sig) return;
-            const call = findChildOfType(sig, "call_expression");
+            const call = signatureCall(sig);
             if (!call) return;
             const name = firstIdentifierText(call);
             if (!name) return;
@@ -90,7 +90,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
         }
         case "macro_definition": {
             const sig = findChildOfType(node, "signature");
-            const call = sig ? findChildOfType(sig, "call_expression") : null;
+            const call = sig ? signatureCall(sig) : null;
             const name = call ? firstIdentifierText(call) : firstIdentifierText(node);
             if (name) push(out, "function", name, node, container);
             return;
@@ -160,6 +160,26 @@ function findChildOfType(node: TreeSitterNode, type: string): TreeSitterNode | n
     return null;
 }
 
+// `struct Box{T} <: Super` heads parse as binary/parametrized expressions —
+// the defined name is the leftmost identifier of the head subtree.
+function leftmostIdentifierText(node: TreeSitterNode): string | null {
+    let cur: TreeSitterNode | null = node;
+    while (cur && cur.type !== "identifier") cur = cur.namedChild(0);
+    return cur ? cur.text : null;
+}
+
+// `function f(x)::T where T` wraps the signature's call_expression in
+// typed_expression / where_expression layers.
+function signatureCall(sig: TreeSitterNode): TreeSitterNode | null {
+    let cur: TreeSitterNode | null = sig;
+    while (cur) {
+        const call = findChildOfType(cur, "call_expression");
+        if (call) return call;
+        cur = findChildOfType(cur, "typed_expression") ?? findChildOfType(cur, "where_expression");
+    }
+    return null;
+}
+
 function firstIdentifierText(node: TreeSitterNode): string | null {
     for (let i = 0; i < node.namedChildCount; i += 1) {
         const child = node.namedChild(i);
@@ -191,3 +211,5 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         ...(container.length > 0 && { container }),
     });
 }
+
+export { refsQuery } from "./queries/julia.ts";

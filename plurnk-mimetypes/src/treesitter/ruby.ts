@@ -136,3 +136,5 @@ function push(
     if (params !== undefined) sym.params = params;
     out.push(sym);
 }
+
+export { refsQuery } from "./queries/ruby.ts";

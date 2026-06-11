@@ -123,3 +123,5 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         endColumn: node.endPosition.column + 1,
     });
 }
+
+export { refsQuery } from "./queries/lua.ts";

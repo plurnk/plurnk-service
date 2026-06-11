@@ -587,7 +587,9 @@ interface MimeRef {
 
 **Extraction mechanism (issue #19, engine landed v0.15.x).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
 
-Query conventions (first wave):
+Coverage: every code language in the registry ships a conformance-gated query (21 suites). Data formats (YAML, TOML, CSS) are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
+
+Query conventions:
 - `import` refs capture **bound symbol names** (name-join-resolvable), never module-path strings; aliased imports capture the original exported name. Languages whose imports are paths only (Go) emit no import refs.
 - `call` refs capture the callee **name node** (property/attribute name for member calls), not the expression root.
 - Languages where instantiation is syntactically a call (Python) classify it as `call`.
