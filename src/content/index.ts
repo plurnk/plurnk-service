@@ -15,3 +15,5 @@ export type { MatchResult } from "./matcher.ts";
 
 export { default as ReadResolve } from "./read-resolve.ts";
 export type { ReadSliceResult } from "./read-resolve.ts";
+
+export { editedSpan } from "./edited-span.ts";

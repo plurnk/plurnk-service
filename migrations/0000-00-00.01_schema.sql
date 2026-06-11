@@ -312,3 +312,18 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
     WHERE closed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
+
+-- INIT: run_watermarks
+-- §14.5 environment-delta detection. Per (run, entry, channel): the content this
+-- run last reconciled. First sight sets it silently (no delta); a later content
+-- change materializes a delta-EDIT (the diff span, §14.6) and advances the mark.
+-- plurnk:// derived entries (manifest/prompt) are excluded at the query, not here.
+CREATE TABLE IF NOT EXISTS run_watermarks (
+    run_id   INTEGER NOT NULL,
+    entry_id INTEGER NOT NULL,
+    channel  TEXT    NOT NULL,
+    content  TEXT    NOT NULL,
+    PRIMARY KEY (run_id, entry_id, channel),
+    FOREIGN KEY (run_id)   REFERENCES runs(id)    ON DELETE CASCADE,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;

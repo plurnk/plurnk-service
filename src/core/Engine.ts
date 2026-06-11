@@ -16,7 +16,7 @@ import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from 
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
-import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -674,6 +674,11 @@ export default class Engine {
             tags: [],
         }, systemCtx, "plurnk");
 
+        // §14.5 — pre-seed environment deltas (changes since this run last
+        // reconciled) as system EDIT rows, before the packet composes; advance
+        // the action index past them so model ops continue after.
+        nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
+
         // Build the spec'd packet (Packet.json) request half. #buildLog
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
@@ -1116,6 +1121,47 @@ export default class Engine {
             folded: r.indexed === 0,
             source: r.source,
         }));
+    }
+
+    // §14.5 — at pre-turn build, reconcile each session entry against this run's
+    // watermark. First sight sets it silently; a content change materializes a
+    // delta-EDIT (origin=system, the §14.6 result span) at the next sequence and
+    // advances the mark. Excludes plurnk:// (manifest/prompt) and bare/file
+    // entries (scheme NULL — the EMI's territory). Returns the count so the
+    // caller advances nextActionIndex past the pre-seeded deltas.
+    async #materializeEnvironmentDeltas(args: {
+        sessionId: number; runId: number; loopId: number; turnId: number; fromSequence: number;
+    }): Promise<number> {
+        const { sessionId, runId, loopId, turnId, fromSequence } = args;
+        const rows = await (this.#db.engine_list_session_entries as PrepMethod).all<{
+            entry_id: number; scheme: string | null; pathname: string; channel: string; content: string;
+        }>({ session_id: sessionId });
+        let written = 0;
+        for (const r of rows) {
+            if (r.scheme === null || r.scheme === "plurnk") continue;
+            const wm = await (this.#db.engine_get_watermark as PrepMethod).get<{ content: string }>({
+                run_id: runId, entry_id: r.entry_id, channel: r.channel,
+            });
+            if (wm === undefined) {
+                await (this.#db.engine_set_watermark as PrepMethod).run({ run_id: runId, entry_id: r.entry_id, channel: r.channel, content: r.content });
+                continue;  // first sight — reconcile silently, no delta
+            }
+            if (wm.content === r.content) continue;  // unchanged
+            const span = editedSpan(wm.content, r.content);
+            await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                run_id: runId, loop_id: loopId, turn_id: turnId,
+                sequence: fromSequence + written, origin: "system", source: null,
+                op: "EDIT", suffix: "", signal: null,
+                scheme: r.scheme, username: null, password: null, hostname: null, port: null,
+                pathname: r.pathname, params: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain",
+                rx: JSON.stringify({ status: 200, entryId: r.entry_id, channel: r.channel, span }), mimetype_rx: "application/json",
+                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            });
+            await (this.#db.engine_set_watermark as PrepMethod).run({ run_id: runId, entry_id: r.entry_id, channel: r.channel, content: r.content });
+            written++;
+        }
+        return written;
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {

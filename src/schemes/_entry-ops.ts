@@ -1,8 +1,7 @@
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve } from "../content/index.ts";
-import { diffLines } from "diff";
+import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
@@ -145,33 +144,20 @@ export default class EntryOps {
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
 
+        // §14.5 — reconcile this run's watermark to the just-written content, so the
+        // build-time delta detector doesn't re-report the model's own edit (it's
+        // already on the log via §14.6's EDIT row).
+        if (ctx.runId !== undefined) {
+            await (db.engine_set_watermark as PrepMethod).run({ run_id: ctx.runId, entry_id: entryId, channel: targetChannel, content: newContent });
+        }
+
         if (Array.isArray(statement.signal)) {
             for (const tag of statement.signal) {
                 await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
             }
         }
 
-        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: EntryOps.#editedSpan(originalContent, newContent) };
-    }
-
-    // §14.6 — the resulting span: the edited region of `updated` after the write,
-    // line-numbered (1-indexed), with `context` lines of padding. Diff against
-    // `original` to find the changed lines; render their post-edit state, so the
-    // model sees what its EDIT produced without a confirming READ.
-    static #editedSpan(original: string, updated: string, context = 2): string {
-        const rows: { text: string; changed: boolean }[] = [];
-        for (const part of diffLines(original, updated)) {
-            if (part.removed) continue;  // removed lines aren't in the new content
-            const ls = part.value.split("\n");
-            if (ls.length > 1 && ls[ls.length - 1] === "") ls.pop();  // drop trailing-newline artifact
-            for (const t of ls) rows.push({ text: t, changed: part.added === true });
-        }
-        let lo = -1, hi = -1;
-        for (let i = 0; i < rows.length; i++) if (rows[i].changed) { if (lo < 0) lo = i; hi = i; }
-        if (lo < 0) { lo = 0; hi = rows.length - 1; }  // no added hunk (defensive) → whole
-        const start = Math.max(0, lo - context);
-        const end = Math.min(rows.length - 1, hi + context);
-        return rows.slice(start, end + 1).map((r, i) => `${start + i + 1}:\t${r.text}`).join("\n");
+        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };
     }
 
     static async readSessionEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {

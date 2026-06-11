@@ -83,11 +83,22 @@ WHERE id = $id;
 -- Every entry of a session — all schemes, all channels — the source for
 -- plurnk://manifest.json, the flat catalog of everything the session holds.
 -- Session-scoped (persists across runs); FOLD doesn't drop from the catalog.
-SELECT e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
+
+-- PREP: engine_get_watermark
+-- §14.5 — the content this run last reconciled for (entry, channel). No row = first sight.
+SELECT content FROM run_watermarks
+WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
+
+-- PREP: engine_set_watermark
+-- §14.5 — set / advance the reconciled content for (run, entry, channel).
+INSERT INTO run_watermarks (run_id, entry_id, channel, content)
+VALUES ($run_id, $entry_id, $channel, $content)
+ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET content = excluded.content;
 
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
