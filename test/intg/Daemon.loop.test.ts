@@ -38,11 +38,17 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries();
-            assert.equal(captured.length, 2);
-            const first = captured[0] as { entry: { op: string; origin: string } };
+            // §13.6 / #198 — the turn-1 prompt-foist (system-origin EDIT, the
+            // user's words entering the run) broadcasts too, ahead of the
+            // model's ops; previously it was written but never notified.
+            assert.equal(captured.length, 3);
+            const prompt = captured[0] as { entry: { op: string; origin: string } };
+            assert.equal(prompt.entry.op, "EDIT");
+            assert.equal(prompt.entry.origin, "system");
+            const first = captured[1] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
-            const second = captured[1] as { entry: { op: string; status_rx: number } };
+            const second = captured[2] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "SEND");
             assert.equal(second.entry.status_rx, 200);
         } finally { ws.close(); }

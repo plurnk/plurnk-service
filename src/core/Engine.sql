@@ -31,9 +31,10 @@ JOIN sessions s ON s.id = r.session_id
 WHERE l.id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
--- Loop's prompt + sequence — runTurn reads it on turn 1 to write a
--- client-origin SEND[200] log entry for the prompt at sequence=0.
--- Prompts are first-class log entries (no synthetic / shim layer).
+-- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
+-- system-origin EDIT against plurnk://prompt/<loop_id>/1 (§15), at the
+-- turn's first action sequence. Prompts are first-class log entries
+-- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_loop_cancel

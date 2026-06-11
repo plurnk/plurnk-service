@@ -639,7 +639,7 @@ export default class Engine {
                 };
                 await this.dispatch({
                     statement: promptStmt, sessionId, runId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "system",
+                    sequence: nextActionIndex, origin: "system", onDispatch,
                 });
                 nextActionIndex++;
             }
