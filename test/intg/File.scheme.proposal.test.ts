@@ -70,6 +70,10 @@ test("file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
+        // File.edit gates on membership (SPEC §14.3): a pre-existing file must be a
+        // member (git-tracked or client-added) to be editable — register it, the same
+        // way READ's gate is satisfied below. A NEW path needs no prior member.
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, target), "hello\n", "utf8");
 
@@ -102,6 +106,8 @@ test("file.edit: writes file on accept via applyResolution", async () => {
 test("file.edit: rejection leaves file untouched", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
+        // pre-existing file must be a member to be editable (SPEC §14.3 edit gate)
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n");
@@ -155,6 +161,8 @@ test("file.edit: refuses traversal escape", async () => {
 test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
+        // pre-existing file must be a member to be editable (SPEC §14.3 edit gate)
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
         await writeFile(join(root, target), "original\n", "utf8");
 
         // No file:// prefix — the form the sysprompt teaches.

@@ -661,7 +661,7 @@ export default class Engine {
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
         // SPEC §14.3 D4/D5 — git-ls-files workspace membership, resolved at
-        // prompt-composition (EMI is eager + relevance-bounded). When the
+        // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // session's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
         // (disk → body channel) so they appear in the manifest below. No-ops

@@ -58,6 +58,13 @@ const resolveContained = async (pathname: string, root: string): Promise<Contain
     return { canonical, root };
 };
 
+// SECURITY — File deliberately implements only read() / edit() / applyResolution(),
+// NOT the readEntry/writeEntry CRUD pair that COPY/MOVE dispatch on. So COPY and
+// MOVE to or from a file:// path return 501 (Engine.#copyOrchestration), leaving
+// read() (membership-gated) and edit()'s proposal flow (membership-gated) as the
+// ONLY routes to disk. If you add readEntry/writeEntry here, they MUST carry the
+// same membership gate, or COPY/MOVE becomes an ungated read/overwrite of a
+// non-member — the `.env` leak/wipe the edit gate (§14.3) exists to prevent.
 export default class File {
     static manifest: SchemeManifest = {
         name: "file",
@@ -128,16 +135,14 @@ export default class File {
         }
 
         const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
-        // Containment check (canonical path inside workspace). For edits,
-        // a not-found target is fine — we're proposing to create or
-        // overwrite. Traversal escape is fatal.
+        // Resolve existence + canonical path WITHOUT reading content yet — the
+        // read is gated on membership below. A not-found target is fine (we
+        // propose to create); traversal escape is fatal.
         let canonical: string;
         const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
-        let original = "";
         let fileExists = true;
         try {
             canonical = await realpath(requested);
-            original = await readFile(canonical, "utf8");
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
             canonical = requested;
@@ -148,6 +153,18 @@ export default class File {
         const rel = relative(root, canonical);
         if (rel.startsWith("..") || isAbsolute(rel)) {
             return { status: 403, error: "path escapes workspace root" };
+        }
+        // Membership gate (SPEC §14.3), symmetric with read. EDIT may CREATE a
+        // new path (proposal→accept adds it to the manifest) or edit an existing
+        // MEMBER — but an existing NON-member is forbidden: never read its
+        // content (no leak into the proposal) and never overwrite a file the
+        // model can't see (a gitignored `.env` it never added). 403, the same
+        // code as a traversal: "you can't write here," not "something is there."
+        let original = "";
+        if (fileExists) {
+            const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
+            if (member === undefined) return { status: 403, error: "path is outside your workspace surface" };
+            original = await readFile(canonical, "utf8");
         }
 
         // 415 on binary entries (SPEC.md §16.9).

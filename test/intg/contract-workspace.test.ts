@@ -13,10 +13,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, SendStatement, ReadStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -46,6 +46,11 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     op: "READ", suffix: "", signal: null, target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+const editStmt = (target: ParsedPath | null, body: string): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target,
+    lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const mockResponse = (ops: PlurnkStatement[]) => ({
@@ -123,6 +128,30 @@ test("[§14.3-git-membership] git-tracked file (never client-added) is a workspa
             "READ of a git-tracked member must succeed; 404 means git membership was not established",
         );
         assert.equal(result.content, "# Tracked by git\n\nThis file is a git member.\n");
+    });
+});
+
+test("[§14.3-edit-membership-gate] EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
+    await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
+        // A gitignored/untracked secret on disk: it EXISTS but is never a member
+        // (not in `git ls-files`, never client-added), so the model can't see it.
+        const SECRET = "API_KEY=sk-do-not-leak\n";
+        await writeFile(join(root, ".env"), SECRET);
+
+        // EDIT it (as if blindly creating a config). Forbidden BEFORE any read:
+        // 403, no secret anywhere in the result, file untouched on disk.
+        const blocked = await new File().edit(editStmt(urlPath("file", ".env"), "PWNED=1\n"), ctx);
+        assert.equal(blocked.status, 403, "EDIT of an existing non-member must be forbidden");
+        assert.ok(!JSON.stringify(blocked).includes("sk-do-not-leak"), "the refused EDIT must not read the non-member's content into its result (no leak)");
+        assert.equal(await readFile(join(root, ".env"), "utf8"), SECRET, "the non-member file must not be overwritten (no wiping a file the model can't see)");
+
+        // The gate must not break legitimate edits: a tracked member still
+        // proposes (202), and a new path still proposes creation (202 — creation
+        // is how the model adds to its manifest).
+        const member = await new File().edit(editStmt(urlPath("file", trackedPath), "# Tracked by git\n\nrevised.\n"), ctx);
+        assert.equal(member.status, 202, "EDIT of a git-tracked member must still propose (202)");
+        const created = await new File().edit(editStmt(urlPath("file", "new-note.md"), "fresh content\n"), ctx);
+        assert.equal(created.status, 202, "EDIT of a new (non-existent) path must still propose creation (202)");
     });
 });
 

@@ -15,7 +15,7 @@
 //        sessions completely unaffected). The add/ignore/read-only constraint
 //        overlay (session_constraints) is a documented follow-up — not built
 //        here; bare git-ls-files membership is the whole of this phase.
-//   D5 — EMI is eager + relevance-bounded: materialize is re-read from disk at
+//   D5 — EMI is eager + exhaustive: every active member is re-read from disk at
 //        resolution time so a divergent member reflects current disk content.
 //
 // git resolution shells out via node:child_process (the same surface the
@@ -98,8 +98,8 @@ export default class GitMembership {
 
     // Materialize a member's disk content into a body channel via writeEntry (the
     // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
-    // (D4/D5). Re-reads disk each call (eager + relevance-
-    // bounded). Binary files are members but never materialized into a text
+    // (D4/D5). Re-reads disk each call (eager + exhaustive — every active
+    // member, no relevance pass). Binary files are members but never materialized into a text
     // channel. Missing-on-disk (tracked but deleted in the working tree) is
     // skipped — membership stands, no channel.
     static async #materializeMember(

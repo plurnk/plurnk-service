@@ -911,15 +911,15 @@ Each entry: question, answer, rationale, migration path.
 
 - **Identity on the session.** No `projects` table; `sessions.project_root TEXT` (nullable = headless). `entries.scope` unchanged (`∈ {'agent','session'}`). Workspace = session; no users/auth/multi-tenant.
 - **git-ls-files membership.** git present → tracked files (`git ls-files`) are members with no explicit `add` — channel-less markers, disk is truth. git absent → no fs-walk (non-git/headless get no substrate membership).
-- **EMI eager + relevance-bounded.** Materializes active git members at prompt-composition, re-reading disk so a divergent member reflects current content.
-- **Disk-read-first edits.** Disk writes route through `File.edit`, which reads disk before diffing — an untouched member's baseline is its real content, never empty. Silent overwrite is structurally prevented.
+- **EMI eager + exhaustive.** Materializes *every* active git member at prompt-composition, re-reading disk so a divergent member reflects current content. git's `ls-files` is the whole membership bound — the engine adds no relevance pass of its own. Allowing git *is* the curation.
+- **Membership-gated edits.** {§14.3-edit-membership-gate} EDIT is bounded by membership exactly as READ is. An existing **member** is read from disk before diffing, so its baseline is real content, never empty — silent overwrite is structurally prevented. An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** stays open — proposal→accept adds it to the manifest. Reaching past membership is `EXEC[sh]`'s job, not the file scheme's.
 
 **Deferred — promised, not yet built.** Each carries an anchor with a deliberately-red test so the deferral is tracked, never silently covered.
 
 - **Constraint overlay — the client supersede.** {§14.3-constraint-overlay} A `session_constraints` table layering *add* (members git misses), *ignore* (drop ones it tracks), and *read-only* (member for read, writes rejected) over the git substrate; glob matching via `node:path.matchesGlob`. git-absent, these `effect='add'` constraints are the *sole* membership source — so this overlay is not merely the override knob, it is the entire membership mechanism without git.
 - **EMI divergence signal.** {§14.3-emi-divergence-signal} When EMI re-reads a member whose disk content changed out-of-band, emit a synthetic log entry so the model sees the change (the re-read is built; only the signal is deferred).
 
-**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps the model out of fs-walk territory. EMI's eager-relevance-bounded firing prevents stale content without per-turn full-repo cost.
+**Rationale.** No users/tenants. Session is the right scope unit. git+constraints membership keeps the model out of fs-walk territory — and *is* the curation, outsourced: git bounds membership by tracking, the client supersedes by constraint, the model curates its view by READ/FOLD. The engine curates nothing. EMI re-reads every member each turn; the full-repo cost is git's to bound (what it tracks) and the client's to bound (`ignore`), never the engine's to bound by relevance.
 
 **Migration path.** Tenancy / cross-session shared workspaces require a `workspaces` table joining sessions to workspace id, with constraints lifted off `session_constraints`. Disk co-location semantics unchanged.
 
