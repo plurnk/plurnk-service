@@ -18,6 +18,8 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
+import { readFile } from "node:fs/promises";
+import Paths from "../Paths.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -360,6 +362,9 @@ export default class Engine {
     // Per-grammar 0.17.0 protocol — see SPEC §15.1.
     #telemetryEventNotify: TelemetryEventNotify | undefined;
 
+    // Cached plurnk GBNF — read once on the first constrained generate (#189).
+    #gbnfCache: string | null = null;
+
     constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
@@ -392,6 +397,17 @@ export default class Engine {
     // (discover + probe), after Engine construction.
     setExecutors(executors: ExecutorRegistry): void {
         this.#executors = executors;
+    }
+
+    // Grammar-constrained sampling (#189): when PLURNK_PROVIDERS_GBNF is enabled
+    // (the only knob — default-on in .env.example), hand the provider the plurnk
+    // GBNF (the full shipped multi-op root, read once + cached). The provider
+    // attaches it iff the backend supports it and silently drops it otherwise —
+    // capability is providers' concern, not ours. Pure plumbing grammar→provider.
+    async #grammarConstraint(): Promise<string | undefined> {
+        if (process.env.PLURNK_PROVIDERS_GBNF !== "1") return undefined;
+        this.#gbnfCache ??= await readFile(Paths.grammarGbnf, "utf8");
+        return this.#gbnfCache;
     }
 
     #pushTelemetry(sessionId: number, loopId: number, event: object): void {
@@ -713,7 +729,7 @@ export default class Engine {
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true };
         }
         const modelMessages = this.#packetToWireMessages(requestPacket);
-        const response = await provider.generate({ messages: modelMessages, signal });
+        const response = await provider.generate({ messages: modelMessages, signal, grammar: await this.#grammarConstraint() });
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
