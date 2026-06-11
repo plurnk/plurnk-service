@@ -29,7 +29,7 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(ch, ch));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"] as const;
 const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 const DIGIT = cls([R("0", "9")]);

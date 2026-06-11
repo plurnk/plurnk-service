@@ -14,8 +14,8 @@ export type PlurnkOp =
     | "EDIT"
     | "COPY"
     | "MOVE"
-    | "SHOW"
-    | "HIDE"
+    | "OPEN"
+    | "FOLD"
     | "SEND"
     | "EXEC";
 

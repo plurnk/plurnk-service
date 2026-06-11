@@ -19,7 +19,7 @@ const result = PlurnkParser.parse(input);
 // result.unparsedTail?: { from, reason }
 ```
 
-Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE SHOW HIDE SEND EXEC`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
+Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
 ## cli
 
@@ -38,7 +38,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 
 | slot     | shape                                              |
 |----------|----------------------------------------------------|
-| `OP`     | `FIND READ EDIT COPY MOVE SHOW HIDE SEND EXEC`     |
+| `OP`     | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC`     |
 | `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
 | `[…]`    | optional CSV; per-OP semantics                     |
 | `(…)`    | optional URI                                       |
@@ -52,8 +52,8 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | EDIT | tags             | content (empty=clear) | entry lines        |
 | COPY | tags-to-apply    | destination URI       | entry lines        |
 | MOVE | tags-to-apply    | destination URI       | entry lines        |
-| SHOW | tag filter       | matcher               | result-set range   |
-| HIDE | tag filter       | matcher               | result-set range   |
+| OPEN | tag filter       | matcher               | result-set range   |
+| FOLD | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
 | EXEC | executor         | command or code       | n/a                |
 
@@ -109,10 +109,10 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<EDIT(known://countries/france/capital)::EDIT
 
 13. Collapse every distilled fetch-log row
-	<<HIDE(log://1/*/*/get)::HIDE
+	<<FOLD(log://1/*/*/get)::FOLD
 
 14. Restore collapsed log rows by tag filter
-	<<SHOW[france](log://**)::SHOW
+	<<OPEN[france](log://**)::OPEN
 
 15. Rename a draft entry
 	<<MOVE(known://draft):known://final/answer:MOVE
@@ -148,16 +148,16 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	:EXEC
 
 25. Restore log rows tagged france whose content matches (combined filters)
-	<<SHOW[france](log://**):Paris*:SHOW
+	<<OPEN[france](log://**):Paris*:OPEN
 
 26. Collapse the second hundred of stale fetch-log rows (pagination)
-	<<HIDE(log://**/get)<101-200>::HIDE
+	<<FOLD(log://**/get)<101-200>::FOLD
 
 27. Deliver a structured answer (JSON body)
 	<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND
 
 28. Report a client error (JSON body the model can traverse with jsonpath)
-	<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","SHOW","HIDE","SEND","EXEC"]}:SEND
+	<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC"]}:SEND
 
 29. Report a server error with explicit recipient
 	<<SEND[503](log://errors):{"reason":"git unavailable","command":"git status"}:SEND

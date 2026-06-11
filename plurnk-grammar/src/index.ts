@@ -13,7 +13,7 @@ export type {
     EditStatement,
     ExecStatement,
     FindStatement,
-    HideStatement,
+    FoldStatement,
     LineMarker,
     LocalPath,
     LogCoordinate,
@@ -28,7 +28,7 @@ export type {
     ReadStatement,
     SendBody,
     SendStatement,
-    ShowStatement,
+    OpenStatement,
     TelemetryEvent,
     UrlPath,
 } from "./types.ts";

@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed body of a FIND/READ/SHOW/HIDE statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "description": "Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },

@@ -61,7 +61,7 @@ that needs interpretation belongs in the runtime resolver.
 - Status code *meanings*: any digit string is grammatically valid in `[signal]`; whether `[410]` means "Gone" or any code carries privileged semantics on any OP is runtime convention.
 - Empty-body semantics (e.g., empty EDIT clears the entry).
 - EXEC body execution: runtime selection, sandboxing, permissions.
-- Filter composition (how SHOW/HIDE combine path × tag × body filters).
+- Filter composition (how OPEN/FOLD combine path × tag × body filters).
 - Output shape returned to the model after a statement executes. The §4 Per-OP Output table documents convention, not grammar rules.
 
 ## 2. Canonical Statement Form
@@ -100,7 +100,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 ## 3. Lexical Elements
 
 - `<<` — open delimiter.
-- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `SHOW`, `HIDE`, `SEND`, `EXEC`.
+- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `SEND`, `EXEC`.
 - `suffix` — `[A-Za-z0-9_]*` immediately concatenated to `OP`, no separator.
 - `[` … `]` — signal slot; contents are OP-dependent (see §4).
 - `(` … `)` — path slot; contents are a URI (see §5).
@@ -118,8 +118,8 @@ All other restrictions are runtime concerns, not grammar concerns.
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
 | COPY   | tags to apply (CSV) | required | destination URI       | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
-| SHOW   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
-| HIDE   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
+| OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
+| FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | HTTP status code (single integer) | optional | message payload (JSON by convention for structured responses) | not applicable |
 | EXEC   | executor (single string; `sh` default, `node`, `python`, …) | required | command or code snippet | not applicable |
 
@@ -146,8 +146,8 @@ EDIT line-marker semantics (single source of authority):
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |
 | MOVE | status; destination path on success |
-| SHOW | status; list of log rows restored |
-| HIDE | status; list of log rows collapsed |
+| OPEN | status; list of log rows opened |
+| FOLD | status; list of log rows folded |
 | SEND | status; recipient ack if applicable |
 | EXEC | exit code, stdout, stderr |
 
@@ -185,7 +185,7 @@ Runtime-enforced semantics:
 
 ## 6. Bulk Pattern Matching
 
-For FIND, READ, SHOW, and HIDE, `body` is an optional pattern matcher.
+For FIND, READ, OPEN, and FOLD, `body` is an optional pattern matcher.
 The lexer captures the body opaquely (between the `:body:` fences) —
 dialect dispatch is not a lexer concern. Dialect is determined by the
 body's leading characters, and validated by the Visitor using native
@@ -268,7 +268,7 @@ benefit over the native or library facilities.
 A line marker selects a position or range from the sequence an OP
 operates on or produces. The sequence type is OP-specific (see §4
 per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
-for READ, positions in the matched result set for FIND/SHOW/HIDE.
+for READ, positions in the matched result set for FIND/OPEN/FOLD.
 
 **Token shape:** `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`.
 
@@ -298,7 +298,7 @@ This falls out of standard ANTLR longest-match.
   `N > M`, sentinel meanings beyond the canonical `0`/`-1`) is decided
   per-OP at runtime.
 
-**Result-set ordering** (FIND, SHOW, HIDE): the runtime must produce a
+**Result-set ordering** (FIND, OPEN, FOLD): the runtime must produce a
 deterministic order so that `<N-M>` pagination is reproducible. The
 choice of ordering is a runtime guarantee, not a parser concern.
 
@@ -461,12 +461,12 @@ type ParseItem =
 
 type Position = { line: number; column: number };
 
-type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SHOW" | "HIDE" | "SEND" | "EXEC";
+type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC";
 
 type PlurnkStatement =
     | FindStatement | ReadStatement | EditStatement
     | CopyStatement | MoveStatement
-    | ShowStatement | HideStatement
+    | OpenStatement | FoldStatement
     | SendStatement | ExecStatement;
 
 interface StatementBase<S> {
@@ -504,7 +504,7 @@ interface UrlPath {
     fragment: string | null;
 }
 
-// Typed body for FIND/READ/SHOW/HIDE — dialect dispatch with compiled regex.
+// Typed body for FIND/READ/OPEN/FOLD — dialect dispatch with compiled regex.
 type MatcherBody =
     | { dialect: "xpath"; raw: string }
     | { dialect: "regex"; raw: string; pattern: string; flags: string; regexp: RegExp }
@@ -525,8 +525,8 @@ interface SendBody {
 // Matcher OPs — body is a typed pattern matcher.
 interface FindStatement extends StatementBase<string[]> { op: "FIND"; body: MatcherBody | null; }
 interface ReadStatement extends StatementBase<string[]> { op: "READ"; body: MatcherBody | null; }
-interface ShowStatement extends StatementBase<string[]> { op: "SHOW"; body: MatcherBody | null; }
-interface HideStatement extends StatementBase<string[]> { op: "HIDE"; body: MatcherBody | null; }
+interface OpenStatement extends StatementBase<string[]> { op: "OPEN"; body: MatcherBody | null; }
+interface FoldStatement extends StatementBase<string[]> { op: "FOLD"; body: MatcherBody | null; }
 
 // EDIT — body is arbitrary content (markdown, code, prose). Raw.
 interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: string | null; }

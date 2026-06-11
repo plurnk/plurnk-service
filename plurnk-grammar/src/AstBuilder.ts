@@ -6,7 +6,7 @@ import type {
     EditStatement,
     ExecStatement,
     FindStatement,
-    HideStatement,
+    FoldStatement,
     LineMarker,
     MatcherBody,
     MoveStatement,
@@ -17,7 +17,7 @@ import type {
     ReadStatement,
     SendBody,
     SendStatement,
-    ShowStatement,
+    OpenStatement,
 } from "./types.ts";
 import type {
     CopyStatementContext,
@@ -25,12 +25,12 @@ import type {
     ExecModifiersContext,
     ExecStatementContext,
     FindStatementContext,
-    HideStatementContext,
+    FoldStatementContext,
     MoveStatementContext,
     ReadStatementContext,
     SendModifiersContext,
     SendStatementContext,
-    ShowStatementContext,
+    OpenStatementContext,
     StatementContext,
     TagOpModifiersContext,
 } from "./generated/plurnkParser.ts";
@@ -73,8 +73,8 @@ export default class AstBuilder {
         const edit = ctx.editStatement(); if (edit) return AstBuilder.#buildEdit(edit);
         const copy = ctx.copyStatement(); if (copy) return AstBuilder.#buildCopy(copy);
         const move = ctx.moveStatement(); if (move) return AstBuilder.#buildMove(move);
-        const show = ctx.showStatement(); if (show) return AstBuilder.#buildShow(show);
-        const hide = ctx.hideStatement(); if (hide) return AstBuilder.#buildHide(hide);
+        const open = ctx.openStatement(); if (open) return AstBuilder.#buildOpen(open);
+        const fold = ctx.foldStatement(); if (fold) return AstBuilder.#buildFold(fold);
         const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
         throw new Error("statement context has no recognized alternative");
@@ -106,26 +106,26 @@ export default class AstBuilder {
         };
     }
 
-    static #buildShow(ctx: ShowStatementContext): ShowStatement {
+    static #buildOpen(ctx: OpenStatementContext): OpenStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
-            op: "SHOW",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_SHOW().getText(), "SHOW"),
+            op: "OPEN",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_OPEN().getText(), "OPEN"),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
         };
     }
 
-    static #buildHide(ctx: HideStatementContext): HideStatement {
+    static #buildFold(ctx: FoldStatementContext): FoldStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
-            op: "HIDE",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_HIDE().getText(), "HIDE"),
+            op: "FOLD",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_FOLD().getText(), "FOLD"),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,

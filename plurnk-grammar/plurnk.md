@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|SHOW|HIDE|SEND|EXEC).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC).
 
 ## Syntax
 
@@ -17,8 +17,8 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | EDIT | tags        | required   | lines `N,M`         | content         |
 | COPY | apply tags  | required   | lines `N,M`         | destination URI |
 | MOVE | apply tags  | required   | lines `N,M`         | destination URI |
-| SHOW | filter tags | log path   | results `N,M`       | matcher         |
-| HIDE | filter tags | log path   | results `N,M`       | matcher         |
+| OPEN | filter tags | log path   | results `N,M`       | matcher         |
+| FOLD | filter tags | log path   | results `N,M`       | matcher         |
 | SEND | status code | recipient  | —                   | message body    |
 | EXEC | executor    | cwd        | —                   | command or code |
 
@@ -31,12 +31,12 @@ EXEC defaults to `sh`; override with an optional executor (`node`, `python`, `se
 
 The agent maintains two surfaces for budgeting working-memory tokens:
 
-- **Log** — what you did: the chronological record of every operation. HIDE collapses a log row to its path and saves tokens; SHOW restores its body and spends tokens. Non-destructive — collapsed rows remain listed and re-SHOWable.
+- **Log** — what you did: the chronological record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN restores the complete record and spends tokens. Non-destructive — folded rows remain listed and re-OPENable.
 - **`plurnk://manifest.json`** — what's available: the complete, unranked directory of every entry (items are `{ path, channels }`). Query it to discover what exists; the system never ranks for you.
 
-READ pulls an entry's content (full, ranged, or matcher-filtered) and appends a fresh log row. SHOW and HIDE operate on the log only; against an entry they return 501.
+READ pulls an entry's content (full, ranged, or matcher-filtered) and appends a fresh log row. OPEN and FOLD operate on the log only; against an entry they return 501.
 
-YOU SHOULD collapse distilled and irrelevant log rows with HIDE to save tokens and optimize context relevance.
+YOU SHOULD FOLD distilled and irrelevant log rows to save tokens and optimize context relevance.
 YOU SHOULD distill durable findings into `known://` entries with EDIT.
 YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
 
@@ -51,7 +51,7 @@ Clearing content: `<1,-1>` selects every position; combine with an empty body to
 
 On structured entries, `<Result>` addresses result index, not line number.
 
-## Body matcher dispatch (FIND, READ, SHOW, HIDE)
+## Body matcher dispatch (FIND, READ, OPEN, FOLD)
 
 | leading prefix | dialect  | form                              |
 |----------------|----------|-----------------------------------|
@@ -120,9 +120,9 @@ Body content is character-perfect, exactly matching whitespace.
 <<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
 <<MOVE(known://obsolete/note.md):/dev/null:MOVE
-<<SHOW(log://**/get)<1,10>::SHOW
+<<OPEN(log://**/get)<1,10>::OPEN
 <<FIND(known://**)<5>:~french revolutionary history:FIND
-<<HIDE(log://**/get)<101,200>::HIDE
+<<FOLD(log://**/get)<101,200>::FOLD
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 <<FIND(known://**):revolution:FIND
 <<FIND(src/**):@<createCoder:FIND

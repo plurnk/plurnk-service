@@ -2,12 +2,12 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND and EXEC have no `<L>` slot — `lineMarker` is always null for those. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/SHOW/HIDE, raw string for EDIT/EXEC, ParsedPath for COPY/MOVE (destination URI), SendBody for SEND.",
+    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND and EXEC have no `<L>` slot — `lineMarker` is always null for those. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ParsedPath for COPY/MOVE (destination URI), SendBody for SEND.",
     "oneOf": [
         { "$ref": "#/$defs/FindStatement" },
         { "$ref": "#/$defs/ReadStatement" },
-        { "$ref": "#/$defs/ShowStatement" },
-        { "$ref": "#/$defs/HideStatement" },
+        { "$ref": "#/$defs/OpenStatement" },
+        { "$ref": "#/$defs/FoldStatement" },
         { "$ref": "#/$defs/EditStatement" },
         { "$ref": "#/$defs/CopyStatement" },
         { "$ref": "#/$defs/MoveStatement" },
@@ -76,12 +76,12 @@
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },
-        "ShowStatement": {
+        "OpenStatement": {
             "type": "object",
             "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "SHOW" },
+                "op": { "const": "OPEN" },
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -90,12 +90,12 @@
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },
-        "HideStatement": {
+        "FoldStatement": {
             "type": "object",
             "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "HIDE" },
+                "op": { "const": "FOLD" },
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },

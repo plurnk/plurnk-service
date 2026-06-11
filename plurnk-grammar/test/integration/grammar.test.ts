@@ -749,9 +749,9 @@ test("MatcherBody: semantic dispatches with top-K via <L>", () => {
 });
 
 test("MatcherBody: semantic accepts arbitrary text after tilde (no parse step)", () => {
-    const result = PlurnkParser.parse("<<SHOW:~find me anything about: !@#$%^ malformed (but valid as query):SHOW");
+    const result = PlurnkParser.parse("<<OPEN:~find me anything about: !@#$%^ malformed (but valid as query):OPEN");
     const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "SHOW") return;
+    if (item.kind !== "statement" || item.statement.op !== "OPEN") return;
     const b = item.statement.body;
     assert.ok(b);
     assert.equal(b.dialect, "semantic");

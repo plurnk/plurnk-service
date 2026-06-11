@@ -55,7 +55,7 @@ private consumeRestOfCloseTagAfterColon(): void {
 }
 
 private isOpKeywordAfterLtLt(): boolean {
-    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"];
     for (const op of ops) {
         let matches = true;
         for (let i = 0; i < op.length; i++) {
@@ -89,8 +89,8 @@ OPEN_READ : '<<READ' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EDIT : '<<EDIT' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_COPY : '<<COPY' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_MOVE : '<<MOVE' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
-OPEN_SHOW : '<<SHOW' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
-OPEN_HIDE : '<<HIDE' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_OPEN : '<<OPEN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_FOLD : '<<FOLD' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
@@ -113,7 +113,7 @@ SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
 SLOTS_COLON    : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================
-// SIGNAL_TAGS — inside `[...]` for FIND/READ/EDIT/COPY/MOVE/SHOW/HIDE.
+// SIGNAL_TAGS — inside `[...]` for FIND/READ/EDIT/COPY/MOVE/OPEN/FOLD.
 // Tag character class permits single '<'; rejects '<<' so a malformed signal
 // can't silently swallow a subsequent statement opener.
 // ============================================================================

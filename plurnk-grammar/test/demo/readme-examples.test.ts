@@ -75,12 +75,12 @@ test("ex 12: EDIT — clear entry contents (empty body)", () => {
     expectOneClean("<<EDIT(known://countries/france/capital)::EDIT");
 });
 
-test("ex 13: HIDE — collapse every distilled fetch-log row", () => {
-    expectOneClean("<<HIDE(log://1/*/*/get)::HIDE");
+test("ex 13: FOLD — collapse every distilled fetch-log row", () => {
+    expectOneClean("<<FOLD(log://1/*/*/get)::FOLD");
 });
 
-test("ex 14: SHOW — restore collapsed log rows by tag filter", () => {
-    expectOneClean("<<SHOW[france](log://**)::SHOW");
+test("ex 14: OPEN — restore collapsed log rows by tag filter", () => {
+    expectOneClean("<<OPEN[france](log://**)::OPEN");
 });
 
 test("ex 15: MOVE — rename a draft entry", () => {
@@ -126,12 +126,12 @@ console.log(sum);
 :EXEC`);
 });
 
-test("ex 25: SHOW — combined filters (tag + body)", () => {
-    expectOneClean("<<SHOW[france](log://**):Paris*:SHOW");
+test("ex 25: OPEN — combined filters (tag + body)", () => {
+    expectOneClean("<<OPEN[france](log://**):Paris*:OPEN");
 });
 
-test("ex 26: HIDE — paginated collapse", () => {
-    expectOneClean("<<HIDE(log://**/get)<101-200>::HIDE");
+test("ex 26: FOLD — paginated collapse", () => {
+    expectOneClean("<<FOLD(log://**/get)<101-200>::FOLD");
 });
 
 test("ex 27: SEND — structured JSON answer", () => {
@@ -139,7 +139,7 @@ test("ex 27: SEND — structured JSON answer", () => {
 });
 
 test("ex 28: SEND — client error with JSON body", () => {
-    expectOneClean(`<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","SHOW","HIDE","SEND","EXEC"]}:SEND`);
+    expectOneClean(`<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC"]}:SEND`);
 });
 
 test("ex 29: SEND — server error with explicit recipient", () => {

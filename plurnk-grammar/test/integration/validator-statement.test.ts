@@ -26,13 +26,13 @@ test("PlurnkStatement: READ with bare local path and empty body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: SHOW with regex matcher", () => {
-    const r = validateRoundTrip("<<SHOW(known://**):/error|fail/i:SHOW");
+test("PlurnkStatement: OPEN with regex matcher", () => {
+    const r = validateRoundTrip("<<OPEN(known://**):/error|fail/i:OPEN");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: HIDE with jsonpath matcher", () => {
-    const r = validateRoundTrip("<<HIDE(log://**):$.status:HIDE");
+test("PlurnkStatement: FOLD with jsonpath matcher", () => {
+    const r = validateRoundTrip("<<FOLD(log://**):$.status:FOLD");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 

@@ -26,7 +26,7 @@
         "sequence": { "type": "integer", "minimum": 1, "description": "1-based within the turn; resets at each new turn." },
         "at": { "type": "string", "format": "date-time" },
         "origin": { "enum": ["model", "client", "system", "plugin"] },
-        "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"] },
+        "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"] },
         "suffix": { "type": "string" },
         "signal": {
             "oneOf": [
@@ -93,7 +93,7 @@
             }
         },
         {
-            "if": { "properties": { "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE"] } } },
+            "if": { "properties": { "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD"] } } },
             "then": {
                 "properties": {
                     "signal": {

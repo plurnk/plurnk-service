@@ -12,8 +12,8 @@ statement
     | editStatement
     | copyStatement
     | moveStatement
-    | showStatement
-    | hideStatement
+    | openStatement
+    | foldStatement
     | sendStatement
     | execStatement
     ;
@@ -25,8 +25,8 @@ readStatement : OPEN_READ tagOpModifiers? COLON body? CLOSE_TAG ;
 editStatement : OPEN_EDIT tagOpModifiers? COLON body? CLOSE_TAG ;
 copyStatement : OPEN_COPY tagOpModifiers? COLON body? CLOSE_TAG ;
 moveStatement : OPEN_MOVE tagOpModifiers? COLON body? CLOSE_TAG ;
-showStatement : OPEN_SHOW tagOpModifiers? COLON body? CLOSE_TAG ;
-hideStatement : OPEN_HIDE tagOpModifiers? COLON body? CLOSE_TAG ;
+openStatement : OPEN_OPEN tagOpModifiers? COLON body? CLOSE_TAG ;
+foldStatement : OPEN_FOLD tagOpModifiers? COLON body? CLOSE_TAG ;
 
 // SEND/EXEC have no `<L>` slot. Signal and target may appear in either order.
 sendStatement : OPEN_SEND sendModifiers? COLON body? CLOSE_TAG ;
