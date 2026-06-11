@@ -66,6 +66,16 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("PlurnkStatement: KILL with bare target", () => {
+    const r = validateRoundTrip("<<KILL(exec://3/1/2)::KILL");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: KILL with signal and annotation body", () => {
+    const r = validateRoundTrip("<<KILL[9](exec://3/1/2):runaway; no output for 4 turns:KILL");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
 // -------------------------------------------------------------------------
 // Per-op shape constraints — hand-crafted fixtures
 // -------------------------------------------------------------------------
@@ -112,6 +122,18 @@ test("PlurnkStatement: EXEC rejects numeric signal", () => {
 
 test("PlurnkStatement: EXEC rejects non-null lineMarker", () => {
     const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { first: 1, last: null } };
+    const { valid } = Validator.validatePlurnkStatement(stmt);
+    assert.equal(valid, false);
+});
+
+test("PlurnkStatement: KILL rejects string signal", () => {
+    const stmt = { ...baseFields("KILL"), signal: "TERM" };
+    const { valid } = Validator.validatePlurnkStatement(stmt);
+    assert.equal(valid, false);
+});
+
+test("PlurnkStatement: KILL rejects non-null lineMarker", () => {
+    const stmt = { ...baseFields("KILL"), signal: 9, lineMarker: { first: 1, last: null } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });

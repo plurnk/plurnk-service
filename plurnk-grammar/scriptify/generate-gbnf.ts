@@ -29,7 +29,7 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(ch, ch));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"] as const;
 const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 const DIGIT = cls([R("0", "9")]);
@@ -83,6 +83,9 @@ export const buildModel = (): GModel => {
                 model.set(name, [[lit(open), lit("["), ref("status"), lit("]"), opt(ref("target")), ...body]]);
             } else if (op === "EXEC") {
                 model.set(name, [[lit(open), opt(ref("exec-sig")), opt(ref("target")), ...body]]);
+            } else if (op === "KILL") {
+                // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
+                model.set(name, [[lit(open), opt(ref("kill-sig")), ref("target"), ...body]]);
             } else {
                 model.set(name, [[lit(open), opt(ref("tags")), ref("target"), opt(ref("line")), ...body]]);
             }
@@ -106,6 +109,7 @@ export const buildModel = (): GModel => {
     model.set("int", [[opt(lit("-")), plus(DIGIT)]]);
     model.set("status", [[DIGIT, DIGIT, DIGIT]]);
     model.set("exec-sig", [[lit("["), EXEC_HEAD, star(EXEC_TAIL), lit("]")]]);
+    model.set("kill-sig", [[lit("["), DIGIT, opt(DIGIT), lit("]")]]);
     return model;
 };
 

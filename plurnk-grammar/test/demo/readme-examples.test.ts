@@ -150,7 +150,15 @@ test("ex 30: SEND — informational message at named agent", () => {
     expectOneClean("<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND");
 });
 
-test("ex 31: nested EDIT via suffix discipline", () => {
+test("ex 31: KILL — runaway process", () => {
+    expectOneClean("<<KILL(exec://3/1/2)::KILL");
+});
+
+test("ex 32: KILL — permanently delete an entry", () => {
+    expectOneClean("<<KILL(known://obsolete/note)::KILL");
+});
+
+test("ex 33: nested EDIT via suffix discipline", () => {
     expectOneClean(`<<EDITouter(known://demo):
 The following is a quoted plurnk operation, preserved verbatim:
 <<EDIT(known://inner):hello world:EDIT

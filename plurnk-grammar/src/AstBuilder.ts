@@ -7,6 +7,7 @@ import type {
     ExecStatement,
     FindStatement,
     FoldStatement,
+    KillStatement,
     LineMarker,
     MatcherBody,
     MoveStatement,
@@ -26,9 +27,10 @@ import type {
     ExecStatementContext,
     FindStatementContext,
     FoldStatementContext,
+    IntOpModifiersContext,
+    KillStatementContext,
     MoveStatementContext,
     ReadStatementContext,
-    SendModifiersContext,
     SendStatementContext,
     OpenStatementContext,
     StatementContext,
@@ -51,7 +53,7 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
-type SendSlots = { signal: number | null; target: ParsedPath | null };
+type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null };
 
 export default class AstBuilder {
@@ -77,6 +79,7 @@ export default class AstBuilder {
         const fold = ctx.foldStatement(); if (fold) return AstBuilder.#buildFold(fold);
         const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
+        const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
         throw new Error("statement context has no recognized alternative");
     }
 
@@ -172,7 +175,7 @@ export default class AstBuilder {
 
     static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractSendSlots(ctx.sendModifiers(), position);
+        const slots = AstBuilder.#extractIntSlots(ctx.intOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
@@ -197,6 +200,19 @@ export default class AstBuilder {
         };
     }
 
+    static #buildKill(ctx: KillStatementContext): KillStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractIntSlots(ctx.intOpModifiers(), position);
+        return {
+            op: "KILL",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_KILL().getText(), "KILL"),
+            ...slots,
+            lineMarker: null,
+            body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
     static #extractTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): TagSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
@@ -205,7 +221,7 @@ export default class AstBuilder {
         };
     }
 
-    static #extractSendSlots(modCtx: SendModifiersContext | null, pos: Position): SendSlots {
+    static #extractIntSlots(modCtx: IntOpModifiersContext | null, pos: Position): IntSlots {
         const intCtx = AstBuilder.#findFirst(modCtx, IntSignalContext);
         const intNode = intCtx?.INT() ?? null;
         return {

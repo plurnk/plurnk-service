@@ -41,7 +41,7 @@ test("plurnk.md examples block contains the expected statement count", () => {
     const result = PlurnkParser.parse(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
-    assert.equal(statements.length, 30, `expected 30 statements, got ${statements.length}`);
+    assert.equal(statements.length, 31, `expected 31 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {
@@ -51,7 +51,7 @@ test("plurnk.md examples cover every OP", () => {
             .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
             .map((i) => i.statement.op),
     );
-    const required = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"];
+    const required = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"];
     for (const op of required) {
         assert.ok(ops.has(op as any), `plurnk.md examples should include ${op}`);
     }

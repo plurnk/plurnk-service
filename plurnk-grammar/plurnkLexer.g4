@@ -55,7 +55,7 @@ private consumeRestOfCloseTagAfterColon(): void {
 }
 
 private isOpKeywordAfterLtLt(): boolean {
-    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"];
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"];
     for (const op of ops) {
         let matches = true;
         for (let i = 0; i < op.length; i++) {
@@ -71,6 +71,7 @@ private isOpKeywordAfterLtLt(): boolean {
 
 private isSendOp(): boolean { return this.openTag.startsWith("SEND"); }
 private isExecOp(): boolean { return this.openTag.startsWith("EXEC"); }
+private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
 }
 
 // ============================================================================
@@ -93,6 +94,7 @@ OPEN_OPEN : '<<OPEN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_FOLD : '<<FOLD' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_KILL : '<<KILL' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
 TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[<])+ ;
 
@@ -105,8 +107,8 @@ TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[<])+ ;
 
 mode SLOTS;
 SLOTS_WS       : [ \t\r\n]+ -> skip ;
-SLOTS_LB_TAGS  : '[' { !this.isSendOp() && !this.isExecOp() }? -> type(LBRACKET), mode(SIGNAL_TAGS) ;
-SLOTS_LB_INT   : '[' { this.isSendOp() }?                       -> type(LBRACKET), mode(SIGNAL_INT) ;
+SLOTS_LB_TAGS  : '[' { !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? -> type(LBRACKET), mode(SIGNAL_TAGS) ;
+SLOTS_LB_INT   : '[' { this.isSendOp() || this.isKillOp() }?    -> type(LBRACKET), mode(SIGNAL_INT) ;
 SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
 SLOTS_LPAREN   : '(' -> type(LPAREN), mode(TARGET) ;
 SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
@@ -125,8 +127,8 @@ ST_TAG   : (~[\],<\r\n \t] | '<' ~[\],<\r\n \t])+ -> type(TAG) ;
 ST_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
-// SIGNAL_INT — inside `[...]` for SEND. Single signed integer literal only.
-// `<<SEND[admin]` fails here with "expected INT".
+// SIGNAL_INT — inside `[...]` for SEND and KILL. Single signed integer literal
+// only. `<<SEND[admin]` fails here with "expected INT".
 // ============================================================================
 
 mode SIGNAL_INT;

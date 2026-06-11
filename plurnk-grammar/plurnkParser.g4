@@ -16,6 +16,7 @@ statement
     | foldStatement
     | sendStatement
     | execStatement
+    | killStatement
     ;
 
 // 7 tag-CSV ops share the same modifier permutation: tagSignal, target, lineMarker
@@ -28,9 +29,11 @@ moveStatement : OPEN_MOVE tagOpModifiers? COLON body? CLOSE_TAG ;
 openStatement : OPEN_OPEN tagOpModifiers? COLON body? CLOSE_TAG ;
 foldStatement : OPEN_FOLD tagOpModifiers? COLON body? CLOSE_TAG ;
 
-// SEND/EXEC have no `<L>` slot. Signal and target may appear in either order.
-sendStatement : OPEN_SEND sendModifiers? COLON body? CLOSE_TAG ;
+// SEND/EXEC/KILL have no `<L>` slot. Signal and target may appear in either
+// order. SEND and KILL share the int-signal modifier permutation.
+sendStatement : OPEN_SEND intOpModifiers? COLON body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON body? CLOSE_TAG ;
+killStatement : OPEN_KILL intOpModifiers? COLON body? CLOSE_TAG ;
 
 // Modifier slot permutations. Each leaf rule appears at most once in any
 // path through the alternatives, so duplicate slots fail at parse time.
@@ -40,7 +43,7 @@ tagOpModifiers
     | lineMarker (tagSignal target? | target tagSignal?)?
     ;
 
-sendModifiers
+intOpModifiers
     : intSignal target?
     | target intSignal?
     ;

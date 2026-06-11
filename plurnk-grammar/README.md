@@ -19,7 +19,7 @@ const result = PlurnkParser.parse(input);
 // result.unparsedTail?: { from, reason }
 ```
 
-Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
+Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
 ## cli
 
@@ -38,7 +38,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 
 | slot     | shape                                              |
 |----------|----------------------------------------------------|
-| `OP`     | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC`     |
+| `OP`     | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL` |
 | `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
 | `[…]`    | optional CSV; per-OP semantics                     |
 | `(…)`    | optional URI                                       |
@@ -56,6 +56,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | FOLD | tag filter       | matcher               | result-set range   |
 | SEND | HTTP status int  | payload (JSON conv.)  | n/a                |
 | EXEC | executor         | command or code       | n/a                |
+| KILL | unix signal int  | annotation (opaque)   | n/a                |
 
 Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · `~` semantic · `@` graph · else glob. A body that fails its prefix-indicated dialect falls back to glob.
 
@@ -157,7 +158,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND
 
 28. Report a client error (JSON body the model can traverse with jsonpath)
-	<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC"]}:SEND
+	<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC","KILL"]}:SEND
 
 29. Report a server error with explicit recipient
 	<<SEND[503](log://errors):{"reason":"git unavailable","command":"git status"}:SEND
@@ -165,7 +166,13 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 30. Direct an informational message at a named agent
 	<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND
 
-31. Quote a plurnk operation inside another (nesting via suffix discipline)
+31. Kill a runaway process
+	<<KILL(exec://3/1/2)::KILL
+
+32. Permanently delete an entry
+	<<KILL(known://obsolete/note)::KILL
+
+33. Quote a plurnk operation inside another (nesting via suffix discipline)
 	<<EDITouter(known://demo):
 	The following is a quoted plurnk operation, preserved verbatim:
 	<<EDIT(known://inner):hello world:EDIT

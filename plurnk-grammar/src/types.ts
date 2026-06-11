@@ -17,7 +17,8 @@ export type PlurnkOp =
     | "OPEN"
     | "FOLD"
     | "SEND"
-    | "EXEC";
+    | "EXEC"
+    | "KILL";
 
 export type ParseItem =
     | { kind: "statement"; statement: PlurnkStatement }

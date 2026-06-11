@@ -26,7 +26,7 @@
         "sequence": { "type": "integer", "minimum": 1, "description": "1-based within the turn; resets at each new turn." },
         "at": { "type": "string", "format": "date-time" },
         "origin": { "enum": ["model", "client", "system", "plugin"] },
-        "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"] },
+        "op": { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"] },
         "suffix": { "type": "string" },
         "signal": {
             "oneOf": [
@@ -88,6 +88,15 @@
             "then": {
                 "properties": {
                     "signal": { "type": ["string", "null"] },
+                    "lineMarker": { "type": "null" }
+                }
+            }
+        },
+        {
+            "if": { "properties": { "op": { "const": "KILL" } } },
+            "then": {
+                "properties": {
+                    "signal": { "type": ["number", "null"] },
                     "lineMarker": { "type": "null" }
                 }
             }

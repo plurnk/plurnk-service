@@ -14,6 +14,7 @@ export type {
     ExecStatement,
     FindStatement,
     FoldStatement,
+    KillStatement,
     LineMarker,
     LocalPath,
     LogCoordinate,

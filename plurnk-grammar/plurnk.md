@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|KILL).
 
 ## Syntax
 
@@ -21,6 +21,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | FOLD | filter tags | log path   | results `N,M`       | matcher         |
 | SEND | status code | recipient  | —                   | message body    |
 | EXEC | executor    | cwd        | —                   | command or code |
+| KILL | —           | required   | —                   | —               |
 
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
@@ -38,7 +39,7 @@ READ pulls an entry's content (full, ranged, or matcher-filtered) and appends a 
 
 YOU SHOULD FOLD distilled and irrelevant log rows to save tokens and optimize context relevance.
 YOU SHOULD distill durable findings into `known://` entries with EDIT.
-YOU MAY permanently delete entries by MOVE to `/dev/null` (works regardless of environment).
+YOU MAY permanently destroy an entry or terminate a running `exec://` process with KILL.
 
 ## `<Line> / <Result>`
 
@@ -119,7 +120,8 @@ Body content is character-perfect, exactly matching whitespace.
 <<EDIT(known://users.json)<0>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
-<<MOVE(known://obsolete/note.md):/dev/null:MOVE
+<<KILL(known://obsolete/note.md)::KILL
+<<KILL(exec://3/1/2)::KILL
 <<OPEN(log://**/get)<1,10>::OPEN
 <<FIND(known://**)<5>:~french revolutionary history:FIND
 <<FOLD(log://**/get)<101,200>::FOLD

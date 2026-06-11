@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND and EXEC have no `<L>` slot — `lineMarker` is always null for those. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ParsedPath for COPY/MOVE (destination URI), SendBody for SEND.",
+    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND, EXEC, and KILL have no `<L>` slot — `lineMarker` is always null for those. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ParsedPath for COPY/MOVE (destination URI), SendBody for SEND, opaque annotation string for KILL (no assigned runtime meaning; lands in the log).",
     "oneOf": [
         { "$ref": "#/$defs/FindStatement" },
         { "$ref": "#/$defs/ReadStatement" },
@@ -12,7 +12,8 @@
         { "$ref": "#/$defs/CopyStatement" },
         { "$ref": "#/$defs/MoveStatement" },
         { "$ref": "#/$defs/SendStatement" },
-        { "$ref": "#/$defs/ExecStatement" }
+        { "$ref": "#/$defs/ExecStatement" },
+        { "$ref": "#/$defs/KillStatement" }
     ],
     "$defs": {
         "TagSignal": {
@@ -173,6 +174,25 @@
                 "op": { "const": "EXEC" },
                 "suffix": { "type": "string" },
                 "signal": { "type": ["string", "null"] },
+                "target": { "$ref": "#/$defs/PathOrNull" },
+                "lineMarker": { "type": "null" },
+                "body": { "type": ["string", "null"] },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        },
+        "KillStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "KILL" },
+                "suffix": { "type": "string" },
+                "signal": {
+                    "oneOf": [
+                        { "type": "number" },
+                        { "type": "null" }
+                    ]
+                },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "type": "null" },
                 "body": { "type": ["string", "null"] },
