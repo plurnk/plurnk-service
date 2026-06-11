@@ -2,17 +2,19 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve } from "../content/index.ts";
+import { diffLines } from "diff";
 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
 
-// The model sees its EDIT echoed back as heredoc form via packet-wire's
-// log render (which re-emits the source EditStatement from log_entries.tx),
-// not via a rx-side diff. Same syntax both directions — the most honest
-// signal for the model to reason about its own state changes.
-export type EditResult = { status: number; entryId: number | null; channel: string | null };
+// The model sees its EDIT's RESULT — the edited area as it looks now,
+// line-numbered with a couple lines of context (§14.6) — rendered from the
+// `span` computed here and carried on rx. Post-edit state inline, no
+// confirming READ; the same rendering serves system delta-EDITs (§14.5).
+// Supersedes the prior input-echo of the source statement.
+export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -149,7 +151,27 @@ export default class EntryOps {
             }
         }
 
-        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel };
+        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: EntryOps.#editedSpan(originalContent, newContent) };
+    }
+
+    // §14.6 — the resulting span: the edited region of `updated` after the write,
+    // line-numbered (1-indexed), with `context` lines of padding. Diff against
+    // `original` to find the changed lines; render their post-edit state, so the
+    // model sees what its EDIT produced without a confirming READ.
+    static #editedSpan(original: string, updated: string, context = 2): string {
+        const rows: { text: string; changed: boolean }[] = [];
+        for (const part of diffLines(original, updated)) {
+            if (part.removed) continue;  // removed lines aren't in the new content
+            const ls = part.value.split("\n");
+            if (ls.length > 1 && ls[ls.length - 1] === "") ls.pop();  // drop trailing-newline artifact
+            for (const t of ls) rows.push({ text: t, changed: part.added === true });
+        }
+        let lo = -1, hi = -1;
+        for (let i = 0; i < rows.length; i++) if (rows[i].changed) { if (lo < 0) lo = i; hi = i; }
+        if (lo < 0) { lo = 0; hi = rows.length - 1; }  // no added hunk (defensive) → whole
+        const start = Math.max(0, lo - context);
+        const end = Math.min(rows.length - 1, hi + context);
+        return rows.slice(start, end + 1).map((r, i) => `${start + i + 1}:\t${r.text}`).join("\n");
     }
 
     static async readSessionEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {

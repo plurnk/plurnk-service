@@ -944,7 +944,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Question.** The manifest (§15) is a live directory of what *exists*, re-derived each turn — but it carries *state*, not *events*. When a session entry changes out-of-band between turns — an exec stream grows, a sibling run edits a shared entry, a tracked file diverges on disk (§14.3) — the model's prior READ is now stale, and the manifest's new line count is a fact it must *diff against its own memory* to notice. The manifest also cannot say *who* changed it; with more than one actor in a session, provenance is load-bearing. What surfaces change — losslessly, attributably, without curating?
 
-**Decision — a per-run delta, the manifest's twin.** Where the manifest is the exhaustive, unranked, content-free directory of what *exists*, the delta is the exhaustive, unranked, content-free directory of what *changed* since this run last looked. Same discipline, different tense. It is a **signal, not curation** — the engine may inform (the §14.3 EMI divergence is the precedent), never decide what the model retains: the delta states *what* changed, *how much*, *by whom*, *when* — never the changed content (the model READs that itself), never a ranking. The instant it ranks or inlines content it is the index — the curation organ the manifest exists to *not* be — regrowing through a side door.
+**Decision — a per-run delta of system-authored EDITs.** When a session entry changes out-of-band, the engine records it the way the model records its *own* edits: a `log_entries` row, op=`EDIT`, `origin=system`, carrying the new `source` attribution (the cause). The body is exactly an EDIT's body — **the edited area as it looks now, line-numbered, with a couple lines of context** (the result-rendering all EDITs share, §14.6). The set is **exhaustive and unranked** — every change, no relevance order — but **not content-free**: showing the edited region of a change that *happened* is a faithful record, not the index regrowing. The engine may inform (the §14.3 EMI divergence is the precedent), never rank or select what the model retains; the one line it must never cross is *ranking*. Volume is the model's to manage by FOLD (and the grinder's under budget), not the engine's to manage by gutting the payload.
 
 **Form — a log entry, `origin=system`, the change translated to DSL.** A delta is a `log_entries` row: an **`EDIT`** ("an EDIT happened to X"), `origin=system`, carrying the new **`source`** column — the cause. A log entry, not a transient frame section, because a run's timeline must be **self-contained** (a forked run carries everything it observed). `source` renders as `run="<id>"` / `run="file"` in the meta line, **omitted when the cause is the owning run itself**. It is a third attribution axis, distinct from `run_id` (whose log owns the row) and `origin` (the actor *type*).
 
@@ -954,9 +954,19 @@ Each entry: question, answer, rationale, migration path.
 
 **Detection — announced vs ambient.** A run *knows* when it writes, so run-caused changes are **broadcast** (the existing `stream/event`, §13.6 — already session-scoped and carrying its `runId`) and **queued** per sibling run, drained into deltas at that run's next turn. Nothing announces an external disk edit, so ambient fs changes are **scooped at pre-turn** by the §14.3 EMI scan. Attribution falls out of detection: the broadcast carries the run; the scan attributes to the scheme.
 
-**Rationale.** "The model knows its world moved" becomes a property of *reading reality at build*, not of *remembering to emit* — 100% coverage by construction — and it spares the floor model an error-prone manifest diff every turn. The engine records the fact and hands the model the wheel; it never folds, ranks, or inlines on the model's behalf.
+**Rationale.** "The model knows its world moved" becomes a property of *reading reality at build*, not of *remembering to emit* — 100% coverage by construction. The engine records each change faithfully — as the EDIT it was, showing its result — and hands the model the wheel; it never ranks, selects, or folds on the model's behalf. The model FOLDs what it doesn't need; the grinder folds under budget.
 
 **Migration path.** Additive. The `source` column defaults null — existing rows and the current render are unaffected; materialization and the broadcast/EMI detection layer on without touching the op surface.
+
+### §14.6 EDIT log rows render their result, not their input
+
+**Question.** An EDIT's log row exists so the model has a record of what it did. Re-emitting the model's *input* statement (the tx heredoc) records the *intent* but not the *outcome* — the model still has to READ the entry back to confirm "did it land, what does it look like now." And a system delta-EDIT (§14.5) has no input statement at all. What should an EDIT row's body be?
+
+**Decision — the edited area as it looks now.** An EDIT row renders the **resulting span**: the edited region of the entry *after* the write, line-numbered, with a couple of lines of context above and below. The model sees post-edit state inline — no confirming READ — and the same rendering serves the model's own EDITs and the system delta-EDITs (§14.5) identically. The meta line still carries op + target, so "I EDITed X" stays legible; the body says "and here's X now."
+
+**Scope.** The span is computed at edit time — the write range and the result are both known then — and stored on the EDIT's `rx`; the render reads it. A large span is bounded like any rendered slice, and FOLD collapses it to the coordinate when the model doesn't need it.
+
+**Migration path.** Changes what EDIT rows *show* (input → output); the op surface and EDIT's behaviour are unchanged. Tests asserting the input-heredoc render move to the resulting-span render.
 
 ---
 

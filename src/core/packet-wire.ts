@@ -351,12 +351,25 @@ export default class PacketWire {
                     return `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.content)}`;
                 }
             }
-            // Every other op: re-emit the model's statement. EDIT, EXEC, SEND,
-            // COPY, MOVE, FIND, OPEN, FOLD — each gets its native heredoc form
-            // back. Without this the log row is a status code with no record
-            // of what the model actually wrote, and the model has to back into
-            // its own actions by inference (see reasoning.md trace from the
-            // pre-fix count-files run).
+            // EDIT (§14.6): render the resulting span — the edited area as it
+            // looks now — instead of the input statement. The meta line still
+            // carries op + target, so "I EDITed X" stays legible; the body says
+            // "and here's X now." Serves the model's own EDITs and the system
+            // delta-EDITs (§14.5) identically. Empty span (content emptied) →
+            // meta line only.
+            if (op === "EDIT") {
+                const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as { span?: unknown } | null;
+                if (rx !== null && typeof rx === "object" && typeof rx.span === "string") {
+                    const fence = target ?? `log://${coordinate}`;
+                    return rx.span.length > 0 ? `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.span)}` : metaLine;
+                }
+            }
+            // Every other op: re-emit the model's statement. EXEC, SEND, COPY,
+            // MOVE, FIND, OPEN, FOLD — each gets its native heredoc form back.
+            // Without this the log row is a status code with no record of what
+            // the model actually wrote, and the model has to back into its own
+            // actions by inference (see reasoning.md trace from the pre-fix
+            // count-files run).
             const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
             if (heredoc !== null) return `${metaLine}\n${heredoc}`;
             return metaLine;

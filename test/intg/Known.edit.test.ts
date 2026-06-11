@@ -317,3 +317,20 @@ test("[§16.4-json-parse-fail-400] Known.edit: <L> on JSON path with malformed b
         assert.deepEqual(JSON.parse(read.content ?? ""), [1, 2, 3]);
     } finally { await db.close(); }
 });
+
+test("Known.edit result carries the edited span — post-edit state, line-numbered (§14.6)", async () => {
+    const { db, sessionId, runId } = await setupContext();
+    try {
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const k = new Known();
+        // New entry: the whole body is the edit → span is the full body, 1-indexed.
+        const r1 = await k.edit(editStatement({ target: urlPath("known", "/notes"), body: "alpha\nbeta\ngamma" }), ctx);
+        assert.equal(r1.status, 201);
+        assert.equal(r1.span, "1:\talpha\n2:\tbeta\n3:\tgamma", "new entry → span is the full body, line-numbered");
+        // Re-edit changing one line: the diff finds it; span shows the edited region
+        // plus context, in its post-edit state — not the input statement.
+        const r2 = await k.edit(editStatement({ target: urlPath("known", "/notes"), body: "alpha\nBETA\ngamma" }), ctx);
+        assert.equal(r2.status, 200);
+        assert.equal(r2.span, "1:\talpha\n2:\tBETA\n3:\tgamma", "re-edit → span shows the change (BETA) with context, post-edit, line-numbered");
+    } finally { await db.close(); }
+});
