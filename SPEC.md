@@ -792,7 +792,7 @@ Server-initiated events on the same WebSocket.
 | `session/created`  | `{ id, name, projectRoot, persona }` | Any client creates a session. |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. {§13.6-stream-event-on-channel-change} |
 
-`stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. Notifications are session-scoped.
+`stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. **Every notification envelope carries its `sessionId`** (and `runId` where the emitter has it) so a multi-session client — one connection, many sessions — can route it ({§13.6-envelope-carries-sessionid}); the broadcast stays session-scoped too.
 
 ### §13.7 Connection lifecycle
 

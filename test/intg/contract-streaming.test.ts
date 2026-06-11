@@ -286,7 +286,7 @@ test("[§13.6-stream-event-on-channel-change] state transition fires metadata-on
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
             assert.equal(evt.target, "known://x", "carries the entry's target URI (#179)");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "state", "target"], "payload is metadata-only (ids/state/length + target URI per #179); no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "sessionId", "state", "target"], "payload is metadata-only (ids/state/length + target URI per #179, + session scope per #191); no content field");
         } finally { ws.close(); }
     });
 });

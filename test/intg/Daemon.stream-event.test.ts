@@ -17,7 +17,7 @@ test("daemon registers stream/event in discover catalog", async () => {
     });
 });
 
-test("notifyStreamEvent broadcasts to clients attached to the entry's session", async () => {
+test("[§13.6-envelope-carries-sessionid] notifyStreamEvent broadcasts to a session's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -30,7 +30,8 @@ test("notifyStreamEvent broadcasts to clients attached to the entry's session", 
             await flush();
 
             assert.equal(captured().length, 1);
-            const evt = captured()[0] as { entryId: number; channel: string; state: string; contentLength: number };
+            const evt = captured()[0] as { sessionId: number; entryId: number; channel: string; state: string; contentLength: number };
+            assert.equal(evt.sessionId, sessionId, "the envelope carries its session scope so multi-session clients can route it (#191)");
             assert.equal(evt.entryId, entryId);
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "active");

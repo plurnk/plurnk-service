@@ -702,9 +702,18 @@ export default class Daemon {
             return;
         }
         const sessionId = target.sessionId;
+        // Stamp the scope onto the envelope (#191). A notification is broadcast
+        // to exactly one session but carried nothing identifying it, so a
+        // multi-session client (one connection, many sessions) couldn't route it
+        // — "scoped by connection" only holds for one-connection-per-session.
+        // Additive: single-session clients ignore the field. runId, where it
+        // exists, is already in `params` at the call sites that have it.
+        const scoped = params !== null && typeof params === "object"
+            ? { ...params, sessionId }
+            : { sessionId };
         for (const conn of this.#connections) {
             if (conn.session?.sessionId === sessionId) {
-                conn.sendNotification(method, params);
+                conn.sendNotification(method, scoped);
             }
         }
     }
