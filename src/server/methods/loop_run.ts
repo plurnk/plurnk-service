@@ -133,6 +133,7 @@ export default class LoopRunMethod {
                     turnIds: first.turnIds,
                     finalStatus: first.finalStatus,
                     hitMaxTurns: first.hitMaxTurns,
+                    usage: first.usage,
                     action: "enqueued_new_loop",
                 };
             },

@@ -410,6 +410,18 @@ export default class Engine {
         return this.#gbnfCache;
     }
 
+    // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
+    // turn, §14.2). Surfaced on loop.run + loop/terminated so clients render real
+    // token/cost numbers. costPico is the stored pico-dollar unit.
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number }> {
+        const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number }>({ loop_id: loopId });
+        return {
+            promptTokens: row?.prompt ?? 0,
+            completionTokens: row?.completion ?? 0,
+            costPico: row?.cost_pico ?? 0,
+        };
+    }
+
     #pushTelemetry(sessionId: number, loopId: number, event: object): void {
         const existing = this.#telemetryBuffer.get(loopId);
         if (existing === undefined) this.#telemetryBuffer.set(loopId, [event]);

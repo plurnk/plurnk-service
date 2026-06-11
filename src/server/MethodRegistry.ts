@@ -22,6 +22,7 @@ export interface DrainLoopResult {
     turnIds: number[];
     finalStatus: number;
     hitMaxTurns: boolean;
+    usage: { promptTokens: number; completionTokens: number; costPico: number };
 }
 
 export interface DaemonSurface {

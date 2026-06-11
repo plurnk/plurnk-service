@@ -46,6 +46,14 @@ UPDATE loops SET status = $status WHERE id = $loop_id;
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
+-- PREP: engine_loop_usage
+-- Per-loop usage totals — SUM the loop's turns (§14.2 stores usage per turn).
+-- Surfaced on loop.run + loop/terminated (#197).
+SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
+       COALESCE(SUM(usage_completion), 0) AS completion,
+       COALESCE(SUM(usage_cost_pico), 0)  AS cost_pico
+FROM turns WHERE loop_id = $loop_id;
+
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
 -- #writeLog when an op needs to address itself or its output by log

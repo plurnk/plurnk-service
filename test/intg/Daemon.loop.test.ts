@@ -13,10 +13,14 @@ test("[§13.5-loop-run] loop.run with mock provider runs a model turn and persis
         try {
             await rpcCall(ws, 1, "session.create", { name: "loop-test" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "what is the capital of france?" });
-            const result = response.result as { loopId: number; turnIds: number[]; finalStatus: number; hitMaxTurns: boolean };
+            const result = response.result as { loopId: number; turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } };
             assert.equal(result.finalStatus, 200);
             assert.equal(result.hitMaxTurns, false);
             assert.equal(result.turnIds.length, 1);
+            // #197 — loop.run result carries usage summed over the loop's turns.
+            assert.equal(result.usage.completionTokens, 142, "completion tokens summed from the turn");
+            assert.equal(result.usage.promptTokens, 0);
+            assert.equal(result.usage.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
             // known://france/capital + plurnk://prompt/<loop_id> + plurnk://manifest.json
@@ -69,9 +73,11 @@ test("loop.run fires loop/terminated notification on completion", async () => {
 
             const captured = terminated();
             assert.equal(captured.length, 1);
-            const params = captured[0] as { loopId: number; finalStatus: number; hitMaxTurns: boolean };
+            const params = captured[0] as { loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } };
             assert.equal(params.finalStatus, 200);
             assert.equal(params.hitMaxTurns, false);
+            // #197 — loop/terminated carries the loop's usage totals.
+            assert.equal(params.usage.completionTokens, 50);
         } finally { ws.close(); }
     });
 });

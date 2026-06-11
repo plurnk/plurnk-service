@@ -280,6 +280,7 @@ export default class Daemon {
                 loopId: "number",
                 finalStatus: "number — terminal status code (200, 499, etc.)",
                 hitMaxTurns: "boolean",
+                usage: "{promptTokens, completionTokens, costPico} — per-loop totals summed over its turns (#197)",
             },
         });
         this.#registry.registerNotification("stream/event", {
@@ -473,10 +474,12 @@ export default class Daemon {
                         onDispatch,
                         signal: controller.signal,
                     });
+                    const usage = await this.#engine.loopUsage(loopRow.id);
                     this.#broadcast({ sessionId }, null, "loop/terminated", {
                         loopId: loopRow.id,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
+                        usage,
                     });
                     loopsDrained++;
                     const loopResult: DrainLoopResult = {
@@ -484,6 +487,7 @@ export default class Daemon {
                         turnIds: result.turnIds,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
+                        usage,
                     };
                     lastResult = loopResult;
                     if (!firstSettled) {
