@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS entries (
     pathname   TEXT    NOT NULL,
     params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
+    -- SPEC §14.3 — how a file member entered the curated surface. 'git' rows are
+    -- reconciled against `git ls-files − ignore` each turn (registered + un-registered
+    -- so entries == members); 'client'/'constraint' (model-created, add-glob) are not
+    -- git's to reclaim. NULL = not a file member (other schemes don't carry origin).
+    membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
     CHECK ((scope = 'agent'   AND session_id IS NULL)
         OR (scope = 'session' AND session_id IS NOT NULL)),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -326,4 +331,18 @@ CREATE TABLE IF NOT EXISTS run_watermarks (
     PRIMARY KEY (run_id, entry_id, channel),
     FOREIGN KEY (run_id)   REFERENCES runs(id)    ON DELETE CASCADE,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+-- INIT: session_constraints
+-- SPEC §14.3 constraint overlay — the client's supersede over git membership.
+-- Per (session, effect, glob): `add` (members git misses, resolved by a targeted
+-- client-dictated scan), `ignore` (drop git-tracked matches), `read-only` (member
+-- for read; File.edit rejects the write). git-absent, `add` rows are the sole
+-- membership source. Composed at membership resolution; node:path.matchesGlob.
+CREATE TABLE IF NOT EXISTS session_constraints (
+    session_id INTEGER NOT NULL,
+    effect     TEXT    NOT NULL CHECK (effect IN ('add', 'ignore', 'read-only')),
+    glob       TEXT    NOT NULL,
+    PRIMARY KEY (session_id, effect, glob),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;

@@ -1,13 +1,13 @@
 // SPEC §14 architectural-decision contract tests.
 //
-//   §14.3-git-membership  — git-substrate workspace membership. git-tracked
-//       files are members with no client `add`; active members are READable
-//       through the file scheme. BUILT — the two tests below pass.
+//   §14.3-git-membership / §14.3-edit-membership-gate / §14.3-constraint-ignore —
+//       git-substrate membership, the membership-bound edit, and the client's
+//       `ignore` supersede (with reconciliation). BUILT — the tests below pass.
 //
-//   §14.3-constraint-overlay / §14.3-emi-divergence-signal  — the client
-//       supersede (add/ignore/read-only) and the out-of-band divergence signal.
-//       DEFERRED; the two red tests at the bottom are the deferral ledger,
-//       EXPECTED TO FAIL until built. Do not weaken them to green.
+//   §14.3-constraint-add / §14.3-constraint-readonly / §14.3-emi-divergence-signal
+//       — the add-glob scan, read-only enforcement, and the out-of-band divergence
+//       signal. DEFERRED; the red {todo} tests are the deferral ledger, EXPECTED TO
+//       FAIL until built. Do not weaken them to green.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,6 +21,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
+import GitMembership from "../../src/core/git-membership.ts";
 import Envelope from "../../src/server/envelope.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -162,20 +163,45 @@ test("[§14.3-edit-membership-gate] EDIT of an existing non-member is refused �
 // false green; it FLIPS to a flagged passing-todo the day the feature lands. That
 // keeps CI a live gate instead of red-forever noise. Don't weaken to a real pass.
 
-test("[§14.3-constraint-overlay] client supersede (add/ignore/read-only) overrides git membership", { todo: "DEFERRED — flips when session_constraints CRUD is built (SPEC §14.3)" }, async () => {
-    const db = await openMigrated();
-    try {
-        // DEFERRED (SPEC §14.3). The constraint overlay is the client's supersede
-        // over git membership — add (members git misses), ignore (drop tracked
-        // ones), read-only (member for read, writes rejected) — and the SOLE
-        // membership source when there is no git (D4). No substrate exists yet;
-        // assert its CRUD foundation, since there is no behavioural surface to
-        // drive until it lands. Flips green when session_constraints is built.
-        assert.notEqual(
-            (db as unknown as Record<string, unknown>).crud_insert_session_constraint, undefined,
-            "session_constraints CRUD must exist for the client-supersede overlay (SPEC §14.3) — DEFERRED/UNBUILT",
-        );
-    } finally { await db.close(); }
+test("[§14.3-constraint-ignore] an ignore-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        // trackedPath is already a git member (withGitWorkspace established it).
+        const before = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+        assert.notEqual(before, undefined, "precondition: the tracked file is a member");
+
+        // Client ignores it; membership re-resolves.
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "ignore", glob: trackedPath });
+        await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+
+        // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
+        const after = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+        assert.equal(after, undefined, "an ignored member must be un-registered (rummy's removed-file case)");
+        const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
+        assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
+    });
+});
+
+test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", { todo: "DEFERRED — flips when the add-glob scan lands (SPEC §14.3)" }, async () => {
+    await withGitWorkspace(async (root, ctx, db) => {
+        // `add` admits files git misses. Write an UNTRACKED file matching an add-glob;
+        // it should become a member via the targeted scan. The scan isn't built, so it
+        // stays a non-member. Red until built.
+        await writeFile(join(root, "untracked.md"), "# git misses me\n");
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "add", glob: "*.md" });
+        await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+        const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "untracked.md" });
+        assert.notEqual(member, undefined, "an add-glob must admit an untracked match (SPEC §14.3) — DEFERRED/UNBUILT");
+    });
+});
+
+test("[§14.3-constraint-readonly] a read-only-glob admits a member for read but refuses edit", { todo: "DEFERRED — flips when read-only enforcement lands (SPEC §14.3)" }, async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        // A read-only constraint should leave READ working but make File.edit refuse.
+        // Enforcement isn't wired, so the edit still proposes (202). Red until built.
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "read-only", glob: trackedPath });
+        const edit = await new File().edit(editStmt(urlPath("file", trackedPath), "changed\n"), ctx);
+        assert.equal(edit.status, 403, "a read-only member must refuse edits (SPEC §14.3) — DEFERRED/UNBUILT");
+    });
 });
 
 test("[§14.3-emi-divergence-signal] out-of-band change to a member emits a synthetic log entry", { todo: "DEFERRED — flips when the EMI divergence signal is built (SPEC §14.3)" }, async () => {

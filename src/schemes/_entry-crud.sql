@@ -25,8 +25,8 @@ RETURNING id;
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
 -- re-resolving membership each turn never duplicates or churns rows.
-INSERT INTO entries (scope, session_id, scheme, pathname)
-VALUES ('session', $session_id, $scheme, $pathname)
+INSERT INTO entries (scope, session_id, scheme, pathname, membership_origin)
+VALUES ('session', $session_id, $scheme, $pathname, 'git')
 ON CONFLICT (session_id, scheme, pathname) WHERE scope = 'session'
 DO NOTHING
 RETURNING id;
@@ -53,3 +53,23 @@ DELETE FROM entry_tags WHERE entry_id = $entry_id AND tag = $tag;
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;
+
+-- PREP: crud_list_git_members
+-- Git-origin file members of a session (membership_origin='git'). The
+-- reconciliation set: resolveGitMembership compares this against the desired
+-- (git ls-files − ignore) and un-registers the difference, so entries == members.
+SELECT id, pathname FROM entries
+WHERE scope = 'session' AND session_id = $session_id AND scheme IS NULL AND membership_origin = 'git';
+
+-- PREP: crud_insert_session_constraint
+-- SPEC §14.3 constraint overlay — the client supersede. Idempotent per
+-- (session, effect, glob); effect ∈ {add, ignore, read-only}.
+INSERT OR IGNORE INTO session_constraints (session_id, effect, glob)
+VALUES ($session_id, $effect, $glob);
+
+-- PREP: crud_list_session_constraints
+SELECT effect, glob FROM session_constraints WHERE session_id = $session_id;
+
+-- PREP: crud_delete_session_constraint
+-- "remove" a constraint — deleting the row, not a fourth effect.
+DELETE FROM session_constraints WHERE session_id = $session_id AND effect = $effect AND glob = $glob;

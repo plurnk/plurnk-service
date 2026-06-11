@@ -24,7 +24,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, matchesGlob } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
@@ -90,10 +90,31 @@ export default class GitMembership {
         if (!await GitMembership.#isGitWorkTree(root, signal)) return [];
 
         const tracked = await GitMembership.#gitTrackedFiles(root, signal);
-        for (const pathname of tracked) {
+
+        // Constraint overlay (SPEC §14.3) — `ignore` drops git-tracked matches from
+        // membership. Desired = `git ls-files − ignore`. matchesGlob over the already-
+        // enumerated tracked set — a filter, not a disk scan.
+        const ignoreGlobs = (await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId }))
+            .filter((c) => c.effect === "ignore").map((c) => c.glob);
+        const desired = ignoreGlobs.length === 0
+            ? tracked
+            : tracked.filter((p) => !ignoreGlobs.some((g) => matchesGlob(p, g)));
+        const desiredSet = new Set(desired);
+
+        // Reconcile so entries == members (the constitutive invariant): register the
+        // desired (idempotent, origin 'git'), then un-register any git-origin member
+        // no longer desired — untracked in git OR newly ignored. Only 'git' rows are
+        // git's to reclaim; model-created ('client') members are never touched.
+        for (const pathname of desired) {
             await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname });
         }
-        return tracked;
+        const registered = await (db.crud_list_git_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
+        for (const m of registered) {
+            if (!desiredSet.has(m.pathname)) {
+                await (db.crud_delete_entry as PrepMethod).run({ entry_id: m.id });
+            }
+        }
+        return desired;
     }
 
     // Materialize a member's disk content into a body channel via writeEntry (the
