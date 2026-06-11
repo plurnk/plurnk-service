@@ -1138,7 +1138,10 @@ export default class Engine {
         }>({ session_id: sessionId });
         let written = 0;
         for (const r of rows) {
-            if (r.scheme === null || r.scheme === "plurnk") continue;
+            // plurnk:// is engine-derived (manifest/prompt) — skip. File entries
+            // (scheme=null) ARE included: an out-of-band disk divergence, re-read by
+            // git membership, surfaces here as the §14.3 EMI signal (source="file").
+            if (r.scheme === "plurnk") continue;
             const wm = await (this.#db.engine_get_watermark as PrepMethod).get<{ content: string }>({
                 run_id: runId, entry_id: r.entry_id, channel: r.channel,
             });
@@ -1150,7 +1153,7 @@ export default class Engine {
             const span = editedSpan(wm.content, r.content);
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId,
-                sequence: fromSequence + written, origin: "system", source: null,
+                sequence: fromSequence + written, origin: "system", source: r.scheme === null ? "file" : null,
                 op: "EDIT", suffix: "", signal: null,
                 scheme: r.scheme, username: null, password: null, hostname: null, port: null,
                 pathname: r.pathname, params: null, fragment: null, lineMarker: null,

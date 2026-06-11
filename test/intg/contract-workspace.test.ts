@@ -1,13 +1,10 @@
 // SPEC §14 architectural-decision contract tests.
 //
-//   §14.3-git-membership / §14.3-edit-membership-gate, and the full constraint
-//       overlay (§14.3-constraint-ignore / -readonly / -add) — git substrate, the
-//       membership-bound edit, and the client's ignore / read-only / add supersede
-//       (with reconciliation + the add scan). BUILT — the tests below pass.
-//
-//   §14.3-emi-divergence-signal — the out-of-band divergence signal. DEFERRED; the
-//       red {todo} test is the deferral ledger, EXPECTED TO FAIL until built. Do
-//       not weaken it to green.
+//   ALL of §14.3 is BUILT — the tests below pass: git-substrate membership
+//   (§14.3-git-membership), the membership-bound edit (§14.3-edit-membership-gate),
+//   the full constraint overlay (§14.3-constraint-ignore / -readonly / -add), and
+//   the out-of-band divergence signal (§14.3-emi-divergence-signal). No §14.3
+//   deferrals remain.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -207,13 +204,12 @@ test("[§14.3-constraint-readonly] a read-only-glob keeps a member readable but 
     });
 });
 
-test("[§14.3-emi-divergence-signal] out-of-band change to a member emits a synthetic log entry", { todo: "DEFERRED — flips when the EMI divergence signal is built (SPEC §14.3)" }, async () => {
+test("[§14.3-emi-divergence-signal] out-of-band change to a member surfaces as a system delta-EDIT", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
-        // DEFERRED (SPEC §14.3). EMI re-reads disk (built), but emits no synthetic
-        // log entry when a member diverges out-of-band, so the model never learns
-        // it changed. Materialize the member, mutate it on disk behind the model's
-        // back, run again, and assert the second turn's log carries a system-origin
-        // signal naming the file. Red until the divergence signal is built.
+        // EMI re-reads disk each turn (git materialization); the build-time delta
+        // detector turns an out-of-band member change into a system EDIT naming the
+        // file (source="file"). Turn 1 first-sights it (silent); mutate it on disk
+        // behind the model's back; turn 2 must carry the signal.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextSize: 100000,
@@ -229,9 +225,6 @@ test("[§14.3-emi-divergence-signal] out-of-band change to a member emits a synt
         if (row === undefined) throw new Error("turn packet not found");
         const packet = JSON.parse(row.packet) as { system: { log: Array<{ origin?: string }> } };
         const signalled = packet.system.log.some((r) => r.origin === "system" && JSON.stringify(r).includes(trackedPath));
-        assert.ok(
-            signalled,
-            "EMI must emit a synthetic log entry naming the out-of-band-changed member (SPEC §14.3) — DEFERRED/UNBUILT",
-        );
+        assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
     });
 });
