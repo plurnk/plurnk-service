@@ -10,16 +10,16 @@ interface Params {
     lineRange?: LineMarker;
 }
 
-export default class OpShowMethod {
+export default class OpOpenMethod {
     static register(registry: MethodRegistry): void {
-        registry.registerMethod("op.show", {
+        registry.registerMethod("op.open", {
             handler: async (params, ctx) => {
                 const p = params as Params;
-                if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.show requires params.target: string");
+                if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.open requires params.target: string");
                 const statement = Dsl.buildShow(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
-            description: "SHOW — restore a collapsed log row's body to the rendered log.",
+            description: "OPEN — restore a collapsed log row's body to the rendered log.",
             params: {
                 target: "string — entry path",
                 matcher: "string? — body matcher (glob/regex/xpath/jsonpath)",

@@ -86,7 +86,7 @@ test("log_entries: op enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-op");
-        const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SHOW", "HIDE", "SEND", "EXEC"];
+        const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"];
         for (const [i, op] of ops.entries()) {
             await minimalLog(db, ctx, { sequence: i + 1, op });
         }

@@ -1,10 +1,10 @@
-import type { HideStatement, ReadStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 
 type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
-type ShowHideResult = { status: number };
+type OpenFoldResult = { status: number };
 
 // log://<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
@@ -28,7 +28,7 @@ export default class Log {
         defaultChannel: "",
         category: "logging",
         scope: "session",
-        writableBy: ["system"],  // engine-only writes; model & client read + show/hide
+        writableBy: ["system"],  // engine-only writes; model & client read + open/fold
         volatile: false,
         modelVisible: true,
     };
@@ -92,15 +92,15 @@ export default class Log {
         });
     }
 
-    async show(statement: ShowStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+    async open(statement: OpenStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
         return this.#setIndexed(statement, ctx, 1);
     }
 
-    async hide(statement: HideStatement, ctx: PlurnkSchemeContext): Promise<ShowHideResult> {
+    async fold(statement: FoldStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
         return this.#setIndexed(statement, ctx, 0);
     }
 
-    async #setIndexed(statement: ShowStatement | HideStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<ShowHideResult> {
+    async #setIndexed(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<OpenFoldResult> {
         if (statement.target === null) return { status: 400 };
         if (statement.lineMarker !== null) return { status: 501 };
 

@@ -39,6 +39,7 @@ interface LogEntryView {
     target?: ActionTarget | null;
     tx?: StatementTx | null;
     rx?: unknown;
+    folded?: boolean;
 }
 interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
 interface SystemSection {
@@ -123,7 +124,7 @@ export default class PacketWire {
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
         // Per-scheme log breakdown (§14.2 {§14.2-per-scheme-balance}): each entry's
         // render-weight grouped by the scheme it acted on, heaviest first — the
-        // model's "what's eating my window" signal and its HIDE target. Render-
+        // model's "what's eating my window" signal and its FOLD target. Render-
         // weight (not stored depth), consistent with the headline; tokenizing per
         // entry is free.
         const byScheme = new Map<string, { scheme: string; entries: number; tokens: number }>();
@@ -320,6 +321,11 @@ export default class PacketWire {
 
             const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
 
+            // FOLD (indexed=0): the model collapsed this row to its one-line
+            // summary (§6.3) — render the meta line only, eliding the body.
+            // Re-OPEN restores it. The row stays listed; only its weight drops.
+            if (e.folded === true) return metaLine;
+
             // READ@200: expose the response body. READ@204 (successfully empty —
             // 0 matcher hits, sentinel slice, or empty source) has no body to
             // render; the meta line carries the signal via `matches` / status code.
@@ -342,7 +348,7 @@ export default class PacketWire {
                 }
             }
             // Every other op: re-emit the model's statement. EDIT, EXEC, SEND,
-            // COPY, MOVE, FIND, SHOW, HIDE — each gets its native heredoc form
+            // COPY, MOVE, FIND, OPEN, FOLD — each gets its native heredoc form
             // back. Without this the log row is a status code with no record
             // of what the model actually wrote, and the model has to back into
             // its own actions by inference (see reasoning.md trace from the

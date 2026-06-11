@@ -1,18 +1,18 @@
 // FIND helper for entry-bearing schemes (SPEC §6.6; plurnk.md FIND row).
 // Used by FIND (the body-matcher candidate selector).
 //
-// Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, SHOW, HIDE)"):
+// Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):
 //   target  — required scope (path or glob); selects which entries are candidates
 //   body    — matcher (glob/regex/jsonpath/xpath). Runs against the entry's
 //             default-channel CONTENT, NOT the pathname — the same content match
 //             READ performs (Matcher.matchAgainstContent → the mimetypes
 //             daughter). e.g. `FIND(log://**/error):/timeout/i` selects logs
-//             whose content matches; `SHOW(countries/**):Paris*` selects entries
+//             whose content matches; `OPEN(countries/**):Paris*` selects entries
 //             whose content matches. The path-glob is the (target).
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
 
-import type { FindStatement, HideStatement, ShowStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement, FoldStatement, OpenStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -25,7 +25,7 @@ export interface FindResult {
 }
 
 export default class EntryFind {
-    static #scopePathnameOf(statement: FindStatement | ShowStatement | HideStatement): string | null {
+    static #scopePathnameOf(statement: FindStatement | OpenStatement | FoldStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
         if (path.kind === "url") return path.pathname;
@@ -50,7 +50,7 @@ export default class EntryFind {
         return { status: 200, items: items.slice(n - 1, m) };
     }
 
-    // Resolve a matcher-bearing statement (FIND, or multi-entry SHOW/HIDE) to the
+    // Resolve a matcher-bearing statement (FIND, or multi-entry OPEN/FOLD) to the
     // matched session pathnames. Candidate selection (scope + tags) runs in SQL
     // (find_session_entry_candidates); the body matcher then runs against each
     // candidate's default-channel CONTENT via the mimetypes daughter
@@ -58,7 +58,7 @@ export default class EntryFind {
     // exclude it (no content hit), 400 (malformed matcher) fails the whole op.
     // Path-scoping stays in the (target). Used by FIND.
     static async matchPathnames(
-        statement: FindStatement | ShowStatement | HideStatement,
+        statement: FindStatement | OpenStatement | FoldStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
     ): Promise<{ status: number; pathnames: string[] }> {

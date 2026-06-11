@@ -1,4 +1,4 @@
--- FIND / multi-entry SHOW / HIDE candidate selection for entry-bearing
+-- FIND / multi-entry OPEN / FOLD candidate selection for entry-bearing
 -- schemes (SPEC §6.6; plurnk.md FIND row).
 --
 -- Scope (target) + tag filters ONLY. The body matcher does NOT belong here:

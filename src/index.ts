@@ -33,7 +33,7 @@ export type { MockResponse, MockAssistant, ChatMessage } from "@plurnk/plurnk-pr
 export type {
     EditResult,
     ReadResult,
-    ShowHideResult,
+    OpenFoldResult,
 } from "./schemes/_entry-ops.ts";
 
 // Package-relative paths to non-code artifacts (migrations, the upstream

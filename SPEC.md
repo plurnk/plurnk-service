@@ -19,7 +19,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns the log entries. |
 | **loop** | One model-driven or client-driven iteration within a run. Status ∈ {102, 200, 499}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
 | **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
-| **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `SHOW`, `HIDE`, `EXEC`. One turn produces zero or more ops. |
+| **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
 | **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
 | **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log://<L>/<T>/<S>/<op>`. |
 | **dispatch** | The engine routing a statement to its scheme's op handler. |
@@ -178,7 +178,7 @@ Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives 
 
 ### §3.3 Op methods
 
-Per author contract (`edit`/`read`/`show`/`hide`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. {§3.3-op-dispatch} COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives (§6.4/§6.5).
+Per author contract (`edit`/`read`/`open`/`fold`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. {§3.3-op-dispatch} COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives (§6.4/§6.5).
 
 ### §3.4 Cross-scheme orchestration
 
@@ -332,7 +332,7 @@ Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body
 
 ### §5.2 Entries carry no visibility
 
-Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable — entries have no per-run shown/hidden state. Context curation is the model's, on the **log** (SHOW/HIDE collapse/expand log rows, §6.3), never on entries.
+Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable — entries have no per-run open/folded state. Context curation is the model's, on the **log** (OPEN/FOLD collapse/expand log rows, §6.3), never on entries.
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
@@ -401,7 +401,7 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
 
 - Resolves target channel from fragment (§5.5); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
 - Writes body; `body: null` clears. {§6.1-null-clears}- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for content updates. {§6.1-status-201-200}
-- A write that changes nothing — identical content and no new tag — returns `{ status: 304, entryId }`, mirroring SHOW/HIDE's no-op (§6.3). {§6.1-noop-304}
+- A write that changes nothing — identical content and no new tag — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's no-op (§6.3). {§6.1-noop-304}
 - Tags from `signal[]` apply additively via `entry_tags` (scheme may vary). {§6.1-tags-additive}
 
 ### §6.2 READ
@@ -412,11 +412,11 @@ AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineM
 - `lineMarker` slices per §16.3.
 - `body` matcher dispatches through `Mimetypes.query` per §16.1 (all four dialects wired).
 
-### §6.3 SHOW / HIDE
+### §6.3 OPEN / FOLD
 
-AST: `{ op: "SHOW"|"HIDE", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
+AST: `{ op: "OPEN"|"FOLD", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
 
-SHOW/HIDE operate on the **log** (`log://`) — the model's context-curation surface (§15). HIDE collapses a log row to its path; SHOW restores its body. Non-destructive: rows and bodies persist, re-SHOWable. Entries carry no visibility (§5.2), so SHOW/HIDE against an entry scheme returns 501.
+OPEN/FOLD operate on the **log** (`log://`) — the model's context-curation surface (§15). FOLD collapses a log row to its path; OPEN restores its body. Non-destructive: rows and bodies persist, re-OPENable. Entries carry no visibility (§5.2), so OPEN/FOLD against an entry scheme returns 501.
 
 ### §6.4 COPY (engine-orchestrated)
 
@@ -769,8 +769,8 @@ Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` 
 | `op.edit`     | `target: string`, `content?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<EDIT>>`. |
 | `op.copy`     | `source: string`, `destination: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<COPY>>`. |
 | `op.move`     | `source: string`, `destination?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<MOVE>>`. Missing `destination` = delete (null-body MOVE). |
-| `op.show`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<SHOW>>`. |
-| `op.hide`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<HIDE>>`. |
+| `op.open`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<OPEN>>`. |
+| `op.fold`     | `target: string`, `matcher?: string`, `tags?: string[]`, `lineRange?: LineMarker` | Mirrors `<<FOLD>>`. |
 | `op.send`     | `status: number`, `recipient?: string`, `body?: string` | Mirrors `<<SEND>>`. |
 | `op.exec`     | `cwd?: string`, `runtime?: string`, `command?: string`  | Mirrors `<<EXEC>>`. |
 | `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
@@ -876,7 +876,7 @@ Each entry: question, answer, rationale, migration path.
 
 ### §14.2 Tokenomics: real provider tokens, render-weight budget, per-scheme balance
 
-**Question.** How does plurnk track token costs accurately enough to ground the model's SHOW/HIDE/compose decisions? Accuracy is the whole game — a budget that smells wrong is one the model stops trusting and curating against.
+**Question.** How does plurnk track token costs accurately enough to ground the model's OPEN/FOLD/compose decisions? Accuracy is the whole game — a budget that smells wrong is one the model stops trusting and curating against.
 
 **Two measures, never conflated:**
 
@@ -895,7 +895,7 @@ Each entry: question, answer, rationale, migration path.
 **Rejected / obviated.**
 
 - **Hot model-switch recompute** — *obviated* by render-fresh depth (above). There's no cross-loop cache to recompute: the manifest re-tokenizes at build, the budget always did. A model change between loops can't stale a number nothing caches.
-- **Reasoning-token surfacing** — *rejected* for the model-facing budget: reasoning is *output*, not window-context, and the model can't HIDE it. The thinking-vs-output distinction is cost-forensics (the usage breakdown is stored on every packet), not a curation signal.
+- **Reasoning-token surfacing** — *rejected* for the model-facing budget: reasoning is *output*, not window-context, and the model can't FOLD it. The thinking-vs-output distinction is cost-forensics (the usage breakdown is stored on every packet), not a curation signal.
 
 **Rationale.** Rummy used chars/DIVISOR + compute-at-SELECT only because its sync-only SQL couldn't call a tokenizer. plurnk has real `countTokens`: store content tokens once at write (the depth), measure the small rendered output for the budget (the weight). Approximation can't ground curation — the model only curates against numbers it trusts.
 
@@ -929,14 +929,14 @@ Each entry: question, answer, rationale, migration path.
 
 **Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`#buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§14.2) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§14.4-overflow-only} On overflow it reverts the prior turn, then hard-stops if that isn't enough:
 
-- **Prior-turn rollback.** The immediately-prior turn's log entries — the latest emissions, the ones that pushed the packet over — are hidden (`indexed=0`, the same flag the model's own HIDE uses); the prior turn fit by induction, so reverting it usually lands back under. Hidden, not deleted: rows and bodies persist and are re-SHOWable, so log *history* is preserved while the render shrinks. {§14.4-layer1-rollback}
+- **Prior-turn rollback.** The immediately-prior turn's log entries — the latest emissions, the ones that pushed the packet over — are folded (`indexed=0`, the same flag the model's own FOLD uses); the prior turn fit by induction, so reverting it usually lands back under. Folded, not deleted: rows and bodies persist and are re-OPENable, so log *history* is preserved while the render collapses to coordinates. {§14.4-layer1-rollback}
 - **Hard stop.** If the packet still overflows after the prior-turn rollback, the loop abandons at 499 (`engine_loop_cancel`) — the path `maxTurns` and the strike threshold already use. No further passes. {§14.4-hard-413-abort}
 
 **Strike coupling.** A grinder fire bumps the engine's `turnErrors` — the same internal counter cycle detection feeds — so an overflow counts toward the strike streak that ends a runaway loop at 499. This is the pressure that keeps self-curation the path of least resistance. {§14.4-strike-coupling} **Turn 0/1 is exempt:** the first turn's overflow precedes any model action — it's the environment, not the model — so it never strikes. {§14.4-soft-turn-0-1}
 
 **What the model sees.** A `budget_overflow` telemetry event (§15.1), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the per-scheme budget table (§14.2) is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§14.4-event-model-terms} Per the gamification policy (§15.1), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
 
-**Rationale.** The model owns curation (§14.2); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render; nothing is deleted, so the model can SHOW it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
+**Rationale.** The model owns curation (§14.2); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render; nothing is deleted, so the model can OPEN it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
 
 **Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
 
@@ -967,7 +967,7 @@ type Packet = {
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/HIDE-able like any other.
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/FOLD-able like any other.
 
 **The entry catalog.** `plurnk://manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's READable and queryable. Body is `application/json`: a flat, **complete, unranked** array — one item per entry across all schemes, every entry listed in no relevance order, each `{ path, channels: { <name>: { mimetype, tokens, lines } } }`. The model ranks and filters the catalog itself by querying it (task-aware); the catalog never ranks for it — the instant it did, it would be an index again. `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself. {§15-manifest-catalog}
 
@@ -1144,12 +1144,12 @@ Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdo
 Carried from the contract walk; durable.
 
 - **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
-- **Binary entries** → 415 across the board for READ/EDIT/SHOW/HIDE.
+- **Binary entries** → 415 across the board for READ/EDIT/OPEN/FOLD.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - **COPY `<L>`** → source range, symmetric with READ `<L>`.
 - **READ rx** prefixes each line with `N:\t` per §16.6. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via `Matcher.matchAgainstContent` → `Mimetypes.query` (status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
-- **SHOW/HIDE** operate on the **log** (`log://`), not entries (§6.3) — HIDE collapses a log row to its path, SHOW restores its body. Aimed at an entry scheme they return 501.
+- **OPEN/FOLD** operate on the **log** (`log://`), not entries (§6.3) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §6.5): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
 

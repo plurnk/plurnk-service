@@ -23,7 +23,7 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import PacketWire from "./packet-wire.ts";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
-// SHOW/HIDE/READ/FIND are not gated — they curate the log or read, never mutating an entry.
+// OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
 
 const DEFAULT_MAX_STRIKES = 3;
@@ -222,7 +222,7 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
 //   - EDIT/COPY/MOVE: body excluded — re-writing the same target with varied
 //     content IS cycling (the model is producing different versions of the
 //     same artifact instead of progressing).
-//   - FIND/READ/SHOW/HIDE: body IS the search/selection pattern; varied
+//   - FIND/READ/OPEN/FOLD: body IS the search/selection pattern; varied
 //     matchers on the same target ARE different activities (the model is
 //     exploring different queries, not repeating one).
 const fingerprintOp = (stmt: PlurnkStatement): string => {
@@ -263,7 +263,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     const base = path.kind === "url"
         ? `${stmt.op}|${path.scheme}://${path.pathname}`
         : `${stmt.op}|local:${path.raw}`;
-    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "SHOW" || stmt.op === "HIDE") {
+    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "OPEN" || stmt.op === "FOLD") {
         return `${base}${matcherDiscriminator()}`;
     }
     return base;
@@ -947,7 +947,7 @@ export default class Engine {
 
     // Budget readout body, rendered into the `# Plurnk System Budget` section.
     // Headline `ceiling/free` only when a ceiling exists; section lines for the
-    // curatable index/log weight the model can HIDE back. tokensFree is a
+    // curatable index/log weight the model can FOLD back. tokensFree is a
     // placeholder here — buildSystem substitutes it after measuring the packet.
     #renderBudget(
         sections: {
@@ -984,11 +984,11 @@ export default class Engine {
         const hidden = new Map<string, number>();
         const note = (scheme: string): void => { hidden.set(scheme, (hidden.get(scheme) ?? 0) + 1); };
 
-        // Pass 1 — prior-turn rollback: hide the latest emissions (the ones that
+        // Pass 1 — prior-turn rollback: fold the latest emissions (the ones that
         // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
         const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
         for (const le of priorLogs) note(le.scheme ?? "log");
-        if (priorLogs.length > 0) await (this.#db.engine_grinder_hide_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
+        if (priorLogs.length > 0) await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
         const errors = packet.user.telemetry.errors;
         let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
         if (measure(current) <= ceiling) {
@@ -1092,7 +1092,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string | null;
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string;
+            tx: string; mimetype_tx: string; indexed: number;
         }>({ run_id: runId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -1113,6 +1113,7 @@ export default class Engine {
             mimetype_rx: r.mimetype_rx,
             tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
             mimetype_tx: r.mimetype_tx,
+            folded: r.indexed === 0,
         }));
     }
 
@@ -1424,7 +1425,7 @@ export default class Engine {
 
     // SPEC §3.6: engine rejects writes whose origin is outside the target
     // scheme's manifest.writableBy.
-    // - Read-side ops (READ, FIND, SHOW, HIDE) are not gated.
+    // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.

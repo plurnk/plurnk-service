@@ -32,7 +32,7 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 // _entry-*/ChannelWrite helpers the in-tree schemes use during transition.
 // In progress (#180): entries first (`DbEntryCaps`); channels/tags/notify
 // follow. `visibility` is dropped — entry visibility is gone post-teardown
-// (SHOW/HIDE is log-only). crossScheme stays the deferred stub until a
+// (OPEN/FOLD is log-only). crossScheme stays the deferred stub until a
 // cross-scheme COPY/MOVE forces the FROM/TO shape.
 export interface PlurnkSchemeContext {
     readonly db: Db;

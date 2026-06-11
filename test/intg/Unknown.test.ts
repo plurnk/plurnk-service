@@ -4,7 +4,7 @@ import type { LineMarker, MatcherBody, ParsedPath, ReadStatement } from "@plurnk
 import Unknown from "../../src/schemes/Unknown.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, showStmt, hideStmt } from "./_dsl.ts";
+import { urlPath, editStmt, openStmt, foldStmt } from "./_dsl.ts";
 
 const readStmtPlus = (target: ParsedPath, opts: { tags?: string[] | null; body?: MatcherBody | null; lineMarker?: LineMarker | null } = {}): ReadStatement => ({
     op: "READ", suffix: "",

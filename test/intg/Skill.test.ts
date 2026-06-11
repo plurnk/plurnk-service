@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Skill from "../../src/schemes/Skill.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, showStmt, hideStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();

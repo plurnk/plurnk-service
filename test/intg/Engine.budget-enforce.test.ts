@@ -56,18 +56,19 @@ test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothi
     } finally { await db.close(); }
 });
 
-test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are hidden from the render", async () => {
+test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are folded to their coordinate", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ run_id: runId });
-        assert.ok(before.some((r) => r.turn_seq === 1), "turn 1 left a shown log entry");
+        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
+        assert.ok(before.some((r) => r.turn_seq === 1 && r.indexed === 1), "turn 1 left an open (indexed=1) log entry");
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ run_id: runId });
-        assert.ok(!after.some((r) => r.turn_seq === 1), "prior turn's logs hidden from the render (not deleted — only indexed=0)");
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
+        const t1 = after.filter((r) => r.turn_seq === 1);
+        assert.ok(t1.length > 0 && t1.every((r) => r.indexed === 0), "prior turn's logs folded — still listed, collapsed to coordinate (indexed=0), not deleted");
     } finally { await db.close(); }
 });
 

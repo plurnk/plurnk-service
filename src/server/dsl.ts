@@ -131,7 +131,7 @@ export default class Dsl {
 
     static buildShow(p: OpWithMatcher): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
-            op: "SHOW", suffix: Dsl.#randomSuffix(),
+            op: "OPEN", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
@@ -141,7 +141,7 @@ export default class Dsl {
 
     static buildHide(p: OpWithMatcher): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
-            op: "HIDE", suffix: Dsl.#randomSuffix(),
+            op: "FOLD", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),

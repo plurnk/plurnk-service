@@ -1,5 +1,5 @@
 -- log:// scheme — read by (loop_sequence, turn_sequence, sequence)
--- coordinate; show/hide toggle the `indexed` flag on the addressed row.
+-- coordinate; open/fold toggle the `indexed` flag on the addressed row.
 
 -- PREP: log_read_by_coordinate
 SELECT le.op, le.scheme, le.pathname, le.status_rx, le.rx, le.mimetype_rx

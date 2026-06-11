@@ -1,15 +1,15 @@
-// log:// scheme participates in the model's curation surface via SHOW/HIDE
+// log:// scheme participates in the model's curation surface via OPEN/FOLD
 // on log://N/T/S URIs. Underlying storage is the log_entries table (separate
 // from entries+entry_channels); the indexed column toggles visibility.
 // log entries lack channels and many other entry properties but share the
-// URI-dispatched show/hide mechanism.
+// URI-dispatched open/fold mechanism.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import Log from "../../src/schemes/Log.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, showStmt, hideStmt } from "./_dsl.ts";
+import { urlPath, openStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -50,11 +50,11 @@ test("new log entry defaults to indexed=1", async () => {
     } finally { await db.close(); }
 });
 
-test("HIDE(log://1/1/1) flips indexed to 0", async () => {
+test("FOLD(log://1/1/1) flips indexed to 0", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
-        const r = await new Log().hide(
-            hideStmt(urlPath("log", "1/1/1")),
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "1/1/1")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
@@ -62,11 +62,11 @@ test("HIDE(log://1/1/1) flips indexed to 0", async () => {
     } finally { await db.close(); }
 });
 
-test("HIDE accepts the /op wire suffix (self-documenting URI)", async () => {
+test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
-        const r = await new Log().hide(
-            hideStmt(urlPath("log", "1/1/1/EDIT")),
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "1/1/1/EDIT")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
@@ -74,33 +74,33 @@ test("HIDE accepts the /op wire suffix (self-documenting URI)", async () => {
     } finally { await db.close(); }
 });
 
-test("SHOW(log://1/1/1) flips indexed back to 1", async () => {
+test("OPEN(log://1/1/1) flips indexed back to 1", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const log = new Log();
-        await log.hide(hideStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
-        const r = await log.show(showStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        await log.fold(foldStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        const r = await log.open(openStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(await getIndexed(db, runId), 1);
     } finally { await db.close(); }
 });
 
-test("HIDE on nonexistent coordinate returns 404", async () => {
+test("FOLD on nonexistent coordinate returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
-        const r = await new Log().hide(
-            hideStmt(urlPath("log", "9/9/9")),
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "9/9/9")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
-test("HIDE on malformed path returns 400", async () => {
+test("FOLD on malformed path returns 400", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
-        const r = await new Log().hide(
-            hideStmt(urlPath("log", "garbage")),
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "garbage")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 400);

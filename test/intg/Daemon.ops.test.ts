@@ -194,7 +194,7 @@ test("discover catalog includes all op.* methods", async () => {
         try {
             const response = await rpcCall(ws, 1, "discover");
             const cat = response.result as { methods: Record<string, unknown>; notifications: Record<string, unknown> };
-            const expectedOps = ["op.edit", "op.read", "op.find", "op.show", "op.hide", "op.copy", "op.move", "op.send", "op.exec", "op.dispatch", "op.parse"];
+            const expectedOps = ["op.edit", "op.read", "op.find", "op.open", "op.fold", "op.copy", "op.move", "op.send", "op.exec", "op.dispatch", "op.parse"];
             for (const m of expectedOps) {
                 assert.ok(cat.methods[m] !== undefined, `missing method: ${m}`);
             }

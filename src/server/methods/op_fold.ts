@@ -10,16 +10,16 @@ interface Params {
     lineRange?: LineMarker;
 }
 
-export default class OpHideMethod {
+export default class OpFoldMethod {
     static register(registry: MethodRegistry): void {
-        registry.registerMethod("op.hide", {
+        registry.registerMethod("op.fold", {
             handler: async (params, ctx) => {
                 const p = params as Params;
-                if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.hide requires params.target: string");
+                if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.fold requires params.target: string");
                 const statement = Dsl.buildHide(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
-            description: "HIDE — collapse a log row to its path (drop its body from the render).",
+            description: "FOLD — collapse a log row to its path (drop its body from the render).",
             params: {
                 target: "string — entry path",
                 matcher: "string? — body matcher (glob/regex/xpath/jsonpath)",

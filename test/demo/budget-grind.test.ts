@@ -41,7 +41,7 @@ const buildProvider = async (): Promise<Provider> => {
 
 // Pinned above the assembled floor+catalog — measured as the turn-1 peak, which
 // grew to ~1816 with grammar 0.20.0 + mimetypes 0.10.0's larger sysprompt (was
-// ~1478) — and below the with-reads peak, so the model must read-distill-HIDE to
+// ~1478) — and below the with-reads peak, so the model must read-distill-FOLD to
 // answer rather than the grinder hard-stopping at the floor. Bump when the
 // sysprompt grows again. Absolute mode (>1) holds though gemma reports no window.
 const CEILING = 2000;

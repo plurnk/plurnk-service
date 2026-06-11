@@ -7,15 +7,15 @@
 // "match the content" return DISJOINT results. An implementation that matches
 // the wrong field cannot pass by accident.
 //
-// Contract (plurnk.md §"Body matcher dispatch (FIND, READ, SHOW, HIDE)"): the
+// Contract (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"): the
 // (target) selects WHICH entries are candidates; the body matcher runs against
 // the entry CONTENT. The canonical examples are unambiguous about this:
 //   <<FIND(config/**/*.xml)://user[@role='admin']:FIND   — xpath over XML content
 //   <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND — regex over log content
-//   <<SHOW[france](known://countries/**):Paris*:SHOW      — glob over entry content
+//   <<OPEN[france](known://countries/**):Paris*:OPEN      — glob over entry content
 // The path-globs live in the (target); the body is the content matcher.
 //
-// READ honors this (matchAgainstContent). FIND/SHOW/HIDE currently run the body
+// READ honors this (matchAgainstContent). FIND/OPEN/FOLD currently run the body
 // matcher against the PATHNAME (_entry-find.ts:64-73) — so the FIND tests below
 // are deferred-reds pinning that divergence until it is reconciled.
 
@@ -115,7 +115,7 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
     } finally { db.close(); }
 });
 
-// plurnk.md: <<SHOW[france](known://countries/**):Paris*:SHOW (glob body) — same
+// plurnk.md: <<OPEN[france](known://countries/**):Paris*:OPEN (glob body) — same
 // dispatch as FIND; glob body selects entries whose CONTENT matches.
 test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONTENT, not pathname", async () => {
     const { db, sessionId, runId } = await setup();

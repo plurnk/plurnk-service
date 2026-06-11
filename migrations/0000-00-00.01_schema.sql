@@ -135,7 +135,7 @@ CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
 -- proposing schemes transition 'proposed' → resolved/failed/cancelled.
--- indexed: per-row visibility for SHOW/HIDE via the log:// scheme.
+-- indexed: per-row visibility for OPEN/FOLD via the log:// scheme.
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'system', 'plugin')),
 
-    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'SHOW', 'HIDE', 'SEND', 'EXEC')),
+    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC')),
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 

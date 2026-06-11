@@ -2,7 +2,7 @@
 // dispatches an op uses one of these.
 
 import type {
-    EditStatement, ReadStatement, SendStatement, ShowStatement, HideStatement,
+    EditStatement, ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody,
 } from "@plurnk/plurnk-grammar";
@@ -31,13 +31,13 @@ export const sendStmt = (status: number | null, recipient: ParsedPath | null = n
     position: { line: 1, column: 1 },
 });
 
-export const showStmt = (target: ParsedPath | null): ShowStatement => ({
-    op: "SHOW", suffix: "", signal: null, target, lineMarker: null, body: null,
+export const openStmt = (target: ParsedPath | null): OpenStatement => ({
+    op: "OPEN", suffix: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
-export const hideStmt = (target: ParsedPath | null): HideStatement => ({
-    op: "HIDE", suffix: "", signal: null, target, lineMarker: null, body: null,
+export const foldStmt = (target: ParsedPath | null): FoldStatement => ({
+    op: "FOLD", suffix: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 

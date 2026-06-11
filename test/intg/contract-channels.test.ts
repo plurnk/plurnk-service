@@ -9,7 +9,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, hideStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();

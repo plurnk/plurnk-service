@@ -23,7 +23,7 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
 export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string };
-export type ShowHideResult = { status: number };
+export type OpenFoldResult = { status: number };
 
 export default class EntryOps {
     static #pathnameOf(statement: { target: EditStatement["target"] }): string {
@@ -113,7 +113,7 @@ export default class EntryOps {
         }
 
         // 304 no-op (SPEC §6.1): an existing entry whose write would change nothing —
-        // identical content and no new tag. Mirrors SHOW/HIDE's 304 on no-op; hands the
+        // identical content and no new tag. Mirrors OPEN/FOLD's 304 on no-op; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
         if (existing !== undefined && newContent === originalContent) {

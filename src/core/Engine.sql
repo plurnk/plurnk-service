@@ -82,7 +82,7 @@ WHERE id = $id;
 -- PREP: engine_list_session_entries
 -- Every entry of a session — all schemes, all channels — the source for
 -- plurnk://manifest.json, the flat catalog of everything the session holds.
--- Session-scoped (persists across runs); HIDE doesn't drop from the catalog.
+-- Session-scoped (persists across runs); FOLD doesn't drop from the catalog.
 SELECT e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
@@ -112,17 +112,17 @@ WHERE le.loop_id = $loop_id
 ORDER BY le.sequence;
 
 -- PREP: engine_grinder_prior_turn_logs
--- §14.4 pass 1 (prior-turn rollback): the immediately-prior turn's still-shown
--- log entries — the latest emissions that pushed the packet over. Hiding them
--- (not deleting) reverts the render; the rows + bodies persist, re-SHOWable.
+-- §14.4 pass 1 (prior-turn rollback): the immediately-prior turn's still-open
+-- log entries — the latest emissions that pushed the packet over. Folding them
+-- (collapse to coordinate, not deleting) lightens the render; bodies persist, re-OPENable.
 SELECT le.id, le.scheme
 FROM log_entries le
 WHERE le.loop_id = $loop_id AND le.indexed = 1
   AND le.turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
--- PREP: engine_grinder_hide_prior_turn_logs
--- §14.4 pass 1: hide the prior turn's still-shown logs in one set-op (same WHERE
--- as engine_grinder_prior_turn_logs above). Rows + bodies stay, re-SHOWable.
+-- PREP: engine_grinder_fold_prior_turn_logs
+-- §14.4 pass 1: fold the prior turn's still-open logs in one set-op (same WHERE
+-- as engine_grinder_prior_turn_logs above). Rows + bodies stay, re-OPENable.
 UPDATE log_entries SET indexed = 0
 WHERE loop_id = $loop_id AND indexed = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
@@ -133,7 +133,8 @@ WHERE loop_id = $loop_id AND indexed = 1
 -- memory carries across loops within a session's run, not just the
 -- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
--- `indexed = 0` rows are hidden (model curated them out via HIDE).
+-- `indexed = 0` rows are FOLDED — listed but collapsed to their coordinate
+-- (FOLD); the renderer elides the body. §6.3: folded rows stay listed, re-OPENable.
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
@@ -145,13 +146,12 @@ SELECT
     le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome
+    le.state, le.outcome, le.indexed
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.run_id = $run_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
-  AND le.indexed = 1
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry
