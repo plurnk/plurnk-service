@@ -1,13 +1,13 @@
 // SPEC §14 architectural-decision contract tests.
 //
-//   §14.3-git-membership / §14.3-edit-membership-gate / §14.3-constraint-ignore —
-//       git-substrate membership, the membership-bound edit, and the client's
-//       `ignore` supersede (with reconciliation). BUILT — the tests below pass.
+//   §14.3-git-membership / §14.3-edit-membership-gate / §14.3-constraint-ignore /
+//       §14.3-constraint-readonly — git-substrate membership, the membership-bound
+//       edit, the client's `ignore` supersede (with reconciliation), and `read-only`
+//       enforcement. BUILT — the tests below pass.
 //
-//   §14.3-constraint-add / §14.3-constraint-readonly / §14.3-emi-divergence-signal
-//       — the add-glob scan, read-only enforcement, and the out-of-band divergence
-//       signal. DEFERRED; the red {todo} tests are the deferral ledger, EXPECTED TO
-//       FAIL until built. Do not weaken them to green.
+//   §14.3-constraint-add / §14.3-emi-divergence-signal — the add-glob scan and the
+//       out-of-band divergence signal. DEFERRED; the red {todo} tests are the
+//       deferral ledger, EXPECTED TO FAIL until built. Do not weaken them to green.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -194,13 +194,15 @@ test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", 
     });
 });
 
-test("[§14.3-constraint-readonly] a read-only-glob admits a member for read but refuses edit", { todo: "DEFERRED — flips when read-only enforcement lands (SPEC §14.3)" }, async () => {
+test("[§14.3-constraint-readonly] a read-only-glob keeps a member readable but refuses edits", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        // A read-only constraint should leave READ working but make File.edit refuse.
-        // Enforcement isn't wired, so the edit still proposes (202). Red until built.
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "read-only", glob: trackedPath });
+        // READ still works — it's a member...
+        const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
+        assert.equal(read.status, 200, "a read-only member stays readable");
+        // ...but EDIT is refused at the membership check, before any diff.
         const edit = await new File().edit(editStmt(urlPath("file", trackedPath), "changed\n"), ctx);
-        assert.equal(edit.status, 403, "a read-only member must refuse edits (SPEC §14.3) — DEFERRED/UNBUILT");
+        assert.equal(edit.status, 403, "a read-only member refuses edits");
     });
 });
 

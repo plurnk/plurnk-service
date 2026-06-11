@@ -1,5 +1,5 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute, matchesGlob } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -164,6 +164,11 @@ export default class File {
         if (fileExists) {
             const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
             if (member === undefined) return { status: 403, error: "path is outside your workspace surface" };
+            // read-only overlay (SPEC §14.3): a member matching a read-only glob is
+            // readable but not writable — refuse before reading or diffing.
+            const readonlyGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
+                .filter((c) => c.effect === "read-only").map((c) => c.glob);
+            if (readonlyGlobs.some((g) => matchesGlob(rel, g))) return { status: 403, error: "member is read-only" };
             original = await readFile(canonical, "utf8");
         }
 
