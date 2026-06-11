@@ -146,7 +146,7 @@ SELECT
     le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.indexed
+    le.state, le.outcome, le.indexed, le.source
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
@@ -160,14 +160,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via loop/resolve RPC; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, sequence, origin,
+    run_id, loop_id, turn_id, sequence, origin, source,
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, params, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $sequence, $origin,
+    $run_id, $loop_id, $turn_id, $sequence, $origin, $source,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $params, $fragment, $lineMarker,

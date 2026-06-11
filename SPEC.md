@@ -940,6 +940,24 @@ Each entry: question, answer, rationale, migration path.
 
 **Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
 
+### §14.5 The environment delta: what changed since the model last looked
+
+**Question.** The manifest (§15) is a live directory of what *exists*, re-derived each turn — but it carries *state*, not *events*. When a session entry changes out-of-band between turns — an exec stream grows, a sibling run edits a shared entry, a tracked file diverges on disk (§14.3) — the model's prior READ is now stale, and the manifest's new line count is a fact it must *diff against its own memory* to notice. The manifest also cannot say *who* changed it; with more than one actor in a session, provenance is load-bearing. What surfaces change — losslessly, attributably, without curating?
+
+**Decision — a per-run delta, the manifest's twin.** Where the manifest is the exhaustive, unranked, content-free directory of what *exists*, the delta is the exhaustive, unranked, content-free directory of what *changed* since this run last looked. Same discipline, different tense. It is a **signal, not curation** — the engine may inform (the §14.3 EMI divergence is the precedent), never decide what the model retains: the delta states *what* changed, *how much*, *by whom*, *when* — never the changed content (the model READs that itself), never a ranking. The instant it ranks or inlines content it is the index — the curation organ the manifest exists to *not* be — regrowing through a side door.
+
+**Form — a log entry, `origin=system`, the change translated to DSL.** A delta is a `log_entries` row: an **`EDIT`** ("an EDIT happened to X"), `origin=system`, carrying the new **`source`** column — the cause. A log entry, not a transient frame section, because a run's timeline must be **self-contained** (a forked run carries everything it observed). `source` renders as `run="<id>"` / `run="file"` in the meta line, **omitted when the cause is the owning run itself**. It is a third attribution axis, distinct from `run_id` (whose log owns the row) and `origin` (the actor *type*).
+
+**Passive — computed at build, never forces a turn.** A delta materializes only while a packet is being assembled, so a change has nowhere to land until something else has already started a turn — it cannot wake an idle model. "Inform, never override," as mechanism. Urgency that genuinely needs the model routes through the *voice* door (an inject), never the environment door promoting itself to a turn.
+
+**Coalesce per `(entry, source)`.** Net the magnitude, keep the cause: three edits to one entry by one run collapse to a single `+N`; the same entry touched by a run *and* the fs stays two deltas. Provenance is the delta's reason to exist, so it is the one thing coalescing never erases.
+
+**Detection — announced vs ambient.** A run *knows* when it writes, so run-caused changes are **broadcast** (the existing `stream/event`, §13.6 — already session-scoped and carrying its `runId`) and **queued** per sibling run, drained into deltas at that run's next turn. Nothing announces an external disk edit, so ambient fs changes are **scooped at pre-turn** by the §14.3 EMI scan. Attribution falls out of detection: the broadcast carries the run; the scan attributes to the scheme.
+
+**Rationale.** "The model knows its world moved" becomes a property of *reading reality at build*, not of *remembering to emit* — 100% coverage by construction — and it spares the floor model an error-prone manifest diff every turn. The engine records the fact and hands the model the wheel; it never folds, ranks, or inlines on the model's behalf.
+
+**Migration path.** Additive. The `source` column defaults null — existing rows and the current render are unaffected; materialization and the broadcast/EMI detection layer on without touching the op surface.
+
 ---
 
 ## §15 Packet shape

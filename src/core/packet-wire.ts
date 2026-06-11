@@ -40,6 +40,7 @@ interface LogEntryView {
     tx?: StatementTx | null;
     rx?: unknown;
     folded?: boolean;
+    source?: unknown;
 }
 interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
 interface SystemSection {
@@ -298,6 +299,9 @@ export default class PacketWire {
             if (coordinate !== null && op !== null) meta.path = `log://${coordinate}/${op}`;
             else if (coordinate !== null) meta.path = `log://${coordinate}`;
             if (typeof e.origin === "string") meta.origin = e.origin;
+            // §14.5: the environment-delta cause (a sibling run or a scheme),
+            // rendered when present; absent ⇒ the owning run itself (self).
+            if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
             if (op !== null) meta.op = op;
             if (typeof e.status === "number") meta.status = e.status;
             const target = PacketWire.#renderActionTarget(e.target);

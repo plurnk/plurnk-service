@@ -193,6 +193,19 @@ test("parser: nested same-op uses suffix to disambiguate fence boundaries", () =
     assert.match(outer.body as string, /<<EDIT\(known:\/\/inner\):hello:EDIT/);
 });
 
+test("parser: digit suffix (plurnk.md 0.26.0) disambiguates nested-op fences", () => {
+    // 0.26.0 tightened the fence suffix from optional-any to a required digit
+    // when quoting an op inside a body: `<<EDIT1(...):...:EDIT1`. Same nesting
+    // contract as the alpha case above — outer fence carries, inner stays text.
+    const input = "<<EDIT1(known://demo):quoted: <<EDIT(known://inner):hello:EDIT\n:EDIT1";
+    const stmts = parseAll(input);
+    assert.equal(stmts.length, 1, "exactly one statement parsed (the outer EDIT1)");
+    const outer = stmts[0] as EditStatement & { suffix: string };
+    assert.equal(outer.op, "EDIT");
+    assert.equal(outer.suffix, "1");
+    assert.match(outer.body as string, /<<EDIT\(known:\/\/inner\):hello:EDIT/);
+});
+
 test("parser: mismatched suffix surfaces a parse-error item", () => {
     // The suffix is a fence-matching token. Mismatched suffixes don't get
     // silently absorbed: the parser emits an `error` item in result.items

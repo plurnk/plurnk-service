@@ -22,6 +22,7 @@ const setup = async () => {
         run_id: runId, loop_id: loopId, turn_id: turnId,
         sequence: 1,
         origin: "system",
+        source: null,
         op: "EDIT", suffix: "",
         signal: null,
         scheme: "known", username: null, password: null,
@@ -104,5 +105,25 @@ test("FOLD on malformed path returns 400", async () => {
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 400);
+    } finally { await db.close(); }
+});
+
+test("engine_render_log carries the delta source; self-authored entries stay null", async () => {
+    const { db, sessionId: _sessionId, runId, loopId, turnId } = await setup();
+    try {
+        // A synthetic environment-delta row (§14.5): origin=system, source=a scheme.
+        await (db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId,
+            sequence: 2, origin: "system", source: "file",
+            op: "EDIT", suffix: "", signal: null,
+            scheme: "file", username: null, password: null, hostname: null, port: null,
+            pathname: "config.toml", params: null, fragment: null, lineMarker: null,
+            tx: "<<EDIT(file://config.toml)::EDIT", mimetype_tx: "text/vnd.plurnk",
+            rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+            status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+        });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ sequence: number; source: string | null }>({ run_id: runId });
+        assert.equal(rows.find((r) => r.sequence === 2)?.source, "file", "the delta's cause round-trips the render query → packet-wire renders run=\"file\"");
+        assert.equal(rows.find((r) => r.sequence === 1)?.source, null, "a self-authored entry has null source — rendered without a run= label");
     } finally { await db.close(); }
 });

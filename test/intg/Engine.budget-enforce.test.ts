@@ -110,8 +110,8 @@ test("[§14.4-event-model-terms] the overflow event names hidden entries by sche
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
-        // Turn 1 leaves a shown log; turn 2 overflows and the prior-turn rollback
-        // hides it (pass 1), emitting budget_overflow into the buffer; turn 3
+        // Turn 1 leaves an open log; turn 2 overflows and the prior-turn rollback
+        // folds it (pass 1), emitting budget_overflow into the buffer; turn 3
         // drains that event into its packet.
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -120,7 +120,7 @@ test("[§14.4-event-model-terms] the overflow event names hidden entries by sche
         const packet = JSON.parse(row!.packet) as { user: { telemetry: { errors: Array<Record<string, unknown>> } } };
         const evt = packet.user.telemetry.errors.find((e) => e.kind === "budget_overflow");
         assert.ok(evt, "budget_overflow event surfaced to the model");
-        assert.ok(Array.isArray(evt!.hidden), "carries hidden-by-scheme facts");
+        assert.ok(Array.isArray(evt!.folded), "carries folded-by-scheme facts");
         assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");
     } finally { await db.close(); }
 });

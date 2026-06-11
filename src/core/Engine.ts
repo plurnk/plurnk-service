@@ -981,8 +981,8 @@ export default class Engine {
         const measure = (p: RequestPacket): number => p.system.tokens + p.user.tokens;
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
-        const hidden = new Map<string, number>();
-        const note = (scheme: string): void => { hidden.set(scheme, (hidden.get(scheme) ?? 0) + 1); };
+        const folded = new Map<string, number>();
+        const note = (scheme: string): void => { folded.set(scheme, (folded.get(scheme) ?? 0) + 1); };
 
         // Pass 1 — prior-turn rollback: fold the latest emissions (the ones that
         // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
@@ -992,26 +992,26 @@ export default class Engine {
         const errors = packet.user.telemetry.errors;
         let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
         if (measure(current) <= ceiling) {
-            this.#emitBudgetOverflow(sessionId, loopId, hidden);
+            this.#emitBudgetOverflow(sessionId, loopId, folded);
             return { packet: current, fit: true, struck: turnNumber > 1 };
         }
 
         // Prior-turn rollback is the only budget lever now: entries don't render
         // (no index), so there is no catalog to collapse. If pass 1 didn't fit,
         // the packet is over and the caller hard-413s.
-        this.#emitBudgetOverflow(sessionId, loopId, hidden);
+        this.#emitBudgetOverflow(sessionId, loopId, folded);
         return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
     }
 
     // The model-facing budget event (SPEC §14.4, §15.1): which entries left the
     // window, by scheme — the model's own terms, no mechanism vocabulary. The
     // strike this overflow triggers stays engine-internal (gamification policy).
-    #emitBudgetOverflow(sessionId: number, loopId: number, hidden: Map<string, number>): void {
-        if (hidden.size === 0) return;
+    #emitBudgetOverflow(sessionId: number, loopId: number, folded: Map<string, number>): void {
+        if (folded.size === 0) return;
         this.#pushTelemetry(sessionId, loopId, {
             source: "engine:rail",
             kind: "budget_overflow",
-            hidden: [...hidden.entries()].map(([scheme, count]) => ({ scheme, count })),
+            folded: [...folded.entries()].map(([scheme, count]) => ({ scheme, count })),
         });
     }
 
@@ -1092,7 +1092,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string | null;
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; indexed: number;
+            tx: string; mimetype_tx: string; indexed: number; source: string | null;
         }>({ run_id: runId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -1114,6 +1114,7 @@ export default class Engine {
             tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
             mimetype_tx: r.mimetype_tx,
             folded: r.indexed === 0,
+            source: r.source,
         }));
     }
 
@@ -1704,6 +1705,7 @@ export default class Engine {
             turn_id: turnId,
             sequence: sequence,
             origin,
+            source: null,  // dispatch entries are self-authored; §14.5 deltas set this
             op: statement.op,
             suffix: statement.suffix,
             signal: this.#signalToJson(statement.signal),
