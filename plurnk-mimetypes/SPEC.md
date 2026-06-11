@@ -585,7 +585,13 @@ interface MimeRef {
 
 **`ref.container` is the enclosing definition's FULL qualified path** — a call inside method `parse` of class `Parser` carries `container: "Parser.parse"`, exactly equal to the source def's composed `container + "." + name`. That equality is the join key for `@>` (edge source → def) — emitting only the immediate class would break it. Module-top-level references omit the key.
 
-**Extraction mechanism (issue #19).** Tree-sitter-backed languages use per-language query files (`src/treesitter/queries/{slug}.scm`) with `@ref.<kind>` capture conventions, executed by one framework engine via web-tree-sitter's Query API. Queries are data — declarative, reviewable, the ecosystem-standard mechanism (tags/locals/highlights). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
+**Extraction mechanism (issue #19, engine landed v0.15.x).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
+
+Query conventions (first wave):
+- `import` refs capture **bound symbol names** (name-join-resolvable), never module-path strings; aliased imports capture the original exported name. Languages whose imports are paths only (Go) emit no import refs.
+- `call` refs capture the callee **name node** (property/attribute name for member calls), not the expression root.
+- Languages where instantiation is syntactically a call (Python) classify it as `call`.
+- `use` is reserved: bare identifier reads are not emitted — precision over recall.
 
 **Invariants (conformance-enforced per language, issue #20):**
 - All positions 1-indexed; `endLine >= line`; columns always present.

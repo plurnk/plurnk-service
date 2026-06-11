@@ -188,3 +188,5 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         ...(container.length > 0 && { container }),
     });
 }
+
+export { refsQuery } from "./queries/javascript.ts";

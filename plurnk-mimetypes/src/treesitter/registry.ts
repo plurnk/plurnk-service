@@ -44,6 +44,13 @@ export interface TreeSitterLanguageMapping {
     // right answer for code-shaped languages where the AST IS what users
     // want to query.
     deepJson?(content: string): unknown | Promise<unknown>;
+    // Optional references-channel query (issue #19): tree-sitter query
+    // source (S-expression patterns) whose `@ref.<kind>` captures yield the
+    // classified symbol uses. Lives in src/treesitter/queries/{slug}.ts as
+    // an embedded string (reviewable .scm content without a build-time copy
+    // step) and is re-exported by the mapping module. Languages without a
+    // query serve an empty references channel.
+    refsQuery?: string;
 }
 
 // Built-in tree-sitter language registry. Order is not significant; lookup

@@ -187,3 +187,5 @@ function parameterName(node: TreeSitterNode): string | null {
             return null;
     }
 }
+
+export { refsQuery } from "./queries/python.ts";

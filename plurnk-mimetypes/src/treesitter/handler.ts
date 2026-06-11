@@ -1,6 +1,8 @@
 import TreeSitterExtractor, { walkDeepNode } from "../TreeSitterExtractor.ts";
 import type { TreeSitterParser, TreeSitterTree } from "../TreeSitterExtractor.ts";
-import type { HandlerMetadata, MimeSymbol } from "../types.ts";
+import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
+import { collectReferences } from "./refsEngine.ts";
+import type { RefsQuery } from "./refsEngine.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 
 // Bridges a registry entry to a runtime handler. The framework instantiates
@@ -13,6 +15,12 @@ import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./regis
 export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     readonly #entry: TreeSitterLanguageEntry;
     #mappingPromise: Promise<TreeSitterLanguageMapping> | null = null;
+    // Retained by loadParser for the references engine — Query compilation
+    // needs the Language object and the Query constructor, not the parser
+    // (issue #19).
+    #language: unknown = null;
+    #QueryCtor: (new (language: unknown, source: string) => RefsQuery) | null = null;
+    #refsQuery: RefsQuery | null = null;
 
     constructor(metadata: HandlerMetadata, entry: TreeSitterLanguageEntry) {
         super(metadata);
@@ -31,13 +39,63 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
             Language: {
                 load(wasmPath: string): Promise<unknown>;
             };
+            Query: new (language: unknown, source: string) => RefsQuery;
         };
         await ts.Parser.init();
         const wasmPath = await resolveWasmPath(this.#entry);
         const lang = await ts.Language.load(wasmPath);
+        this.#language = lang;
+        this.#QueryCtor = ts.Query;
         const parser = new ts.Parser();
         parser.setLanguage(lang);
         return parser as unknown as TreeSitterParser;
+    }
+
+    // References channel (issue #19). Languages opt in by exporting a
+    // refsQuery from their mapping module; the engine executes it and
+    // resolves containers against the same symbols the mapping emits.
+    // No query → empty channel. Parse failures → empty, mirroring the
+    // other channels' error policy; GrammarNotInstalledError propagates
+    // for the #14 degrade path.
+    override async references(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeRef[]> {
+        if (typeof content !== "string") return [];
+        const mapping = await this.#getMappingCached();
+        if (mapping.refsQuery === undefined) return [];
+        let parser: TreeSitterParser;
+        try {
+            parser = await this.getParser();
+        } catch (err) {
+            if (err instanceof GrammarNotInstalledError) throw err;
+            return [];
+        }
+        // loadParser retained the Language; a primed parser guarantees it.
+        const query = this.#getRefsQuery(mapping.refsQuery);
+        let tree: TreeSitterTree | null;
+        try {
+            tree = parser.parse(content) as TreeSitterTree | null;
+            if (!tree) return [];
+        } catch {
+            return [];
+        }
+        try {
+            return collectReferences(query, tree, mapping.extract(tree.rootNode, content));
+        } catch {
+            return [];
+        } finally {
+            tree.delete?.();
+        }
+    }
+
+    // Compiled-query cache: the query source is constant per mapping, so
+    // compile once per handler lifetime.
+    #getRefsQuery(source: string): RefsQuery {
+        if (this.#refsQuery === null) {
+            if (this.#language === null || this.#QueryCtor === null) {
+                throw new Error("internal: references() before loadParser primed the language");
+            }
+            this.#refsQuery = new this.#QueryCtor(this.#language, source);
+        }
+        return this.#refsQuery;
     }
 
     protected override extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {

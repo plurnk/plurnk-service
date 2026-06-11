@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-mimetypes",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
   "keywords": [
     "plurnk",
@@ -49,7 +49,8 @@
     "test:lint": "tsc --noEmit",
     "test:unit": "node --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
     "test:intg": "node --test test/integration/**/*.test.ts",
-    "test": "npm run test:lint && npm run test:unit && npm run test:intg"
+    "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:conf",
+    "test:conf": "node --test test/conformance/*.test.ts"
   },
   "peerDependencies": {
     "antlr-ng": "^1.0.10"

@@ -137,3 +137,4 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
 
 // Re-export walkJs for symmetry (not used directly).
 export { walkJs };
+export { refsQuery } from "./queries/typescript.ts";

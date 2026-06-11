@@ -159,3 +159,5 @@ function push(out: MimeSymbol[], kind: SymbolKind, name: string, node: TreeSitte
         ...position(node),
     });
 }
+
+export { refsQuery } from "./queries/go.ts";
