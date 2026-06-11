@@ -2,12 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { runConformance } from "./harness.ts";
 
-// NOTE: the haskell.ts mapping is mostly FLAT, and a function def's span is
-// its SIGNATURE line only (the body is a separate `function` node, deduped,
-// not emitted) — so refs inside function BODIES carry no container. The
-// joins that exist are type refs ON declaration lines: signature types
-// inside a function/method def's (one-line) span, and field/RHS types
-// inside a data/newtype/synonym def's span.
+// NOTE: the haskell.ts mapping is mostly FLAT, but a function def's span
+// covers its signature AND all body equations (issue #22) — refs inside
+// function bodies carry the function as container. Type refs on declaration
+// lines join the same way: signature types inside a function/method def's
+// span, and field/RHS types inside a data/newtype/synonym def's span.
 const SOURCE = `module Main where
 
 import Data.List (sort, nub)
@@ -61,6 +60,10 @@ describe("conformance: text/x-haskell defs + refs (issues #19/#20)", () => {
                 // Shape/Result in process's signature join to local defs.
                 { refName: "Shape", container: "process" },
                 { refName: "Result", container: "process" },
+                // Body CALL refs join at function level now that the def's
+                // span covers the equations (issue #22).
+                { refName: "tokenize", container: "process" },
+                { refName: "render", container: "process" },
             ],
             expectRefs: [
                 { name: "sort", kind: "import", line: 3 },
@@ -75,16 +78,16 @@ describe("conformance: text/x-haskell defs + refs (issues #19/#20)", () => {
                 // Instance target type — the type the class is implemented for.
                 { name: "Shape", kind: "type", line: 19 },
                 { name: "Token", kind: "type", line: 24, container: "tokenize" },
-                // Body refs: no container (function def spans only its sig line).
-                { name: "sort", kind: "call", line: 25 },
-                { name: "tokenize", kind: "call", line: 28 },
-                { name: "render", kind: "call", line: 28 },
+                // Body refs carry the enclosing function (issue #22).
+                { name: "sort", kind: "call", line: 25, container: "tokenize" },
+                { name: "tokenize", kind: "call", line: 28, container: "process" },
+                { name: "render", kind: "call", line: 28, container: "process" },
                 // List/tuple element types in collect's signature.
                 { name: "Token", kind: "type", line: 30, container: "collect" },
                 { name: "Shape", kind: "type", line: 30, container: "collect" },
                 // Qualified call captures the name side (Map.insert → insert).
-                { name: "insert", kind: "call", line: 31 },
-                { name: "nub", kind: "call", line: 31 },
+                { name: "insert", kind: "call", line: 31, container: "collect" },
+                { name: "nub", kind: "call", line: 31, container: "collect" },
             ],
         });
         // Module names are dotted paths, not name-joinable symbols — the

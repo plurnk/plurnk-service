@@ -59,6 +59,31 @@ describe("text/x-dart — container + columns (issue #18)", () => {
     });
 });
 
+describe("text/x-dart — def spans cover sibling bodies (issue #22)", () => {
+    it("multi-line method def endLine covers the body's last line", async () => {
+        const src = "class Foo {\n  int twice(int n) {\n    final m = n * 2;\n    return m;\n  }\n}\n";
+        const syms = await h().extractRaw(src);
+        const twice = syms.find((s) => s.name === "twice");
+        assert.equal(twice?.line, 2);
+        assert.equal(twice?.endLine, 5);
+    });
+
+    it("multi-line top-level function def endLine covers the body's last line", async () => {
+        const src = "int add(int a, int b) {\n  return a + b;\n}\n";
+        const syms = await h().extractRaw(src);
+        const add = syms.find((s) => s.name === "add");
+        assert.equal(add?.line, 1);
+        assert.equal(add?.endLine, 3);
+    });
+
+    it("multi-line getter and constructor bodies are covered", async () => {
+        const src = "class Foo {\n  Foo(this.x) {\n    init();\n  }\n  int get size {\n    return 42;\n  }\n}\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Foo" && s.kind === "method")?.endLine, 4);
+        assert.equal(syms.find((s) => s.name === "size")?.endLine, 7);
+    });
+});
+
 describe("text/x-dart — enum constants surface from the enum body", () => {
     it("emits each enum constant with the enum as container", async () => {
         const src = "enum Color {\n  red,\n  green,\n  blue,\n}\n";

@@ -56,3 +56,32 @@ describe("text/x-fsharp — container + columns (issue #18)", () => {
         assert.ok((m?.endColumn ?? 0) >= 1);
     });
 });
+
+describe("text/x-fsharp — implicit-constructor types (issue #22)", () => {
+    it("anon_type_defn emits the type and its members with dotted containers", async () => {
+        const src = "module M\ntype Parser(token: string) =\n    member this.Run x = x\n    member val Count = 0 with get, set\n    let mutable cache = 0\n";
+        const syms = await h().extractRaw(src);
+        const parser = syms.find((s) => s.name === "Parser");
+        assert.equal(parser?.kind, "class");
+        assert.equal(parser?.container, "M");
+        const run = syms.find((s) => s.name === "Run");
+        assert.equal(run?.kind, "method");
+        assert.equal(run?.container, "M.Parser");
+        assert.deepEqual(run?.params, ["x"]);
+        const count = syms.find((s) => s.name === "Count");
+        assert.equal(count?.kind, "field");
+        assert.equal(count?.container, "M.Parser");
+        const cache = syms.find((s) => s.name === "cache");
+        assert.equal(cache?.kind, "constant");
+        assert.equal(cache?.container, "M.Parser");
+    });
+
+    it("abstract member signatures and interface implementations carry the type", async () => {
+        const src = "module M\ntype Runnable =\n    abstract member Run: int -> int\ntype Parser() =\n    interface Runnable with\n        member this.Run x = x\n";
+        const syms = await h().extractRaw(src);
+        assert.equal(syms.find((s) => s.name === "Runnable")?.kind, "class");
+        const runs = syms.filter((s) => s.name === "Run");
+        assert.deepEqual(runs.map((s) => s.container), ["M.Runnable", "M.Parser"]);
+        assert.ok(runs.every((s) => s.kind === "method"));
+    });
+});

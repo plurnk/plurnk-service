@@ -39,6 +39,30 @@ describe("text/x-haskell via tree-sitter registry", () => {
         assert.equal(bars[0]?.kind, "function");
     });
 
+    it("function def span covers the body equations (issue #22)", async () => {
+        const syms = await h().extractRaw("bar :: Int -> Int\nbar x = x + 1\n");
+        const bar = syms.find((s) => s.name === "bar");
+        assert.equal(bar?.line, 1);
+        assert.equal(bar?.endLine, 2);
+    });
+
+    it("multi-equation function def span reaches the last clause (issue #22)", async () => {
+        const src = "fib :: Int -> Int\nfib 0 = 0\nfib 1 = 1\nfib n = fib (n - 1) + fib (n - 2)\n";
+        const syms = await h().extractRaw(src);
+        const fibs = syms.filter((s) => s.name === "fib");
+        assert.equal(fibs.length, 1);
+        assert.equal(fibs[0]?.line, 1);
+        assert.equal(fibs[0]?.endLine, 4);
+    });
+
+    it("signature-less multi-equation def spans all clauses (issue #22)", async () => {
+        const src = "step 0 = 1\nstep n = n - 1\n";
+        const syms = await h().extractRaw(src);
+        const step = syms.find((s) => s.name === "step");
+        assert.equal(step?.line, 1);
+        assert.equal(step?.endLine, 2);
+    });
+
     it("returns [] for empty input", async () => {
         assert.deepEqual(await h().extractRaw(""), []);
     });

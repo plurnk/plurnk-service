@@ -21,6 +21,7 @@ function fakeNode(text: string): TreeSitterNode {
         endPosition: { row: 0, column: text.length },
         childCount: 0,
         namedChildCount: 0,
+        nextNamedSibling: null,
         child: () => null,
         namedChild: () => null,
         childForFieldName: () => null,

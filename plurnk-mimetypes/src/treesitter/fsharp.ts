@@ -10,9 +10,12 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   type_definition:
 //      record_type_defn                         → class + record_field → field
 //      union_type_defn                          → enum + union_type_case → constant
+//      anon_type_defn (implicit constructor) /
 //      object_type_defn / class_type_defn       → class
 //      delegate_type_defn / type_abbrev_defn    → type
-//   member_defn                                 → method
+//   member_defn                                 → method (member val → field)
+//   type_extension_elements /
+//   interface_implementation                    → unwrap recursively
 //   module_defn                                 → unwrap recursively
 //
 // Container semantics (issue #18): declarations inside a named module or
@@ -66,20 +69,20 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
             return;
         }
         case "member_defn": {
-            // Method inside a type. Find the function_declaration_left identifier.
-            const left = findChildOfType(node, "function_declaration_left");
-            if (left) {
-                const name = firstIdentifierText(left);
-                if (name) {
-                    out.push({
-                        name,
-                        kind: "method",
-                        ...position(node),
-                        ...(container.length > 0 && { container }),
-                        params: extractArgPatterns(findChildOfType(left, "argument_patterns")),
-                    });
-                }
-            }
+            handleMemberDefn(node, out, container);
+            return;
+        }
+        case "type_extension_elements":
+        case "interface_implementation": {
+            // Member groups inside a type body — walk so member_defn and
+            // let-bound function_or_value_defn children dispatch with the
+            // owning type's container.
+            walk(node, out, container);
+            return;
+        }
+        case "function_or_value_defn": {
+            // Bare let binding inside a type body (no value_declaration wrapper).
+            handleFnOrValue(node, out, container);
             return;
         }
         default:
@@ -125,6 +128,78 @@ function deepFirstIdentifier(node: TreeSitterNode): string | null {
     return null;
 }
 
+// member_defn shapes: function_declaration_left (extension members),
+// method_or_prop_defn (implicit-constructor type bodies, `member this.Run x`),
+// member_signature (abstract members), bare property_or_ident (`member val`).
+function handleMemberDefn(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
+    const left = findChildOfType(node, "function_declaration_left");
+    if (left) {
+        const name = firstIdentifierText(left);
+        if (name) {
+            out.push({
+                name,
+                kind: "method",
+                ...position(node),
+                ...(container.length > 0 && { container }),
+                params: extractArgPatterns(findChildOfType(left, "argument_patterns")),
+            });
+        }
+        return;
+    }
+    const method = findChildOfType(node, "method_or_prop_defn");
+    if (method) {
+        const name = memberName(findChildOfType(method, "property_or_ident"));
+        if (name) {
+            out.push({
+                name,
+                kind: "method",
+                ...position(node),
+                ...(container.length > 0 && { container }),
+                params: methodParams(method),
+            });
+        }
+        return;
+    }
+    const signature = findChildOfType(node, "member_signature");
+    if (signature) {
+        const name = firstIdentifierText(signature);
+        if (name) push(out, "method", name, node, container);
+        return;
+    }
+    const prop = findChildOfType(node, "property_or_ident");
+    if (prop) {
+        const name = memberName(prop);
+        if (name) push(out, "field", name, node, container);
+    }
+}
+
+// property_or_ident is `self.Name` or bare `Name` — the member name is the
+// last identifier child.
+function memberName(node: TreeSitterNode | null): string | null {
+    if (!node) return null;
+    let name: string | null = null;
+    for (let i = 0; i < node.namedChildCount; i += 1) {
+        const child = node.namedChild(i);
+        if (child && child.type === "identifier") name = child.text;
+    }
+    return name;
+}
+
+// method_or_prop_defn children: property_or_ident, then argument patterns,
+// then the body expression(s) — patterns run until the first non-pattern.
+// A unit pattern parses as const and yields no identifier.
+function methodParams(node: TreeSitterNode): string[] {
+    const out: string[] = [];
+    for (let i = 1; i < node.namedChildCount; i += 1) {
+        const child = node.namedChild(i);
+        if (!child) continue;
+        if (!child.type.endsWith("_pattern") && child.type !== "const") break;
+        const name = deepFirstIdentifier(child);
+        if (name) out.push(name);
+    }
+    return out;
+}
+
 function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
         case "record_type_defn": {
@@ -159,6 +234,7 @@ function handleTypeDefnVariant(node: TreeSitterNode, out: MimeSymbol[], containe
             }
             return;
         }
+        case "anon_type_defn":
         case "object_type_defn":
         case "class_type_defn": {
             const name = typeName(node);

@@ -69,7 +69,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
             out.push({
                 name,
                 kind: container.length > 0 ? "method" : "function",
-                ...position(node),
+                ...positionWithBody(node),
                 ...(container.length > 0 && { container }),
                 params: extractParams(findChildOfType(node, "formal_parameter_list")),
             });
@@ -91,7 +91,7 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
                         out.push({
                             name,
                             kind: "method",
-                            ...position(node),
+                            ...positionWithBody(node),
                             ...(container.length > 0 && { container }),
                             params: extractParams(findChildOfType(child, "formal_parameter_list")),
                         });
@@ -169,6 +169,23 @@ function position(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "
         endLine: node.endPosition.row + 1,
         column: node.startPosition.column + 1,
         endColumn: node.endPosition.column + 1,
+    };
+}
+
+// tree-sitter-dart parses a function/method body as a SIBLING of its
+// signature (function_signature/method_signature followed by function_body),
+// so the signature span alone never covers the body lines. Extend the def's
+// end to the body so container resolution lands refs on the method, not the
+// enclosing class. Bodyless (abstract) signatures parse as `declaration`
+// nodes and never reach here with a function_body sibling.
+function positionWithBody(node: TreeSitterNode): Pick<MimeSymbol, "line" | "endLine" | "column" | "endColumn"> {
+    const pos = position(node);
+    const body = node.nextNamedSibling;
+    if (body?.type !== "function_body") return pos;
+    return {
+        ...pos,
+        endLine: body.endPosition.row + 1,
+        endColumn: body.endPosition.column + 1,
     };
 }
 

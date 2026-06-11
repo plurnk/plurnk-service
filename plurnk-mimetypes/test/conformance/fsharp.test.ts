@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { runConformance } from "./harness.ts";
 
 // NOTE on containers: the fsharp mapping emits named modules, record/union
-// types + their fields/cases, and top-level let bindings — but NOT
-// implicit-constructor types (anon_type_defn, `type Parser(...) =`) or their
-// members. Refs inside those type bodies therefore resolve to the enclosing
-// module def, the innermost EMITTED scope (probed via extractRaw).
+// types + their fields/cases, top-level let bindings, AND implicit-constructor
+// types (anon_type_defn, `type Parser(...) =`) with their members (issue #22).
+// Refs inside member bodies resolve to the member's dotted path
+// (Geometry.Core.Parser.Parse); refs in the type header (inherit/interface)
+// resolve to the type itself (probed via extractRaw).
 const SOURCE = `module Geometry.Core
 
 open System.Collections
@@ -50,10 +51,12 @@ describe("conformance: text/x-fsharp defs + refs (issues #19/#20)", () => {
                 // the ref sits inside the emitted def `tokenize`.
                 { refName: "Shape", container: "Geometry.Core.tokenize" },
                 { refName: "Shape", container: "Geometry.Core.area" },
-                // Call inside Parser.Parse — Parser/Parse are not emitted
-                // (anon_type_defn), so the innermost emitted scope is the
-                // module; tokenize is a local def.
-                { refName: "tokenize", container: "Geometry.Core" },
+                // Call inside Parser.Parse — anon_type_defn members are
+                // emitted (issue #22), so the ref joins at member level.
+                { refName: "tokenize", container: "Geometry.Core.Parser.Parse" },
+                // Interface clause names the local Runnable type; the ref
+                // sits in Parser's header, inside the emitted Parser def.
+                { refName: "Runnable", container: "Geometry.Core.Parser" },
             ],
             expectRefs: [
                 // open captures the full dotted name — the mapping's
@@ -61,18 +64,19 @@ describe("conformance: text/x-fsharp defs + refs (issues #19/#20)", () => {
                 { name: "System.Collections", kind: "import", line: 3 },
                 { name: "Helpers", kind: "import", line: 4 },
                 { name: "int", kind: "type", line: 6 },
-                // Member-signature annotation types.
-                { name: "Shape", kind: "type", line: 11 },
-                { name: "int", kind: "type", line: 11 },
-                { name: "BaseParser", kind: "inherit", line: 14 },
-                { name: "Runnable", kind: "inherit", line: 15 },
+                // Member-signature annotation types — the abstract member is
+                // itself an emitted def (anon_type_defn, issue #22).
+                { name: "Shape", kind: "type", line: 11, container: "Geometry.Core.Runnable.Run" },
+                { name: "int", kind: "type", line: 11, container: "Geometry.Core.Runnable.Run" },
+                { name: "BaseParser", kind: "inherit", line: 14, container: "Geometry.Core.Parser" },
+                { name: "Runnable", kind: "inherit", line: 15, container: "Geometry.Core.Parser" },
                 // Construction is syntactically application → call
                 // (python precedent), with or without `new`.
-                { name: "Helper", kind: "call", line: 18 },
-                { name: "BaseParser", kind: "call", line: 19 },
+                { name: "Helper", kind: "call", line: 18, container: "Geometry.Core.Parser.Parse" },
+                { name: "BaseParser", kind: "call", line: 19, container: "Geometry.Core.Parser.Parse" },
                 // Dotted application head → final name.
-                { name: "Run", kind: "call", line: 20 },
-                { name: "tokenize", kind: "call", line: 21, container: "Geometry.Core" },
+                { name: "Run", kind: "call", line: 20, container: "Geometry.Core.Parser.Parse" },
+                { name: "tokenize", kind: "call", line: 21, container: "Geometry.Core.Parser.Parse" },
                 { name: "inner", kind: "call", line: 24 },
                 { name: "Shape", kind: "type", line: 26, container: "Geometry.Core.area" },
             ],

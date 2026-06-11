@@ -16,7 +16,10 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   signature                             → function (top-level type sig
 //                                            is the canonical declaration
 //                                            site; the matching `function`
-//                                            node is the body — we dedup)
+//                                            equation nodes are the body —
+//                                            deduped, but the def's span
+//                                            extends to the last equation
+//                                            so body refs join, issue #22)
 //   function                              → function (when no preceding
 //                                            signature; we dedup by name)
 //   instance                              → not surfaced as its own symbol
@@ -80,20 +83,24 @@ export function extract(root: TreeSitterNode, _content: string): MimeSymbol[] {
                 }
                 break;
             }
-            case "signature": {
-                const v = findFirstNamedChild(node, "variable");
-                if (!v) break;
-                if (emittedFns.has(v.text)) break;
-                emittedFns.add(v.text);
-                push(out, "function", v.text, node, "");
-                break;
-            }
+            case "signature":
             case "function": {
                 const v = findFirstNamedChild(node, "variable");
                 if (!v) break;
                 if (emittedFns.has(v.text)) break;
                 emittedFns.add(v.text);
-                push(out, "function", v.text, node, "");
+                // Issue #22: the def's span must cover the function's body —
+                // each equation is a sibling `function` node sharing the
+                // variable name, so extend to the last consecutive equation.
+                const pos = position(node);
+                for (let j = i + 1; j < decls.namedChildCount; j += 1) {
+                    const sib = decls.namedChild(j);
+                    if (!sib || sib.type !== "function") break;
+                    if (findFirstNamedChild(sib, "variable")?.text !== v.text) break;
+                    pos.endLine = sib.endPosition.row + 1;
+                    pos.endColumn = sib.endPosition.column + 1;
+                }
+                out.push({ name: v.text, kind: "function", ...pos });
                 break;
             }
             default:
