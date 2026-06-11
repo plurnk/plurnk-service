@@ -30,8 +30,10 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 // db. plurnk-service injects the db-backed impl behind that seam
 // (`core/caps/Db*Caps.ts`), one cap at a time, over the same
 // _entry-*/ChannelWrite helpers the in-tree schemes use during transition.
-// In progress (#180): entries first (`DbEntryCaps`); channels/tags/notify
-// follow. `visibility` is dropped — entry visibility is gone post-teardown
+// All five caps are wired in SchemeCtxImpl (#180 met) and plurnk-schemes-http
+// validates the seam end-to-end; the in-tree schemes still read ctx.db, so
+// migrating them onto the caps is the remaining (non-blocking) transition.
+// `visibility` is dropped — entry visibility is gone post-teardown
 // (OPEN/FOLD is log-only). crossScheme stays the deferred stub until a
 // cross-scheme COPY/MOVE forces the FROM/TO shape.
 export interface PlurnkSchemeContext {
