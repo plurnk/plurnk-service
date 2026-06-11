@@ -1,5 +1,5 @@
 import { discover } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecInfo, ExecutorMetadata } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
 // to the contract, not the framework's class identity.
@@ -20,12 +20,14 @@ export interface RegistryEntry {
 }
 
 // Boot-time runtime registry. Discovers installed @plurnk/plurnk-execs-*
-// siblings (plurnk.kind:"exec"), loads + probes each package once, and stamps
-// every runtime tag it claims with that executor + availability. One package
-// can claim many tags (search → search/news/images/...), so the probe unit is
-// the package, not the tag. A probe that rejects or exceeds its timeout
-// degrades the executor to unavailable — it never crashes boot. SPEC §3;
-// plurnk-service#181.
+// siblings (plurnk.kind:"exec") and probes each runtime TAG independently —
+// one executor instance per tag (this.runtime = the tag), so a multi-tag
+// package (-common: sh/perl/ruby/…; -git: git/gh) lights up only the tags the
+// host actually has, instead of stamping all of them with the first tag's
+// probe. Probes are cheap + local (command -v / env read / `gh auth status`),
+// so per-tag costs nothing. A probe that rejects or exceeds its timeout
+// degrades that tag to unavailable — it never crashes boot. SPEC §3;
+// plurnk-service#181, #185.
 export default class ExecutorRegistry {
     readonly #byTag: ReadonlyMap<string, RegistryEntry>;
 
@@ -33,41 +35,36 @@ export default class ExecutorRegistry {
         this.#byTag = byTag;
     }
 
-    static async build({ defaultRuntime = null, probeTimeoutMs = 3000 }: {
+    static async build({ defaultRuntime = null, probeTimeoutMs = 3000, discoverFn = discover, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
+        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; packageName: string }> }>;
+        load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
-        const { registry: discovered } = await discover();
+        const { registry: discovered } = await discoverFn();
 
-        const packageNames = [...new Set([...discovered.values()].map((info) => info.packageName))];
-        const probed = await Promise.all(packageNames.map(async (packageName) => {
-            const seed = ExecutorRegistry.#seed(discovered, packageName);
-            const mod = await import(packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
-            const executor = new mod.default({ runtime: seed.runtime, glyph: seed.glyph });
+        // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
+        // each probed on its own merits. import() is module-cached, so
+        // re-importing a package once per tag is free.
+        const probed = await Promise.all([...discovered.values()].map(async (info) => {
+            const mod = await load(info.packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
+            const executor = new mod.default({ runtime: info.runtime, glyph: info.glyph });
             const availability = await ExecutorRegistry.#probe(executor, probeTimeoutMs);
-            return { packageName, executor, availability };
+            return { info, executor, availability };
         }));
-        const byPackage = new Map(probed.map((entry) => [entry.packageName, entry]));
 
         const byTag = new Map<string, RegistryEntry>();
-        for (const info of discovered.values()) {
-            const probedPackage = byPackage.get(info.packageName);
-            if (probedPackage === undefined) throw new Error(`executor package ${info.packageName} vanished between discover and probe`);
+        for (const { info, executor, availability } of probed) {
             byTag.set(info.runtime, {
-                executor: probedPackage.executor,
+                executor,
                 glyph: info.glyph,
-                available: probedPackage.availability.available,
-                detail: probedPackage.availability.detail,
+                available: availability.available,
+                detail: availability.detail,
             });
         }
 
         ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
         return new ExecutorRegistry(byTag);
-    }
-
-    static #seed(discovered: ReadonlyMap<string, ExecInfo>, packageName: string): ExecInfo {
-        for (const info of discovered.values()) if (info.packageName === packageName) return info;
-        throw new Error(`no runtime metadata for executor package ${packageName}`);
     }
 
     // A configured default runtime that can't run is an operator misconfig the
