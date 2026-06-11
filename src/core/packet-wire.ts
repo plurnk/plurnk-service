@@ -14,6 +14,7 @@
 // with no content are omitted entirely (no empty headers in the wire).
 
 import { MimetypeBinary } from "../content/index.ts";
+import type { GitStatus } from "./git-state.ts";
 
 // The SECTION shapes (SystemSection/UserSection) are the JSON boundary — they
 // arrive both from Engine's in-memory packet AND from `turns.packet` re-parsed
@@ -51,7 +52,7 @@ interface SystemSection {
 }
 interface UserSection {
     prompt?: unknown;
-    telemetry?: { budget?: unknown; errors?: unknown };
+    telemetry?: { budget?: unknown; errors?: unknown; git?: unknown };
     system_requirements?: unknown;
     tokens?: number;
 }
@@ -86,12 +87,15 @@ export default class PacketWire {
         if (typeof user.prompt === "string" && user.prompt.length > 0) {
             parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
         }
-        const telemetry = user.telemetry ?? { budget: "", errors: [] };
+        const telemetry = user.telemetry ?? { budget: "", errors: [], git: undefined };
         if (typeof telemetry.budget === "string" && telemetry.budget.length > 0) {
             parts.push(`# Plurnk System Budget\n\n${telemetry.budget}`);
         }
         if (Array.isArray(telemetry.errors) && telemetry.errors.length > 0) {
             parts.push(`# Plurnk System Errors\n\n${PacketWire.#renderTelemetryErrors(telemetry.errors)}`);
+        }
+        if (telemetry.git !== undefined && telemetry.git !== null) {
+            parts.push(`# Plurnk Git State\n\n${PacketWire.#renderGitState(telemetry.git as GitStatus)}`);
         }
         if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
             parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
@@ -396,6 +400,11 @@ export default class PacketWire {
     //
     // `snippet` is stripped from the meta JSON so the snippet appears once,
     // in the body block, not also as a quoted string in the meta.
+    static #renderGitState(git: GitStatus): string {
+        const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
+        return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+    }
+
     static #renderTelemetryErrors(errors: TelemetryError[]): string {
         return errors.map((e) => {
             const snippet = typeof e.snippet === "string" ? e.snippet : null;

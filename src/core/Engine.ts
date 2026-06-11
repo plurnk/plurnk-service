@@ -12,6 +12,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership from "./git-membership.ts";
+import GitState, { type GitStatus } from "./git-state.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -679,19 +680,24 @@ export default class Engine {
         // the action index past them so model ops continue after.
         nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
 
+        // SPEC §15.1 — git working-tree state for the telemetry section, read once
+        // (a service-side `git status` shell-out) and threaded into the budget
+        // rebuild too so it isn't re-shelled on overflow.
+        const gitStatus = await GitState.status(this.#db, sessionId, this.#loopAborts.get(loopId)?.signal);
+
         // Build the spec'd packet (Packet.json) request half. #buildLog
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#buildRequestPacket({
             initialMessages: messages, persona, requirements, runId, loopId,
-            currentTurnSeq: seq, provider,
+            currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §14.4 — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#enforceBudget({
             packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
             rebuild: (telemetryErrors) => this.#buildRequestPacket({
                 initialMessages: messages, persona, requirements, runId, loopId,
-                currentTurnSeq: seq, provider, telemetryErrors,
+                currentTurnSeq: seq, provider, telemetryErrors, gitStatus,
             }),
         });
         requestPacket = enforced.packet;
@@ -875,7 +881,7 @@ export default class Engine {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async #buildRequestPacket({
-        initialMessages, persona: defaultPersona, requirements, runId, loopId, currentTurnSeq, provider, telemetryErrors: presetTelemetry,
+        initialMessages, persona: defaultPersona, requirements, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
     }: {
         initialMessages: ChatMessage[];
         // Fallback persona content — used only when no per-loop, per-run, or
@@ -886,6 +892,7 @@ export default class Engine {
         // Static per-turn requirements block. Caller sources from
         // Paths.defaultRequirements. No DB cascade — same string every turn.
         requirements: string;
+        gitStatus: GitStatus | null;
         runId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries
         // (e.g. telemetry errors).
@@ -930,7 +937,7 @@ export default class Engine {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
             system: { system_definition, persona, log },
-            user: { prompt, telemetry: { budget: "", errors: telemetryErrors }, system_requirements: requirements },
+            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, system_requirements: requirements },
         };
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
@@ -944,7 +951,7 @@ export default class Engine {
                 .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, persona, log };
-        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors }, system_requirements: requirements };
+        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, system_requirements: requirements };
         system.tokens = countTokens(PacketWire.renderSystemContent(system));
         user.tokens = countTokens(PacketWire.renderUserContent(user));
         return { system, user };
