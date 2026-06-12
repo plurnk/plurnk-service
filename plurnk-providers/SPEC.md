@@ -121,14 +121,16 @@ This package's exported resolution surface:
 
 - `parseAliasesFromEnv(env)` — extracts alias entries.
 - `resolveActiveAlias(env)` — `{ alias, provider, model } | null`.
-- `standardProviderFromEnv(name, env, model)` / `isStandardProvider(name)` — tier-1 instantiation (below).
+- `instantiateProvider(name, env, model)` — full two-tier resolution (below).
+- `loadActiveProvider(env)` — boot convenience: active alias → `instantiateProvider`.
+- `standardProviderFromEnv(name, env, model)` / `isStandardProvider(name)` — the tier-1 internals, still exported.
 
-**Two-tier provider resolution.** A provider name resolves in this order:
+**Two-tier provider resolution — owned entirely by this package.** A provider name resolves in this order:
 
-1. **Standard provider** (`§11`) — if `isStandardProvider(name)`, the framework instantiates it directly via `standardProviderFromEnv(name, env, model)`. No sibling package exists or is imported. Covers every plain OpenAI-compatible endpoint (`openai`, `groq`, `deepseek`, `mistral`, `together`, `fireworks`, `deepinfra`, …).
-2. **Bespoke sibling** — otherwise, dynamic-import `@plurnk/plurnk-providers-<provider>` and call `fromEnv(env, model)`. Reserved for providers with real runtime surface: a catalog/pricing probe or a non-OpenAI wire shape (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `anthropic`/`bedrock`/`vertex`/`cohere`).
+1. **Standard provider** (`§11`) — if `isStandardProvider(name)`, instantiated directly via `standardProviderFromEnv(name, env, model)`. No daughter package is imported. Covers every plain OpenAI-compatible endpoint (`openai`, `groq`, `deepseek`, `mistral`, `together`, `fireworks`, `deepinfra`, …).
+2. **Bundled daughter** — otherwise, dynamic-import `@plurnk/plurnk-providers-<provider>` and call `fromEnv(env, model)`. Reserved for providers with real runtime surface: a catalog/pricing probe or a non-OpenAI wire shape (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `anthropic`/`bedrock`/`vertex`/`cohere`). Unknown name → fail-hard naming the missing package.
 
-Tier 1 lives here because it needs no package resolution. **Tier 2 is not shipped by this package.** Node's `import()` resolves specifiers relative to the calling module, so the dynamic-import step has to run where the sibling packages are actually installed — the consumer's `node_modules`, not this package's. The consumer owns it: in plurnk-service it is `src/core/ProviderInstantiate.ts` (`instantiateProvider` / `loadActiveProvider`). That code should try `standardProviderFromEnv` first and dynamic-import `@plurnk/plurnk-providers-<provider>` only when it returns `null`.
+The daughters are **this framework's own dependencies** (exact-pinned), so the dynamic import resolves wherever the framework is installed — the consumer pins ONE package and never imports a daughter directly. To break the dependency cycle, each daughter declares the framework as a `peerDependency` with a minor range (`0.2.x`): the framework's forward exact pin is the single source of version truth, the peer back-edge guarantees one shared copy in the tree (class identity for `instanceof ProviderError` included).
 
 ## §6 Engine → provider guarantees (consumer side)
 

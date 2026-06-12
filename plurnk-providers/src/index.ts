@@ -12,6 +12,8 @@ export type {
 export {
     parseAliasesFromEnv,
     resolveActiveAlias,
+    instantiateProvider,
+    loadActiveProvider,
 } from "./ProviderRegistry.ts";
 
 // Shared OpenAI-compatible transport machinery — the spine every sibling
