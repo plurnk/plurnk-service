@@ -1,8 +1,16 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
-    "keywords": ["plurnk", "exec", "runtime", "executor", "search", "searxng", "web"],
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "search",
+        "searxng",
+        "web"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-execs-search#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-execs-search/issues"
@@ -23,16 +31,46 @@
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "search", "glyph": "🔎" },
-            { "name": "images", "glyph": "🖼" },
-            { "name": "videos", "glyph": "🎬" },
-            { "name": "news", "glyph": "📰" },
-            { "name": "map", "glyph": "🗺" },
-            { "name": "music", "glyph": "🎵" },
-            { "name": "it", "glyph": "💻" },
-            { "name": "science", "glyph": "🔬" },
-            { "name": "social", "glyph": "💬" },
-            { "name": "downloadable", "glyph": "📥" }
+            {
+                "name": "search",
+                "glyph": "🔎"
+            },
+            {
+                "name": "images",
+                "glyph": "🖼"
+            },
+            {
+                "name": "videos",
+                "glyph": "🎬"
+            },
+            {
+                "name": "news",
+                "glyph": "📰"
+            },
+            {
+                "name": "map",
+                "glyph": "🗺"
+            },
+            {
+                "name": "music",
+                "glyph": "🎵"
+            },
+            {
+                "name": "it",
+                "glyph": "💻"
+            },
+            {
+                "name": "science",
+                "glyph": "🔬"
+            },
+            {
+                "name": "social",
+                "glyph": "💬"
+            },
+            {
+                "name": "downloadable",
+                "glyph": "📥"
+            }
         ]
     },
     "exports": {
@@ -54,11 +92,12 @@
         "build": "npm run build:dist",
         "prepare": "npm run build"
     },
-    "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.1"
-    },
     "devDependencies": {
         "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-execs": "0.4.x"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.x"
     }
 }
