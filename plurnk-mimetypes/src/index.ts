@@ -53,6 +53,13 @@ export {
     UnsupportedDialectError,
 } from "./QueryError.ts";
 export { GrammarNotInstalledError } from "./treesitter/handler.ts";
+
+// References-channel engine primitives (issue #19 / #23 boundary). Exported
+// so Tier 2 handler packages (terraform, dockerfile, …) implement
+// references() with the same capture conventions and container resolution
+// the in-registry languages use — queries stay data, the engine stays one.
+export { collectReferences } from "./treesitter/refsEngine.ts";
+export type { RefsQuery, RefsQueryCapture } from "./treesitter/refsEngine.ts";
 export type {
     ContentOffset,
     LogCoordinate,

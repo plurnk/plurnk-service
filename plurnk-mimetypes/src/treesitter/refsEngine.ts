@@ -77,7 +77,12 @@ function containerIndex(symbols: readonly MimeSymbol[]): DefSpan[] {
     return symbols.map((s, index) => ({
         path: s.container !== undefined ? `${s.container}.${s.name}` : s.name,
         line: s.line,
-        endLine: s.endLine,
+        // A def whose endColumn is 1 ends AT the start of endLine and
+        // occupies nothing on it — tree-sitter nodes that swallow a trailing
+        // newline land their endPosition at column 0 (our 1) of the next
+        // line. Without this trim, a make rule's span bleeds over the next
+        // rule's first line and steals its refs.
+        endLine: s.endColumn === 1 && s.endLine > s.line ? s.endLine - 1 : s.endLine,
         index,
     }));
 }
