@@ -1,0 +1,38 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-embeddings",
+    "version": "0.1.0",
+    "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) — hermetic, no runtime network.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "exports": {
+        ".": {
+            "default": "./index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "index.js",
+        "model/**",
+        ".model-pin",
+        "README.md"
+    ],
+    "scripts": {
+        "build:model": "node scripts/fetch-model.mjs",
+        "verify:model": "node scripts/verify-model.mjs",
+        "test:unit": "node --test index.test.js",
+        "test:integration": "node --test test/integration/*.test.js",
+        "test": "npm run test:unit && npm run test:integration"
+    },
+    "dependencies": {
+        "@huggingface/transformers": "^4.2.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.15.0"
+    }
+}
