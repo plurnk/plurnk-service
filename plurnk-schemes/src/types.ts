@@ -18,7 +18,7 @@ export interface SchemeFlagAffinity {
 }
 
 export interface SchemeManifest {
-    readonly name: string;
+    readonly name: string;                       // addressing/routing identity (the URI prefix)
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
     readonly defaultChannel: string;             // empty when channels is empty
     readonly category: "data" | "logging";
@@ -27,6 +27,16 @@ export interface SchemeManifest {
     readonly volatile: boolean;
     readonly modelVisible: boolean;
     readonly flags?: SchemeFlagAffinity;
+    // The value persisted to `entries.scheme` for this scheme's rows, which can
+    // legitimately differ from the addressing `name`. Resolution:
+    //   storedScheme === undefined ? name : storedScheme
+    // Absent → defaults to `name` (every existing manifest unchanged). An
+    // explicit `null` is honored: the scheme persists BARE (e.g. File renders
+    // bare paths like `src/foo.ts`; its `entries.scheme` stays NULL while its
+    // routing name is `"file"`). Lets the shared entry helpers scope queries by
+    // the persisted scheme. A bare-persisting sibling declares this once here
+    // instead of threading `null` through every helper call site.
+    readonly storedScheme?: string | null;
 }
 
 export interface LoopFlags {

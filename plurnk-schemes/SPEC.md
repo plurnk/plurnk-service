@@ -33,7 +33,7 @@ class Known {
 
 | Field | Constraint |
 |---|---|
-| `name` | Matches `package.json#plurnk.name`. |
+| `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel name targeted when path has no `#fragment`. Empty when channels is empty. |
 | `category` | `"data"` \| `"logging"`. |
@@ -42,6 +42,7 @@ class Known {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `flags?` | Optional `SchemeFlagAffinity`. |
+| `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Resolution: `storedScheme === undefined ? name : storedScheme`. Absent → defaults to `name` (additive; existing manifests unchanged). Explicit `null` → persists BARE (e.g. File: bare paths, `entries.scheme` NULL, routing name `"file"`). |
 
 ## §2 Interface
 
