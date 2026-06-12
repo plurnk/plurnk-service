@@ -35,6 +35,10 @@ interface Embedder {
     // text → native-endian raw Float32 bytes (4 × dimension).
     embed(text: string): Promise<Uint8Array>;
     readonly dimension: number;
+    // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37"). Surfaced on
+    // ProcessResult.embeddingModel so consumers can store it alongside
+    // vectors and detect incomparable BLOBs after a model swap.
+    readonly model?: string;
 }
 
 // Loader hook: how to resolve a handler package to its default-exported class.
@@ -132,6 +136,10 @@ export interface ProcessResult {
     // install hint, mirroring grammarMissing (#14). strict: true throws
     // instead.
     embeddingMissing?: string;
+    // Model identity for the vector above, when the embedder declares one.
+    // Store it next to the BLOB: vectors from different models are silently
+    // incomparable, and this is the staleness detector.
+    embeddingModel?: string;
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -376,7 +384,10 @@ export default class Mimetypes {
             return { embedding: new Uint8Array(0) };
         }
         if (text.length === 0) return { embedding: new Uint8Array(0) };
-        return { embedding: await embedder.embed(text) };
+        return {
+            embedding: await embedder.embed(text),
+            ...(typeof embedder.model === "string" && { embeddingModel: embedder.model }),
+        };
     }
 
     #getEmbedder(): Promise<Embedder | null> {

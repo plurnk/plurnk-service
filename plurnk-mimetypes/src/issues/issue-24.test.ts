@@ -29,6 +29,7 @@ const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
 // 0.5, -1] — enough to assert byte plumbing without a model.
 const fakeEmbedderModule = {
     dimension: 4,
+    model: "fake-model@abc123",
     async embed(text: string): Promise<Uint8Array> {
         const v = new Float32Array([text.length, text.charCodeAt(0) || 0, 0.5, -1]);
         return new Uint8Array(v.buffer);
@@ -161,6 +162,22 @@ describe("Issue #24 — C4: honest empties carry no hint", () => {
         const r = await m.process({ path: "a.txt", content: "" }, { channels: ["embedding"] });
         assert.equal(r.embedding!.length, 0);
         assert.equal("embeddingMissing" in r, false);
+    });
+});
+
+describe("Issue #24 — C6: model identity rides with the vector", () => {
+    it("embeddingModel surfaces when the embedder declares it", async () => {
+        const m = makeMimetypes({ withEmbedder: true });
+        const r = await m.process({ path: "a.txt", content: "x" }, { channels: ["embedding"] });
+        assert.equal(r.embeddingModel, "fake-model@abc123");
+    });
+
+    it("absent on empty embeds and when the channel is unrequested", async () => {
+        const m = makeMimetypes({ withEmbedder: true });
+        const empty = await m.process({ path: "a.txt", content: "" }, { channels: ["embedding"] });
+        assert.equal("embeddingModel" in empty, false);
+        const unrequested = await m.process({ path: "a.txt", content: "x" });
+        assert.equal("embeddingModel" in unrequested, false);
     });
 });
 
