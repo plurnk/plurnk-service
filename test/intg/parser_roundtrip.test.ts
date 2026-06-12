@@ -56,6 +56,25 @@ test("parser roundtrip: <<EDIT[france,europe](known://countries/france/capital):
     } finally { await db.close(); }
 });
 
+test("parser roundtrip: digit-suffix <<EDIT1…:EDIT1 carries a bare :EDIT token in the body (0.26.0 nesting)", async () => {
+    const db = await openMigrated();
+    try {
+        const env = await seedEnvelope(db, "ws-roundtrip-edit1");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const stmt = parseOne("<<EDIT1(known://doc):a body with a :EDIT token inside:EDIT1") as EditStatement;
+        assert.equal(stmt.suffix, "1", "the digit suffix is parsed off the delimiter");
+        assert.equal(stmt.body, "a body with a :EDIT token inside", "the un-suffixed :EDIT is literal body, not a delimiter");
+        const result = await engine.dispatch({
+            statement: stmt,
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 201);
+        const body = await (db.test_parser_body_first as PrepMethod).get<{ content: string }>();
+        assert.equal(body?.content, "a body with a :EDIT token inside", "the bare delimiter survives into storage verbatim");
+    } finally { await db.close(); }
+});
+
 test("parser roundtrip: multi-statement text parses + dispatches in order", async () => {
     const db = await openMigrated();
     try {

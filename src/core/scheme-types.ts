@@ -20,6 +20,19 @@ export type {
 } from "./types.ts";
 export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
+// Shared read-result shape for the in-tree read schemes (Log/File); de-dups the
+// per-scheme local copies. `error`/`reason` are optional — set by schemes that
+// surface a not-found / denial; matchers fill startLine/matches.
+export type SchemeReadResult = {
+    status: number;
+    content: string | null;
+    mimetype: string | null;
+    error?: string;
+    reason?: string;
+    startLine?: number | null;
+    matches?: number | null;
+};
+
 // Per-call helper. Engine constructs a fresh ctx for every op invocation.
 // PlurnkSchemeContext stays in plurnk-service because it carries `db` (the
 // concrete Db type) and the notifier hooks.

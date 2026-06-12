@@ -29,7 +29,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
-test("loop.cancel terminates a backgrounded exec that outlived its loop (concludes 499)", async () => {
+test("[§13.6-stream-concluded] loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
     // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
@@ -71,13 +71,19 @@ test("loop.cancel terminates a backgrounded exec that outlived its loop (conclud
             assert.ok(conc.some((c) => c.scheme === "exec" && c.closeStatus === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
-            const loopResult = (await loopPromise).result as { finalStatus: number };
+            // #204 contract: loop.cancel RESOLVES the pending loop.run with a
+            // terminal status (499 cancelled / 200 if it finished first) — it
+            // never rejects. Clients match this: on --timeout, send loop.cancel
+            // and await the {499}, never locally reject the request.
+            const loopResp = await loopPromise;
+            assert.equal(loopResp.error, undefined, "loop.run resolves on cancel, never rejects (#204)");
+            const loopResult = loopResp.result as { finalStatus: number };
             assert.ok([200, 499].includes(loopResult.finalStatus), `loop terminal; got ${loopResult.finalStatus}`);
         } finally { ws.close(); }
     });
 });
 
-test("loop.cancel: no active drain → cancelled=false", async () => {
+test("[§13.5-loop-cancel] loop.cancel: no active drain → cancelled=false", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [sendOnly("<<SEND[200]:done:SEND")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

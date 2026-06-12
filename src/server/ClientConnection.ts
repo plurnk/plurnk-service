@@ -145,8 +145,11 @@ export default class ClientConnection {
             daemon: this.#daemon,
             session: this.#session,
             attachSession: (envelope) => {
-                if (this.#session !== null) {
-                    throw new Error("connection already has a session attached");
+                // #196: re-binding switches session/run in place (no reconnect).
+                // Release the prior client loop first — the close() teardown —
+                // then swap.
+                if (this.#session !== null && this.#session.clientLoopId !== null) {
+                    void Envelope.closeClientLoop(this.#db, this.#session.clientLoopId, 200);
                 }
                 this.#session = envelope;
             },

@@ -115,14 +115,15 @@ test("session.create with no name auto-generates a unique name", async () => {
     });
 });
 
-test("session.create rejects when already attached", async () => {
+test("[§13.5-rebind] session.create on an already-attached connection re-binds in place (no reject)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "first" });
-            const response = await rpcCall(ws, 2, "session.create", { name: "second" });
-            assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /already has a session/);
+            const first = await rpcCall(ws, 1, "session.create", { name: "first" });
+            const second = await rpcCall(ws, 2, "session.create", { name: "second" });
+            // #196: re-binding is allowed — the connection switches in place.
+            assert.equal(second.error, undefined, "re-create on a bound connection no longer rejects");
+            assert.notEqual((second.result as { id: number }).id, (first.result as { id: number }).id, "switched to a fresh session");
         } finally { ws.close(); }
     });
 });

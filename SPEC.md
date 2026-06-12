@@ -338,7 +338,7 @@ Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable 
 
 Mimetype is declared by scheme manifest (§3.1) or supplied per-call for dynamic schemes. Writing a channel without a declared mimetype throws. No default mimetype anywhere.
 
-- Cross-mimetype COPY/MOVE → 415, never coerces (§6.4).
+- Cross-mimetype COPY/MOVE → 415, never coerces (§6.4). {§5.3-cross-mimetype-415}
 
 ### §5.5 Channel selection in the DSL
 
@@ -730,12 +730,17 @@ registry.register("loop.run", {
 
 | Method                 | Params              | Result            | Notes |
 |------------------------|---------------------|-------------------|-------|
-| `session.create`       | `name?: string`, `projectRoot?: string`, `persona?: string` | `{ id, name, projectRoot, persona }` | Creates new session; auto-name if unprovided. Optional `projectRoot` pins the workspace (null/omitted = headless). Optional `persona` sets the session-level persona override. |
+| `session.create`       | `name?: string`, `projectRoot?: string`, `persona?: string` | `{ id, name, runId, runName, projectRoot, persona }` | Creates new session + its first run; auto-name if unprovided. Returns the auto-created run's identity so clients skip the pending-dance ({§13.5-session-create}). Optional `projectRoot` pins the workspace (null/omitted = headless). Optional `persona` sets the session-level persona override. |
 | `session.list`         | none                | `{ sessions: Session[] }` | Lists all sessions. |
 | `session.attach`       | `id: number`, `runId?: number`, `runName?: string`, `persona?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. Optional `persona` sets run-level persona only when a NEW run is created. {§13.5-session-attach} |
 | `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
 | `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
 | `session.set_persona`  | `persona: string \| null` | `{ persona }`  | Update the session-level persona. Null clears the override (falls through to PLURNK_PERSONA file). |
+| `session.constrain`    | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Add a workspace membership constraint (§14.3 overlay): `add` admits files git misses, `ignore` drops tracked matches, `read-only` admits for read but refuses edits. Immediate. |
+| `session.unconstrain`  | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Remove a membership constraint — the inverse of `session.constrain`. Immediate. |
+| `session.constraints`  | none                | `{ constraints }` | List the attached session's membership constraints. |
+
+**Re-binding.** `session.create` and `session.attach` may be called on a connection that already has a session attached — the connection switches in place, releasing the prior client loop (closed at 200). No reconnect needed to change session or run. {§13.5-rebind}
 
 **Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint. {§13.5-auto-envelope}
 
@@ -745,6 +750,7 @@ registry.register("loop.run", {
 |-------------------|-------------------------------------|------------------------|-------|
 | `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags`, `persona?: string` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §0.5). Optional `persona` sets the loop-level persona (highest precedence in the cascade). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. {§13.5-loop-run} |
 | `loop.resolve`    | `logEntryId: number`, `decision: "accept" \| "reject" \| "cancel"`, `body?: string`, `outcome?: string` | `{ status, logEntryId }` | Resolve a pending proposal (status=202 log entry). Engine.dispatch unpauses on resolution. |
+| `loop.cancel`     | `reason?: string`                   | `{ cancelled, runId, reason }` | Abort the attached run's active drain. `{cancelled: true}` if a drain was running, `{false}` if idle. Cancelled loops close at 499; queued-but-unclaimed loops stay enqueued. Default reason `user_cancelled`. {§13.5-loop-cancel} |
 | `providers.list`  | none                                | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
 
 **Reads**
@@ -791,6 +797,8 @@ Server-initiated events on the same WebSocket.
 | `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so server-YOLO clients can suppress review UI. Client responds with `loop.resolve` (or `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
 | `session/created`  | `{ id, name, projectRoot, persona }` | Any client creates a session. |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. {§13.6-stream-event-on-channel-change} |
+| `stream/concluded` | `{ entryId, target, subscriptionId, scheme, closeStatus, summary, wakeAction, wakeLoopId? }` | A streaming subscription closed (subprocess finished / errored / cancelled). `wakeAction` says whether the daemon opened a fresh loop to surface the conclusion to the model. {§13.6-stream-concluded} |
+| `telemetry/event`  | `{ loopId, event: TelemetryEvent }` | A TelemetryEvent (parse error, engine-rail strike/cycle/sudden-death, scheme/provider failure) was buffered — the same envelope the model sees on the next packet, delivered live for client surfacing. {§13.6-telemetry-event} |
 
 `stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. **Every notification envelope carries its `sessionId`** (and `runId` where the emitter has it) so a multi-session client — one connection, many sessions — can route it ({§13.6-envelope-carries-sessionid}); the broadcast stays session-scoped too.
 

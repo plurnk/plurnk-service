@@ -6,9 +6,6 @@ export default class SessionCreateMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("session.create", {
             handler: async (params, ctx) => {
-                if (ctx.session !== null) {
-                    throw new Error("connection already has a session attached");
-                }
                 const p = params as { name?: string; projectRoot?: string | null; persona?: string | null };
                 const projectRoot = p.projectRoot ?? null;
                 if (projectRoot !== null) {
@@ -33,6 +30,7 @@ export default class SessionCreateMethod {
                 });
                 return {
                     id: envelope.sessionId, name: envelope.sessionName,
+                    runId: envelope.runId, runName: envelope.runName,
                     projectRoot: envelope.projectRoot, persona: envelope.sessionPersona,
                 };
             },

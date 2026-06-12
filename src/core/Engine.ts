@@ -1243,6 +1243,8 @@ export default class Engine {
                     result = await this.#handleMove(statement, schemeCtx);
                 } else if (statement.op === "KILL") {
                     result = await this.#handleKill(statement, schemeCtx);
+                } else if (statement.op === "PLAN") {
+                    result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
                     // EXEC's target slot is `cwd`, not a scheme address.
                     // Per plurnk.md the op routes unconditionally to the
@@ -1628,12 +1630,13 @@ export default class Engine {
 
     // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
     // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
-    // retired from the model's vocabulary. Process-KILL (exec://) awaits the
-    // 202→addressable-process design and returns 501. The KILL body is an opaque
+    // retired from the model's vocabulary. Process-KILL (exec://) aborts the
+    // running spawn's controller (the same teardown loop.cancel rides), addressed
+    // by coordinate pathname (#203). The KILL body is an opaque
     // annotation with no runtime meaning; it survives into the log row's tx for
     // free via the statement serialization. Status: 200 killed · 404 unknown ·
     // 405 log:// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
-    // MUTATING_OPS) · 501 exec/no-delete.
+    // MUTATING_OPS) · 200/404 exec (killed / not running) · 501 no-kill/delete scheme.
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
@@ -1641,11 +1644,28 @@ export default class Engine {
         const schemeName = this.#schemeNameOf(path);
         if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
         if (schemeName === "log") return { status: 405, error: "log:// is append-only; KILL must bounce" };
-        if (schemeName === "exec") return { status: 501, error: "process-KILL pending the 202 addressable-process design (#203)" };
+        if (schemeName === "exec") {
+            const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string) => { status: number; error?: string } } | undefined;
+            if (execHandler === undefined || typeof execHandler.kill !== "function") return { status: 501 };
+            return execHandler.kill(pathnameFromPath(path));
+        }
         const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
         if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
         const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
         return { status: delResult.status };
+    }
+
+    // PLAN — undocumented reasoning op (plurnk-grammar 0.30.0, the 11th op). A pure
+    // no-op: the body is the model's in-content reasoning, which lands in the log
+    // row's tx for free via statement serialization, no runtime effect (PLAN ∉
+    // MUTATING_OPS). NOT taught in plurnk.md by design — reserved for a future model
+    // that must reason in the content field (no separate reasoning channel). gemma
+    // reasons on its own channel via the relaxed root, is never shown PLAN, and never
+    // emits it; this handler exists only so the op resolves cleanly if we ever
+    // deliberately reach for it (which would also require a plurnk.md override).
+    #handlePlan(statement: PlurnkStatement): DispatchResult {
+        if (statement.op !== "PLAN") throw new Error("unreachable");
+        return { status: 200 };
     }
 
     async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {

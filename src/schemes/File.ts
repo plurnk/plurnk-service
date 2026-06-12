@@ -3,11 +3,10 @@ import { resolve, relative, isAbsolute, matchesGlob } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
-import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
 import { LineMarkerOps, MimetypeBinary, ReadResolve } from "../content/index.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; error?: string; startLine?: number | null; matches?: number | null; reason?: string };
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
@@ -77,7 +76,7 @@ export default class File {
         modelVisible: true,
     };
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, error: "READ requires a target path" };
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             // file:// entries don't carry tag metadata (tags belong to canonical

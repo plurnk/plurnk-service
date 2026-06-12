@@ -92,9 +92,14 @@ WHERE id = $id;
 -- Every entry of a session — all schemes, all channels — the source for
 -- plurnk://manifest.json, the flat catalog of everything the session holds.
 -- Session-scoped (persists across runs); FOLD doesn't drop from the catalog.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens
+-- `seconds` is the live age of an active stream: now − the open subscription's
+-- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
+-- stored '...%fZ' timestamp directly; re-evaluated every render like tokens.
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens,
+    CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
+LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
 

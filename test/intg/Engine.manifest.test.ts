@@ -8,10 +8,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } };
 
@@ -55,5 +57,28 @@ test("[§15-manifest-catalog] manifest.json is the complete, unranked directory 
         assert.equal(germany.channels.body.mimetype, "text/markdown");
         assert.equal(typeof germany.channels.body.tokens, "number", "tokens is the re-counted provider depth");
         assert.ok(germany.channels.body.lines >= 1, "lines is the content extent from process().totalLines");
+    } finally { await db.close(); }
+});
+
+test("[#21] manifest stamps live seconds= on an active stream, absent for static entries", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `manifest-secs-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+
+        // A static entry (no subscription) + an exec entry with an open stream.
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "static/note", channel: "body", content: "x", mimetype: "text/markdown" });
+        const execId = await seedEntryWithChannel(db, { sessionId, runId, scheme: "exec", pathname: "sh/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
+        await ChannelWrite.openSubscription(db, { runId, entryId: execId, scheme: "exec", handle: "sh: sleep 30" });
+
+        const body = await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId }));
+        const catalog = JSON.parse(body) as Array<{ path: string; seconds?: number; channels: object }>;
+
+        const stream = catalog.find((e) => e.path === "exec://sh/1/1/1");
+        const stat = catalog.find((e) => e.path === "known://static/note");
+        assert.ok(stream !== undefined && stat !== undefined, "both entries listed");
+        assert.equal(typeof stream.seconds, "number", "active stream carries a live seconds= clock");
+        assert.ok((stream.seconds ?? -1) >= 0, "seconds is non-negative elapsed");
+        assert.equal(stat.seconds, undefined, "a static entry has no seconds (no open subscription)");
     } finally { await db.close(); }
 });

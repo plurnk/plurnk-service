@@ -3,7 +3,7 @@
 // lists every entry, uniformly READable, in no relevance order. The model
 // ranks/filters it itself by querying the catalog
 // (task-aware) — the catalog never ranks for it, or it would be an index again.
-// Each item: { path, channels: { <name>: { mimetype, tokens, lines } } }.
+// Each item: { path, seconds?, channels: { <name>: { mimetype, tokens, lines } } }.
 // `tokens` is the live provider's count, re-counted at render — the write-time
 // snapshot is NOT trusted, since the model can change between loops and a stale
 // tokenizer would make the catalog lie; `lines` is the content's extent from
@@ -16,8 +16,8 @@
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { PrepMethod } from "../core/Db.ts";
 
-type ManifestRow = { scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number };
-type CatalogEntry = { path: string; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
+type ManifestRow = { scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null };
+type CatalogEntry = { path: string; seconds?: number; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
     static #MANIFEST_PATH = "plurnk://manifest.json";
@@ -37,6 +37,9 @@ export default class EntryManifest {
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
+            // seconds: live age of an active stream (open subscription), set once
+            // at entry level — a clock on running execs, absent for static entries.
+            if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
             // Metadata-only: the catalog needs totalLines (always-on), never the
             // structural channels — and requesting none avoids handler.references()
             // (mimetypes 0.15) on entries whose handler predates that method.

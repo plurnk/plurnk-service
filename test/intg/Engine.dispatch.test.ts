@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, ReadStatement, KillStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -34,6 +34,15 @@ const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillState
     op: "KILL", suffix: "",
     signal: null,
     target: opts.target,
+    lineMarker: null,
+    body: opts.body ?? null,
+    position: { line: 1, column: 1 },
+});
+
+const planStmt = (opts: { body?: string | null }): PlanStatement => ({
+    op: "PLAN", suffix: "",
+    signal: null,
+    target: null,
     lineMarker: null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
@@ -85,14 +94,14 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against exec:// returns 501 (process-KILL pending the addressable-process design)", async () => {
+test("Engine.dispatch: KILL against a non-running exec:// returns 404 (nothing to kill)", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("exec", "/sh/1/1/2") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(kill.status, 501);
+        assert.equal(kill.status, 404);
     } finally { await db.close(); }
 });
 
@@ -104,6 +113,22 @@ test("Engine.dispatch: KILL against log:// returns 405 (append-only)", async () 
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "system",
         });
         assert.equal(kill.status, 405);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: PLAN is a logged no-op (200) whose reasoning body survives into the log row's tx", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const plan = await engine.dispatch({
+            statement: planStmt({ body: "capital of France is unknown; FIND before READ" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(plan.status, 200);
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
+        if (log === undefined) throw new Error("PLAN log_entry not found");
+        assert.equal(log.op, "PLAN");
+        const tx = JSON.parse(log.tx) as { body: string | null };
+        assert.equal(tx.body, "capital of France is unknown; FIND before READ");
     } finally { await db.close(); }
 });
 

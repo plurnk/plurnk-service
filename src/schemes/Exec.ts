@@ -53,7 +53,7 @@ export default class Exec {
         },
     };
 
-    #activeAborts = new Map<number, { runId: number; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { runId: number; pathname: string; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<number>>();
 
     async idle(): Promise<void> {
@@ -67,6 +67,23 @@ export default class Exec {
     hasActiveSpawns(runId: number): boolean {
         for (const { runId: r } of this.#activeAborts.values()) if (r === runId) return true;
         return false;
+    }
+
+    // Process-KILL (plurnk-service#203). A running (host/background) exec is
+    // addressable by its coordinate pathname; KILL aborts that spawn's
+    // controller — the same teardown loop.cancel rides — and the executor's
+    // signal handler tears down the child. Only in-flight spawns are killable;
+    // inline (read/pure) execs already completed in-turn, so an unknown pathname
+    // is a 404. Signal escalation (TERM→SIGKILL) is the executor's mechanism;
+    // the service owns only the abort.
+    kill(pathname: string): { status: number; error?: string } {
+        for (const entry of this.#activeAborts.values()) {
+            if (entry.pathname === pathname) {
+                entry.controller.abort(new Error(`exec://${pathname} killed`));
+                return { status: 200 };
+            }
+        }
+        return { status: 404, error: `no running exec at exec://${pathname}` };
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
@@ -175,7 +192,7 @@ export default class Exec {
                 unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             }
         }
-        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, controller, unlink });
 
         const tail = this.#runExecutor({
             executor: resolved.executor,

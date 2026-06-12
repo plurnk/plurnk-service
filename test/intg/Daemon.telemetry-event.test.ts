@@ -17,7 +17,7 @@ test("daemon registers telemetry/event in discover catalog", async () => {
     });
 });
 
-test("notifyTelemetryEvent broadcasts to clients attached to the loop's session", async () => {
+test("[§13.6-telemetry-event] notifyTelemetryEvent broadcasts to clients attached to the loop's session", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

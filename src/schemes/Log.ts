@@ -1,9 +1,8 @@
 import type { FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
-import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 
-type ReadResult = { status: number; content: string | null; mimetype: string | null; startLine?: number | null; matches?: number | null; reason?: string };
 type OpenFoldResult = { status: number };
 
 // log://<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
@@ -33,7 +32,7 @@ export default class Log {
         modelVisible: true,
     };
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
         const { db, runId } = ctx;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
         // log:// entries have no tag concept (engine-written events).

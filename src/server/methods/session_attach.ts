@@ -5,9 +5,6 @@ export default class SessionAttachMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("session.attach", {
             handler: async (params, ctx) => {
-                if (ctx.session !== null) {
-                    throw new Error("connection already has a session attached");
-                }
                 const p = params as { id: number; runId?: number; runName?: string; persona?: string | null };
                 if (typeof p.id !== "number") {
                     throw new Error("session.attach requires params.id: number");
