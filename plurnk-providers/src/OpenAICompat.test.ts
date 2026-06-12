@@ -138,6 +138,18 @@ test("grammar transport: capable backend with no grammar passed sends neither fi
     assert.equal("repeat_penalty" in body, false);
 });
 
+test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000 });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ messages: [], maxTokens: 2048 });
+    assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
+
+    mock.restoreAll();
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ messages: [] });
+    assert.equal("max_tokens" in JSON.parse(calls[0].init.body as string), false);
+});
+
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, source: "provider:test" });

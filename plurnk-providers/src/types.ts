@@ -43,7 +43,13 @@ export interface Provider {
     // support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar — whether
     // to constrain and which root variant to send is consumer policy (SPEC §13).
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse>;
+    //
+    // `maxTokens` is the consumer's per-call output ceiling (wire `max_tokens`).
+    // Without it, most servers generate UNBOUNDED (llama-server n_predict -1) —
+    // under a multi-op grammar that degenerates to the context wall (SPEC §13),
+    // so a constrained consumer is expected to pass it. Policy stays the
+    // consumer's; the provider only transports.
+    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.

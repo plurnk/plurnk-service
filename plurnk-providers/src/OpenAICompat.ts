@@ -107,13 +107,19 @@ export default class OpenAICompatProvider implements Provider {
         return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
     }
 
-    async generate({ messages, signal, grammar }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse> {
+    async generate({ messages, signal, grammar, maxTokens }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse> {
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
         const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
         const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
-        const body: Record<string, unknown> = { model: this.#model, messages, ...this.#reasoningBody(), ...this.#grammarBody(grammar) };
+        const body: Record<string, unknown> = {
+            model: this.#model,
+            messages,
+            ...this.#reasoningBody(),
+            ...this.#grammarBody(grammar),
+            ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+        };
 
         let raw;
         try {

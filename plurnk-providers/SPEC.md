@@ -32,7 +32,9 @@ interface Provider {
 
     // Transport. `grammar` is an optional GBNF string for grammar-constrained
     // sampling (§13) — attached verbatim by capable backends, ignored by all others.
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }): Promise<ProviderResponse>;
+    // `maxTokens` is the consumer's per-call output ceiling (wire `max_tokens`);
+    // absent means the server default, which is typically UNBOUNDED.
+    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -247,6 +249,8 @@ The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structura
 - **The consumer** owns policy: whether to constrain a given call, and which root variant to send (e.g. the `root ::= statement` single-statement substitution that forces EOS at the close tag — the shipped `statement+` root never forces EOS, so greedy generation runs to `max_tokens`).
 
 **Sampling guard.** Greedy decoding under hard constraint masks degenerates into repetition loops at `repeat_penalty: 1.0`, so `OpenAICompatProvider` sends a per-request `repeat_penalty: 1.15` floor alongside every attached grammar — never relying on server launch flags. (Probed live on llama.cpp b894 + gemma-4-26B; reference: plurnk-grammar `test/llama/gbnf-live.test.ts`.)
+
+**The cap is the consumer's required guard.** The repeat-penalty floor suppresses short repetition cycles, NOT long-cycle degeneration: under the multi-op root (optional EOS) at near-greedy temperatures, a constrained emission can answer correctly in its first tokens and then loop to the **context wall** (observed live: 30,736 junk tokens to `finish_reason: length`, minutes of decode reading as a "hang", with the junk echoed into the next turn's prompt — providers#10). No layer defaults a cap: the wire default is unbounded (`n_predict: -1`) and the provider transports policy, never invents it. A consumer enabling constrained sampling MUST pass `maxTokens` (or send a root variant that forces EOS).
 
 **Capability detection.** `OpenAICompatConfig.supportsGrammar` (default `false`). The `openai` standard provider detects it from the §11 probe: only llama-server rows on `GET /v1/models` carry a `meta` block, and llama-server is the backend whose chat-completions accepts `grammar`. vLLM speaks a different guided-decoding dialect and is deliberately excluded. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal — no `ProviderDeclaration` schema field until the consumer actually needs to branch on it.
 
