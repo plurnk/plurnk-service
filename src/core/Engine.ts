@@ -748,7 +748,7 @@ export default class Engine {
         // decode at the free window so a runaway can't reach the context wall.
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
-        const response = await provider.generate({ messages: modelMessages, signal, grammar: await this.#grammarConstraint(), maxTokens });
+        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens });
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
