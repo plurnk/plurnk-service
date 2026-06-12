@@ -127,3 +127,34 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
         assert.equal(rows.find((r) => r.sequence === 1)?.source, null, "a self-authored entry has null source — rendered without a run= label");
     } finally { await db.close(); }
 });
+
+test("FOLD(log://**/READ)<1> folds the first matching READ row — glob + pagination", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        // setup seeds 1/1/1 EDIT; add READ rows at 1/1/2 and 1/1/3.
+        const seedRead = async (sequence: number): Promise<void> => {
+            await (db.engine_insert_log_entry as PrepMethod).get({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+                origin: "model", source: null, op: "READ", suffix: "", signal: null,
+                scheme: "known", username: null, password: null, hostname: null, port: null,
+                pathname: "doc", params: null, fragment: null, lineMarker: null,
+                tx: "<<READ(known://doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            });
+        };
+        await seedRead(2);
+        await seedRead(3);
+        const indexedAt = async (sequence: number): Promise<number> =>
+            (await (db.test_get_log_indexed as PrepMethod).get<{ indexed: number }>({
+                run_id: runId, loop_seq: 1, turn_seq: 1, sequence,
+            }))?.indexed ?? -1;
+
+        const stmt = { ...foldStmt(urlPath("log", "**/READ")), lineMarker: { first: 1, last: 1 } };
+        const r = await new Log().fold(stmt, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        assert.equal(r.status, 200);
+        assert.equal(await indexedAt(2), 0, "the 1st matched READ (1/1/2) is folded");
+        assert.equal(await indexedAt(3), 1, "the 2nd READ (1/1/3) is untouched by <1>");
+        assert.equal(await indexedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
+    } finally { await db.close(); }
+});

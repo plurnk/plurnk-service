@@ -20,6 +20,22 @@ const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; 
     };
 };
 
+// <L> over a matched row set (mirrors EntryFind.#paginate): <N> picks the Nth,
+// <N,M> the range; 0→1, -1→last; out-of-range → 416.
+const paginate = <T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } => {
+    const total = items.length;
+    const { first, last } = marker;
+    if (last === null) {
+        if (first === 0 || first === -1) return { status: 200, items: [] };
+        if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
+        return { status: 416 };
+    }
+    const n = first === 0 ? 1 : first;
+    const m = last === -1 ? total : last;
+    if (n < 1 || n > total || m < 1 || m > total || n > m) return { status: 416 };
+    return { status: 200, items: items.slice(n - 1, m) };
+};
+
 export default class Log {
     static manifest: SchemeManifest = {
         name: "log",
@@ -101,17 +117,30 @@ export default class Log {
 
     async #setIndexed(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<OpenFoldResult> {
         if (statement.target === null) return { status: 400 };
-        if (statement.lineMarker !== null) return { status: 501 };
-
         const { db, runId } = ctx;
         const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
-        const coord = parseCoordinate(pathname);
-        if (coord === null) return { status: 400 };
 
-        const updated = await (db.log_set_indexed as PrepMethod).get<{ id: number }>({
-            run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq,
-            sequence: coord.sequence, indexed,
-        });
-        return { status: updated === undefined ? 404 : 200 };
+        // Fast path: a single concrete coordinate with no pagination flips that row.
+        const coord = parseCoordinate(pathname);
+        if (coord !== null && statement.lineMarker === null) {
+            const updated = await (db.log_set_indexed as PrepMethod).get<{ id: number }>({
+                run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence, indexed,
+            });
+            return { status: updated === undefined ? 404 : 200 };
+        }
+
+        // Glob and/or paginated (e.g. FOLD(log://**/READ)<1>): resolve the matched
+        // rows, paginate over them, flip each. The model's primary curation move.
+        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob: pathname });
+        if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400 } : { status: 404 };
+        let selected = matched;
+        if (statement.lineMarker !== null) {
+            const page = paginate(matched, statement.lineMarker);
+            if (page.status !== 200) return { status: page.status };
+            selected = page.items ?? [];
+        }
+        if (selected.length === 0) return { status: 404 };
+        for (const { id } of selected) await (db.log_set_indexed_by_id as PrepMethod).run({ id, indexed });
+        return { status: 200 };
     }
 }
