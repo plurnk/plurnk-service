@@ -250,3 +250,6 @@ SELECT e.pathname FROM entry_fts f JOIN entries e ON e.id = f.rowid
 WHERE f.content MATCH $query AND e.session_id = $session_id
 ORDER BY e.pathname;
 
+-- PREP: test_cosine
+SELECT cosine($a, $b) AS sim;
+

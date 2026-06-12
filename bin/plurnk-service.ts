@@ -40,6 +40,7 @@ export default class Cli {
         const db = await SqlRite.open({
             path: dbPath,
             dir: [resolve(Cli.#projectRoot, "migrations"), resolve(Cli.#projectRoot, "src")],
+            functions: [resolve(Cli.#projectRoot, "src/schemes/cosine.ts")],
         });
         return db as unknown as Db;
     }

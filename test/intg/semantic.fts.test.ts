@@ -49,3 +49,18 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
         assert.deepEqual(await fts(db, sessionId, "authenticate"), ["auth.ts"], "unchanged entry stays indexed");
     } finally { db.close(); }
 });
+
+test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", async () => {
+    const db = await openMigrated();
+    try {
+        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+        const sim = async (a: number[], b: number[]): Promise<number> => {
+            const r = await (db.test_cosine as PrepMethod).get<{ sim: number }>({ a: blob(a), b: blob(b) });
+            assert.ok(r, "cosine returned a row");
+            return r.sim;
+        };
+        assert.equal(Math.round(await sim([1, 0, 0], [1, 0, 0])), 1, "identical → 1");
+        assert.equal(await sim([1, 0, 0], [0, 1, 0]), 0, "orthogonal → 0");
+        assert.ok((await sim([1, 0, 0], [0.9, 0.1, 0.05])) > 0.98, "near-parallel → ~1");
+    } finally { db.close(); }
+});

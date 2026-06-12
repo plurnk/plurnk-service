@@ -71,6 +71,7 @@ export const openMigrated = async (): Promise<Db> => {
             resolve(PROJECT_ROOT, "src"),
             resolve(PROJECT_ROOT, "test/intg"),
         ],
+        functions: [resolve(PROJECT_ROOT, "src/schemes/cosine.ts")],
     })) as unknown as Db;
     const originalClose = db.close.bind(db);
     db.close = async () => {
