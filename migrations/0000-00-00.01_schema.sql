@@ -184,6 +184,17 @@ CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_
 -- hook alongside symbol_defs/refs: re-indexed only when body content changes.
 CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 
+-- INIT: entry_embeddings (~semantic vector half — plurnk-service#186)
+-- One Float32 vector per entry (scalar-shaped), stored as a BLOB the cosine()
+-- SqlRite function reads. Supplied by the mimetypes `embedding` projection at the
+-- gated manifest-add hook (mimetypes#23); the fusion (semantic_rank) cosine-ranks
+-- the FTS-narrowed candidates over these. CASCADE-deleted with the entry.
+CREATE TABLE IF NOT EXISTS entry_embeddings (
+    entry_id INTEGER NOT NULL PRIMARY KEY,
+    vector   BLOB    NOT NULL,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+) STRICT;
+
 -- INIT: log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —
 -- resets at each new turn. URI-bit columns are unprefixed (scheme,

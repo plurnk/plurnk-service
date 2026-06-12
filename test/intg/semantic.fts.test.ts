@@ -64,3 +64,37 @@ test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", asy
         assert.ok((await sim([1, 0, 0], [0.9, 0.1, 0.05])) > 0.98, "near-parallel → ~1");
     } finally { db.close(); }
 });
+
+test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `fusion-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+
+        // Three "payment" entries (FTS-match) with distinct embeddings, plus an "auth"
+        // entry whose embedding is a PERFECT cosine match but whose content does NOT
+        // match the keyword — the narrow must exclude it (FTS before cosine).
+        const ENTRIES: ReadonlyArray<readonly [string, string, number[]]> = [
+            ["pay1.ts", "process payment one", [1, 0, 0]],
+            ["pay2.ts", "process payment two", [0.9, 0.1, 0]],
+            ["pay3.ts", "process payment three", [0, 1, 0]],
+            ["auth.ts", "authenticate the user", [1, 0, 0]],
+        ];
+        for (const [p, c] of ENTRIES) await new Known().edit(editStmt(url(p), c), ctx);
+        await EntryManifest.buildManifestBody(ctx);  // FTS-indexes every entry
+        for (const [p, , v] of ENTRIES) {
+            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
+            assert.ok(e);
+            await (db.embedding_set as PrepMethod).run({ entry_id: e.id, vector: blob(v) });
+        }
+
+        const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
+            fts_query: "payment", session_id: sessionId, scheme: "known",
+            query_vector: blob([1, 0, 0]), k: 2,
+        });
+        assert.deepEqual(r.map((x) => x.pathname), ["pay1.ts", "pay2.ts"],
+            "FTS narrows to payment entries; cosine ranks them; auth (perfect cosine, no keyword) excluded by the narrow");
+    } finally { db.close(); }
+});
