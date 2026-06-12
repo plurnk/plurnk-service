@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": ["plurnk", "exec", "runtime", "executor"],
     "homepage": "https://github.com/plurnk/plurnk-execs#readme",
@@ -39,6 +39,14 @@
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
         "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs-common": "0.2.1",
+        "@plurnk/plurnk-execs-search": "0.2.3",
+        "@plurnk/plurnk-execs-sqlite": "0.1.3",
+        "@plurnk/plurnk-execs-wasm": "0.1.2",
+        "@plurnk/plurnk-execs-git": "0.1.1",
+        "@plurnk/plurnk-execs-jq": "0.1.1"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
