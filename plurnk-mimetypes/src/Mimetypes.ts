@@ -15,13 +15,27 @@ import type {
     QueryMatch,
 } from "./types.ts";
 
-// The structural channels process() can materialize (issue #17). Each is
-// computed iff requested; unrequested channels pay no parse and are absent
-// from the result. Default is all of them — process() is the universal
-// projection surface (#11); callers that want less say less.
-export type Channel = "symbols" | "deepJson" | "deepXml" | "references";
+// The channels process() can materialize (issues #17, #24). Each is
+// computed iff requested; unrequested channels pay no work and are absent
+// from the result. Default is the four STRUCTURAL channels — process() is
+// the universal projection surface (#11); callers that want less say less.
+// "embedding" is NEVER in the default set: it is a model inference (orders
+// of magnitude costlier than parsing) and must be requested explicitly.
+export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "embedding";
 
-const ALL_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references"];
+const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references"];
+
+// The embedder package (issue #24). Opt-in artifact dependency, resolved
+// lazily through the same loader handler packages use — per-grammar-package
+// precedent: the framework ships no model weights.
+const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
+
+// Surface the embeddings package must export.
+interface Embedder {
+    // text → native-endian raw Float32 bytes (4 × dimension).
+    embed(text: string): Promise<Uint8Array>;
+    readonly dimension: number;
+}
 
 // Loader hook: how to resolve a handler package to its default-exported class.
 // Production uses dynamic import(); tests inject a custom loader to avoid
@@ -91,7 +105,7 @@ export interface ProcessResult {
     // still set ok:true.
     grammarMissing?: string;
 
-    // ——— Channels (issue #17): present iff requested, absent otherwise ———
+    // ——— Channels (issues #17/#24): present iff requested, absent otherwise ———
     // Structured definitions — the graph's symbol_defs raw material and the
     // outline source (render via format() when a human needs to read it).
     symbols?: MimeSymbol[];
@@ -106,6 +120,18 @@ export interface ProcessResult {
     // material. [] until the per-language extraction engine lands (#19); the
     // field ships now so consumers build against the final shape.
     references?: MimeRef[];
+    // Embedding vector (issue #24): native-endian raw Float32 bytes,
+    // length = 4 × dimension, scalar per entry. plurnk-service stores the
+    // bytes verbatim as a sqlite BLOB and cosine-ranks over a Float32Array
+    // view. Empty (length 0) when the content has no text projection or the
+    // embedder package is missing (see embeddingMissing). NEVER materialized
+    // unless explicitly requested.
+    embedding?: Uint8Array;
+    // Set when the embedding channel was requested but the opt-in
+    // @plurnk/plurnk-mimetypes-embeddings package isn't installed — the
+    // install hint, mirroring grammarMissing (#14). strict: true throws
+    // instead.
+    embeddingMissing?: string;
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -119,6 +145,10 @@ export default class Mimetypes {
     readonly #handlerInstances = new Map<string, BaseHandler>();
     #discovery: Discovery | null = null;
     #readyPromise: Promise<void> | null = null;
+    // Primed-promise cache for the opt-in embedder (issue #24). null result
+    // = package not installed/loadable; the promise itself is cached so the
+    // model loads once per orchestrator lifetime.
+    #embedderPromise: Promise<Embedder | null> | null = null;
 
     constructor(options: MimetypesOptions = {}) {
         this.#discoverOptions = options.discoverOptions ?? {};
@@ -213,7 +243,7 @@ export default class Mimetypes {
     //   * grammar missing → degrades to text-plain metadata + empty channels
     //     with grammarMissing set (#14), unless options.strict
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
-        const channels = new Set<Channel>(options.channels ?? ALL_CHANNELS);
+        const channels = new Set<Channel>(options.channels ?? DEFAULT_CHANNELS);
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {
@@ -294,6 +324,9 @@ export default class Mimetypes {
             throw err;
         }
         const totalLines = typeof content === "string" ? countLines(content) : 0;
+        const embeddingPart = channels.has("embedding")
+            ? await this.#embedFor(content, handler, options.strict === true)
+            : {};
 
         return {
             mimetype,
@@ -304,7 +337,64 @@ export default class Mimetypes {
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
             ...(channels.has("references") && { references }),
+            ...embeddingPart,
         };
+    }
+
+    // Embedding channel (issue #24). Embeds the entry's text projection:
+    // string content verbatim; binary content via the handler's toText()
+    // (PDF page text), empty bytes when no projection exists. Missing
+    // embedder package degrades with an install hint (#14 precedent) or
+    // throws under strict.
+    async #embedFor(
+        content: string | Uint8Array,
+        handler: BaseHandler | null,
+        strict: boolean,
+    ): Promise<{ embedding: Uint8Array; embeddingMissing?: string }> {
+        const embedder = await this.#getEmbedder();
+        if (embedder === null) {
+            if (strict) {
+                throw new Error(
+                    `Embedding channel requested but ${EMBEDDINGS_PACKAGE} is not `
+                    + `installed. npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
+                );
+            }
+            return { embedding: new Uint8Array(0), embeddingMissing: EMBEDDINGS_PACKAGE };
+        }
+        let text: string;
+        if (typeof content === "string") {
+            text = content;
+        } else if (handler !== null) {
+            try {
+                text = await (handler as unknown as { toText(c: Uint8Array): string | Promise<string> }).toText(content);
+            } catch {
+                // No text projection for this binary mimetype — nothing to
+                // embed; empty bytes are the honest channel.
+                return { embedding: new Uint8Array(0) };
+            }
+        } else {
+            return { embedding: new Uint8Array(0) };
+        }
+        if (text.length === 0) return { embedding: new Uint8Array(0) };
+        return { embedding: await embedder.embed(text) };
+    }
+
+    #getEmbedder(): Promise<Embedder | null> {
+        this.#embedderPromise ??= (async () => {
+            let mod: unknown;
+            try {
+                mod = await this.#loader(EMBEDDINGS_PACKAGE);
+            } catch {
+                return null;
+            }
+            const m = mod as { embed?: unknown; dimension?: unknown; default?: { embed?: unknown; dimension?: unknown } };
+            const surface = typeof m.embed === "function" ? m : m.default;
+            if (typeof surface?.embed !== "function" || typeof surface?.dimension !== "number") {
+                return null;
+            }
+            return surface as unknown as Embedder;
+        })();
+        return this.#embedderPromise;
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
@@ -347,13 +437,19 @@ export default class Mimetypes {
     // (line count, extent) plus empty channels for whatever it requested, and
     // grammarMissing as a structured install hint. ok stays true — in the
     // a-la-carte world a missing grammar is a normal state, not an error.
-    #degradedResult(
+    async #degradedResult(
         mimetype: string,
         content: string | Uint8Array,
         channels: ReadonlySet<Channel>,
         plurnkPackage: string,
-    ): ProcessResult {
+    ): Promise<ProcessResult> {
         const totalLines = typeof content === "string" ? countLines(content) : 0;
+        // The embedding channel does not need the grammar — a degraded entry
+        // is still semantically searchable text (non-strict: a missing
+        // embedder stacks its own hint alongside grammarMissing).
+        const embeddingPart = channels.has("embedding")
+            ? await this.#embedFor(content, null, false)
+            : {};
         return {
             mimetype,
             ok: true,
@@ -364,6 +460,7 @@ export default class Mimetypes {
             ...(channels.has("deepJson") && { deepJson: null }),
             ...(channels.has("deepXml") && { deepXml: "" }),
             ...(channels.has("references") && { references: [] }),
+            ...embeddingPart,
         };
     }
 

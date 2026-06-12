@@ -603,3 +603,14 @@ Query conventions:
 - Deterministic document order.
 
 A language participates in the service's graph only when its conformance suite is green.
+
+## 17. Embedding channel (framework v0.15.x, issue #24)
+
+The `embedding` channel is the per-entry vector supply for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension), **scalar per entry**. The service stores the bytes verbatim as a sqlite BLOB and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: an entry's body and a `~query`'s query text ride the identical path.
+
+- **Opt-in only.** `"embedding"` is never in the default channel set — it is a model inference, orders of magnitude costlier than parsing. Request it explicitly: `process(input, { channels: ["embedding"] })`.
+- **The embedder is an opt-in artifact package**: `@plurnk/plurnk-mimetypes-embeddings` (per-grammar-package precedent — the framework ships no model weights). It exports `embed(text): Promise<Uint8Array>` and `dimension: number`. Model: MiniLM-class `all-MiniLM-L6-v2`, **dimension 384** (1536 bytes), quantized ONNX bundled in the package (hermetic; pinned revision; fetch + verify scripts). Vectors are mean-pooled and L2-normalized.
+- **What gets embedded**: string content verbatim; binary content via the handler's `toText()` projection (PDF page text). No projection / empty text → empty bytes (length 0), no hint — the honest channel.
+- **Missing package degrades per #14**: requested embedding with the package absent → `embedding: new Uint8Array(0)` + `embeddingMissing` install hint, `ok` stays true; `strict: true` throws.
+- **Grammar-degrade still embeds**: a grammar-missing entry is still semantically searchable text; `grammarMissing` and a real vector coexist.
+- The dimension is **fixed per deployment** — changing the model/dimension invalidates the service's stored vectors; that is a consumer-side migration, not a framework concern.
