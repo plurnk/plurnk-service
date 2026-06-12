@@ -1,8 +1,16 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
-    "keywords": ["plurnk", "exec", "runtime", "executor", "git", "gh", "github"],
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "git",
+        "gh",
+        "github"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-execs-git#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-execs-git/issues"
@@ -23,8 +31,14 @@
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "git", "glyph": "🔀" },
-            { "name": "gh", "glyph": "🐙" }
+            {
+                "name": "git",
+                "glyph": "🔀"
+            },
+            {
+                "name": "gh",
+                "glyph": "🐙"
+            }
         ]
     },
     "exports": {
@@ -46,11 +60,12 @@
         "build": "npm run build:dist",
         "prepare": "npm run build"
     },
-    "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.1"
-    },
     "devDependencies": {
         "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-execs": "0.4.x"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.x"
     }
 }
