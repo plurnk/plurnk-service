@@ -9,10 +9,10 @@ DELETE FROM entry_fts WHERE rowid = $entry_id;
 INSERT INTO entry_fts (rowid, content) VALUES ($entry_id, $content);
 
 -- PREP: embedding_set
--- Upsert an entry's embedding vector (one per entry), supplied by the mimetypes
--- `embedding` projection at the gated manifest-add hook.
-INSERT INTO entry_embeddings (entry_id, vector) VALUES ($entry_id, $vector)
-ON CONFLICT(entry_id) DO UPDATE SET vector = excluded.vector;
+-- Upsert an entry's embedding vector + the model that produced it (one per entry),
+-- supplied by the mimetypes `embedding` projection at the gated manifest-add hook.
+INSERT INTO entry_embeddings (entry_id, vector, embedding_model) VALUES ($entry_id, $vector, $embedding_model)
+ON CONFLICT(entry_id) DO UPDATE SET vector = excluded.vector, embedding_model = excluded.embedding_model;
 
 -- PREP: embedding_delete
 DELETE FROM entry_embeddings WHERE entry_id = $entry_id;

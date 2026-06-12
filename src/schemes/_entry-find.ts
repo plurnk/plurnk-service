@@ -17,6 +17,7 @@ import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import EntryGraph from "./_entry-graph.ts";
+import EntrySemantic from "./_entry-semantic.ts";
 
 export interface FindResult {
     status: number;
@@ -68,10 +69,13 @@ export default class EntryFind {
         // name). File sets storedScheme=null — bare rows.
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
         if (statement.body !== null && statement.body.dialect === "semantic") {
-            // Semantic is a cross-entry similarity ranking (grammar `~query`: top-K
-            // via <L>), not a per-candidate content match — a service-side feature
-            // needing its own embedding/vector design. Defined but not built; parked.
-            return { status: 501, pathnames: [] };
+            // ~query: embed the query text, FTS-narrow by its terms, cosine-rank the
+            // narrowed set, top-K. rankSemantic 501s if the embeddings handler isn't
+            // installed (the channel degrades to embeddingMissing). <L> carries K.
+            const { mimetypes } = ctx;
+            if (mimetypes === undefined) return { status: 501, pathnames: [] };
+            if (statement.lineMarker === null) return { status: 400, pathnames: [] };  // ~query needs a top-K, e.g. ~query<10>
+            return EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, statement.lineMarker.first);
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);

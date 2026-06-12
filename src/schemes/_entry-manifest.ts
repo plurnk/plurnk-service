@@ -63,7 +63,7 @@ export default class EntryManifest {
                     const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
                     if (wantGraph) {
                         try {
-                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references"] });
+                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
                             await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                         } catch {
                             result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
@@ -73,9 +73,11 @@ export default class EntryManifest {
                         result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                         await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                     }
-                    // The other deep channel: re-index the body into entry_fts
-                    // (~semantic's keyword/narrowing half). Empty/binary → no FTS row.
+                    // The other two deep channels: re-index the body into entry_fts
+                    // (~semantic's keyword half) and store the embedding vector + model
+                    // (the vector half). Empty/binary/degraded → cleared, not stored.
                     await EntrySemantic.indexFts(db, r.entry_id, r.content);
+                    await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {

@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
@@ -87,7 +87,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         for (const [p, , v] of ENTRIES) {
             const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
             assert.ok(e);
-            await (db.embedding_set as PrepMethod).run({ entry_id: e.id, vector: blob(v) });
+            await (db.embedding_set as PrepMethod).run({ entry_id: e.id, vector: blob(v), embedding_model: "test-model" });
         }
 
         const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
@@ -96,5 +96,31 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         });
         assert.deepEqual(r.map((x) => x.pathname), ["pay1.ts", "pay2.ts"],
             "FTS narrows to payment entries; cosine ranks them; auth (perfect cosine, no keyword) excluded by the narrow");
+    } finally { db.close(); }
+});
+
+const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
+    op: "FIND", suffix: "", signal: null, target,
+    lineMarker: { first: k, last: null }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    position: { line: 1, column: 1 },
+});
+
+test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipeline, real model)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `e2e-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
+        await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
+        await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
+        await EntryManifest.buildManifestBody(ctx);  // real embeddings stored via the mimetypes-embeddings handler
+
+        const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        // The two connection entries are returned; cake (no shared keyword) is excluded
+        // by the FTS narrow, not even reaching cosine.
+        assert.deepEqual([...r.results].sort(), ["known://db.md", "known://sql.md"]);
+        assert.ok(!r.results.includes("known://cake.md"), "the unrelated recipe never enters the ranking");
     } finally { db.close(); }
 });

@@ -190,8 +190,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 -- gated manifest-add hook (mimetypes#23); the fusion (semantic_rank) cosine-ranks
 -- the FTS-narrowed candidates over these. CASCADE-deleted with the entry.
 CREATE TABLE IF NOT EXISTS entry_embeddings (
-    entry_id INTEGER NOT NULL PRIMARY KEY,
-    vector   BLOB    NOT NULL,
+    entry_id        INTEGER NOT NULL PRIMARY KEY,
+    vector          BLOB    NOT NULL,
+    -- The model id that produced this vector (mimetypes' `embeddingModel`, e.g.
+    -- "Xenova/all-MiniLM-L6-v2@751bff37"). Stored per row as the staleness detector:
+    -- a future model swap re-embeds rows whose model differs from the current one.
+    embedding_model TEXT    NOT NULL,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 
