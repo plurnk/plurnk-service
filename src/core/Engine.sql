@@ -95,7 +95,7 @@ WHERE id = $id;
 -- `seconds` is the live age of an active stream: now − the open subscription's
 -- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
 -- stored '...%fZ' timestamp directly; re-evaluated every render like tokens.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens, e.deep_hash,
     CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id

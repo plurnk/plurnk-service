@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known://${pathname}`, scheme: "known",
@@ -100,5 +100,35 @@ test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", as
         const r = await find(db, sessionId, runId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, []);
+    } finally { db.close(); }
+});
+
+test("[#186-graph-gate] manifest-add re-derives only on content change (the deep_hash gate)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `gate-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        await new Known().edit(editStmt(url("a.ts"), "export function foo() {}\n"), ctx);
+
+        // Fresh counting wrapper — never mutate the shared DEFAULT_MIMETYPES (intg
+        // runs concurrently). Counts only the symbols+references parse.
+        let parses = 0;
+        const counting = {
+            process: (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
+                if (args[1]?.channels?.includes("symbols")) parses++;
+                return DEFAULT_MIMETYPES.process(...args);
+            },
+        } as unknown as typeof DEFAULT_MIMETYPES;
+        const gctx = { ...ctx, mimetypes: counting };
+
+        await EntryManifest.buildManifestBody(gctx);
+        assert.equal(parses, 1, "first sight: content unseen → derive");
+        await EntryManifest.buildManifestBody(gctx);
+        assert.equal(parses, 1, "unchanged: deep_hash matches → skip the parse");
+
+        await new Known().edit(editStmt(url("a.ts"), "export function bar() {}\n"), ctx);
+        await EntryManifest.buildManifestBody(gctx);
+        assert.equal(parses, 2, "content changed → re-derive");
     } finally { db.close(); }
 });

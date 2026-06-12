@@ -43,3 +43,8 @@ WHERE session_id = $session_id AND name = $name;
 -- by the source def's full qualified path = the @> join semantics from #186).
 SELECT DISTINCT name FROM symbol_refs
 WHERE session_id = $session_id AND entry_id = $entry_id AND container IS $container;
+
+-- PREP: graph_set_deep_hash
+-- Stamp the body-content hash at the moment an entry's deep channels were
+-- (re)derived. The next manifest-add pass skips the entry while the hash holds.
+UPDATE entries SET deep_hash = $deep_hash WHERE id = $entry_id;
