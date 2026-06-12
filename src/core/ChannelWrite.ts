@@ -67,6 +67,7 @@ export default class ChannelWrite {
     static #openSubStmt(db: Db): PrepMethod { return db.open_subscription as PrepMethod; }
     static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
     static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
+    static #execTerminalStmt(db: Db): PrepMethod { return db.find_exec_close_status as PrepMethod; }
 
     // The entry's target URI for stream notifications (#179). A NULL scheme is
     // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
@@ -113,6 +114,17 @@ export default class ChannelWrite {
         { subscriptionId, status }: { subscriptionId: number; status: number },
     ): Promise<void> {
         await ChannelWrite.#closeSubStmt(db).run({ status, subscription_id: subscriptionId });
+    }
+
+    // Terminal close_status of a finished exec stream, by coordinate pathname —
+    // the KILL-on-a-non-running-exec lookup (Exec.kill). null = no closed
+    // subscription for that coordinate (unknown exec).
+    static async execTerminalStatus(
+        db: Db,
+        { sessionId, pathname }: { sessionId: number; pathname: string },
+    ): Promise<number | null> {
+        const row = await ChannelWrite.#execTerminalStmt(db).get<{ close_status: number }>({ session_id: sessionId, pathname });
+        return row?.close_status ?? null;
     }
 
     static async findActiveSubscription(

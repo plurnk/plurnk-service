@@ -27,7 +27,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "../intg/_helpers.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
@@ -82,6 +82,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
     const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
+    engine.setExecutors(await testExecutors());
     Yolo.attachYolo(engine, db);
     const sessionId = await insertSession(db, `demo-${opts.label}-${crypto.randomUUID()}`);
     await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: fixture.workspace });

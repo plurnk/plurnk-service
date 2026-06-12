@@ -15,9 +15,10 @@
 //   <<OPEN[france](known://countries/**):Paris*:OPEN      — glob over entry content
 // The path-globs live in the (target); the body is the content matcher.
 //
-// READ honors this (matchAgainstContent). FIND/OPEN/FOLD currently run the body
-// matcher against the PATHNAME (_entry-find.ts:64-73) — so the FIND tests below
-// are deferred-reds pinning that divergence until it is reconciled.
+// All four honor this: READ via read-resolve, FIND/OPEN/FOLD via
+// _entry-find.matchPathnames → matchAgainstContent against the candidate's
+// CONTENT (_entry-find.ts:95). The body-on-pathname divergence these once
+// pinned is reconciled — they are green pins now, not deferred-reds.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -95,10 +96,25 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
     } finally { db.close(); }
 });
 
-// --- FIND: body matcher MUST run against CONTENT (plurnk.md ex. above) --------
+// plurnk.md: <<READ(/etc/hosts)<2>::READ — the line-slice rides the <L> marker
+// slot (NOT the body matcher). Read line 2 of a 3-line entry → just that line.
+// Pins the <L>?:body? slot order — the seam the live READ-<2> mis-slot exposed.
+test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot, not the body", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        await seed(db, sessionId, runId, [["lines", "alpha\nbeta\ngamma"]]);
+        const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { first: 2, last: 2 }, body: null, position: { line: 1, column: 1 } };
+        const r = await new Known().read(stmt, makeSchemeCtx({ db, sessionId }));
+        assert.equal(r.status, 200);
+        assert.match(r.content ?? "", /beta/);
+        assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
+    } finally { db.close(); }
+});
+
+// --- FIND: body matcher runs against CONTENT (plurnk.md ex. above) --------
 // Each world swaps the token between fields: the entry that matches by CONTENT
-// is NOT the entry that matches by PATHNAME. Asserting the content-match result
-// fails on the current pathname implementation, which is the point.
+// is NOT the entry that matches by PATHNAME. The impl selects the content-bearing
+// entry — a pathname-matcher (the old divergence) would return the other one.
 
 // plurnk.md: <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 //   → select entries whose CONTENT matches the regex.

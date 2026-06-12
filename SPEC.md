@@ -207,7 +207,7 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
 - `SEND[499](path)` — cancel active subscription (§7).
 
-`SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is MOVE to `/dev/null` (§6.5).
+`SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL (the MOVE→`/dev/null` idiom is retired, §6.5).
 
 Other status codes return 501 from entry-bearing schemes by default. {§3.5-entry-schemes-501-on-non-410}
 
@@ -436,8 +436,8 @@ Returns 201 on success. Same- and cross-scheme COPY share the orchestrator. {§6
 
 AST: `{ op: "MOVE", target (source), body: dest | null, signal: tags | null, lineMarker? }`.
 
-- **Relocation** (`body` non-null): COPY (§6.4) + `src_scheme.deleteEntry` in one transaction. 201 on success. {§6.5-relocation-deletes-source} Cross-scheme same as same-scheme. {§6.5-cross-scheme-move}
-- **Deletion** (`body: null`, or `body` = `/dev/null`): `src_scheme.deleteEntry` directly. {§6.5-null-body-deletes} 200 on success, 404 if absent. {§6.5-missing-source-404} `/dev/null` is the model-facing delete idiom the grammar teaches; a null body is its programmatic equivalent. {§6.5-dev-null-deletes}
+- **Relocation** (`body` non-null, resolvable dest): COPY (§6.4) + `src_scheme.deleteEntry` in one transaction. 201 on success. {§6.5-relocation-deletes-source} Cross-scheme same as same-scheme. {§6.5-cross-scheme-move} Missing source → 404. {§6.5-missing-source-404}
+- **MOVE never deletes.** A null body → 400 (a destination is required). {§6.5-null-body-400} `/dev/null` carries no special meaning — the MOVE→/dev/null delete idiom is retired; KILL is the canonical delete. {§6.5-dev-null-not-special}
 
 Log history preserved — `log_entries` stores path tuple as text, not FK to `entries.id`.
 

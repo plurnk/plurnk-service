@@ -72,18 +72,23 @@ export default class Exec {
     // Process-KILL (plurnk-service#203). A running (host/background) exec is
     // addressable by its coordinate pathname; KILL aborts that spawn's
     // controller — the same teardown loop.cancel rides — and the executor's
-    // signal handler tears down the child. Only in-flight spawns are killable;
-    // inline (read/pure) execs already completed in-turn, so an unknown pathname
-    // is a 404. Signal escalation (TERM→SIGKILL) is the executor's mechanism;
-    // the service owns only the abort.
-    kill(pathname: string): { status: number; error?: string } {
+    // signal handler tears down the child. Signal escalation (TERM→SIGKILL) is
+    // the executor's mechanism; the service owns only the abort. The full #203
+    // status matrix: 200 killed (in-flight) · 410 killed-earlier (a prior abort
+    // closed the stream 499) · 304 already-exited (closed with any other terminal
+    // status) · 404 unknown (no subscription for that coordinate).
+    async kill(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         for (const entry of this.#activeAborts.values()) {
             if (entry.pathname === pathname) {
                 entry.controller.abort(new Error(`exec://${pathname} killed`));
                 return { status: 200 };
             }
         }
-        return { status: 404, error: `no running exec at exec://${pathname}` };
+        // Not running — settle the outcome from the closed subscription's status.
+        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { sessionId: ctx.sessionId, pathname });
+        if (terminal === null) return { status: 404, error: `no exec at exec://${pathname}` };
+        if (terminal === 499) return { status: 410, error: `exec://${pathname} was killed earlier` };
+        return { status: 304 };
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.

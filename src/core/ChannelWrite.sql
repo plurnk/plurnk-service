@@ -38,3 +38,16 @@ WHERE id = $subscription_id AND closed_at IS NULL;
 SELECT id, scheme, handle
 FROM subscriptions
 WHERE run_id = $run_id AND entry_id = $entry_id AND closed_at IS NULL;
+
+-- PREP: find_exec_close_status
+-- Terminal outcome of a finished exec stream, addressed by its coordinate
+-- pathname — the KILL-on-a-non-running-exec lookup. 499 (aborted) = killed
+-- earlier; any other terminal status = exited naturally; no row = unknown exec.
+SELECT s.close_status
+FROM entries e
+JOIN subscriptions s ON s.entry_id = e.id
+WHERE e.scope = 'session' AND e.session_id = $session_id
+  AND e.scheme = 'exec' AND e.pathname = $pathname
+  AND s.closed_at IS NOT NULL
+ORDER BY s.closed_at DESC
+LIMIT 1;

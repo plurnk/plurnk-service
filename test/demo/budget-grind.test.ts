@@ -20,7 +20,7 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import { readFile as readPath } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "../intg/_helpers.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
@@ -55,6 +55,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
         const exec = schemes.get("exec") as Exec;
         process.env.PLURNK_BUDGET_CEILING = String(CEILING);
         const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
+        engine.setExecutors(await testExecutors());
         delete process.env.PLURNK_BUDGET_CEILING; // engine captured it at construction
         Yolo.attachYolo(engine, db);
         const sessionId = await insertSession(db, `demo-budget-${crypto.randomUUID()}`);

@@ -139,29 +139,32 @@ test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, d
     } finally { await db.close(); }
 });
 
-test("[§6.5-null-body-deletes] Engine.move null body = delete source", async () => {
+test("[§6.5-null-body-400] Engine.move with no destination → 400, source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "trash-me"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
 
+        // MOVE relocates; it never deletes. A null destination is a 400 — use KILL.
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "trash-me"), null));
-        assert.equal(r.status, 200);
+        assert.equal(r.status, 400);
 
         const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "trash-me" });
-        assert.equal(remaining, undefined);
+        assert.notEqual(remaining, undefined, "source survives — MOVE never deletes");
     } finally { await db.close(); }
 });
 
-test("[§6.5-dev-null-deletes] Engine.move to /dev/null = delete source", async () => {
+test("[§6.5-dev-null-not-special] Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "obsolete"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
 
+        // /dev/null carries no special meaning now (KILL is the delete). It's a
+        // plain relocation to an unwritable dest — it fails, and the source stays.
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "obsolete"), localPath("/dev/null")));
-        assert.equal(r.status, 200);
+        assert.notEqual(r.status, 200, "not a successful delete");
 
         const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "obsolete" });
-        assert.equal(remaining, undefined);
+        assert.notEqual(remaining, undefined, "source survives — /dev/null no longer deletes");
     } finally { await db.close(); }
 });
 

@@ -1605,19 +1605,14 @@ export default class Engine {
         const srcPath = statement.target;
         const dstPath = statement.body;
         if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
+        // MOVE is relocation only — deletion is KILL's job (§6.5). The /dev/null
+        // and null-body delete-by-MOVE back-compat is retired: no silent debt.
+        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" };
 
         const srcSchemeName = this.#schemeNameOf(srcPath);
         if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
-
-        // MOVE to /dev/null (the grammar's idiomatic delete) or a null-body
-        // MOVE deletes the source entry. SPEC §6.5.
-        if (dstPath === null || pathnameFromPath(dstPath) === "/dev/null") {
-            const srcPathname = pathnameFromPath(srcPath);
-            const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
-            return { status: delResult.status };
-        }
 
         // Relocation: COPY then DELETE source
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
@@ -1636,7 +1631,7 @@ export default class Engine {
     // annotation with no runtime meaning; it survives into the log row's tx for
     // free via the statement serialization. Status: 200 killed · 404 unknown ·
     // 405 log:// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
-    // MUTATING_OPS) · 200/404 exec (killed / not running) · 501 no-kill/delete scheme.
+    // MUTATING_OPS) · 200/410/304/404 exec (killed / killed-earlier / exited / unknown) · 501 no-kill/delete scheme.
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
@@ -1645,9 +1640,9 @@ export default class Engine {
         if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
         if (schemeName === "log") return { status: 405, error: "log:// is append-only; KILL must bounce" };
         if (schemeName === "exec") {
-            const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string) => { status: number; error?: string } } | undefined;
+            const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
             if (execHandler === undefined || typeof execHandler.kill !== "function") return { status: 501 };
-            return execHandler.kill(pathnameFromPath(path));
+            return await execHandler.kill(pathnameFromPath(path), ctx);
         }
         const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
         if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
