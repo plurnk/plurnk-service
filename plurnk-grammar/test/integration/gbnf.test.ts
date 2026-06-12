@@ -172,13 +172,61 @@ const sample = (entry: string, rng: () => number): string => {
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
-test("GBNF: plurnk.md examples block derives from root", () => {
+// The root encodes the turn shape (#29): ops closed by exactly one SEND. The
+// teaching corpus is not a turn (it ends with three SEND variants), so corpus
+// derivability is asserted per-statement; the turn shape is asserted separately.
+test("GBNF: every plurnk.md example derives from statement", () => {
     const headingMatch = /^## Examples\s*$/m.exec(plurnkMd);
     assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
     const rest = plurnkMd.substring(headingMatch.index + headingMatch[0].length);
     const nextHeading = /^## /m.exec(rest);
     const block = rest.substring(0, nextHeading ? nextHeading.index : rest.length).trim();
-    assert.equal(derives("root", block), true, "plurnk.md examples block is not GBNF-derivable");
+
+    const result = PlurnkParser.parse(block);
+    const statements = result.items.filter((item) => item.kind === "statement");
+    assert.ok(statements.length > 0, "no statements extracted from the examples block");
+    const lines = block.split("\n");
+    const offsetOf = (line: number, column: number): number =>
+        lines.slice(0, line - 1).reduce((sum, l) => sum + l.length + 1, 0) + column;
+    for (let i = 0; i < statements.length; i++) {
+        const start = offsetOf(statements[i].statement.position.line, statements[i].statement.position.column);
+        const next = statements[i + 1];
+        const end = next ? offsetOf(next.statement.position.line, next.statement.position.column) : block.length;
+        const text = block.slice(start, end).trim();
+        assert.equal(derives("statement", text), true, `example not GBNF-derivable: ${JSON.stringify(text)}`);
+    }
+});
+
+test("GBNF: root accepts a batch of ops closed by a final status SEND", () => {
+    const batch = "<<EDIT[france](known://capital.md):Paris:EDIT\n\n<<FOLD(log://**/get)<1,10>::FOLD\n<<SEND[200]:Paris:SEND\n";
+    assert.equal(derives("root", batch), true);
+});
+
+test("GBNF: root accepts a bare status-SEND turn", () => {
+    assert.equal(derives("root", "<<SEND[102]:still working:SEND"), true);
+});
+
+test("GBNF: root accepts mid-batch SENDs (targeted; pathless non-status) before the final", () => {
+    const batch = "<<SEND[102](agent://supervisor):decomposition complete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
+    assert.equal(derives("root", batch), true);
+});
+
+test("GBNF: root rejects a batch with no final status SEND", () => {
+    assert.equal(derives("root", "<<EDIT(known://a.md):x:EDIT"), false);
+    assert.equal(derives("root", "<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
+});
+
+test("GBNF: root rejects a targeted SEND as the turn closer", () => {
+    assert.equal(derives("root", "<<SEND[200](agent://supervisor):done:SEND"), false);
+});
+
+test("GBNF: root rejects any statement after the final status SEND", () => {
+    const after = "<<SEND[200]:done:SEND\n<<EDIT(known://a.md):x:EDIT\n<<SEND[200]:again:SEND";
+    assert.equal(derives("root", after), false);
+});
+
+test("GBNF: root rejects two consecutive status SENDs", () => {
+    assert.equal(derives("root", "<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
 });
 
 test("GBNF: digit-suffixed statement quoting an inner op derives", () => {
@@ -215,6 +263,28 @@ test("GBNF: unsuffixed body cannot contain its own close literal", () => {
 // -------------------------------------------------------------------------
 // Fuzz: L(GBNF) ⊂ L(ANTLR)
 // -------------------------------------------------------------------------
+
+test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () => {
+    const rng = mulberry32(7);
+    for (let i = 0; i < 100; i++) {
+        const turn = sample("root", rng);
+        const result = PlurnkParser.parse(turn);
+        const statements = result.items.filter((item) => item.kind === "statement");
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 0, `batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
+        assert.ok(statements.length >= 1, `batch ${i} produced no statements`);
+        assert.equal(result.unparsedTail, undefined, `batch ${i} left an unparsed tail`);
+        const last = statements.at(-1)!;
+        assert.ok(last.kind === "statement", `batch ${i} last item is not a statement`);
+        if (last.kind !== "statement") continue;
+        assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(last.statement.target, null, `batch ${i} final SEND has a target\nbatch: ${JSON.stringify(turn)}`);
+        assert.ok(
+            last.statement.signal === 102 || last.statement.signal === 200,
+            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200\nbatch: ${JSON.stringify(turn)}`,
+        );
+    }
+});
 
 test("GBNF: 300 seeded random derivations all parse cleanly", () => {
     const rng = mulberry32(42);

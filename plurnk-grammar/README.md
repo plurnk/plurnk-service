@@ -184,7 +184,7 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-`dist/plurnk.gbnf` ships in the package — a generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar for llama.cpp constrained sampling. It dictates the canonical form (digit suffixes, comma line markers, three-digit SEND signals); the parser remains the permissive contract — everything the GBNF can generate, the parser accepts.
+`dist/plurnk.gbnf` ships in the package — a generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar for llama.cpp constrained sampling. It dictates the canonical form (digit suffixes, comma line markers, three-digit SEND signals); the parser remains the permissive contract — everything the GBNF can generate, the parser accepts. The root encodes the turn shape: a batch of ops (mid-batch SENDs allowed) closed by a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible — termination is structural (forced EOS), not an optional stop a near-greedy decoder can skip.
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")

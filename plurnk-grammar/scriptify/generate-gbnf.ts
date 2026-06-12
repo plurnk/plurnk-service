@@ -70,7 +70,9 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    const statementAlts: GRule = [];
+    const opAlts: GRule = [];
+    const sendMidAlts: GRule = [];
+    const sendFinalAlts: GRule = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -80,7 +82,17 @@ export const buildModel = (): GModel => {
             bodyRules(model, name, close);
             const body = [lit(":"), ref(`${name}-b0`), lit(close)];
             if (op === "SEND") {
-                model.set(name, [[lit(open), lit("["), ref("status"), lit("]"), opt(ref("target")), ...body]]);
+                // Two forms (#29). Mid-batch: targeted (any status) or pathless with a
+                // non-terminal status. Final: pathless 102/200 — the turn's status
+                // update. The final form is EXCLUDED from mid position so that after
+                // it nothing is admissible and the sampler is forced to stop.
+                model.set(`${name}-mid`, [
+                    [lit(open), lit("["), ref("status"), lit("]"), ref("target"), ...body],
+                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],
+                ]);
+                model.set(`${name}-final`, [[lit(open), lit("["), ref("status-final"), lit("]"), ...body]]);
+                sendMidAlts.push([ref(`${name}-mid`)]);
+                sendFinalAlts.push([ref(`${name}-final`)]);
             } else if (op === "EXEC") {
                 model.set(name, [[lit(open), opt(ref("exec-sig")), opt(ref("target")), ...body]]);
             } else if (op === "KILL") {
@@ -89,13 +101,35 @@ export const buildModel = (): GModel => {
             } else {
                 model.set(name, [[lit(open), opt(ref("tags")), ref("target"), opt(ref("line")), ...body]]);
             }
-            statementAlts.push([ref(name)]);
+            if (op !== "SEND") opAlts.push([ref(name)]);
         }
     }
 
-    model.set("root", [[star(lit("\n")), ref("statement"), star(ref("root-rest")), star(lit("\n"))]]);
-    model.set("root-rest", [[plus(lit("\n")), ref("statement")]]);
-    model.set("statement", statementAlts);
+    // Turn shape (#29): a batch of ops (mid-batch SENDs allowed) closed by exactly
+    // one pathless SEND[102]/[200] status update. After it (plus at most one
+    // newline) nothing is admissible, so the sampler is FORCED to stop —
+    // termination is structural, not an optional EOS a near-greedy decoder can
+    // sail past. Separators are bounded (1-2 newlines) so whitespace cannot loop
+    // either. Degeneration *inside* a body remains unboundable (content is
+    // content); the consumer max_tokens cap stays as backstop.
+    model.set("root", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
+    model.set("batch-step", [[ref("mid-statement"), lit("\n"), opt(lit("\n"))]]);
+    model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
+    model.set("op-statement", opAlts);
+    model.set("send-mid-any", sendMidAlts);
+    model.set("send-final-any", sendFinalAlts);
+    model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
+    model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
+    // status-final: the two loop-status codes the model may close a turn with.
+    // status-mid: any 3-digit code EXCEPT 102 and 200 (finite-literal complement).
+    model.set("status-final", [[lit("102")], [lit("200")]]);
+    model.set("status-mid", [
+        [lit("10"), cls([R("0", "1"), R("3", "9")])],
+        [lit("1"), cls([R("1", "9")]), DIGIT],
+        [lit("20"), cls([R("1", "9")])],
+        [lit("2"), cls([R("1", "9")]), DIGIT],
+        [cls([R("0", "0"), R("3", "9")]), DIGIT, DIGIT],
+    ]);
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);

@@ -84,6 +84,13 @@ test("shipped root: every completed statement in constrained emission parses cle
     if (finishReason === "stop") {
         assert.equal(errors.length, 0, `parse errors in completed output: ${JSON.stringify(content)}`);
         assert.equal(result.unparsedTail, undefined, `unparsed tail in completed output: ${JSON.stringify(content)}`);
+        // Turn shape (#29): the root forces termination on a final pathless 102/200 SEND.
+        const last = statements.at(-1)!;
+        assert.ok(last.kind === "statement");
+        if (last.kind !== "statement") return;
+        assert.equal(last.statement.op, "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
+        assert.equal(last.statement.target, null, `final SEND has a target: ${JSON.stringify(content)}`);
+        assert.ok(last.statement.signal === 102 || last.statement.signal === 200, `final SEND signal ${last.statement.signal} is not 102/200`);
         return;
     }
     // finish_reason "length" truncates mid-statement — a harness artifact, not a
