@@ -35,6 +35,10 @@ export default class EntryManifest {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
+        // ~semantic is opt-in (PLURNK_SEMANTIC_ENABLED): only then do we request the
+        // `embedding` channel — which loads the 16 MB model. Off → no embedding cost
+        // (the symbol index + FTS still derive); ~query degrades to 501 in the dispatch.
+        const semanticEnabled = process.env.PLURNK_SEMANTIC_ENABLED === "1";
         const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
         const byEntry = new Map<string, CatalogEntry>();
         for (const r of rows) {
@@ -63,7 +67,7 @@ export default class EntryManifest {
                     const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
                     if (wantGraph) {
                         try {
-                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
+                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: semanticEnabled ? ["symbols", "references", "embedding"] : ["symbols", "references"] });
                             await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                         } catch {
                             result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
@@ -77,7 +81,7 @@ export default class EntryManifest {
                     // (~semantic's keyword half) and store the embedding vector + model
                     // (the vector half). Empty/binary/degraded → cleared, not stored.
                     await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                    await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
+                    if (semanticEnabled) await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {
