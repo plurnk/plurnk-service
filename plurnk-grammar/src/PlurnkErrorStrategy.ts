@@ -33,6 +33,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_SEND]: "open tag `<<OPsuffix`",
         [plurnkParser.OPEN_EXEC]: "open tag `<<OPsuffix`",
         [plurnkParser.OPEN_KILL]: "open tag `<<OPsuffix`",
+        [plurnkParser.OPEN_PLAN]: "open tag `<<OPsuffix`",
         [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
         [plurnkParser.LPAREN]: "`(` (target slot opener)",

@@ -17,6 +17,7 @@ statement
     | sendStatement
     | execStatement
     | killStatement
+    | planStatement
     ;
 
 // 7 tag-CSV ops share the same modifier permutation: tagSignal, target, lineMarker
@@ -34,6 +35,10 @@ foldStatement : OPEN_FOLD tagOpModifiers? COLON body? CLOSE_TAG ;
 sendStatement : OPEN_SEND intOpModifiers? COLON body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON body? CLOSE_TAG ;
 killStatement : OPEN_KILL intOpModifiers? COLON body? CLOSE_TAG ;
+
+// PLAN — reasoning recorded to the log. Canonical form is slotless; tag-op
+// modifiers parse permissively (tags on thoughts are legitimate folksonomy).
+planStatement : OPEN_PLAN tagOpModifiers? COLON body? CLOSE_TAG ;
 
 // Modifier slot permutations. Each leaf rule appears at most once in any
 // path through the alternatives, so duplicate slots fail at parse time.

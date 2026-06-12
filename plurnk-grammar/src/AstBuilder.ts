@@ -12,6 +12,7 @@ import type {
     MatcherBody,
     MoveStatement,
     ParsedPath,
+    PlanStatement,
     PlurnkOp,
     PlurnkStatement,
     Position,
@@ -30,6 +31,7 @@ import type {
     IntOpModifiersContext,
     KillStatementContext,
     MoveStatementContext,
+    PlanStatementContext,
     ReadStatementContext,
     SendStatementContext,
     OpenStatementContext,
@@ -80,6 +82,7 @@ export default class AstBuilder {
         const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
+        const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
         throw new Error("statement context has no recognized alternative");
     }
 
@@ -195,6 +198,18 @@ export default class AstBuilder {
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
             ...slots,
             lineMarker: null,
+            body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
+    static #buildPlan(ctx: PlanStatementContext): PlanStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        return {
+            op: "PLAN",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_PLAN().getText(), "PLAN"),
+            ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };

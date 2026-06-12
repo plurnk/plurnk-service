@@ -84,7 +84,7 @@ Optionality:
 | `OP`        | required      |
 | `suffix`    | optional; used for nesting and `:OPkeyword` escape (see §8) |
 | `[signal]`  | optional, OP-dependent contents |
-| `(path)`    | required for all OPs except SEND (recipient) and EXEC (cwd), where it is optional |
+| `(path)`    | required for all OPs except SEND (recipient) EXEC (cwd), and PLAN (no operand), where it is optional |
 | `<L>`       | optional; single position or range (see §7) |
 | `:`         | required (header → body delimiter) |
 | `body`      | optional, OP-dependent meaning |
@@ -100,7 +100,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 ## 3. Lexical Elements
 
 - `<<` — open delimiter.
-- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `SEND`, `EXEC`, `KILL`.
+- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `SEND`, `EXEC`, `KILL`, `PLAN`.
 - `suffix` — `[A-Za-z0-9_]*` immediately concatenated to `OP`, no separator.
 - `[` … `]` — signal slot; contents are OP-dependent (see §4).
 - `(` … `)` — path slot; contents are a URI (see §5).
@@ -123,6 +123,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | SEND   | HTTP status code (single integer) | optional | message payload (JSON by convention for structured responses) | not applicable |
 | EXEC   | executor (single string; `sh` default, `node`, `python`, …) | optional (cwd) | command or code snippet | not applicable |
 | KILL   | unix signal (single integer; wired, untaught in canon) | required | opaque annotation (logged, no runtime meaning) | not applicable |
+| PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
 The `<L>` slot is optional. Its referent shifts by OP (per the column
 above) but the syntax is uniform: a single integer denotes one
@@ -152,6 +153,7 @@ EDIT line-marker semantics (single source of authority):
 | SEND | status; recipient ack if applicable |
 | EXEC | exit code, stdout, stderr |
 | KILL | status; killed path |
+| PLAN | status; logged |
 
 Output is delivered to the model in the next turn. The shape of "status"
 is a SEND-style status code (see §9) so that errors are uniform across
@@ -463,7 +465,7 @@ type ParseItem =
 
 type Position = { line: number; column: number };
 
-type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "KILL";
+type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "KILL" | "PLAN";
 
 type PlurnkStatement =
     | FindStatement | ReadStatement | EditStatement
@@ -545,6 +547,9 @@ interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string
 
 // KILL — signal is a unix signal number; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
+
+// PLAN — body is reasoning text, recorded to the log. Raw.
+interface PlanStatement extends StatementBase<string[]> { op: "PLAN"; body: string | null; }
 ```
 
 The `op` field is the discriminator. TypeScript narrows the statement

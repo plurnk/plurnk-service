@@ -225,6 +225,14 @@ test("GBNF: root rejects any statement after the final status SEND", () => {
     assert.equal(derives("root", after), false);
 });
 
+test("GBNF: PLAN derives bare and sits mid-batch only", () => {
+    assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), true);
+    assert.equal(derives("statement", "<<PLAN[tagged]:thoughts:PLAN"), false); // dictated form is slotless
+    assert.equal(derives("root", "<<PLAN:reason:PLAN\n<<SEND[102]:working:SEND"), true);
+    assert.equal(derives("root", "<<SEND[102]:working:SEND\n<<PLAN:reason:PLAN"), false); // nothing follows the status SEND
+    assert.equal(derives("root", "<<PLAN:reason:PLAN"), false); // a turn still needs its status SEND
+});
+
 test("GBNF: root rejects two consecutive status SENDs", () => {
     assert.equal(derives("root", "<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
 });

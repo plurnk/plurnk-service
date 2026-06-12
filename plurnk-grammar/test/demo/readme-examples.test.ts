@@ -139,7 +139,7 @@ test("ex 27: SEND — structured JSON answer", () => {
 });
 
 test("ex 28: SEND — client error with JSON body", () => {
-    expectOneClean(`<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC"]}:SEND`);
+    expectOneClean(`<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC","KILL","PLAN"]}:SEND`);
 });
 
 test("ex 29: SEND — server error with explicit recipient", () => {
@@ -158,7 +158,11 @@ test("ex 32: KILL — permanently delete an entry", () => {
     expectOneClean("<<KILL(known://obsolete/note)::KILL");
 });
 
-test("ex 33: nested EDIT via suffix discipline", () => {
+test("ex 33: PLAN — reasoning recorded to the log", () => {
+    expectOneClean("<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN");
+});
+
+test("ex 34: nested EDIT via suffix discipline", () => {
     expectOneClean(`<<EDITouter(known://demo):
 The following is a quoted plurnk operation, preserved verbatim:
 <<EDIT(known://inner):hello world:EDIT

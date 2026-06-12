@@ -29,7 +29,7 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(ch, ch));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN"] as const;
 const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 const DIGIT = cls([R("0", "9")]);
@@ -95,6 +95,10 @@ export const buildModel = (): GModel => {
                 sendFinalAlts.push([ref(`${name}-final`)]);
             } else if (op === "EXEC") {
                 model.set(name, [[lit(open), opt(ref("exec-sig")), opt(ref("target")), ...body]]);
+            } else if (op === "PLAN") {
+                // Dictated form is slotless: bare reasoning body. Mid-batch only via
+                // op-statement placement — a turn still closes with the status SEND.
+                model.set(name, [[lit(open), ...body]]);
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 model.set(name, [[lit(open), opt(ref("kill-sig")), ref("target"), ...body]]);

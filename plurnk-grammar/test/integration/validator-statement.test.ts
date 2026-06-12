@@ -66,6 +66,16 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("PlurnkStatement: PLAN with bare reasoning body", () => {
+    const r = validateRoundTrip("<<PLAN:Decompose the prompt; discover, record, deliver.:PLAN");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: PLAN with tags (parse-side permissive)", () => {
+    const r = validateRoundTrip("<<PLAN[france,strategy]:Capital fact first, then deliver.:PLAN");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
 test("PlurnkStatement: KILL with bare target", () => {
     const r = validateRoundTrip("<<KILL(exec://3/1/2)::KILL");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
@@ -122,6 +132,12 @@ test("PlurnkStatement: EXEC rejects numeric signal", () => {
 
 test("PlurnkStatement: EXEC rejects non-null lineMarker", () => {
     const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { first: 1, last: null } };
+    const { valid } = Validator.validatePlurnkStatement(stmt);
+    assert.equal(valid, false);
+});
+
+test("PlurnkStatement: PLAN rejects numeric signal", () => {
+    const stmt = { ...baseFields("PLAN"), signal: 42 };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });

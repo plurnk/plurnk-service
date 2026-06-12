@@ -51,6 +51,7 @@ test("plurnk.md examples cover every OP", () => {
             .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
             .map((i) => i.statement.op),
     );
+    // PLAN is wired but untaught — excluded until it appears in plurnk.md.
     const required = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"];
     for (const op of required) {
         assert.ok(ops.has(op as any), `plurnk.md examples should include ${op}`);

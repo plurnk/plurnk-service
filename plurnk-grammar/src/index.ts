@@ -23,6 +23,7 @@ export type {
     ParseItem,
     ParseResult,
     ParsedPath,
+    PlanStatement,
     PlurnkOp,
     PlurnkStatement,
     Position,
