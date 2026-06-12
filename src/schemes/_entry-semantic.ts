@@ -52,7 +52,9 @@ export default class EntrySemantic {
     // handler is installed (the channel degrades to `embeddingMissing`).
     static async rankSemantic(db: Db, sessionId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, k: number): Promise<{ status: number; pathnames: string[] }> {
         const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
-        if (r.embedding === undefined) return { status: 501, pathnames: [] };
+        // No embedder installed → the channel degrades to empty bytes (not undefined);
+        // an empty query vector can't rank, so surface 501 rather than a false 200.
+        if (r.embedding === undefined || r.embedding.byteLength === 0) return { status: 501, pathnames: [] };
         const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
         if (ftsQuery.length === 0) return { status: 200, pathnames: [] };
         const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({

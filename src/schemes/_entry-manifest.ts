@@ -35,10 +35,6 @@ export default class EntryManifest {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
-        // ~semantic is opt-in (PLURNK_SEMANTIC_ENABLED): only then do we request the
-        // `embedding` channel — which loads the 16 MB model. Off → no embedding cost
-        // (the symbol index + FTS still derive); ~query degrades to 501 in the dispatch.
-        const semanticEnabled = process.env.PLURNK_SEMANTIC_ENABLED === "1";
         const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
         const byEntry = new Map<string, CatalogEntry>();
         for (const r of rows) {
@@ -51,12 +47,12 @@ export default class EntryManifest {
             if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
             // Manifest-add is the engine-side point where the mimetypes handler
             // legitimately fires (never at a scheme write, §4). For the body channel
-            // we re-derive the @graph symbol index (#186) from a symbols+references
-            // process() — ONE parse, two projections (catalog totalLines + the index)
-            // — but ONLY when the content changed since the last derivation (the
-            // deep_hash gate). An unchanged entry just gets totalLines; its symbol
-            // rows persist. A handler predating the references channel throws → fall
-            // back to a metadata-only process and clear the entry's graph rows.
+            // we re-derive every deep channel from ONE process() — the @graph symbol
+            // index (#186) and the ~semantic FTS + embedding — alongside the catalog's
+            // totalLines, but ONLY when the content changed since the last derivation
+            // (the deep_hash gate). An unchanged entry just gets totalLines; its
+            // symbol/FTS/embedding rows persist. A handler predating the references
+            // channel throws → fall back to metadata-only and clear the graph rows.
             const isBody = r.channel === "body";
             let result: ProcessResult;
             if (isBody) {
@@ -67,7 +63,7 @@ export default class EntryManifest {
                     const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
                     if (wantGraph) {
                         try {
-                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: semanticEnabled ? ["symbols", "references", "embedding"] : ["symbols", "references"] });
+                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
                             await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                         } catch {
                             result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
@@ -81,7 +77,7 @@ export default class EntryManifest {
                     // (~semantic's keyword half) and store the embedding vector + model
                     // (the vector half). Empty/binary/degraded → cleared, not stored.
                     await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                    if (semanticEnabled) await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
+                    await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {

@@ -70,10 +70,8 @@ export default class EntryFind {
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // ~query: embed the query text, FTS-narrow by its terms, cosine-rank the
-            // narrowed set, top-K. Opt-in (PLURNK_SEMANTIC_ENABLED) — off (or no
-            // embeddings handler) → 501, the channel degrading to embeddingMissing.
-            // <L> carries K.
-            if (process.env.PLURNK_SEMANTIC_ENABLED !== "1") return { status: 501, pathnames: [] };
+            // narrowed set, top-K. 501 when no embeddings handler is installed (the
+            // channel degrades to empty bytes). <L> carries K.
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, pathnames: [] };
             if (statement.lineMarker === null) return { status: 400, pathnames: [] };  // ~query needs a top-K, e.g. ~query<10>

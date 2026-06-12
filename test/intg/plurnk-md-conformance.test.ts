@@ -37,8 +37,8 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody | null): FindStatement => ({
-    op: "FIND", suffix: "", signal: null, target, lineMarker: null, body,
+const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: { first: number; last: number | null } | null = null): FindStatement => ({
+    op: "FIND", suffix: "", signal: null, target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -213,17 +213,19 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
 });
 
 // plurnk.md (grammar 0.21.0): `<<FIND(known://**)<5>:~french revolutionary history:FIND`
-// — RAG semantic similarity, top-K via <L>. TODO: rag is parked at 501 — a
-// service-side feature needing its own embedding/vector design. Asserting the
-// intended hit so the todo flips to a pass once it's built.
-test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", { todo: "rag parked — its own embedding/vector design (grammar 0.21.0)" }, async () => {
+// — RAG semantic similarity, top-K via <L>. The feature is built (embeddings on by
+// default); the full real-model pipeline is validated in test/live/semantic.test.ts.
+// This tier is model-free by design — its Mimetypes declines the embeddings daughter
+// — so the embedder is absent and ~query is a 501 here. Kept as a todo so the grammar
+// example stays pinned; it is green against the real model in the live tier.
+test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", { todo: "model-free intg → embedder absent (501); real-model coverage in test/live/semantic.test.ts" }, async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seed(db, sessionId, runId, [
             ["a", "the french revolution and the storming of the bastille"],
             ["b", "a recipe for chocolate cake"],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }, { first: 5, last: null }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, ["known://a"]);
     } finally { db.close(); }
