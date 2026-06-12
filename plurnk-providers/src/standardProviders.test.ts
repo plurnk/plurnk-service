@@ -118,7 +118,7 @@ test("standard provider tags failures with provider:<name> telemetry source", as
         return new Response("forbidden", { status: 403 }); // chat/completions fails
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    await assert.rejects(() => p!.generate({ messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
         assert.equal(err.toTelemetryEvent().source, "provider:openai");
         assert.equal(err.kind, "unauthorized");
@@ -149,11 +149,11 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ messages: [], grammar: "root ::= statement", slotId: 2 });
+    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const sent = JSON.parse(bodies[0]);
     assert.equal(sent.grammar, "root ::= statement");
     assert.equal(sent.repeat_penalty, 1.15);
-    assert.equal(sent.id_slot, 2); // fingerprint enables slot pinning too
+    assert.equal(sent.id_slot, 0); // fingerprint wires internal slot affinity too
 });
 
 test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", async () => {
@@ -168,7 +168,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextSize, 8192); // window still read
-    await p!.generate({ messages: [], grammar: "root ::= statement" });
+    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
 
@@ -184,7 +184,7 @@ test("openai: llama-server fingerprint upgrades 'think' to 'template' — budget
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ messages: [] });
+    await p!.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(bodies[0]).chat_template_kwargs, { enable_thinking: false });
     assert.equal("think" in JSON.parse(bodies[0]), false);
 });
@@ -200,26 +200,34 @@ test("openai: non-llama-server endpoint keeps the 'think' style (no template kwa
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    await p!.generate({ messages: [] });
+    await p!.generate({ runId: "r", messages: [] });
     assert.equal("chat_template_kwargs" in JSON.parse(bodies[0]), false);
 });
 
-test("openai: llama-server fingerprint probes /props for slotCount; cloud stays null", async () => {
-    mock.method(globalThis, "fetch", async (url: string) => {
+test("openai: probed total_slots drives internal run→slot affinity; never surfaces", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         const u = String(url);
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 16384 } }] }), { status: 200 });
         if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 2 }), { status: 200 });
+        bodies.push(String(init?.body));
         const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    assert.equal(p!.slotCount, 2);
     assert.equal(p!.contextSize, 16384); // per-slot window, as the server reports it
+    assert.equal("slotCount" in p!, false); // resource internals never on the surface
+    await p!.generate({ runId: "run-A", messages: [] });
+    await p!.generate({ runId: "run-B", messages: [] });
+    await p!.generate({ runId: "run-A", messages: [] });
+    assert.deepEqual(bodies.map((b) => JSON.parse(b).id_slot), [0, 1, 0]);
 
     mock.restoreAll();
     mockEndpoint({ nctx: 8192 }); // top-level n_ctx, no meta → not llama-server
     const vllm = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(vllm!.slotCount, null);
+    const calls = mockEndpoint({ nctx: 8192 });
+    await vllm!.generate({ runId: "run-A", messages: [] });
+    assert.equal(calls.some((u) => u.endsWith("/props")), false); // no fingerprint → no props probe
 });
 
 test("openai: env-pinned context size does not disable grammar detection (probe still runs)", async () => {
@@ -238,21 +246,21 @@ test("openai: env-pinned context size does not disable grammar detection (probe 
 test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/completions", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x/v1" }, "m");
-    await p!.generate({ messages: [] });
+    await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://x/v1/chat/completions");
 });
 
 test("fixed-base provider resolves the documented chat-completions URL", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k" }, "m");
-    await p!.generate({ messages: [] });
+    await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://api.deepinfra.com/v1/openai/chat/completions");
 });
 
 test("baseUrlVar overrides the fixed default", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1" }, "m");
-    await p!.generate({ messages: [] });
+    await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://proxy/openai/v1/chat/completions");
 });
 
@@ -265,7 +273,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
     for (const name of Object.keys(STANDARD_PROVIDERS)) {
         const calls = mockEndpoint();
         const p = await standardProviderFromEnv(name, envFor(name), "m");
-        await p!.generate({ messages: [] });
+        await p!.generate({ runId: "r", messages: [] });
         const u = chatCall(calls)!;
         assert.ok(u.endsWith("/chat/completions"), `${name} → ${u}`);
         assert.ok(u.startsWith("http"), `${name} → ${u}`);

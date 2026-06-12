@@ -27,21 +27,20 @@ interface Provider {
                                           // PER SLOT under llama-server --parallel N
                                           // (the server splits --ctx-size and reports
                                           // the divided value; verified live).
-    readonly slotCount: number | null;    // slot count for pinning backends
-                                          // (llama-server /props total_slots);
-                                          // null = no slot semantics. Valid
-                                          // slotId range is [0, slotCount).
     readonly model: string;                // configured model id
 
     // Tokenomic primitives (synchronous, pure)
     countTokens(text: string): number;
     costFor(usage: ProviderUsage): number;  // pico-USD (1e-12 USD)
 
-    // Transport. `grammar` is an optional GBNF string for grammar-constrained
-    // sampling (§13) — attached verbatim by capable backends, ignored by all others.
-    // `maxTokens` is the consumer's per-call output ceiling (wire `max_tokens`);
-    // absent means the server default, which is typically UNBOUNDED.
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
+    // Transport. `runId` is REQUIRED: the opaque, stable identity of the
+    // consumer's work stream — providers may key backend affinity on it and
+    // never interpret it. `grammar` is an optional GBNF string for
+    // grammar-constrained sampling (§13) — attached verbatim by capable
+    // backends, ignored by all others. `maxTokens` is the consumer's per-call
+    // output ceiling (wire `max_tokens`); absent means the server default,
+    // which is typically UNBOUNDED.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -77,7 +76,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
-- `generate` transports `slotId` as llama-server's `id_slot` when the backend supports slot pinning, and silently ignores it otherwise. Under `--parallel N>1`, pinning gives a session KV-cache affinity (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Session→slot mapping is consumer policy.
+- **Backend affinity is the provider's internal guarantee, keyed by `runId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `runId` entirely.
 
 ## §3 `fromEnv(env, model)` factory
 
@@ -143,6 +142,7 @@ The daughters are **this framework's own dependencies** (exact-pinned), so the d
 ## §6 Engine → provider guarantees (consumer side)
 
 - `messages` is a complete prompt. Consumer has pre-assembled all sections. Provider does not add or reorder.
+- Every `generate` carries `runId` — the run's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
 - `signal` is wired to the run's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
 - `assistantRaw` is opaque to the consumer (forensics-only).
@@ -170,7 +170,8 @@ The daughters are **this framework's own dependencies** (exact-pinned), so the d
 | Mutating `messages` |
 | Parsing `content` into `PlurnkStatement[]` |
 | Streaming the resolve (atomic only; v0) |
-| Holding state across `generate` calls beyond connection pooling and config |
+| Holding state across `generate` calls beyond connection pooling, config, and backend-affinity bookkeeping (run→resource maps, §2) |
+| Exposing backend resource identifiers (slot ids, connections) on the consumer surface |
 | Reading model output via `console.*` |
 | Ignoring `signal` |
 | Spawning subprocesses for inference |
@@ -226,11 +227,11 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       reasonBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort"
       countTokens, costFor,  // strategies; default heuristic / free
       supportsGrammar,       // backend accepts a `grammar` body field (§13); default false
-      supportsSlotPinning,   // backend accepts an `id_slot` body field; default false
+      supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
   });
   ```
 
-  The `openai` standard provider sets both `supportsGrammar` and `supportsSlotPinning` from the same llama-server fingerprint (§11 probe).
+  The `openai` standard provider sets `supportsGrammar` and `supportsSlotPinning` from the same llama-server fingerprint, and `slotCount` from a `/props` probe (§11). The run→slot mapping itself lives inside `OpenAICompatProvider`: sticky per `runId`, round-robin across new runs, LRU-bounded.
 
 - **`chatCompletionStream` / `OpenAiHttpError` / `StreamResponse`** — the SSE client. One shared copy.
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.

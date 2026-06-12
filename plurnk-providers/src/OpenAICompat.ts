@@ -40,6 +40,7 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
+    // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
     // The two reasoning gates — REQUIRED, no in-code defaults: configuration
@@ -106,7 +107,6 @@ export default class OpenAICompatProvider implements Provider {
     }
 
     get contextSize(): number | null { return this.#contextSize; }
-    get slotCount(): number | null { return this.#slotCount; }
     get model(): string { return this.#model; }
 
     countTokens(text: string): number { return this.#countTokens(text); }
@@ -126,6 +126,29 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
+    // Per-run slot affinity (#11): the consumer passes WHICH run this is; the
+    // provider owns WHICH slot serves it. Sticky per runId, round-robin across
+    // new runs (distinct runs → distinct slots while slots last), LRU-bounded
+    // bookkeeping so a long-lived daemon never grows the map unboundedly —
+    // an evicted-and-returning run simply re-pins, worst case one cold prefill.
+    #runSlots = new Map<string, number>();
+    #nextSlot = 0;
+
+    #slotBody(runId: string): Record<string, unknown> {
+        if (!this.#supportsSlotPinning || this.#slotCount === null || this.#slotCount < 1) return {};
+        let slot = this.#runSlots.get(runId);
+        if (slot === undefined) {
+            slot = this.#nextSlot++ % this.#slotCount;
+            if (this.#runSlots.size >= this.#slotCount * 8) {
+                this.#runSlots.delete(this.#runSlots.keys().next().value as string);
+            }
+        } else {
+            this.#runSlots.delete(runId); // re-insert to refresh LRU recency
+        }
+        this.#runSlots.set(runId, slot);
+        return { id_slot: slot };
+    }
+
     // Grammar transport (SPEC §13): attach the caller-supplied GBNF verbatim
     // when the backend supports it, with the repeat-penalty floor it requires.
     // Unsupported backend → no wire field at all (cloud APIs 400 on unknowns).
@@ -134,7 +157,9 @@ export default class OpenAICompatProvider implements Provider {
         return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
     }
 
-    async generate({ messages, signal, grammar, maxTokens, slotId }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number; slotId?: number }): Promise<ProviderResponse> {
+    async generate({ messages, runId, signal, grammar, maxTokens }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse> {
+        // Boundary validation (SPEC §2): the run identity is required.
+        if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
         const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
@@ -146,7 +171,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#reasoningBody(),
             ...this.#grammarBody(grammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
-            ...(slotId !== undefined && this.#supportsSlotPinning ? { id_slot: slotId } : {}),
+            ...this.#slotBody(runId),
         };
 
         let raw;

@@ -33,17 +33,14 @@ const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, c
 
 export default class Mock implements Provider {
     #contextSize: number | null;
-    #slotCount: number | null;
     #queue: MockResponse[];
 
-    constructor({ contextSize, slotCount = null, responses }: { contextSize: number | null; slotCount?: number | null; responses: MockResponse[] }) {
+    constructor({ contextSize, responses }: { contextSize: number | null; responses: MockResponse[] }) {
         this.#contextSize = contextSize;
-        this.#slotCount = slotCount;
         this.#queue = [...responses];
     }
 
     get contextSize(): number | null { return this.#contextSize; }
-    get slotCount(): number | null { return this.#slotCount; }
     get model(): string { return "mock"; }
 
     // Heuristic tokenizer. Mock is test-only; real provider siblings ship
@@ -55,7 +52,7 @@ export default class Mock implements Provider {
     // Mock is free.
     costFor(_usage: ProviderUsage): number { return 0; }
 
-    async generate({ signal }: { messages: ChatMessage[]; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
+    async generate({ signal }: { messages: ChatMessage[]; runId?: string; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response (SPEC §10.8).
         signal?.throwIfAborted();

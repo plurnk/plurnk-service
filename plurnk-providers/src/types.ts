@@ -50,22 +50,18 @@ export interface Provider {
     // so a constrained consumer is expected to pass it. Policy stays the
     // consumer's; the provider only transports.
     //
-    // `slotId` pins the request to a llama-server slot (wire `id_slot`) for
-    // KV-cache affinity under `--parallel N>1` — without it, slot routing is
-    // the server's similarity heuristic and a session's requests can hop slots,
-    // re-paying full prefills. Backends without slot semantics ignore it
-    // (cloud APIs 400 on unknown params, so it never reaches their wire).
-    // Session→slot mapping is consumer policy; the provider only transports.
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number; slotId?: number }): Promise<ProviderResponse>;
+    // `runId` is the REQUIRED, opaque, stable identity of the consumer's work
+    // stream (loop/run). Providers MAY key backend affinity on it — e.g.
+    // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
+    // its content. The consumer never sees or chooses backend resources
+    // (slot integers, connections); the *mechanism* is the provider's (#11).
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.
     // NOTE: under llama-server --parallel N, the window is PER SLOT (the
     // server splits --ctx-size across slots and reports the divided value).
     readonly contextSize: number | null;
-    // Slot count for slot-pinning backends (llama-server /props total_slots);
-    // null = backend has no slot semantics. Valid slotId range is [0, slotCount).
-    readonly slotCount: number | null;
     readonly model: string;
     // Provider-owned tokenizer. Synchronous, non-negative integer.
     countTokens(text: string): number;
