@@ -176,6 +176,14 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (session_id, name);
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_id, container);
 
+-- INIT: entry_fts (~semantic FTS half — plurnk-service#186)
+-- Keyword/content index over entry body content; the FTS5 rowid IS entries.id.
+-- The ~semantic dialect narrows candidates here (cheap, indexed) then cosine-ranks
+-- the narrowed set over the embedding vectors — FTS does the scale-cut, cosine the
+-- precise rank, so no ANN/extension is needed. Populated at the gated manifest-add
+-- hook alongside symbol_defs/refs: re-indexed only when body content changes.
+CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
+
 -- INIT: log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —
 -- resets at each new turn. URI-bit columns are unprefixed (scheme,

@@ -245,3 +245,8 @@ SELECT scheme, pathname FROM entries WHERE session_id = $session_id ORDER BY sch
 -- PREP: test_count_log_entries_run_origin
 SELECT COUNT(*) AS n FROM log_entries WHERE run_id = $run_id AND origin = $origin;
 
+-- PREP: test_fts_search
+SELECT e.pathname FROM entry_fts f JOIN entries e ON e.id = f.rowid
+WHERE f.content MATCH $query AND e.session_id = $session_id
+ORDER BY e.pathname;
+

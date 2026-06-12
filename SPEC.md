@@ -258,10 +258,11 @@ Per author contract. Manifest declares `kind: "mimetype"`; handler class declare
 
 ### §4.2 Methods
 
-Author contract owned by plurnk-mimetypes. plurnk-service consumes through two entry points:
+Author contract owned by plurnk-mimetypes. plurnk-service consumes ONE entry point:
 
-- `Mimetypes.process(input)` — projection entry point; returns the structural projections + extent (`deepJson`/`deepXml` for matching, `totalLines` for the catalog). {§4.2-process-entry-point}
-- `Mimetypes.query(input, expression)` — body-matcher dispatch (§16.1); returns `QueryMatch[]`.
+- `Mimetypes.process(input)` — the projection entry point; returns the structural projections (`deepJson` / `deepXml` / `symbols` / `references`) + extent (`totalLines`). {§4.2-process-entry-point}
+
+**The daughter projects; the service queries.** `Mimetypes.query()` exists in the author contract, but plurnk-service does NOT consume it. The service owns **all** dialect matching — glob, regex, jsonpath, xpath, `@graph`, `~semantic` — resolved in-tree over those projections plus its own indexes (`symbol_defs`/`symbol_refs`, FTS5, vectors). mimetypes is mimetype-*literate* (content→structure); the service is dialect-*literate* (structure→matches). The pattern-matching DSL is plurnk's defining surface — the service's authority, never a daughter's.
 
 Cross-cutting promises service relies on:
 

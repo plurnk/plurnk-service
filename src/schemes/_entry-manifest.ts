@@ -19,6 +19,7 @@ import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
+import EntrySemantic from "./_entry-semantic.ts";
 
 type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null; deep_hash: string | null };
 type CatalogEntry = { path: string; seconds?: number; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
@@ -72,6 +73,9 @@ export default class EntryManifest {
                         result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                         await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                     }
+                    // The other deep channel: re-index the body into entry_fts
+                    // (~semantic's keyword/narrowing half). Empty/binary → no FTS row.
+                    await EntrySemantic.indexFts(db, r.entry_id, r.content);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {
