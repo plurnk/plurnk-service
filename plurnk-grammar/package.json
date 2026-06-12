@@ -16,7 +16,8 @@
       "default": "./dist/src/index.js"
     },
     "./package.json": "./package.json",
-    "./plurnk.gbnf": "./dist/plurnk.gbnf"
+    "./plurnk.gbnf": "./dist/plurnk.gbnf",
+    "./plurnk-strict.gbnf": "./dist/plurnk-strict.gbnf"
   },
   "bin": {
     "plurnk": "./bin/plurnk.js"

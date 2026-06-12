@@ -11,6 +11,10 @@
  *   constraint masks degenerates into repetition loops without it.
  * - The shipped root (`statement+`) never forces EOS, so greedy generation runs
  *   to max_tokens; a `root ::= statement` override terminates at the close tag.
+ * - Native thinking MUST be disabled when a grammar is attached: llama.cpp's
+ *   grammar filter sits below the reasoning/content split, so the think channel
+ *   consumes the grammar (a final-SEND mentioned in thought force-stops the turn
+ *   with empty content). The lax root's text segments ARE the thinking channel.
  */
 
 import test from "node:test";
@@ -42,6 +46,7 @@ const complete = async (userPrompt: string, activeGrammar: string, maxTokens: nu
             seed: 42,
             repeat_penalty: 1.15,
             grammar: activeGrammar,
+            chat_template_kwargs: { enable_thinking: false },
         }),
     });
     const json = await response.json() as { error?: unknown; choices: Array<{ message: { content: string }; finish_reason: string }> };

@@ -68,6 +68,59 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
     }
 };
 
+// Free text for the lax root: any characters that never contain a complete open
+// literal (`<<FIND` … `<<PLAN`). Aho-Corasick complement over the literal trie —
+// state = longest literal prefix matched by the current suffix. Completing a
+// literal has no transition (the text interpretation dies; the parallel statement
+// interpretation takes over). One consistency constraint with the ANTLR TEXT
+// rule: text may not END with an ODD run of trailing `<` — `text<` + `<<OP`
+// merges into `<<<OP`, which the lexer treats as all text, and the two layers
+// would disagree about where the statement starts. The `<<` trie state therefore
+// splits by run parity (even may end, odd may not).
+const textRules = (model: GModel): void => {
+    const literals = OPS.map((op) => `<<${op}`);
+    const states: string[] = [""];
+    for (const literal of literals) {
+        for (let k = 1; k < literal.length; k++) {
+            const prefix = literal.slice(0, k);
+            if (!states.includes(prefix)) states.push(prefix);
+        }
+    }
+    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
+    states.push(ODD);
+    const ruleOf = (state: string): string => `text-s${states.indexOf(state)}`;
+    const longestSuffixState = (candidate: string): string => {
+        for (let i = 1; i < candidate.length; i++) {
+            if (states.includes(candidate.slice(i))) return candidate.slice(i);
+        }
+        return "";
+    };
+    for (const state of states) {
+        const trieState = state === ODD ? "<<" : state;
+        const alts: GRule = [];
+        const consumed = new Set<string>();
+        for (const literal of literals) {
+            if (!literal.startsWith(trieState)) continue;
+            const next = literal[trieState.length];
+            if (consumed.has(next)) continue;
+            consumed.add(next);
+            const candidate = trieState + next;
+            // Completing a literal is forbidden — no transition at all.
+            if (candidate === literal) continue;
+            alts.push([lit(next), ref(ruleOf(candidate))]);
+        }
+        if (!consumed.has("<")) {
+            consumed.add("<");
+            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
+            alts.push([lit("<"), ref(ruleOf(target))]);
+        }
+        alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
+        if (state !== "<" && state !== ODD) alts.push([]);
+        model.set(ruleOf(state), alts);
+    }
+    model.set("text", [[ref(ruleOf(""))]]);
+};
+
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
     const opAlts: GRule = [];
@@ -109,14 +162,30 @@ export const buildModel = (): GModel => {
         }
     }
 
-    // Turn shape (#29): a batch of ops (mid-batch SENDs allowed) closed by exactly
-    // one pathless SEND[102]/[200] status update. After it (plus at most one
-    // newline) nothing is admissible, so the sampler is FORCED to stop —
-    // termination is structural, not an optional EOS a near-greedy decoder can
-    // sail past. Separators are bounded (1-2 newlines) so whitespace cannot loop
-    // either. Degeneration *inside* a body remains unboundable (content is
-    // content); the consumer max_tokens cap stays as backstop.
-    model.set("root", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
+    // Turn shapes (#29). Both roots close on exactly one pathless SEND[102]/[200]
+    // status update, after which nothing is admissible — the sampler is FORCED to
+    // stop. Termination is structural, not an optional EOS a near-greedy decoder
+    // can sail past. Degeneration *inside* a body or text segment remains
+    // unboundable (content is content); the consumer max_tokens cap is backstop.
+    //
+    // root-lax (the DEFAULT, shipped as plurnk.gbnf): free reasoning text before
+    // and between ops — llama.cpp's grammar filter sits below the reasoning/content
+    // split, so an ops-only grammar chokes thinking on reasoning-tuned models.
+    // Text is a complement automaton over the 11 open literals: emitting a
+    // complete `<<OP` commits the sampler into statement mode, so ops stay fully
+    // enforced. No text after the final status SEND.
+    //
+    // root-strict (shipped as plurnk-strict.gbnf): ops only, bounded 1-2 newline
+    // separators. For models that don't reason and benefit from the tighter rail.
+    // Text directly after a close tag must be newline-led: the lexer's close-tag
+    // predicate requires a non-ident follow char, so `:KILL4` + text "9..." would
+    // glue into the close tag and the body would never end. Leading text and
+    // glued statements are safe (`<` is non-ident).
+    model.set("root-lax", [[ref("text"), star(ref("lax-step")), ref("send-final-any"), opt(lit("\n"))]]);
+    model.set("lax-step", [[ref("mid-statement"), opt(ref("text-after"))]]);
+    model.set("text-after", [[lit("\n"), ref("text")]]);
+    textRules(model);
+    model.set("root-strict", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
     model.set("batch-step", [[ref("mid-statement"), lit("\n"), opt(lit("\n"))]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
     model.set("op-statement", opAlts);
@@ -188,8 +257,11 @@ const serializeItem = (item: GItem): string => {
     }
 };
 
-export const serializeGbnf = (model: GModel): string => {
-    const lines = ["# @generated by scriptify/generate-gbnf.ts — do not edit; run `npm run build:gbnf`."];
+export const serializeGbnf = (model: GModel, rootName: string): string => {
+    const lines = [
+        "# @generated by scriptify/generate-gbnf.ts — do not edit; run `npm run build:gbnf`.",
+        `root ::= ${rootName}`,
+    ];
     for (const [name, alts] of model) {
         const hasEpsilon = alts.some((seq) => seq.length === 0);
         const bodies = alts.filter((seq) => seq.length > 0).map((seq) => seq.map(serializeItem).join(" "));
@@ -205,6 +277,7 @@ export const serializeGbnf = (model: GModel): string => {
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
-    await writeFile("dist/plurnk.gbnf", serializeGbnf(model));
-    process.stderr.write(`Generated dist/plurnk.gbnf: ${model.size} rules.\n`);
+    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-lax"));
+    await writeFile("dist/plurnk-strict.gbnf", serializeGbnf(model, "root-strict"));
+    process.stderr.write(`Generated dist/plurnk.gbnf (lax) + dist/plurnk-strict.gbnf: ${model.size} rules.\n`);
 }

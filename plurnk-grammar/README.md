@@ -188,7 +188,12 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-`dist/plurnk.gbnf` ships in the package — a generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar for llama.cpp constrained sampling. It dictates the canonical form (digit suffixes, comma line markers, three-digit SEND signals); the parser remains the permissive contract — everything the GBNF can generate, the parser accepts. The root encodes the turn shape: a batch of ops (mid-batch SENDs allowed) closed by a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible — termination is structural (forced EOS), not an optional stop a near-greedy decoder can skip.
+Two generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship in the package for llama.cpp constrained sampling. Both dictate the canonical form (digit suffixes, comma line markers, three-digit SEND signals) and the turn shape — a batch of ops (mid-batch SENDs allowed) closed by a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible: termination is structural (forced EOS).
+
+- **`plurnk.gbnf` (default, relaxed)** — free reasoning text is allowed before and between operations (never after the final status SEND). The grammar filter sits below the reasoning/content split on llama.cpp, so an ops-only grammar chokes thinking on reasoning-tuned models. Operations stay fully enforced: text cannot contain a complete `<<OP` opener — emitting one commits the sampler into statement mode.
+- **`plurnk-strict.gbnf`** — ops only, bounded newline separators. For models that don't reason and benefit from the tighter rail.
+
+The parser remains the permissive contract — everything either grammar can generate, the parser accepts (interstatement text surfaces as `kind: "text"` items).
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")

@@ -199,42 +199,42 @@ test("GBNF: every plurnk.md example derives from statement", () => {
 
 test("GBNF: root accepts a batch of ops closed by a final status SEND", () => {
     const batch = "<<EDIT[france](known://capital.md):Paris:EDIT\n\n<<FOLD(log://**/get)<1,10>::FOLD\n<<SEND[200]:Paris:SEND\n";
-    assert.equal(derives("root", batch), true);
+    assert.equal(derives("root-strict", batch), true);
 });
 
 test("GBNF: root accepts a bare status-SEND turn", () => {
-    assert.equal(derives("root", "<<SEND[102]:still working:SEND"), true);
+    assert.equal(derives("root-strict", "<<SEND[102]:still working:SEND"), true);
 });
 
 test("GBNF: root accepts mid-batch SENDs (targeted; pathless non-status) before the final", () => {
     const batch = "<<SEND[102](agent://supervisor):decomposition complete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
-    assert.equal(derives("root", batch), true);
+    assert.equal(derives("root-strict", batch), true);
 });
 
 test("GBNF: root rejects a batch with no final status SEND", () => {
-    assert.equal(derives("root", "<<EDIT(known://a.md):x:EDIT"), false);
-    assert.equal(derives("root", "<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
+    assert.equal(derives("root-strict", "<<EDIT(known://a.md):x:EDIT"), false);
+    assert.equal(derives("root-strict", "<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
 });
 
 test("GBNF: root rejects a targeted SEND as the turn closer", () => {
-    assert.equal(derives("root", "<<SEND[200](agent://supervisor):done:SEND"), false);
+    assert.equal(derives("root-strict", "<<SEND[200](agent://supervisor):done:SEND"), false);
 });
 
 test("GBNF: root rejects any statement after the final status SEND", () => {
     const after = "<<SEND[200]:done:SEND\n<<EDIT(known://a.md):x:EDIT\n<<SEND[200]:again:SEND";
-    assert.equal(derives("root", after), false);
+    assert.equal(derives("root-strict", after), false);
 });
 
 test("GBNF: PLAN derives bare and sits mid-batch only", () => {
     assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), true);
     assert.equal(derives("statement", "<<PLAN[tagged]:thoughts:PLAN"), false); // dictated form is slotless
-    assert.equal(derives("root", "<<PLAN:reason:PLAN\n<<SEND[102]:working:SEND"), true);
-    assert.equal(derives("root", "<<SEND[102]:working:SEND\n<<PLAN:reason:PLAN"), false); // nothing follows the status SEND
-    assert.equal(derives("root", "<<PLAN:reason:PLAN"), false); // a turn still needs its status SEND
+    assert.equal(derives("root-strict", "<<PLAN:reason:PLAN\n<<SEND[102]:working:SEND"), true);
+    assert.equal(derives("root-strict", "<<SEND[102]:working:SEND\n<<PLAN:reason:PLAN"), false); // nothing follows the status SEND
+    assert.equal(derives("root-strict", "<<PLAN:reason:PLAN"), false); // a turn still needs its status SEND
 });
 
 test("GBNF: root rejects two consecutive status SENDs", () => {
-    assert.equal(derives("root", "<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
+    assert.equal(derives("root-strict", "<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
 });
 
 test("GBNF: digit-suffixed statement quoting an inner op derives", () => {
@@ -275,7 +275,7 @@ test("GBNF: unsuffixed body cannot contain its own close literal", () => {
 test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () => {
     const rng = mulberry32(7);
     for (let i = 0; i < 100; i++) {
-        const turn = sample("root", rng);
+        const turn = sample("root-strict", rng);
         const result = PlurnkParser.parse(turn);
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
@@ -314,9 +314,51 @@ test("GBNF: 300 seeded random derivations all parse cleanly", () => {
 // Serialization sanity
 // -------------------------------------------------------------------------
 
+test("GBNF: lax root allows reasoning text before and between ops", () => {
+    const turn = "Let me think: the capital is Paris.\n<<EDIT(known://capital.md):Paris:EDIT\nNow I deliver.\n<<SEND[200]:Paris:SEND";
+    assert.equal(derives("root-lax", turn), true);
+});
+
+test("GBNF: lax root rejects text after the final status SEND", () => {
+    assert.equal(derives("root-lax", "<<SEND[200]:done:SEND\ntrailing thoughts"), false);
+});
+
+test("GBNF: lax root still requires the final status SEND", () => {
+    assert.equal(derives("root-lax", "just musing, no operations"), false);
+});
+
+test("GBNF: text cannot swallow a complete op opener", () => {
+    assert.equal(derives("text", "thinking about <<EDIT here"), false);
+    assert.equal(derives("text", "thinking about <EDIT and << here"), true);
+});
+
+test("GBNF: text cannot end on a lone `<` (would merge with a following opener)", () => {
+    assert.equal(derives("text", "abc<"), false);
+    assert.equal(derives("text", "abc<<"), true);
+});
+
+test("GBNF: 100 seeded random lax turns parse cleanly and end in a status SEND", () => {
+    const rng = mulberry32(11);
+    for (let i = 0; i < 100; i++) {
+        const turn = sample("root-lax", rng);
+        const result = PlurnkParser.parse(turn);
+        const statements = result.items.filter((item) => item.kind === "statement");
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 0, `lax batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
+        assert.ok(statements.length >= 1, `lax batch ${i} produced no statements\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(result.unparsedTail, undefined, `lax batch ${i} left an unparsed tail\nbatch: ${JSON.stringify(turn)}`);
+        const last = statements.at(-1)!;
+        assert.ok(last.kind === "statement");
+        if (last.kind !== "statement") continue;
+        assert.equal(last.statement.op, "SEND", `lax batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(last.statement.target, null, `lax batch ${i} final SEND has a target`);
+        assert.ok(last.statement.signal === 102 || last.statement.signal === 200, `lax batch ${i} final SEND signal not 102/200`);
+    }
+});
+
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
-    const text = serializeGbnf(model);
-    assert.match(text, /^root ::= /m);
+    const text = serializeGbnf(model, "root-lax");
+    assert.match(text, /^root ::= root-lax$/m);
     const collectRefs = (item: GItem): string[] => {
         if (item.kind === "ref") return [item.name];
         if (item.kind === "rep") return collectRefs(item.item);
