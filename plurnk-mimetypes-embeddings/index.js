@@ -17,6 +17,11 @@ env.allowRemoteModels = false;
 
 export const dimension = 384;
 
+// Model identity, surfaced by the framework as ProcessResult.embeddingModel.
+// Consumers store it alongside each vector BLOB — vectors from different
+// models are silently incomparable, and this is the staleness detector.
+export const model = "Xenova/all-MiniLM-L6-v2@751bff37";
+
 let pipelinePromise = null;
 
 // text → 1536 bytes (Float32 × 384), mean-pooled, L2-normalized. Input
