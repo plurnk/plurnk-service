@@ -66,6 +66,21 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("PlurnkStatement: EDIT with decimal insert-between marker", () => {
+    const r = validateRoundTrip("<<EDIT(known://plan)<2.5>:- [ ] new step:EDIT");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: FIND with decimal threshold and semantic matcher", () => {
+    const r = validateRoundTrip("<<FIND(known://**)<0.7>:~territorial concessions:FIND");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: FIND with mixed threshold-and-cap range", () => {
+    const r = validateRoundTrip("<<FIND(known://**)<0.7,20>:~concessions:FIND");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
 test("PlurnkStatement: PLAN with bare reasoning body", () => {
     const r = validateRoundTrip("<<PLAN:Decompose the prompt; discover, record, deliver.:PLAN");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));

@@ -375,6 +375,13 @@ test("GBNF: 100 seeded random open turns parse cleanly", () => {
     }
 });
 
+test("GBNF: decimal line markers derive — insert-between, threshold, mixed", () => {
+    assert.equal(derives("statement", "<<EDIT(known://plan)<2.5>:x:EDIT"), true);
+    assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
+    assert.equal(derives("statement", "<<FIND(known://**)<0.7,20>:~q:FIND"), true);
+    assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
+});
+
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
     const text = serializeGbnf(model, "root-open");
     assert.match(text, /^root ::= root-open$/m);

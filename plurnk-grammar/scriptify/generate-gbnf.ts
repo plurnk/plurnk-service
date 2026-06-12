@@ -220,7 +220,8 @@ export const buildModel = (): GModel => {
     model.set("uri-rest", [[URI_REST_HEAD, star(URI_CHAR)]]);
     model.set("bare", [[plus(BARE_CHAR)]]);
     model.set("line", [[lit("<"), ref("int"), lit(">")], [lit("<"), ref("int"), lit(","), ref("int"), lit(">")]]);
-    model.set("int", [[opt(lit("-")), plus(DIGIT)]]);
+    model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
+    model.set("frac", [[lit("."), plus(DIGIT)]]);
     model.set("status", [[DIGIT, DIGIT, DIGIT]]);
     model.set("exec-sig", [[lit("["), EXEC_HEAD, star(EXEC_TAIL), lit("]")]]);
     model.set("kill-sig", [[lit("["), DIGIT, opt(DIGIT), lit("]")]]);

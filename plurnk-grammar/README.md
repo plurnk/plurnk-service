@@ -42,7 +42,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | `suffix` | `[A-Za-z0-9_]*` glued to `OP`; used for nesting    |
 | `[…]`    | optional CSV; per-OP semantics                     |
 | `(…)`    | optional URI                                       |
-| `<L>`    | optional `<N>` or `<N-M>`; N, M ∈ signed integers  |
+| `<L>`    | optional `<N>` or `<N-M>`; N, M ∈ signed numbers — decimals mean insert-between (lines) or score threshold (results) |
 | `:body:` | optional; opaque between fences                    |
 
 | OP   | signal           | body                  | line marker        |
@@ -176,7 +176,13 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 33. Think aloud — reasoning recorded to the log
 	<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN
 
-34. Quote a plurnk operation inside another (nesting via suffix discipline)
+34. Insert a line between lines 2 and 3 (decimal = between; replaces nothing)
+	<<EDIT(known://plan)<2.5>:- [ ] Verify against a second source:EDIT
+
+35. Semantic search with a similarity threshold (decimal = minimum score)
+	<<FIND(known://**)<0.7>:~territorial concessions:FIND
+
+36. Quote a plurnk operation inside another (nesting via suffix discipline)
 	<<EDITouter(known://demo):
 	The following is a quoted plurnk operation, preserved verbatim:
 	<<EDIT(known://inner):hello world:EDIT

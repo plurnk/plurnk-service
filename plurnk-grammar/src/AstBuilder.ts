@@ -312,7 +312,11 @@ export default class AstBuilder {
         let i = 0;
         if (inner[i] === "-") i++;
         while (AstBuilder.#isDigit(inner[i])) i++;
-        const first = Number.parseInt(inner.slice(0, i), 10);
+        if (inner[i] === "." && AstBuilder.#isDigit(inner[i + 1])) {
+            i++;
+            while (AstBuilder.#isDigit(inner[i])) i++;
+        }
+        const first = Number.parseFloat(inner.slice(0, i));
         if (i >= inner.length) return { first, last: null };
         if (inner[i] === ",") {
             i++;
@@ -320,7 +324,7 @@ export default class AstBuilder {
         } else {
             i++;
         }
-        const last = Number.parseInt(inner.slice(i), 10);
+        const last = Number.parseFloat(inner.slice(i));
         return { first, last };
     }
 

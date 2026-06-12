@@ -162,7 +162,15 @@ test("ex 33: PLAN — reasoning recorded to the log", () => {
     expectOneClean("<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN");
 });
 
-test("ex 34: nested EDIT via suffix discipline", () => {
+test("ex 34: EDIT — decimal insert-between", () => {
+    expectOneClean("<<EDIT(known://plan)<2.5>:- [ ] Verify against a second source:EDIT");
+});
+
+test("ex 35: FIND — semantic threshold via decimal", () => {
+    expectOneClean("<<FIND(known://**)<0.7>:~territorial concessions:FIND");
+});
+
+test("ex 36: nested EDIT via suffix discipline", () => {
     expectOneClean(`<<EDITouter(known://demo):
 The following is a quoted plurnk operation, preserved verbatim:
 <<EDIT(known://inner):hello world:EDIT

@@ -44,11 +44,16 @@ YOU MAY permanently destroy an entry or terminate a running `exec://` process wi
 ## `<Line> / <Result>`
 
 `<N>` selects position N.
-`<N,M>` selects the inclusive range N through M. N and M are signed integers.
+`<N,M>` selects the inclusive range N through M. N and M are signed numbers.
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
+
+Decimals address the spaces between:
+
+`<2.5>` inserts between lines 2 and 3 without replacing (EDIT).
+`<0.7>` selects results scoring at least 0.7 (`~` matchers).
 
 On structured entries, `<Result>` addresses result index, not line number.
 
@@ -115,6 +120,7 @@ Body content is character-perfect, exactly matching whitespace.
 :EDIT
 
 <<EDIT(known://plan.md)<2>:- [x] Discover capital of France:EDIT
+<<EDIT(known://plan.md)<2.5>:- [ ] Verify against a second source:EDIT
 <<EDIT(known://countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known://countries/france/capital.md)<1,-1>::EDIT
 <<EDIT(known://users.json)<0>:{"name":"Eve"}:EDIT
@@ -124,6 +130,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<KILL(exec://3/1/2)::KILL
 <<OPEN(log://**/get)<1,10>::OPEN
 <<FIND(known://**)<5>:~french revolutionary history:FIND
+<<FIND(known://**)<0.7>:~french territorial concessions:FIND
 <<FOLD(log://**/get)<101,200>::FOLD
 <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
 <<FIND(known://**):revolution:FIND

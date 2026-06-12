@@ -274,7 +274,7 @@ operates on or produces. The sequence type is OP-specific (see §4
 per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
 for READ, positions in the matched result set for FIND/OPEN/FOLD.
 
-**Token shape:** `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`.
+**Token shape:** `<` `-?[0-9]+(.[0-9]+)?` (`-` `-?[0-9]+(.[0-9]+)?`)? `>`.
 
 | Form     | Meaning                              |
 |----------|--------------------------------------|
@@ -282,6 +282,9 @@ for READ, positions in the matched result set for FIND/OPEN/FOLD.
 | `<N-M>`  | inclusive range N..M                 |
 | `<0>`    | prepend anchor (before position 1)   |
 | `<-1>`   | append anchor (after last position)  |
+| `<2.5>`  | line context: insert between lines 2 and 3 (fraction value is don't-care) |
+| `<0.7>`  | result context: similarity threshold ∈ (0,1) for semantic matchers |
+| `<0.7-20>` | threshold + result cap (wired; canon teaches the single forms) |
 
 Examples involving negative integers:
 
@@ -301,6 +304,12 @@ This falls out of standard ANTLR longest-match.
 - Validity of any specific value (out-of-range, inverted range where
   `N > M`, sentinel meanings beyond the canonical `0`/`-1`) is decided
   per-OP at runtime.
+- Decimal dispatch is form-driven, like matcher-dialect dispatch: an
+  integer addresses a position; a decimal addresses the space between
+  (line contexts: insertion point) or above (result contexts: score
+  threshold). A decimal where neither meaning applies — a threshold on
+  a non-semantic matcher, a fractional position on COPY/MOVE — is
+  answered with `416 Range Not Satisfiable`, not silently coerced.
 
 **Result-set ordering** (FIND, OPEN, FOLD): the runtime must produce a
 deterministic order so that `<N-M>` pagination is reproducible. The

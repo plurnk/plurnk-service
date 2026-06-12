@@ -79,7 +79,7 @@ private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
 // ============================================================================
 
 fragment SUFFIX    : [A-Za-z0-9_]+ ;
-fragment L_PATTERN : '<' '-'? [0-9]+ (('-' | ',' ' '?) '-'? [0-9]+)? '>' ;
+fragment L_PATTERN : '<' '-'? [0-9]+ ('.' [0-9]+)? (('-' | ',' ' '?) '-'? [0-9]+ ('.' [0-9]+)?)? '>' ;
 
 // ============================================================================
 // DEFAULT — between statements; recognize statement openers.
