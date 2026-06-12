@@ -12,7 +12,9 @@ import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
 const fileEditStmt = (pathname: string, body: string): EditStatement => ({
@@ -193,8 +195,13 @@ test("file.read: still works alongside the new edit path", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "read-me.txt";
         await writeFile(join(root, target), "content\n", "utf8");
-        // File.read now gates on membership (SPEC §14.3) — add the file first.
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
+        // File.read serves the materialized entry now — materialize the content
+        // (production's git-membership pass does this), not just a membership marker.
+        const writeCtx: PlurnkSchemeContext = {
+            db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            writer: "model", signal: undefined, tokenize: (t: string) => t.length,
+        };
+        await EntryCrud.writeEntry(target, { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, writeCtx, null);
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({

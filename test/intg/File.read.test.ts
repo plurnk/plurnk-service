@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -22,11 +24,17 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
     position: { line: 1, column: 1 },
 });
 
-// Seed a file as a member of the session — what a client `add` establishes.
-// File.read gates on membership (SPEC §14.3); a readable file must be added,
-// not merely present on disk.
+// Materialize a file as a readable member — mirrors what the git-membership pass
+// does in production: read disk content into the entry's body channel via
+// writeEntry (the entry-write paradigm). Entry-backed File.read serves THIS entry,
+// never a disk read. Root comes from the session's project_root, like production.
 const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
-    await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname });
+    if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
+    const row = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string }>({ id: ctx.sessionId });
+    const canonical = join(row?.project_root ?? "", pathname);
+    const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
+    const content = await readFile(canonical, "utf8");
+    await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
 };
 
 // Set up a session whose project_root points at a fresh temp directory,
@@ -44,7 +52,7 @@ const withSessionWorkspace = async (fn: (root: string, ctx: PlurnkSchemeContext,
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, sessionId, runId, loopId, turnId,
-            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db);
     } finally {
@@ -64,7 +72,7 @@ const withHeadlessSession = async (fn: (ctx: PlurnkSchemeContext, db: Db) => Pro
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, sessionId, runId, loopId, turnId,
-            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(ctx, db);
     } finally { await db.close(); }
@@ -114,23 +122,28 @@ test("File.read: workspace escape via .. → 403 or 404", async () => {
     });
 });
 
-test("File.read: symlink pointing outside workspace → 403", async () => {
+test("File.read: symlink pointing outside workspace → 404 (never a member)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
             await symlink(join(outside, "secret.txt"), join(root, "link-to-secret"));
             const result = await new File().read(readStmt(urlPath("file", "link-to-secret")), ctx);
-            assert.equal(result.status, 403, "symlink should be rejected after canonical resolution");
+            // Containment moved to the materialize/edit disk edges: an outside-root
+            // symlink is never materialized → no entry → 404 (not a read-path 403).
+            assert.equal(result.status, 404, "non-member (outside-root symlink) → no entry → 404");
             assert.equal(result.content, null);
         } finally { await rm(outside, { recursive: true, force: true }); }
     });
 });
 
-test("File.read: headless session (no project_root) → 400", async () => {
+test("File.read: headless session (no entries) → 404", async () => {
     await withHeadlessSession(async (ctx) => {
+        // Entry-backed read: a headless session materializes no file entries, so
+        // any file read finds nothing → 404 (uniform with Known; the old
+        // project_root precondition lived on the deleted disk-read path).
         const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
-        assert.equal(result.status, 400);
+        assert.equal(result.status, 404);
     });
 });
 
@@ -206,6 +219,9 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
 test("File.read: non-empty tag filter on file:// returns 404 (no tag concept)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
+        await addMember(ctx, "f.txt");
+        // Entry exists, but file entries carry no tags → a tag-filtered read 404s
+        // via the EntryOps tag gate, same as Known.
         const r = await new File().read(readStmt(urlPath("file", "f.txt"), { tags: ["any"] }), ctx);
         assert.equal(r.status, 404);
     });
@@ -222,25 +238,28 @@ test("File.read: long content round-trips", async () => {
     });
 });
 
-test("File.read: absolute path inside workspace resolves correctly", async () => {
+test("File.read: absolute path → 404 (entries are relative-keyed, uniform with Known)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
         await addMember(ctx, "abs.txt");
+        // The entry is keyed by its workspace-relative pathname ("abs.txt"); an
+        // absolute-path READ is a different key → no entry → 404. File does no
+        // scheme-specific absolute→relative resolution (that was the disk path).
         const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
-        assert.equal(result.status, 200);
-        assert.equal(result.content, "abs content");
+        assert.equal(result.status, 404);
     });
 });
 
-test("File.read: absolute path OUTSIDE workspace → 403", async () => {
+test("File.read: absolute path OUTSIDE workspace → 404 (never a member)", async () => {
     await withSessionWorkspace(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             const outsideFile = join(outside, "leak.txt");
             await writeFile(outsideFile, "should not be readable");
             const result = await new File().read(readStmt(urlPath("file", outsideFile)), ctx);
-            assert.equal(result.status, 403);
+            // An outside-root path can never be materialized → no entry → 404.
+            assert.equal(result.status, 404);
             assert.equal(result.content, null);
         } finally { await rm(outside, { recursive: true, force: true }); }
     });

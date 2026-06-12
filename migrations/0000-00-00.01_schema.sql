@@ -133,6 +133,44 @@ CREATE TABLE IF NOT EXISTS entry_tags (
 
 CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 
+-- INIT: symbol_defs
+-- @graph NODES (plurnk-service#186). Code symbol definitions, populated
+-- delete-then-insert per entry at write (EntryCrud.writeEntry) from mimetypes'
+-- `symbols` channel. Qualified path = container ? container || '.' || name : name.
+CREATE TABLE IF NOT EXISTS symbol_defs (
+    id         INTEGER NOT NULL PRIMARY KEY,
+    session_id INTEGER NOT NULL,
+    entry_id   INTEGER NOT NULL,
+    name       TEXT    NOT NULL CHECK (length(name) > 0),
+    kind       TEXT    NOT NULL,
+    container  TEXT,
+    line       INTEGER NOT NULL,
+    end_line   INTEGER,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (session_id, name);
+
+-- INIT: symbol_refs
+-- @graph EDGES (plurnk-service#186), from mimetypes' `references` channel.
+-- name = edge TARGET; container = the SOURCE def's full qualified path (the
+-- @> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
+-- type|use (frozen, edge metadata only — traversal is kind-agnostic).
+CREATE TABLE IF NOT EXISTS symbol_refs (
+    id         INTEGER NOT NULL PRIMARY KEY,
+    session_id INTEGER NOT NULL,
+    entry_id   INTEGER NOT NULL,
+    name       TEXT    NOT NULL CHECK (length(name) > 0),
+    kind       TEXT    NOT NULL,
+    container  TEXT,
+    line       INTEGER NOT NULL,
+    col        INTEGER,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (session_id, name);
+CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_id, container);
+
 -- INIT: log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —
 -- resets at each new turn. URI-bit columns are unprefixed (scheme,

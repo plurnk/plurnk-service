@@ -97,6 +97,7 @@ const withGitWorkspace = async (
         const ctx: PlurnkSchemeContext = {
             db, sessionId, runId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db, trackedPath);
     } finally {
@@ -119,7 +120,9 @@ test("[§14.3-git-membership] git-tracked file (never client-added) is a workspa
         );
 
         // And the membership gate in File.read must therefore admit it (200),
-        // not 404 it as a non-member.
+        // not 404 it as a non-member. Production materializes members every turn
+        // (indexGitMembership at runTurn); do the same before the entry-backed read.
+        await GitMembership.indexGitMembership(ctx);
         const result = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
         assert.equal(
             result.status, 200,
@@ -183,7 +186,7 @@ test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", 
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "add", glob: "*.md" });
-        await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+        await GitMembership.indexGitMembership(ctx);  // resolve membership + materialize (production's per-turn pass)
         const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
         // And it's readable — admitted to the curated surface.
@@ -195,6 +198,7 @@ test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", 
 test("[§14.3-constraint-readonly] a read-only-glob keeps a member readable but refuses edits", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "read-only", glob: trackedPath });
+        await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
         // READ still works — it's a member...
         const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
         assert.equal(read.status, 200, "a read-only member stays readable");

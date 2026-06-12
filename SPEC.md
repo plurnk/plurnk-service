@@ -305,14 +305,15 @@ new Mimetypes({
 
 Fallback heuristic is a boot-before-provider-resolved tripwire.
 
-**Manifest build.** `EntryManifest.buildManifestBody` calls `process({ content, hint })` per channel and reads `result.totalLines` for the catalog's `lines`:
+**Manifest build.** `EntryManifest.buildManifestBody` is the engine-side packet-assembly pass (the §4 firing point) that walks **every** entry. It calls `process({ content, hint })` per channel for the catalog's `lines` (`totalLines`) and, for the body channel, pulls `symbols`+`references` from the *same* call to (re)build the `@graph` symbol index (`symbol_defs`/`symbol_refs`) via `EntryGraph.populateFrom` — one parse, two projections:
 
 ```ts
-const result = await mimetypes.process({ content: r.content, hint: r.mimetype });
+const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references"] });
 entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
+if (isBody) await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
 ```
 
-`hint` short-circuits detection. The service consumes only `totalLines` (extent) and the structural channels (`deepJson`/`deepXml`, for matcher dispatch); never a rendered preview — content reaches the model on READ.
+`hint` short-circuits detection. The service consumes `totalLines` (extent), `symbols`/`references` (the `@graph` index), and `deepJson`/`deepXml` (matcher dispatch); never a rendered preview — content reaches the model on READ. Because this pass runs every assembly over every entry, any content change — by any writer — is reflected in the next packet's index. The `@graph` index is NOT engine *ranking* (the anti-pattern): it's a complete, unranked index the model queries via `FIND @<sym`, the manifest paradigm applied to structure, uniform across schemes (`file://` is the primary case).
 
 **Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 

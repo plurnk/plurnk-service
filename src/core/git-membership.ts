@@ -157,8 +157,10 @@ export default class GitMembership {
     // Materialize a member's disk content into a body channel via writeEntry (the
     // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
     // (D4/D5). Re-reads disk each call (eager + exhaustive — every active
-    // member, no relevance pass). Binary files are members but never materialized into a text
-    // channel. Missing-on-disk (tracked but deleted in the working tree) is
+    // member, no relevance pass). Binary members materialize as an EMPTY body
+    // channel stamped with their binary mimetype (#186 — visible in the manifest
+    // and READ-415 via the one isBinaryMimetype gate, not a 404 ghost).
+    // Missing-on-disk (tracked but deleted in the working tree) is
     // skipped — membership stands, no channel.
     static async #materializeMember(
         pathname: string,
@@ -167,7 +169,13 @@ export default class GitMembership {
     ): Promise<void> {
         const canonical = resolve(root, pathname);
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
-        if (MimetypeBinary.isBinaryMimetype(mimetype)) return;
+        if (MimetypeBinary.isBinaryMimetype(mimetype)) {
+            // Empty body channel stamped with the real binary mimetype — a first-
+            // class entry that READ-415s through readSessionEntry's isBinaryMimetype
+            // gate (#186), not a channel-less row that would read as 404.
+            await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
+            return;
+        }
         let content: string;
         try {
             content = await readFile(canonical, "utf8");

@@ -14,7 +14,7 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.scope = 'session'
   AND e.session_id = $session_id
-  AND e.scheme = $scheme
+  AND e.scheme IS $scheme
   AND e.pathname = $pathname
   AND ec.name = $channel;
 

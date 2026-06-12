@@ -42,6 +42,10 @@ export default class EntryOps {
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
         const target = fragment ?? defaultChannel;
+        // The default channel is always valid — dynamic-channel schemes (File:
+        // channels={}, mimetype derived per-file) declare none, but their body
+        // channel still exists. A non-default fragment must be a declared channel.
+        if (target === defaultChannel) return target;
         if (!(target in channels)) return null;
         return target;
     }
@@ -143,6 +147,9 @@ export default class EntryOps {
 
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
+        // NB: NO @graph derivation here — a scheme write resolves the mimetype
+        // label but never invokes the mimetypes handler (§4). The symbol index is
+        // built engine-side at manifest-add (EntryManifest.buildManifestBody).
 
         // §14.5 — reconcile this run's watermark to the just-written content, so the
         // build-time delta detector doesn't re-report the model's own edit (it's
@@ -164,7 +171,10 @@ export default class EntryOps {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
 
         const { db, sessionId } = ctx;
-        const { name: scheme, channels, defaultChannel } = manifest;
+        const { channels, defaultChannel } = manifest;
+        // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
+        // name). File sets storedScheme=null — its rows persist bare (scheme=NULL).
+        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
 
         const fragment = EntryOps.#fragmentOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);

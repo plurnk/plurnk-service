@@ -16,6 +16,7 @@ import type { FindStatement, FoldStatement, OpenStatement } from "@plurnk/plurnk
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
+import EntryGraph from "./_entry-graph.ts";
 
 export interface FindResult {
     status: number;
@@ -63,6 +64,9 @@ export default class EntryFind {
         manifest: SchemeManifest,
     ): Promise<{ status: number; pathnames: string[] }> {
         if (statement.target === null) return { status: 400, pathnames: [] };
+        // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
+        // name). File sets storedScheme=null — bare rows.
+        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // Semantic is a cross-entry similarity ranking (grammar `~query`: top-K
             // via <L>), not a per-candidate content match — a service-side feature
@@ -78,7 +82,7 @@ export default class EntryFind {
         const { db, sessionId } = ctx;
         const candidates = await (db.find_session_entry_candidates as PrepMethod).all<{ pathname: string; content: string; mimetype: string }>({
             session_id: sessionId,
-            scheme: manifest.name,
+            scheme,
             channel: manifest.defaultChannel,
             scope_pathname: scopeGlob,
             tags: tagsParam,
@@ -87,6 +91,14 @@ export default class EntryFind {
         let pathnames: string[];
         if (statement.body === null) {
             pathnames = candidates.map((c) => c.pathname);
+        } else if (statement.body.dialect === "graph") {
+            // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`.
+            // EntryGraph resolves the relation across (session, scheme); intersect
+            // with the in-scope candidates (target glob + tags) for the final set.
+            const inScope = new Set(candidates.map((c) => c.pathname));
+            const graph = await EntryGraph.match(ctx.db, ctx.sessionId, scheme, statement.body.raw);
+            if (graph.status !== 200) return { status: graph.status, pathnames: [] };
+            pathnames = graph.pathnames.filter((p) => inScope.has(p));
         } else {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("EntryFind.matchPathnames: body matcher requires the mimetypes capability in ctx");

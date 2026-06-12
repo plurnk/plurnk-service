@@ -1,11 +1,21 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { resolve, relative, isAbsolute, matchesGlob } from "node:path";
 import { createPatch } from "diff";
-import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
-import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import EntryOps from "./_entry-ops.ts";
+import type { ReadResult } from "./_entry-ops.ts";
+import EntryFind from "./_entry-find.ts";
+import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
-import { LineMarkerOps, MimetypeBinary, ReadResolve } from "../content/index.ts";
+import type { ReadEntryResult, EntryData, WriteEntryResult } from "./_entry-crud.ts";
+
+// Resolved + §14.3-gated disk-write target, or the error status to return.
+type WriteTarget =
+    | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string }
+    | { ok: false; status: number; error: string };
+import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
@@ -22,12 +32,6 @@ const loadSessionRoot = async (db: Db, sessionId: number): Promise<string | null
     return row?.project_root ?? null;
 };
 
-type ContainmentResult =
-    | { canonical: string; root: string }
-    | { error: "no-root" | "traversal" | "not-found" };
-
-// Resolve + workspace-root containment check. Returns the canonical
-// path on success; classified error on absence/traversal. Used by read.
 // Detect mimetype from a file's path. Routes through the Mimetypes service
 // when available; falls back to the text primitive (text/markdown). The
 // `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
@@ -41,32 +45,24 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
     return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
 };
 
-const resolveContained = async (pathname: string, root: string): Promise<ContainmentResult> => {
-    const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
-    let canonical: string;
-    try {
-        canonical = await realpath(requested);
-    } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-            return { error: "not-found" };
-        }
-        throw err;
-    }
-    const rel = relative(root, canonical);
-    if (rel.startsWith("..") || isAbsolute(rel)) return { error: "traversal" };
-    return { canonical, root };
-};
-
-// SECURITY — File deliberately implements only read() / edit() / applyResolution(),
-// NOT the readEntry/writeEntry CRUD pair that COPY/MOVE dispatch on. So COPY and
-// MOVE to or from a file:// path return 501 (Engine.#copyOrchestration), leaving
-// read() (membership-gated) and edit()'s proposal flow (membership-gated) as the
-// ONLY routes to disk. If you add readEntry/writeEntry here, they MUST carry the
-// same membership gate, or COPY/MOVE becomes an ungated read/overwrite of a
-// non-member — the `.env` leak/wipe the edit gate (§14.3) exists to prevent.
+// SECURITY — File is entry-backed, identical to Known: read()/find()/readEntry()
+// delegate to the shared Entry* helpers over the membership-materialized entries
+// (scheme=null). The membership gate is now ENTRY-EXISTENCE — a non-member has no
+// entry, so read/find/readEntry 404 it for free, the same invariant Known runs on
+// (a gitignored `.env` is never a member → never an entry → never readable). Disk
+// I/O is confined to the two edges that own it: the git-membership materialize-IN
+// and edit()/applyResolution()'s proposal-gated write-OUT (§14.3), where the
+// containment/traversal checks live.
+//
+// writeEntry() is deliberately ABSENT: a COPY/MOVE *into* file:// is a disk write
+// and MUST flow through the §14.3 proposal gate (like EDIT), not an ungated
+// overwrite — the `.env`-wipe this guard prevents. So COPY/MOVE *from* file://
+// works (readEntry); *into* file:// stays 501 until the proposal-gated write-back
+// lands. The 501 is duck-typed on writeEntry's absence (Engine.#copyOrchestration).
 export default class File {
     static manifest: SchemeManifest = {
         name: "file",
+        storedScheme: null,  // file rows persist bare (entries.scheme = NULL); renders as a bare path
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
@@ -76,67 +72,36 @@ export default class File {
         modelVisible: true,
     };
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
-        if (statement.target === null) return { status: 400, content: null, mimetype: null, error: "READ requires a target path" };
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            // file:// entries don't carry tag metadata (tags belong to canonical
-            // entries; file entries are disk-truth). A tag-filtered READ on a
-            // file path will never match — 404 by definition.
-            return { status: 404, content: null, mimetype: null };
-        }
-
-        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) return { status: 400, content: null, mimetype: null, error: "session has no project_root; cannot READ files" };
-
-        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
-        const resolved = await resolveContained(pathname, root);
-        if ("error" in resolved) {
-            if (resolved.error === "not-found") return { status: 404, content: null, mimetype: null };
-            return { status: 403, content: null, mimetype: null };
-        }
-        // Membership gate (SPEC §14.3 D4). The model reads only members:
-        // entries the client added, OR git-tracked files registered as members
-        // by resolveGitMembership at workspace setup (D1/D4) and refreshed at
-        // prompt-composition (D5). Keyed on the canonical relpath (how members
-        // are stored) AFTER the containment resolve, so a non-member is 404
-        // (indistinguishable from not-found) and never reaches the read below.
-        const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: relative(resolved.root, resolved.canonical) });
-        if (member === undefined) return { status: 404, content: null, mimetype: null };
-
-        const mimetype = await detectFileMimetype(resolved.canonical, ctx);
-        if (MimetypeBinary.isBinaryMimetype(mimetype)) return { status: 415, content: null, mimetype };
-
-        const content = await readFile(resolved.canonical, "utf8");
-
-        // `<L>` scopes; body matches within the scope (slice-then-match).
-        // `<L>` dispatches on source mimetype (plurnk-grammar 0.13.0):
-        //   JSON → LineMarkerOps.sliceJsonItems (item index)
-        //   line-navigable → LineMarkerOps.sliceLines (line index)
-        return ReadResolve.resolve({
-            content,
-            mimetype,
-            lineMarker: statement.lineMarker,
-            body: statement.body,
-            mimetypes: ctx.mimetypes,
-        });
+    // Entry-backed, identical to Known (the unified-addressing promise): read the
+    // membership-materialized entry (scheme=null) through the shared helper. <L> /
+    // body / binary-415 / tag-404 are all handled there; a non-member has no entry
+    // → 404, the same gate Known runs on. Disk is reached only at the materialize
+    // and write-back edges (git-membership, applyResolution) — never on a read.
+    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+        return EntryOps.readSessionEntry(statement, ctx, File.manifest);
     }
 
-    // Edit op (task #42 canonical proposal consumer). Returns status=202
-    // with a udiff body for client review + attrs carrying the full patched
-    // content. Engine writes the proposed log entry, pauses dispatch, and
-    // calls applyResolution() (below) after the proposal accepts.
-    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
+    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+        return EntryFind.findSessionEntries(statement, ctx, File.manifest);
+    }
 
+    // COPY/MOVE FROM file:// — read-only, gated by entry-existence (a non-member
+    // has no entry → 404). The write-back side (writeEntry) is deliberately absent;
+    // see the SECURITY note above.
+    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+        return EntryCrud.readEntry(pathname, ctx, null);
+    }
+
+    // §14.3 disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
+    // dest). Resolves the canonical path; enforces containment (traversal → 403),
+    // membership (existing non-member → 403, the `.env` protection), the read-only
+    // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
+    // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
+    // and a copy into file:// are the same disk write under the same review.
+    async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) {
-            return { status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
-        }
+        if (root === null) return { ok: false, status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
 
-        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
-        // Resolve existence + canonical path WITHOUT reading content yet — the
-        // read is gated on membership below. A not-found target is fine (we
-        // propose to create); traversal escape is fatal.
         let canonical: string;
         const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
         let fileExists = true;
@@ -147,41 +112,39 @@ export default class File {
             canonical = requested;
             fileExists = false;
         }
-        // Re-check containment against the canonical path. Symlinks could
-        // escape workspace; reject.
         const rel = relative(root, canonical);
-        if (rel.startsWith("..") || isAbsolute(rel)) {
-            return { status: 403, error: "path escapes workspace root" };
-        }
-        // Membership gate (SPEC §14.3), symmetric with read. EDIT may CREATE a
-        // new path (proposal→accept adds it to the manifest) or edit an existing
-        // MEMBER — but an existing NON-member is forbidden: never read its
-        // content (no leak into the proposal) and never overwrite a file the
-        // model can't see (a gitignored `.env` it never added). 403, the same
-        // code as a traversal: "you can't write here," not "something is there."
+        if (rel.startsWith("..") || isAbsolute(rel)) return { ok: false, status: 403, error: "path escapes workspace root" };
+
         let original = "";
         if (fileExists) {
             const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
-            if (member === undefined) return { status: 403, error: "path is outside your workspace surface" };
-            // read-only overlay (SPEC §14.3): a member matching a read-only glob is
-            // readable but not writable — refuse before reading or diffing.
+            if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
             const readonlyGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
                 .filter((c) => c.effect === "read-only").map((c) => c.glob);
-            if (readonlyGlobs.some((g) => matchesGlob(rel, g))) return { status: 403, error: "member is read-only" };
+            if (readonlyGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" };
             original = await readFile(canonical, "utf8");
         }
 
-        // 415 on binary entries (SPEC.md §16.9).
-        // Existing file's mimetype takes precedence; for new files, derive
-        // from the proposed path so we don't accept binary writes via edit.
         const mimetype = await detectFileMimetype(canonical, ctx);
-        if (MimetypeBinary.isBinaryMimetype(mimetype)) return { status: 415, error: `cannot EDIT binary mimetype \`${mimetype}\`` };
+        if (MimetypeBinary.isBinaryMimetype(mimetype)) return { ok: false, status: 415, error: `cannot write binary mimetype \`${mimetype}\`` };
+        return { ok: true, canonical, rel, fileExists, original, mimetype };
+    }
+
+    // Edit op (task #42 canonical proposal consumer). Returns status=202
+    // with a udiff body for client review + attrs carrying the full patched
+    // content. Engine writes the proposed log entry, pauses dispatch, and
+    // calls applyResolution() (below) after the proposal accepts.
+    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
+        if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
+        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
+        const target = await this.#resolveWriteTarget(pathname, ctx);
+        if (!target.ok) return { status: target.status, error: target.error };
+        const { canonical, rel, fileExists, original, mimetype } = target;
 
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
         // LineMarkerOps.applyLineMarkerEdit (line edit). On a non-existent file,
-        // body becomes content regardless of marker (per "Resolved
-        // ambiguities" §3).
+        // body becomes content regardless of marker (per "Resolved ambiguities" §3).
         const body = statement.body ?? "";
         let patched: string;
         if (statement.lineMarker !== null && fileExists) {
@@ -195,16 +158,24 @@ export default class File {
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return {
-            status: 202,
-            body: patch,
-            attrs: {
-                path: rel,
-                canonical,
-                patch,
-                patched,
-            },
-        };
+        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched } };
+    }
+
+    // COPY/MOVE INTO file:// — the dest write. Same §14.3 gate as edit, same 202
+    // proposal + applyResolution path: a copy onto disk is a disk write and earns
+    // the identical human review. Engine.#copyOrchestration propagates this 202;
+    // Engine.#runApplyResolution routes the accept back here via the dest scheme;
+    // applyResolution() writes the file + registers the entry. The copied content
+    // is the source's body channel (full replacement — files are body-only).
+    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+        const bodyChannel = entry.channels.body;
+        if (bodyChannel === undefined) return { status: 400, created: false, entryId: null };
+        const target = await this.#resolveWriteTarget(pathname, ctx);
+        if (!target.ok) return { status: target.status, created: false, entryId: null };
+        const { canonical, rel, fileExists, original } = target;
+        const patched = bodyChannel.content;
+        const patch = createPatch(rel, original, patched, "current", "proposed");
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log

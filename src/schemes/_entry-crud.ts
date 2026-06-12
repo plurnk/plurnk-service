@@ -21,6 +21,11 @@ export interface WriteEntryResult {
     status: number;
     created: boolean;
     entryId: number | null;
+    // 202 proposal: a write INTO file:// is a disk write under §14.3 review —
+    // carries the udiff for the client + the applyResolution inputs. Absent for
+    // synchronous entry schemes (known/unknown/skill write directly).
+    body?: string;
+    attrs?: object;
 }
 
 export interface DeleteEntryResult {
@@ -74,6 +79,10 @@ export default class EntryCrud {
         for (const tag of entry.tags) {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
         }
+        // NB: NO @graph derivation here — a write stores content + label; the
+        // mimetypes handler is never invoked at write (§4). The symbol index is
+        // built engine-side at manifest-add (EntryManifest.buildManifestBody),
+        // which walks every entry — files included — once per turn.
 
         return { status: created ? 201 : 200, created, entryId };
     }

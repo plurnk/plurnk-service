@@ -15,8 +15,11 @@
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { PrepMethod } from "../core/Db.ts";
+import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
+import { MimetypeBinary } from "../content/index.ts";
+import EntryGraph from "./_entry-graph.ts";
 
-type ManifestRow = { scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null };
+type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null };
 type CatalogEntry = { path: string; seconds?: number; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
@@ -40,10 +43,28 @@ export default class EntryManifest {
             // seconds: live age of an active stream (open subscription), set once
             // at entry level — a clock on running execs, absent for static entries.
             if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
-            // Metadata-only: the catalog needs totalLines (always-on), never the
-            // structural channels — and requesting none avoids handler.references()
-            // (mimetypes 0.15) on entries whose handler predates that method.
-            const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+            // Manifest-add is the engine-side point where the mimetypes handler
+            // legitimately fires (never at a scheme write, §4). For the body channel
+            // of a non-empty, non-binary entry we pull symbols+references from the
+            // SAME process() call and feed the @graph index (#186) — one parse, two
+            // projections (catalog totalLines + the symbol index). A handler that
+            // predates the references channel throws → fall back to a metadata-only
+            // process and clear the entry's graph rows.
+            const isBody = r.channel === "body";
+            const wantGraph = isBody && r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+            let result: ProcessResult;
+            if (wantGraph) {
+                try {
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references"] });
+                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                } catch {
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                }
+            } else {
+                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                if (isBody) await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+            }
             entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
         return JSON.stringify([...byEntry.values()], null, 2);

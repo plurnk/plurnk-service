@@ -1307,6 +1307,15 @@ export default class Engine {
             // with the failure outcome — engine treats it like a client
             // rejection.
             const effective = await this.#runApplyResolution(statement, result, resolution, { sessionId, runId, loopId, turnId });
+            // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
+            // after the dest write landed (accept). On reject the source survives.
+            if (effective.decision === "accept") {
+                const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
+                if (moveSource !== undefined) {
+                    const srcHandler = this.#schemes.get(moveSource.scheme) as SchemeWithCrud | undefined;
+                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
+                }
+            }
             const post = await this.#applyResolution(logEntryId, effective);
             return post;
         }
@@ -1324,7 +1333,11 @@ export default class Engine {
         // EXEC routes to the exec scheme regardless of target (cwd, not
         // a scheme address). All other ops resolve their handler from
         // statement.target's scheme.
-        const schemeName = statement.op === "EXEC" ? "exec" : this.#schemeNameOf(statement.target);
+        // COPY/MOVE write the DEST (statement.body), not the source (target): the
+        // accept must reach the dest scheme's applyResolution (File writes disk).
+        const schemeName = statement.op === "EXEC" ? "exec"
+            : (statement.op === "COPY" || statement.op === "MOVE") ? this.#schemeNameOf(statement.body as ParsedPath | null)
+            : this.#schemeNameOf(statement.target);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
@@ -1614,10 +1627,17 @@ export default class Engine {
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
 
-        // Relocation: COPY then DELETE source
+        // Relocation: COPY then DELETE source.
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
         const srcPathname = pathnameFromPath(srcPath);
+        // If the dest write is a pending proposal (file dest → §14.3 review), the
+        // source-delete MUST wait until the dest actually lands — a rejected
+        // proposal would otherwise lose the source. Thread it into the resolution:
+        // dispatch deletes the source AFTER the dest applies on accept.
+        if (copyResult.status === 202) {
+            return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
+        }
         const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
         if (delResult.status >= 400) return { status: delResult.status };
         return copyResult;
@@ -1742,6 +1762,9 @@ export default class Engine {
         }
 
         const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
+        // A file dest returns 202 (disk write → §14.3 review): propagate the
+        // proposal so dispatch runs the gate + routes applyResolution to the dest.
+        if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
