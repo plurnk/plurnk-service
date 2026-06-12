@@ -314,17 +314,17 @@ test("GBNF: 300 seeded random derivations all parse cleanly", () => {
 // Serialization sanity
 // -------------------------------------------------------------------------
 
-test("GBNF: lax root allows reasoning text before and between ops", () => {
+test("GBNF: closed root allows reasoning text before and between ops", () => {
     const turn = "Let me think: the capital is Paris.\n<<EDIT(known://capital.md):Paris:EDIT\nNow I deliver.\n<<SEND[200]:Paris:SEND";
-    assert.equal(derives("root-lax", turn), true);
+    assert.equal(derives("root-closed", turn), true);
 });
 
-test("GBNF: lax root rejects text after the final status SEND", () => {
-    assert.equal(derives("root-lax", "<<SEND[200]:done:SEND\ntrailing thoughts"), false);
+test("GBNF: closed root rejects text after the final status SEND", () => {
+    assert.equal(derives("root-closed", "<<SEND[200]:done:SEND\ntrailing thoughts"), false);
 });
 
-test("GBNF: lax root still requires the final status SEND", () => {
-    assert.equal(derives("root-lax", "just musing, no operations"), false);
+test("GBNF: closed root still requires the final status SEND", () => {
+    assert.equal(derives("root-closed", "just musing, no operations"), false);
 });
 
 test("GBNF: text cannot swallow a complete op opener", () => {
@@ -337,28 +337,47 @@ test("GBNF: text cannot end on a lone `<` (would merge with a following opener)"
     assert.equal(derives("text", "abc<<"), true);
 });
 
-test("GBNF: 100 seeded random lax turns parse cleanly and end in a status SEND", () => {
+test("GBNF: 100 seeded random closed turns parse cleanly and end in a status SEND", () => {
     const rng = mulberry32(11);
     for (let i = 0; i < 100; i++) {
-        const turn = sample("root-lax", rng);
+        const turn = sample("root-closed", rng);
         const result = PlurnkParser.parse(turn);
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 0, `lax batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
-        assert.ok(statements.length >= 1, `lax batch ${i} produced no statements\nbatch: ${JSON.stringify(turn)}`);
-        assert.equal(result.unparsedTail, undefined, `lax batch ${i} left an unparsed tail\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(errors.length, 0, `closed batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
+        assert.ok(statements.length >= 1, `closed batch ${i} produced no statements\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(result.unparsedTail, undefined, `closed batch ${i} left an unparsed tail\nbatch: ${JSON.stringify(turn)}`);
         const last = statements.at(-1)!;
         assert.ok(last.kind === "statement");
         if (last.kind !== "statement") continue;
-        assert.equal(last.statement.op, "SEND", `lax batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
-        assert.equal(last.statement.target, null, `lax batch ${i} final SEND has a target`);
-        assert.ok(last.statement.signal === 102 || last.statement.signal === 200, `lax batch ${i} final SEND signal not 102/200`);
+        assert.equal(last.statement.op, "SEND", `closed batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
+        assert.equal(last.statement.target, null, `closed batch ${i} final SEND has a target`);
+        assert.ok(last.statement.signal === 102 || last.statement.signal === 200, `closed batch ${i} final SEND signal not 102/200`);
+    }
+});
+
+test("GBNF: open root — text and statements interleave, EOS at any boundary", () => {
+    assert.equal(derives("root-open", "just musing, no operations yet"), true);
+    assert.equal(derives("root-open", "<<EDIT(known://a.md):x:EDIT"), true);
+    assert.equal(derives("root-open", "think first\n<<READ(known://a.md)::READ\nstill thinking, not concluding"), true);
+    assert.equal(derives("root-open", "<<SEND[200]:done:SEND\nafterthought"), true);
+    assert.equal(derives("root-open", "discussing <<EDIT without closing it"), false);
+});
+
+test("GBNF: 100 seeded random open turns parse cleanly", () => {
+    const rng = mulberry32(23);
+    for (let i = 0; i < 100; i++) {
+        const turn = sample("root-open", rng);
+        const result = PlurnkParser.parse(turn);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 0, `open turn ${i} produced parse errors\nturn: ${JSON.stringify(turn)}`);
+        assert.equal(result.unparsedTail, undefined, `open turn ${i} left an unparsed tail\nturn: ${JSON.stringify(turn)}`);
     }
 });
 
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
-    const text = serializeGbnf(model, "root-lax");
-    assert.match(text, /^root ::= root-lax$/m);
+    const text = serializeGbnf(model, "root-open");
+    assert.match(text, /^root ::= root-open$/m);
     const collectRefs = (item: GItem): string[] => {
         if (item.kind === "ref") return [item.name];
         if (item.kind === "rep") return collectRefs(item.item);

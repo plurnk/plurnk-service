@@ -17,7 +17,8 @@
     },
     "./package.json": "./package.json",
     "./plurnk.gbnf": "./dist/plurnk.gbnf",
-    "./plurnk-strict.gbnf": "./dist/plurnk-strict.gbnf"
+    "./plurnk-strict.gbnf": "./dist/plurnk-strict.gbnf",
+    "./plurnk-closed.gbnf": "./dist/plurnk-closed.gbnf"
   },
   "bin": {
     "plurnk": "./bin/plurnk.js"

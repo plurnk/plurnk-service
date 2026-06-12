@@ -27,6 +27,7 @@ import { PlurnkParser } from "../../src/index.ts";
 const BASE_URL = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const grammar = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
+const closedGrammar = readFileSync(join(repoRoot, "dist", "plurnk-closed.gbnf"), "utf8");
 const system = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
 type Completion = { content: string; finishReason: string };
@@ -76,10 +77,10 @@ test("single-statement root: constrained emission terminates at the close tag an
     assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
 });
 
-test("shipped root: every completed statement in constrained emission parses cleanly", async () => {
+test("closed root: every completed statement in constrained emission parses cleanly", async () => {
     const { content, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer with a SEND.",
-        grammar,
+        closedGrammar,
         384,
     );
     const result = PlurnkParser.parse(content);

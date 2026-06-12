@@ -188,12 +188,13 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-Two generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship in the package for llama.cpp constrained sampling. Both dictate the canonical form (digit suffixes, comma line markers, three-digit SEND signals) and the turn shape — a batch of ops (mid-batch SENDs allowed) closed by a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible: termination is structural (forced EOS).
+Three generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship in the package for llama.cpp constrained sampling, most→least permissive. All dictate the canonical statement form (digit suffixes, comma line markers, three-digit SEND signals); free text can never contain a complete `<<OP` opener — emitting one commits the sampler into statement mode, so operations stay fully enforced everywhere.
 
-- **`plurnk.gbnf` (default, relaxed)** — free reasoning text is allowed before and between operations (never after the final status SEND). The grammar filter sits below the reasoning/content split on llama.cpp, so an ops-only grammar chokes thinking on reasoning-tuned models. Operations stay fully enforced: text cannot contain a complete `<<OP` opener — emitting one commits the sampler into statement mode.
-- **`plurnk-strict.gbnf`** — ops only, bounded newline separators. For models that don't reason and benefit from the tighter rail.
+- **`plurnk.gbnf` (default, open)** — free reasoning text and statements interleave; EOS is admissible at any boundary, so termination is the model's own choice. The grammar filter sits below the reasoning/content split on llama.cpp; the open root lets reasoning-tuned models think — including reasoning *about* concluding without being forced to conclude.
+- **`plurnk-closed.gbnf`** — text allowed, but the turn must close with a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible (forced EOS). For models that ramble past optional stopping points.
+- **`plurnk-strict.gbnf`** — ops only, bounded newline separators. The tightest rail, for models that don't reason.
 
-The parser remains the permissive contract — everything either grammar can generate, the parser accepts (interstatement text surfaces as `kind: "text"` items).
+The parser remains the permissive contract — everything any of the three can generate, the parser accepts (interstatement text surfaces as `kind: "text"` items).
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")

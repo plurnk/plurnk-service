@@ -168,21 +168,28 @@ export const buildModel = (): GModel => {
     // can sail past. Degeneration *inside* a body or text segment remains
     // unboundable (content is content); the consumer max_tokens cap is backstop.
     //
-    // root-lax (the DEFAULT, shipped as plurnk.gbnf): free reasoning text before
-    // and between ops — llama.cpp's grammar filter sits below the reasoning/content
-    // split, so an ops-only grammar chokes thinking on reasoning-tuned models.
-    // Text is a complement automaton over the 11 open literals: emitting a
-    // complete `<<OP` commits the sampler into statement mode, so ops stay fully
-    // enforced. No text after the final status SEND.
+    // Three roots, one per shipped artifact (most→least permissive):
     //
-    // root-strict (shipped as plurnk-strict.gbnf): ops only, bounded 1-2 newline
-    // separators. For models that don't reason and benefit from the tighter rail.
+    // root-open (the DEFAULT, plurnk.gbnf): free text and statements interleave;
+    // EOS is admissible at any boundary — termination is the model's own choice.
+    // For reasoning models: the grammar filter sits below the reasoning/content
+    // split, and a forced-close root lets reasoning-about-concluding actually
+    // conclude. Ops stay enforced (text cannot contain a complete `<<OP`).
+    //
+    // root-closed (plurnk-closed.gbnf): text allowed, but the turn must close
+    // with the final pathless SEND[102]/[200] — structural termination for
+    // models that ramble past optional EOS.
+    //
+    // root-strict (plurnk-strict.gbnf): ops only, bounded 1-2 newline
+    // separators. For models that don't reason and benefit from the tightest rail.
     // Text directly after a close tag must be newline-led: the lexer's close-tag
     // predicate requires a non-ident follow char, so `:KILL4` + text "9..." would
     // glue into the close tag and the body would never end. Leading text and
     // glued statements are safe (`<` is non-ident).
-    model.set("root-lax", [[ref("text"), star(ref("lax-step")), ref("send-final-any"), opt(lit("\n"))]]);
-    model.set("lax-step", [[ref("mid-statement"), opt(ref("text-after"))]]);
+    model.set("root-open", [[ref("text"), star(ref("open-step"))]]);
+    model.set("open-step", [[ref("statement"), opt(ref("text-after"))]]);
+    model.set("root-closed", [[ref("text"), star(ref("closed-step")), ref("send-final-any"), opt(lit("\n"))]]);
+    model.set("closed-step", [[ref("mid-statement"), opt(ref("text-after"))]]);
     model.set("text-after", [[lit("\n"), ref("text")]]);
     textRules(model);
     model.set("root-strict", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
@@ -277,7 +284,8 @@ export const serializeGbnf = (model: GModel, rootName: string): string => {
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
-    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-lax"));
+    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-open"));
+    await writeFile("dist/plurnk-closed.gbnf", serializeGbnf(model, "root-closed"));
     await writeFile("dist/plurnk-strict.gbnf", serializeGbnf(model, "root-strict"));
-    process.stderr.write(`Generated dist/plurnk.gbnf (lax) + dist/plurnk-strict.gbnf: ${model.size} rules.\n`);
+    process.stderr.write(`Generated dist/plurnk.gbnf (open) + plurnk-closed.gbnf + plurnk-strict.gbnf: ${model.size} rules.\n`);
 }
