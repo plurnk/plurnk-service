@@ -1,8 +1,15 @@
 {
     "name": "@plurnk/plurnk-execs-sqlite",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "SQLite runtime executor for plurnk-service's exec scheme — runs the sqlite runtime tag in-process via node:sqlite, results as application/json.",
-    "keywords": ["plurnk", "exec", "runtime", "executor", "sqlite", "sql"],
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "sqlite",
+        "sql"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-execs-sqlite#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-execs-sqlite/issues"
@@ -23,7 +30,10 @@
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "sqlite", "glyph": "🗃" }
+            {
+                "name": "sqlite",
+                "glyph": "🗃"
+            }
         ]
     },
     "exports": {
@@ -45,11 +55,12 @@
         "build": "npm run build:dist",
         "prepare": "npm run build"
     },
-    "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.1"
-    },
     "devDependencies": {
         "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-execs": "0.4.x"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.x"
     }
 }
