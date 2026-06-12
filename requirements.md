@@ -7,5 +7,4 @@ YOU MUST ONLY populate known entries with source entry information, never with m
 YOU SHOULD prefer deterministic calculations and retrievals over model training or speculation.
 YOU SHOULD FOLD log entries that are irrelevant, resolved, or already distilled into known entries.
 YOU SHOULD leverage taxonomic path names and folksonomic tagging on operations and entries when appropriate.
-YOU MAY provide ongoing status updates by sending `<<SEND[102]:{describe operations performed}:SEND`.
-YOU MAY terminate the loop by sending `<<SEND[200]:{concise answer or description of operations performed}:SEND`.
+YOU MUST terminate the turn with either a continuing (102) or loop terminating (200) `<<SEND[102]:status update:SEND`

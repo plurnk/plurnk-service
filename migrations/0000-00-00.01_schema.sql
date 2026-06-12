@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- NULL = the owning run itself (self), rendered without a run= label.
     source          TEXT,
 
-    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC')),
+    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL')),
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 

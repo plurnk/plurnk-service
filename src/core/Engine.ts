@@ -28,7 +28,7 @@ import PacketWire from "./packet-wire.ts";
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC"]);
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL"]);
 
 const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
@@ -742,7 +742,13 @@ export default class Engine {
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true };
         }
         const modelMessages = this.#packetToWireMessages(requestPacket);
-        const response = await provider.generate({ messages: modelMessages, signal, grammar: await this.#grammarConstraint() });
+        // maxTokens = remaining context window (loop policy, plurnk-providers#10).
+        // The 0.28.0 EOS-forcing root terminates the turn at the status SEND, but a
+        // grammar can't bound degeneration *inside* a statement body — this caps the
+        // decode at the free window so a runaway can't reach the context wall.
+        const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
+        const response = await provider.generate({ messages: modelMessages, signal, grammar: await this.#grammarConstraint(), maxTokens });
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
@@ -1235,6 +1241,8 @@ export default class Engine {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#handleMove(statement, schemeCtx);
+                } else if (statement.op === "KILL") {
+                    result = await this.#handleKill(statement, schemeCtx);
                 } else if (statement.op === "EXEC") {
                     // EXEC's target slot is `cwd`, not a scheme address.
                     // Per plurnk.md the op routes unconditionally to the
@@ -1616,6 +1624,28 @@ export default class Engine {
         const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
         if (delResult.status >= 400) return { status: delResult.status };
         return copyResult;
+    }
+
+    // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
+    // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
+    // retired from the model's vocabulary. Process-KILL (exec://) awaits the
+    // 202→addressable-process design and returns 501. The KILL body is an opaque
+    // annotation with no runtime meaning; it survives into the log row's tx for
+    // free via the statement serialization. Status: 200 killed · 404 unknown ·
+    // 405 log:// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
+    // MUTATING_OPS) · 501 exec/no-delete.
+    async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.op !== "KILL") throw new Error("unreachable");
+        const path = statement.target;
+        if (path === null) return { status: 400, error: "KILL requires a target path" };
+        const schemeName = this.#schemeNameOf(path);
+        if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
+        if (schemeName === "log") return { status: 405, error: "log:// is append-only; KILL must bounce" };
+        if (schemeName === "exec") return { status: 501, error: "process-KILL pending the 202 addressable-process design (#203)" };
+        const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
+        if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
+        const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
+        return { status: delResult.status };
     }
 
     async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
