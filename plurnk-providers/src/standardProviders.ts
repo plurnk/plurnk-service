@@ -122,6 +122,21 @@ const probeModels = async (chatUrl: string, headers: Record<string, string>, mod
     }
 };
 
+// Slot count from llama-server's /props (total_slots) — the valid id_slot
+// range for session pinning. Only queried after the llama-server fingerprint
+// confirms; same best-effort posture as the models probe.
+const probeSlotCount = async (chatUrl: string, headers: Record<string, string>, fetchTimeoutMs: number): Promise<number | null> => {
+    const propsUrl = chatUrl.replace(/\/v1\/chat\/completions$/, "/props");
+    try {
+        const res = await fetch(propsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
+        if (!res.ok) return null;
+        const data = (await res.json()) as { total_slots?: number };
+        return typeof data.total_slots === "number" && data.total_slots > 0 ? data.total_slots : null;
+    } catch {
+        return null;
+    }
+};
+
 // Returns a configured Provider, or null when `name` is not a standard
 // provider (so the consumer falls through to dynamic import). Async because a
 // probeNctx-enabled provider queries /v1/models at construction.
@@ -145,6 +160,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // contextSize itself, explicit env still wins over the probed n_ctx.
     let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
     let supportsGrammar = false;
+    let slotCount: number | null = null;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         const probe = await probeModels(url, headers, model, fetchTimeoutMs);
@@ -154,6 +170,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         // jinja chat_template_kwargs.enable_thinking, including the explicit
         // FALSE at budget 0 that grammar-constrained loops require (§13).
         if (probe.llamaServer && reasoningStyle === "think") reasoningStyle = "template";
+        if (probe.llamaServer) slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
     }
 
     return new OpenAICompatProvider({
@@ -169,6 +186,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         supportsGrammar,
         // The same fingerprint backs both llama-server dialect extensions.
         supportsSlotPinning: supportsGrammar,
+        slotCount,
         ...reasoningKnobsFromEnv(env, name),
     });
 };

@@ -143,6 +143,7 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         if (String(url).endsWith("/models")) {
             return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_vocab: 262144, n_ctx: 49152 } }] }), { status: 200 });
         }
+        if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         bodies.push(String(init?.body));
         const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
         return new Response(body, { status: 200 });
@@ -177,6 +178,7 @@ test("openai: llama-server fingerprint upgrades 'think' to 'template' — budget
         if (String(url).endsWith("/models")) {
             return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 49152 } }] }), { status: 200 });
         }
+        if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         bodies.push(String(init?.body));
         const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
         return new Response(body, { status: 200 });
@@ -200,6 +202,24 @@ test("openai: non-llama-server endpoint keeps the 'think' style (no template kwa
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     await p!.generate({ messages: [] });
     assert.equal("chat_template_kwargs" in JSON.parse(bodies[0]), false);
+});
+
+test("openai: llama-server fingerprint probes /props for slotCount; cloud stays null", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+        const u = String(url);
+        if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 16384 } }] }), { status: 200 });
+        if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 2 }), { status: 200 });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    assert.equal(p!.slotCount, 2);
+    assert.equal(p!.contextSize, 16384); // per-slot window, as the server reports it
+
+    mock.restoreAll();
+    mockEndpoint({ nctx: 8192 }); // top-level n_ctx, no meta → not llama-server
+    const vllm = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(vllm!.slotCount, null);
 });
 
 test("openai: env-pinned context size does not disable grammar detection (probe still runs)", async () => {

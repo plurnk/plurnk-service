@@ -23,7 +23,14 @@ Collision on `(kind: "provider", name)` at discovery: fail-hard.
 ```ts
 interface Provider {
     // Identity (immutable across lifetime)
-    readonly contextSize: number | null;  // total context tokens, null if unresolved
+    readonly contextSize: number | null;  // context tokens, null if unresolved.
+                                          // PER SLOT under llama-server --parallel N
+                                          // (the server splits --ctx-size and reports
+                                          // the divided value; verified live).
+    readonly slotCount: number | null;    // slot count for pinning backends
+                                          // (llama-server /props total_slots);
+                                          // null = no slot semantics. Valid
+                                          // slotId range is [0, slotCount).
     readonly model: string;                // configured model id
 
     // Tokenomic primitives (synchronous, pure)

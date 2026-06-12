@@ -41,6 +41,7 @@ export type OpenAICompatConfig = {
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
+    slotCount?: number | null;                 // probed slot count for pinning backends; default null
     // The two reasoning gates — REQUIRED, no in-code defaults: configuration
     // lives in the operator's env (SPEC §4), read via reasoningKnobsFromEnv.
     nativeThinking: boolean;                   // PLURNK_PROVIDERS_THINKING — native think channel
@@ -82,6 +83,7 @@ export default class OpenAICompatProvider implements Provider {
     #source: string;
     #supportsGrammar: boolean;
     #supportsSlotPinning: boolean;
+    #slotCount: number | null;
     #nativeThinking: boolean;
     #reasoningEnabled: boolean;
 
@@ -98,11 +100,13 @@ export default class OpenAICompatProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#supportsGrammar = config.supportsGrammar ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
+        this.#slotCount = config.slotCount ?? null;
         this.#nativeThinking = config.nativeThinking;
         this.#reasoningEnabled = config.reasoningEnabled;
     }
 
     get contextSize(): number | null { return this.#contextSize; }
+    get slotCount(): number | null { return this.#slotCount; }
     get model(): string { return this.#model; }
 
     countTokens(text: string): number { return this.#countTokens(text); }

@@ -60,7 +60,12 @@ export interface Provider {
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.
+    // NOTE: under llama-server --parallel N, the window is PER SLOT (the
+    // server splits --ctx-size across slots and reports the divided value).
     readonly contextSize: number | null;
+    // Slot count for slot-pinning backends (llama-server /props total_slots);
+    // null = backend has no slot semantics. Valid slotId range is [0, slotCount).
+    readonly slotCount: number | null;
     readonly model: string;
     // Provider-owned tokenizer. Synchronous, non-negative integer.
     countTokens(text: string): number;

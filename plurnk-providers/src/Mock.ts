@@ -33,14 +33,17 @@ const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, c
 
 export default class Mock implements Provider {
     #contextSize: number | null;
+    #slotCount: number | null;
     #queue: MockResponse[];
 
-    constructor({ contextSize, responses }: { contextSize: number | null; responses: MockResponse[] }) {
+    constructor({ contextSize, slotCount = null, responses }: { contextSize: number | null; slotCount?: number | null; responses: MockResponse[] }) {
         this.#contextSize = contextSize;
+        this.#slotCount = slotCount;
         this.#queue = [...responses];
     }
 
     get contextSize(): number | null { return this.#contextSize; }
+    get slotCount(): number | null { return this.#slotCount; }
     get model(): string { return "mock"; }
 
     // Heuristic tokenizer. Mock is test-only; real provider siblings ship
