@@ -1,8 +1,17 @@
 {
     "name": "@plurnk/plurnk-execs-wasm",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "WebAssembly runtime executor for plurnk-service's exec scheme — in-process sandboxed execution of WAT (text) and wasm (binary) modules.",
-    "keywords": ["plurnk", "exec", "runtime", "executor", "webassembly", "wasm", "wat", "sandbox"],
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "webassembly",
+        "wasm",
+        "wat",
+        "sandbox"
+    ],
     "homepage": "https://github.com/plurnk/plurnk-execs-wasm#readme",
     "bugs": {
         "url": "https://github.com/plurnk/plurnk-execs-wasm/issues"
@@ -23,8 +32,14 @@
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "wat", "glyph": "🧩" },
-            { "name": "wasm", "glyph": "🧩" }
+            {
+                "name": "wat",
+                "glyph": "🧩"
+            },
+            {
+                "name": "wasm",
+                "glyph": "🧩"
+            }
         ]
     },
     "exports": {
@@ -47,11 +62,14 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.1",
         "wabt": "^1.0.39"
     },
     "devDependencies": {
         "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-execs": "0.4.x"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.x"
     }
 }
