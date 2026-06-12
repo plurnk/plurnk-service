@@ -49,7 +49,14 @@ export interface Provider {
     // under a multi-op grammar that degenerates to the context wall (SPEC §13),
     // so a constrained consumer is expected to pass it. Policy stays the
     // consumer's; the provider only transports.
-    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
+    //
+    // `slotId` pins the request to a llama-server slot (wire `id_slot`) for
+    // KV-cache affinity under `--parallel N>1` — without it, slot routing is
+    // the server's similarity heuristic and a session's requests can hop slots,
+    // re-paying full prefills. Backends without slot semantics ignore it
+    // (cloud APIs 400 on unknown params, so it never reaches their wire).
+    // Session→slot mapping is consumer policy; the provider only transports.
+    generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number; slotId?: number }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.

@@ -176,6 +176,24 @@ test("maxTokens transports as max_tokens; absent → no wire field (server defau
     assert.equal("max_tokens" in JSON.parse(calls[0].init.body as string), false);
 });
 
+test("slotId transports as id_slot only on a slot-pinning backend", async () => {
+    const pinning = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, nativeThinking: false, reasoningEnabled: true, supportsSlotPinning: true });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await pinning.generate({ messages: [], slotId: 0 });
+    assert.equal(JSON.parse(calls[0].init.body as string).id_slot, 0);
+
+    mock.restoreAll();
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await pinning.generate({ messages: [] }); // no slotId → no wire field
+    assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
+
+    mock.restoreAll();
+    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, nativeThinking: false, reasoningEnabled: true }); // default: no pinning
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await cloud.generate({ messages: [], slotId: 0 });
+    assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
+});
+
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, nativeThinking: false, reasoningEnabled: true, source: "provider:test" });

@@ -40,6 +40,7 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
+    supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     // The two reasoning gates — REQUIRED, no in-code defaults: configuration
     // lives in the operator's env (SPEC §4), read via reasoningKnobsFromEnv.
     nativeThinking: boolean;                   // PLURNK_PROVIDERS_THINKING — native think channel
@@ -80,6 +81,7 @@ export default class OpenAICompatProvider implements Provider {
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
     #supportsGrammar: boolean;
+    #supportsSlotPinning: boolean;
     #nativeThinking: boolean;
     #reasoningEnabled: boolean;
 
@@ -95,6 +97,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#supportsGrammar = config.supportsGrammar ?? false;
+        this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#nativeThinking = config.nativeThinking;
         this.#reasoningEnabled = config.reasoningEnabled;
     }
@@ -127,7 +130,7 @@ export default class OpenAICompatProvider implements Provider {
         return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
     }
 
-    async generate({ messages, signal, grammar, maxTokens }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse> {
+    async generate({ messages, signal, grammar, maxTokens, slotId }: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string; maxTokens?: number; slotId?: number }): Promise<ProviderResponse> {
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
         const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
@@ -139,6 +142,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#reasoningBody(),
             ...this.#grammarBody(grammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+            ...(slotId !== undefined && this.#supportsSlotPinning ? { id_slot: slotId } : {}),
         };
 
         let raw;

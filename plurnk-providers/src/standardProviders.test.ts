@@ -148,10 +148,11 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ messages: [], grammar: "root ::= statement" });
+    await p!.generate({ messages: [], grammar: "root ::= statement", slotId: 2 });
     const sent = JSON.parse(bodies[0]);
     assert.equal(sent.grammar, "root ::= statement");
     assert.equal(sent.repeat_penalty, 1.15);
+    assert.equal(sent.id_slot, 2); // fingerprint enables slot pinning too
 });
 
 test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", async () => {

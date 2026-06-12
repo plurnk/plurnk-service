@@ -167,6 +167,8 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         countTokens: tokenizerFor(family),
         source: providerSource(name),
         supportsGrammar,
+        // The same fingerprint backs both llama-server dialect extensions.
+        supportsSlotPinning: supportsGrammar,
         ...reasoningKnobsFromEnv(env, name),
     });
 };

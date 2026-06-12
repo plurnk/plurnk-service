@@ -70,6 +70,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
+- `generate` transports `slotId` as llama-server's `id_slot` when the backend supports slot pinning, and silently ignores it otherwise. Under `--parallel N>1`, pinning gives a session KV-cache affinity (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Session→slot mapping is consumer policy.
 
 ## §3 `fromEnv(env, model)` factory
 
@@ -218,8 +219,11 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       reasonBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort"
       countTokens, costFor,  // strategies; default heuristic / free
       supportsGrammar,       // backend accepts a `grammar` body field (§13); default false
+      supportsSlotPinning,   // backend accepts an `id_slot` body field; default false
   });
   ```
+
+  The `openai` standard provider sets both `supportsGrammar` and `supportsSlotPinning` from the same llama-server fingerprint (§11 probe).
 
 - **`chatCompletionStream` / `OpenAiHttpError` / `StreamResponse`** — the SSE client. One shared copy.
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
