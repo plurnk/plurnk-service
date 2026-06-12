@@ -10,7 +10,7 @@
 
 import type { Provider } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, requireEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningKnobsFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
 
@@ -145,10 +145,15 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // contextSize itself, explicit env still wins over the probed n_ctx.
     let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
     let supportsGrammar = false;
+    let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         const probe = await probeModels(url, headers, model, fetchTimeoutMs);
         supportsGrammar = probe.llamaServer;
         contextSize ??= probe.nCtx;
+        // llama-server ignores `think` — its working reasoning toggle is the
+        // jinja chat_template_kwargs.enable_thinking, including the explicit
+        // FALSE at budget 0 that grammar-constrained loops require (§13).
+        if (probe.llamaServer && reasoningStyle === "think") reasoningStyle = "template";
     }
 
     return new OpenAICompatProvider({
@@ -158,9 +163,10 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         reasonBudget: parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON", name),
-        reasoningStyle: spec.reasoningStyle,
+        reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),
         supportsGrammar,
+        ...reasoningKnobsFromEnv(env, name),
     });
 };

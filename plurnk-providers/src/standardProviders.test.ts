@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
-const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_REASON: "0" });
+const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_REASON: "0", PLURNK_PROVIDERS_THINKING: "0", PLURNK_PROVIDERS_REASONING: "1" });
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
@@ -168,6 +168,37 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     assert.equal(p!.contextSize, 8192); // window still read
     await p!.generate({ messages: [], grammar: "root ::= statement" });
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
+});
+
+test("openai: llama-server fingerprint upgrades 'think' to 'template' — budget 0 reaches the wire as enable_thinking:false", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 49152 } }] }), { status: 200 });
+        }
+        bodies.push(String(init?.body));
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    await p!.generate({ messages: [] });
+    assert.deepEqual(JSON.parse(bodies[0]).chat_template_kwargs, { enable_thinking: false });
+    assert.equal("think" in JSON.parse(bodies[0]), false);
+});
+
+test("openai: non-llama-server endpoint keeps the 'think' style (no template kwargs at budget 0)", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "m" }] }), { status: 200 }); // no meta → not llama-server
+        }
+        bodies.push(String(init?.body));
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    await p!.generate({ messages: [] });
+    assert.equal("chat_template_kwargs" in JSON.parse(bodies[0]), false);
 });
 
 test("openai: env-pinned context size does not disable grammar detection (probe still runs)", async () => {

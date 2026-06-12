@@ -20,7 +20,7 @@ export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompa
 export type { OpenAICompatConfig, ReasoningStyle } from "./OpenAICompat.ts";
 export { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse } from "./openaiStream.ts";
-export { parseRequiredInt, parseOptionalInt, requireEnv } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFlag, requireEnv, reasoningKnobsFromEnv } from "./env.ts";
 export { tokenizerFor, tokenizerByPublisher, parseTokenizerFamily } from "./tokenizers.ts";
 export type { TokenizerFamily, CountTokens } from "./tokenizers.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";

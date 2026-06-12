@@ -13,12 +13,20 @@ import { chatCompletionStream } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError } from "./telemetry.ts";
 
-// How a numeric PLURNK_REASON budget translates to the wire (SPEC §4).
-//  - "think":             llama-server / Ollama OpenAI-compat → `think: true`
+// How the reasoning knobs translate to the wire (SPEC §4). Two gates:
+// `nativeThinking` (PLURNK_PROVIDERS_THINKING) drives the model's native think
+// channel; `reasoningEnabled` (PLURNK_PROVIDERS_REASONING) drives cloud/relay
+// reasoning requests, tiered by the PLURNK_REASON budget.
+//  - "template":          llama-server (jinja) → `chat_template_kwargs.enable_thinking`,
+//                         ALWAYS emitted — the explicit false is the only working
+//                         off-switch (llama-server ignores `think` and per-request
+//                         budgets; its --reasoning-budget default otherwise keeps
+//                         the channel live — fatal under an active grammar, §13).
+//  - "think":             Ollama OpenAI-compat → `think: true` when nativeThinking
 //  - "include_reasoning": OpenRouter relay passthrough toggle
 //  - "effort":            o-series / Grok / Gemini → reasoning_effort tier
 //  - "none":              provider has no reasoning toggle (e.g. Cloudflare)
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort";
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template";
 
 export type OpenAICompatConfig = {
     model: string;
@@ -32,6 +40,10 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
+    // The two reasoning gates — REQUIRED, no in-code defaults: configuration
+    // lives in the operator's env (SPEC §4), read via reasoningKnobsFromEnv.
+    nativeThinking: boolean;                   // PLURNK_PROVIDERS_THINKING — native think channel
+    reasoningEnabled: boolean;                 // PLURNK_PROVIDERS_REASONING — cloud/relay reasoning requests
 };
 
 // Sampling guard under an active grammar (SPEC §13): greedy decoding under
@@ -68,6 +80,8 @@ export default class OpenAICompatProvider implements Provider {
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
     #supportsGrammar: boolean;
+    #nativeThinking: boolean;
+    #reasoningEnabled: boolean;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -81,6 +95,8 @@ export default class OpenAICompatProvider implements Provider {
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#supportsGrammar = config.supportsGrammar ?? false;
+        this.#nativeThinking = config.nativeThinking;
+        this.#reasoningEnabled = config.reasoningEnabled;
     }
 
     get contextSize(): number | null { return this.#contextSize; }
@@ -90,11 +106,15 @@ export default class OpenAICompatProvider implements Provider {
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
     #reasoningBody(): Record<string, unknown> {
-        if (this.#reasonBudget <= 0) return {};
         switch (this.#reasoningStyle) {
-            case "think": return { think: true };
-            case "include_reasoning": return { include_reasoning: true };
-            case "effort": return { reasoning_effort: effortFromBudget(this.#reasonBudget) };
+            // Native-channel styles gate on nativeThinking. "template" always
+            // emits — the explicit enable_thinking:false is the only working
+            // off-switch on llama-server (§13).
+            case "template": return { chat_template_kwargs: { enable_thinking: this.#nativeThinking } };
+            case "think": return this.#nativeThinking ? { think: true } : {};
+            // Cloud/relay styles gate on reasoningEnabled, tiered by budget.
+            case "include_reasoning": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { include_reasoning: true } : {};
+            case "effort": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { reasoning_effort: effortFromBudget(this.#reasonBudget) } : {};
             case "none": return {};
         }
     }
