@@ -6,6 +6,7 @@
 import {
     OpenAICompatProvider,
     parseRequiredInt,
+    reasoningKnobsFromEnv,
     providerSource,
     requireEnv,
     tokenizerFor,
@@ -44,6 +45,7 @@ export default class Ollama {
             reasoningStyle: "think",
             countTokens: tokenizerFor(tokenizerFamilyFor(family)),
             source: providerSource("ollama"),
+            ...reasoningKnobsFromEnv(env, "ollama"),
         });
     }
 }

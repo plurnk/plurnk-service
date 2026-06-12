@@ -8,6 +8,8 @@ const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_FETCH_TIMEOUT: "600000",
     PLURNK_REASON: "0",
+    PLURNK_PROVIDERS_THINKING: "0",
+    PLURNK_PROVIDERS_REASONING: "1",
 });
 
 // Mock the /api/show probe. `payload` becomes the JSON body it returns.
