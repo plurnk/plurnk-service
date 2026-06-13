@@ -228,7 +228,7 @@ test("[§14.3-emi-divergence-signal] out-of-band change to a member surfaces as 
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         if (row === undefined) throw new Error("turn packet not found");
         const packet = JSON.parse(row.packet) as { system: { log: Array<{ origin?: string }> } };
-        const signalled = packet.system.log.some((r) => r.origin === "system" && JSON.stringify(r).includes(trackedPath));
+        const signalled = packet.system.log.some((r) => r.origin === "plurnk" && JSON.stringify(r).includes(trackedPath));
         assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
     });
 });

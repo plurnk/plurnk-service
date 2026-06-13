@@ -13,8 +13,8 @@
 //   D4 — git present → ls-files membership. git absent → no fs-walk (this
 //        module no-ops on a non-git project_root, leaving headless / non-git
 //        sessions completely unaffected). The add/ignore/read-only constraint
-//        overlay (session_constraints) is a documented follow-up — not built
-//        here; bare git-ls-files membership is the whole of this phase.
+//        overlay (session_constraints) layers on top: resolveMembership applies
+//        `(ls-files ∪ add) − ignore`; read-only is enforced at the File edit gate.
 //   D5 — EMI is eager + exhaustive: every active member is re-read from disk at
 //        resolution time so a divergent member reflects current disk content.
 //

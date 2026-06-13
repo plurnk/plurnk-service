@@ -67,7 +67,7 @@ const readMaxCommands = (): number => {
     return n;
 };
 
-type Origin = "model" | "client" | "system" | "plugin";
+type Origin = "model" | "client" | "plurnk" | "plugin";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -668,7 +668,7 @@ export default class Engine {
                 };
                 await this.dispatch({
                     statement: promptStmt, sessionId, runId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "system", onDispatch,
+                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
             }
@@ -682,7 +682,7 @@ export default class Engine {
         // per-turn write. Does not list itself.
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
-            writer: "system",
+            writer: "plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
@@ -1167,7 +1167,7 @@ export default class Engine {
 
     // §14.5 — at pre-turn build, reconcile each session entry against this run's
     // watermark. First sight sets it silently; a content change materializes a
-    // delta-EDIT (origin=system, the §14.6 result span) at the next sequence and
+    // delta-EDIT (origin=plurnk, the §14.6 result span) at the next sequence and
     // advances the mark. Excludes plurnk:// (manifest/prompt) and bare/file
     // entries (scheme NULL — the EMI's territory). Returns the count so the
     // caller advances nextActionIndex past the pre-seeded deltas.
@@ -1195,7 +1195,7 @@ export default class Engine {
             const span = editedSpan(wm.content, r.content);
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId,
-                sequence: fromSequence + written, origin: "system", source: r.scheme === null ? "file" : null,
+                sequence: fromSequence + written, origin: "plurnk", source: r.scheme === null ? "file" : null,
                 op: "EDIT", suffix: "", signal: null,
                 scheme: r.scheme, username: null, password: null, hostname: null, port: null,
                 pathname: r.pathname, params: null, fragment: null, lineMarker: null,
@@ -1443,7 +1443,7 @@ export default class Engine {
         const ctx: PlurnkSchemeContext = {
             db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
-            writer: "system",
+            writer: "plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,

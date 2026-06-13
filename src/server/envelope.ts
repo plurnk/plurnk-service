@@ -41,6 +41,12 @@ export interface ClientEnvelope {
 }
 
 export default class Envelope {
+    // Run names reserved for non-client actors: a client must not create OR
+    // attach to a run under a reserved name (origin-impersonation — `plurnk`
+    // is the runtime actor, §0.4/§14.7). Checked case-insensitively, before
+    // lookup, so a client can neither forge nor hijack one (SPEC §13.5).
+    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]);
+
     // Grammar 0.5.0 (#10): Session and Run carry user-renameable string names.
     // Defaults are `session-{unixtime}` and `run-{unixtime}`; random suffix avoids
     // collisions when two creations land in the same second.
@@ -98,6 +104,9 @@ export default class Envelope {
             return { id: existing.id, name: existing.name, persona: existing.persona };
         }
         if (opts.runName !== undefined) {
+            if (Envelope.RESERVED_RUN_NAMES.has(opts.runName.toLowerCase())) {
+                throw new Error(`run name "${opts.runName}" is reserved for a non-client actor`);
+            }
             const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName });
             if (existing !== undefined) return existing;
             const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName, persona: opts.persona ?? null });

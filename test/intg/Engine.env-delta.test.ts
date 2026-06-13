@@ -44,7 +44,7 @@ test("an out-of-band change to a tracked entry surfaces next turn as a system de
         // Turn 1: the entry is first-sighted → watermark set, no delta.
         await eng.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const afterT1 = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string }>({ run_id: runId });
-        assert.ok(!afterT1.some((r) => r.scheme === "known" && r.origin === "system" && r.op === "EDIT"), "first sight reconciles silently — no delta yet");
+        assert.ok(!afterT1.some((r) => r.scheme === "known" && r.origin === "plurnk" && r.op === "EDIT"), "first sight reconciles silently — no delta yet");
 
         // Out-of-band append (exec stream / sibling): mutate the channel directly,
         // NOT through editSessionEntry, so the watermark stays unreconciled.
@@ -53,7 +53,7 @@ test("an out-of-band change to a tracked entry surfaces next turn as a system de
         // Turn 2: the build detects the change → a system EDIT delta with the new span.
         await eng.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; rx: string; source: string | null }>({ run_id: runId });
-        const delta = rows.find((r) => r.scheme === "known" && r.origin === "system" && r.op === "EDIT");
+        const delta = rows.find((r) => r.scheme === "known" && r.origin === "plurnk" && r.op === "EDIT");
         assert.ok(delta, "the out-of-band change materialized a system delta-EDIT");
         assert.equal(delta!.source, null, "a self/ambient change is self-attributed — no run= label");
         assert.match(JSON.parse(delta!.rx).span as string, /3:\tline3-new/, "the delta carries the changed span, line-numbered (§14.6)");

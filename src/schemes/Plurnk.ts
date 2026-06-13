@@ -23,7 +23,7 @@ export default class Plurnk {
         defaultChannel: "body",
         category: "data",
         scope: "session",
-        writableBy: ["model", "client", "system"],
+        writableBy: ["model", "client", "plurnk"],
         volatile: false,
         modelVisible: true,
     };

@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     turn_id         INTEGER NOT NULL,
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'system', 'plugin')),
+    origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
     -- §14.5 environment-delta cause: a sibling run-id or a scheme ('file');
     -- NULL = the owning run itself (self), rendered without a run= label.
     source          TEXT,

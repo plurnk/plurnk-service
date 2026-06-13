@@ -23,7 +23,7 @@ test("plurnk:// scheme manifest: open writability, body channel, text/markdown",
     assert.equal(Plurnk.manifest.modelVisible, true);
     assert.ok(Plurnk.manifest.writableBy.includes("model"));
     assert.ok(Plurnk.manifest.writableBy.includes("client"));
-    assert.ok(Plurnk.manifest.writableBy.includes("system"));
+    assert.ok(Plurnk.manifest.writableBy.includes("plurnk"));
 });
 
 test("system EDIT plurnk://prompt/<loop_id> creates the entry", async () => {
@@ -32,7 +32,7 @@ test("system EDIT plurnk://prompt/<loop_id> creates the entry", async () => {
         const p = new Plurnk();
         const r = await p.edit(
             editStmt(urlPath("plurnk", "prompt/1"), "what is the capital of france?"),
-            makeSchemeCtx({ db, sessionId, runId, writer: "system" }),
+            makeSchemeCtx({ db, sessionId, runId, writer: "plurnk" }),
         );
         assert.equal(r.status, 201);
         const body = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r.entryId, name: "body" }))?.content;
@@ -67,7 +67,7 @@ test("READ plurnk://prompt/<loop_id> returns the prompt body", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const p = new Plurnk();
-        await p.edit(editStmt(urlPath("plurnk", "prompt/1"), "hello"), makeSchemeCtx({ db, sessionId, runId, writer: "system" }));
+        await p.edit(editStmt(urlPath("plurnk", "prompt/1"), "hello"), makeSchemeCtx({ db, sessionId, runId, writer: "plurnk" }));
         const r = await p.read(readStmt(urlPath("plurnk", "prompt/1")), makeSchemeCtx({ db, sessionId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "hello");

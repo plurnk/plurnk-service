@@ -110,7 +110,7 @@ test("Engine.dispatch: KILL against log:// returns 405 (append-only)", async () 
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "system",
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
         });
         assert.equal(kill.status, 405);
     } finally { await db.close(); }
@@ -281,7 +281,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
 test("Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
-        for (const [i, origin] of (["model", "client", "system", "plugin"] as const).entries()) {
+        for (const [i, origin] of (["model", "client", "plurnk", "plugin"] as const).entries()) {
             await engine.dispatch({
                 statement: editStmt({ target: urlPath("known", `/o${i}`), body: "x" }),
                 sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
@@ -289,14 +289,14 @@ test("Engine.dispatch: origin field captured in log", async () => {
             });
         }
         const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ origin: string; sequence: number }>({ turn_id: env.turnId });
-        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "system", "plugin"]);
+        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "plurnk", "plugin"]);
     } finally { await db.close(); }
 });
 
 // SPEC §3.6: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("[§3.6-writableby-403] Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['system'])", async () => {
+test("[§3.6-writableby-403] Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -358,7 +358,7 @@ test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () =>
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "system",
+            sequence: 1, origin: "plurnk",
         });
         assert.notEqual(result.status, 403);
     } finally { await db.close(); }

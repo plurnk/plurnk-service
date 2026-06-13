@@ -2,9 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod, ExecMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession } from "./_helpers.ts";
+import Envelope from "../../src/server/envelope.ts";
 
 let nameCounter = 0;
 const n = (suffix: string): string => `run-${suffix}-${++nameCounter}`;
+
+test("[§13.5-run-name-reserved] a client cannot create or resume a run named 'plurnk' (runtime impersonation)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, "ws-reserved");
+        await assert.rejects(() => Envelope.attachToSession(db, sessionId, { runName: "plurnk" }), /reserved/, "forging a plurnk run is refused");
+        await assert.rejects(() => Envelope.attachToSession(db, sessionId, { runName: "PLURNK" }), /reserved/, "case variants are refused too");
+        const ok = await Envelope.attachToSession(db, sessionId, { runName: "my-feature" });
+        assert.equal(ok.runName, "my-feature", "a normal run name still resolves");
+    } finally { await db.close(); }
+});
 
 test("runs: table is STRICT", async () => {
     const db = await openMigrated();

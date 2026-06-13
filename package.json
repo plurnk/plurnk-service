@@ -54,7 +54,7 @@
     "@plurnk/plurnk-mimetypes": "0.15.7",
     "@plurnk/plurnk-mimetypes-embeddings": "0.1.0",
     "@plurnk/plurnk-providers": "0.2.2",
-    "@plurnk/plurnk-schemes": "0.5.0",
+    "@plurnk/plurnk-schemes": "0.6.0",
     "@plurnk/plurnk-schemes-http": "0.1.0",
     "@possumtech/sqlrite": "5.1.1",
     "diff": "^9.0.0",

@@ -50,9 +50,9 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 | Term | Meaning |
 |---|---|
-| **writer** | The identity authoring a write. One of `model \| client \| system \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
+| **writer** | The identity authoring a write. One of `model \| client \| plurnk \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
 | **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
-| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, system, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry (§7.1 action-entry-as-outcome). |
+| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, plurnk, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry (§7.1 action-entry-as-outcome). |
 
 ### §0.5 Engine rails
 
@@ -224,7 +224,7 @@ interface PlurnkSchemeContext {
     readonly runId: number;
     readonly loopId: number;
     readonly turnId: number;
-    readonly writer: "model" | "client" | "system" | "plugin";
+    readonly writer: "model" | "client" | "plurnk" | "plugin";
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
@@ -746,6 +746,8 @@ registry.register("loop.run", {
 
 **Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint. {§13.5-auto-envelope}
 
+**Reserved run names.** `plurnk` is reserved for the runtime actor (§0.4). `session.attach` rejects it — case-insensitively, *before* the lookup-or-create — so a client can neither forge a `plurnk` run nor resume the runtime's, closing impersonation of `origin=plurnk`. The auto-namer never emits a reserved name. {§13.5-run-name-reserved}
+
 **Loops (model-driven)**
 
 | Method            | Params                              | Result                 | Notes |
@@ -954,9 +956,9 @@ Each entry: question, answer, rationale, migration path.
 
 **Question.** The manifest (§15) is a live directory of what *exists*, re-derived each turn — but it carries *state*, not *events*. When a session entry changes out-of-band between turns — an exec stream grows, a sibling run edits a shared entry, a tracked file diverges on disk (§14.3) — the model's prior READ is now stale, and the manifest's new line count is a fact it must *diff against its own memory* to notice. The manifest also cannot say *who* changed it; with more than one actor in a session, provenance is load-bearing. What surfaces change — losslessly, attributably, without curating?
 
-**Decision — a per-run delta of system-authored EDITs.** When a session entry changes out-of-band, the engine records it the way the model records its *own* edits: a `log_entries` row, op=`EDIT`, `origin=system`, carrying the new `source` attribution (the cause). The body is exactly an EDIT's body — **the edited area as it looks now, line-numbered, with a couple lines of context** (the result-rendering all EDITs share, §14.6). The set is **exhaustive and unranked** — every change, no relevance order — but **not content-free**: showing the edited region of a change that *happened* is a faithful record, not the index regrowing. The engine may inform (the §14.3 EMI divergence is the precedent), never rank or select what the model retains; the one line it must never cross is *ranking*. Volume is the model's to manage by FOLD (and the grinder's under budget), not the engine's to manage by gutting the payload.
+**Decision — a per-run delta of plurnk-authored EDITs.** When a session entry changes out-of-band, the engine records it the way the model records its *own* edits: a `log_entries` row, op=`EDIT`, `origin=plurnk`, carrying the new `source` attribution (the cause). The body is exactly an EDIT's body — **the edited area as it looks now, line-numbered, with a couple lines of context** (the result-rendering all EDITs share, §14.6). The set is **exhaustive and unranked** — every change, no relevance order — but **not content-free**: showing the edited region of a change that *happened* is a faithful record, not the index regrowing. The engine may inform (the §14.3 EMI divergence is the precedent), never rank or select what the model retains; the one line it must never cross is *ranking*. Volume is the model's to manage by FOLD (and the grinder's under budget), not the engine's to manage by gutting the payload.
 
-**Form — a log entry, `origin=system`, the change translated to DSL.** A delta is a `log_entries` row: an **`EDIT`** ("an EDIT happened to X"), `origin=system`, carrying the new **`source`** column — the cause. A log entry, not a transient frame section, because a run's timeline must be **self-contained** (a forked run carries everything it observed). `source` renders as `run="<id>"` / `run="file"` in the meta line, **omitted when the cause is the owning run itself**. It is a third attribution axis, distinct from `run_id` (whose log owns the row) and `origin` (the actor *type*).
+**Form — a log entry, `origin=plurnk`, the change translated to DSL.** A delta is a `log_entries` row: an **`EDIT`** ("an EDIT happened to X"), `origin=plurnk`, carrying the new **`source`** column — the cause. A log entry, not a transient frame section, because a run's timeline must be **self-contained** (a forked run carries everything it observed). `source` renders as `run="<id>"` / `run="file"` in the meta line, **omitted when the cause is the owning run itself**. It is a third attribution axis, distinct from `run_id` (whose log owns the row) and `origin` (the actor *type*).
 
 **Passive — computed at build, never forces a turn.** A delta materializes only while a packet is being assembled, so a change has nowhere to land until something else has already started a turn — it cannot wake an idle model. "Inform, never override," as mechanism. Urgency that genuinely needs the model routes through the *voice* door (an inject), never the environment door promoting itself to a turn.
 
@@ -977,6 +979,26 @@ Each entry: question, answer, rationale, migration path.
 **Scope.** The span is computed at edit time — the write range and the result are both known then — and stored on the EDIT's `rx`; the render reads it. A large span is bounded like any rendered slice, and FOLD collapses it to the coordinate when the model doesn't need it.
 
 **Migration path.** Changes what EDIT rows *show* (input → output); the op surface and EDIT's behaviour are unchanged. Tests asserting the input-heredoc render move to the resulting-span render.
+
+### §14.7 The actor boundary: isolation by run, two doors, self-hosting
+
+**Question.** A session holds many runs — model, client, plurnk (§0.1, §0.4) — over one shared manifest. What keeps one run's activity out of another's conversation; what are the *only* ways a run's work reaches another; and does the engine's own work obey the boundary or get a privileged back channel?
+
+**Decision — isolation by run; the model is not privileged.** A packet renders exactly one run's log — the assembling run's — against the session's shared manifest (§15). A run cannot see another's log: isolation is *structural*, a consequence of "a run owns its log entries" (§0.1) and "one packet, one run," never an `origin` filter at render time. `origin` (§0.4) is **attribution** — the delta's provenance (§14.5) — never read to hide a row. {§14.7-isolation} {§14.7-origin-not-filter}
+
+**Two doors, and only two.** A run's work reaches another run by exactly two channels, and a private log is reachable no other way:
+- the **environment door** — a write to a *shared entry* surfaces to every run sharing it as a folded, attributed delta (§14.5). *State.*
+- the **voice door** — an **inject** delivers a turn into a *specific* run's log; `btw` is the user's mid-loop inject. *Message.*
+
+{§14.7-two-doors}
+
+**Wild west — no mutual exclusion.** Runs share the manifest without locks. Coordination is cooperative (tags + the shared workspace convention) and softly fenced (the §14.3 `read-only` overlay scopes a run's writable surface); a conflict *surfaces* as a delta rather than being prevented. Inform, never override. {§14.7-no-mutex}
+
+**Passive wake.** An idle run wakes on exactly two events — a prompt injected into it (voice; user or system) or a stream-status transition it subscribes to (§5.6). A delta never wakes a run; it queues and drains at the next turn one of those produces (§14.5). {§14.7-passive-wake}
+
+**Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation §14.3, git auto-add) is an **ephemeral `plurnk` run** firing ordinary ops, seen by other runs through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel runs stand on (spawn, dispatch, packet assembly, the budget rails §14.4, the fs-watch); everything expressible as ops on session entries is a run doing ops, through the same `op.*` surface (§13.5) the service offers clients. Dogfooding is the architecture, not a test mode. {§14.7-self-hosting}
+
+**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. What remains is *repatriation* — the inline plurnk dispatches (the §14.5 materialization, today bolted into the model's loop) move into ephemeral plurnk runs via a headless spawn primitive mirroring `_dispatchAsClient`. Once every mutation is a run-scoped action, SAVEPOINT-nested rollback (run → loop → turn → action) falls out uniformly.
 
 ---
 
@@ -1005,7 +1027,7 @@ type Packet = {
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a system-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/FOLD-able like any other.
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a plurnk-origin `EDIT` against `plurnk://prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/FOLD-able like any other.
 
 **The entry catalog.** `plurnk://manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's READable and queryable. Body is `application/json`: a flat, **complete, unranked** array — one item per entry across all schemes, every entry listed in no relevance order, each `{ path, channels: { <name>: { mimetype, tokens, lines } } }`. The model ranks and filters the catalog itself by querying it (task-aware); the catalog never ranks for it — the instant it did, it would be an index again. `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself. {§15-manifest-catalog}
 

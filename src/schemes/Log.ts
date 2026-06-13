@@ -43,7 +43,7 @@ export default class Log {
         defaultChannel: "",
         category: "logging",
         scope: "session",
-        writableBy: ["system"],  // engine-only writes; model & client read + open/fold
+        writableBy: ["plurnk"],  // engine-only writes; model & client read + open/fold
         volatile: false,
         modelVisible: true,
     };

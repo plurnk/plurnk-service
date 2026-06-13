@@ -48,7 +48,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
             assert.equal(captured.length, 3);
             const prompt = captured[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "EDIT");
-            assert.equal(prompt.entry.origin, "system");
+            assert.equal(prompt.entry.origin, "plurnk");
             const first = captured[1] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");

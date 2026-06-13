@@ -72,7 +72,7 @@ test("log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
-        for (const [i, origin] of ["model", "client", "system", "plugin"].entries()) {
+        for (const [i, origin] of ["model", "client", "plurnk", "plugin"].entries()) {
             await minimalLog(db, ctx, { sequence: i + 1, origin });
         }
         await assert.rejects(

@@ -709,7 +709,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         assert.equal(packet.system.log.length, 1);
         assert.equal(packet.system.log[0].coordinate, "1/1/1");
         assert.equal(packet.system.log[0].op, "EDIT");
-        assert.equal(packet.system.log[0].origin, "system");
+        assert.equal(packet.system.log[0].origin, "plurnk");
         assert.equal(packet.system.log[0].target?.scheme, "plurnk");
         assert.equal(packet.system.log[0].target?.pathname, `prompt/${loopId}/1`);
     } finally { await db.close(); }
@@ -735,7 +735,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         assert.equal(packet.system.log.length, 3);
         assert.equal(packet.system.log[0].coordinate, "1/1/1");
         assert.equal(packet.system.log[0].op, "EDIT");
-        assert.equal(packet.system.log[0].origin, "system");
+        assert.equal(packet.system.log[0].origin, "plurnk");
         assert.equal(packet.system.log[0].target.scheme, "plurnk");
         assert.equal(packet.system.log[1].coordinate, "1/1/2");
         assert.equal(packet.system.log[1].op, "EDIT");
@@ -791,7 +791,7 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
 test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next packet's telemetry.errors[]", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // Model attempts to EDIT log:// — denied 403 (Log.writableBy=['system']).
+        // Model attempts to EDIT log:// — denied 403 (Log.writableBy=['plurnk']).
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
             target: urlPath("log", "/illegal"),
