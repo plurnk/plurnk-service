@@ -24,7 +24,7 @@ const resolvePersona = async (db: Db, loopId: number): Promise<string | null> =>
     return row?.persona ?? null;
 };
 
-test("persona cascade: no overrides → null (caller's default kicks in)", async () => {
+test("[§15.3-null-falls-through] persona cascade: no overrides → null (caller's default kicks in)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, "persona-cascade-1");
@@ -60,7 +60,7 @@ test("persona cascade: runs.persona overrides sessions.persona", async () => {
     } finally { await db.close(); }
 });
 
-test("persona cascade: loops.persona is most specific — wins over everything", async () => {
+test("[§15.3-cascade-precedence] persona cascade: loops.persona is most specific — wins over everything", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, "persona-cascade-4");
@@ -101,7 +101,7 @@ test("persona cascade: outer layer null, inner null, middle set — middle wins"
     } finally { await db.close(); }
 });
 
-test("persona cascade: empty string is treated as a non-null override", async () => {
+test("[§15.3-empty-suppresses] persona cascade: empty string is treated as a non-null override", async () => {
     // SQL COALESCE returns the first non-NULL value; empty string is not
     // NULL. If a client explicitly sets persona="" (e.g. session.set_persona
     // with empty body) they're suppressing the cascade. Engine then renders

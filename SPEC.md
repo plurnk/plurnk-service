@@ -687,6 +687,12 @@ Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_M
 
 **enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.example` (forward-spec) but no-op until wired.
 
+**Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ENABLED` (`=0` flatly denies git service-wide, §14.3), `PLURNK_BUDGET_CEILING` (§14.2), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, and `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_PERSONA` / `PLURNK_REQUIREMENTS` (the §15.3 persona cascade / per-call requirements), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
+
+Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` is today a **default** (`loop.run({maxTurns})` overrides it with no cap check) despite its "cap" wording — open: if an operator turn-limit should be inviolable, it moves to ceiling semantics (a per-call `min()` against the env value).
+
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
 External plugins declare their own env vars in their own `.env.example`; service merges at boot via the cascade.
@@ -1111,6 +1117,14 @@ Rendered at the END of the user packet under `# Plurnk System Requirements` {§1
 **Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
 
 **Rationale:** the user's prompt is natural language ("Reply with just the number") and routinely conflicts with the grammar's operational contract. Without an explicit requirement block, the model obeys the prompt literally and never reaches for SEND. Requirements are the contract that wins those conflicts.
+
+### §15.3 Persona — the per-entity cascade
+
+The persona — the character the model wears, rendered into `packet.system` — resolves per turn at packet assembly by a cascade over three nullable columns plus a file default. **`loops.persona` > `runs.persona` > `sessions.persona` > the `PLURNK_PERSONA` file** (`engine_resolve_persona` is `COALESCE(loop, run, session)`, falling to `PATHS.defaultPersona` when all three are null); the most specific level set wins. {§15.3-cascade-precedence}
+
+**Null falls through; empty string overrides.** A null at a level defers to the next; an explicit `""` is a non-null value that wins the COALESCE and **suppresses** the cascade — the model gets no persona section. Setting `""` is how a client deliberately strips an inherited persona for one loop. {§15.3-null-falls-through} {§15.3-empty-suppresses}
+
+**Set by RPC, evaluated at build.** `session.create` / `session.set_persona` set the session level, `session.attach` sets a *new* run's level, `loop.run({persona})` sets the loop level (highest precedence). The cascade resolves fresh each turn — not frozen at loop start — so a runtime `session.set_persona` lands on the next turn.
 
 ---
 
