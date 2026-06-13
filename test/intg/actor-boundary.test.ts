@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -47,8 +48,28 @@ test("[§14.7-no-mutex] two runs in one session both write the same shared entry
     } finally { db.close(); }
 });
 
-test("[§14.7-isolation] a packet renders one run's log; a sibling run's log is absent",
-    { todo: "Phase 1 — needs the packet-assembly fixture to prove run B's log entries never enter run A's packet" }, () => {});
+test("[§14.7-isolation] a packet renders one run's log; a sibling run's log is absent", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const spawn = async () => {
+            const runId = await insertRun(db, sessionId);
+            const loopId = await insertLoop(db, runId, 1);
+            const turnId = await insertTurn(db, loopId, 1);
+            return { runId, loopId, turnId };
+        };
+        // Two sibling runs in one session — e.g. the model's run and a client's.
+        const a = await spawn();
+        const b = await spawn();
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-a.md"), "a"), sessionId, runId: a.runId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-b.md"), "b"), sessionId, runId: b.runId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        // run A's packet is rendered from run A's log alone.
+        const packetA = await (db.engine_render_log as PrepMethod).all<{ pathname: string }>({ run_id: a.runId });
+        assert.ok(packetA.some((r) => r.pathname.includes("from-a")), "run A's own log renders in its packet");
+        assert.ok(packetA.every((r) => !r.pathname.includes("from-b")), "the sibling run B's log never enters run A's packet — invisibility is by run, no origin filter");
+    } finally { db.close(); }
+});
 
 test("[§14.7-origin-not-filter] origin is attribution (provenance), never read to hide a row at render",
     { todo: "Phase 1 — pairs with the isolation packet fixture: an in-run row of any origin still renders" }, () => {});
