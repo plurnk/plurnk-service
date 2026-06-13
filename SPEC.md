@@ -994,13 +994,33 @@ Each entry: question, answer, rationale, migration path.
 
 {§14.7-two-doors}
 
-**Wild west — no mutual exclusion.** Runs share the manifest without locks. Coordination is cooperative (tags + the shared workspace convention) and softly fenced (the §14.3 `read-only` overlay scopes a run's writable surface); a conflict *surfaces* as a delta rather than being prevented. Inform, never override. {§14.7-no-mutex}
+**Wild west — no mutual exclusion.** Runs share the manifest without locks. Coordination is cooperative (tags + the shared workspace convention) and softly fenced (the §14.3 `read-only` overlay, a session policy, bounds every run's writable surface uniformly — §14.8); a conflict *surfaces* as a delta rather than being prevented. Inform, never override. {§14.7-no-mutex}
 
 **Passive wake.** An idle run wakes on exactly two events — a prompt injected into it (voice; user or system) or a stream-status transition it subscribes to (§5.6). A delta never wakes a run; it queues and drains at the next turn one of those produces (§14.5). {§14.7-passive-wake}
 
 **Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation §14.3, git auto-add) is an **ephemeral `plurnk` run** firing ordinary ops, seen by other runs through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel runs stand on (spawn, dispatch, packet assembly, the budget rails §14.4, the fs-watch); everything expressible as ops on session entries is a run doing ops, through the same `op.*` surface (§13.5) the service offers clients. Dogfooding is the architecture, not a test mode. {§14.7-self-hosting}
 
 **Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. What remains is *repatriation* — the inline plurnk dispatches (the §14.5 materialization, today bolted into the model's loop) move into ephemeral plurnk runs via a headless spawn primitive mirroring `_dispatchAsClient`. Once every mutation is a run-scoped action, SAVEPOINT-nested rollback (run → loop → turn → action) falls out uniformly.
+
+### §14.8 The machine and its processes: session, run, fork
+
+**Question.** §14.7 isolates runs and lets the runtime self-host, but it stands on an ownership model it never states: what does a *session* own versus a *run*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which run `log.read` reads, what a fork copies, where a per-client view of the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
+
+**Decision — the session is the world; a run is a log on it.** A **session** is the world: one shared filesystem — the `session`-scoped entries, surfaced as `plurnk://manifest.json` (§15) — under one membership overlay (§14.3). Exactly one filesystem and one overlay per session; neither is per-run. A **run** is a process whose entire private memory is its **log** (§0.1) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, §14.5), and fold-state (`indexed`). A run owns **no entries** and **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
+
+**One filesystem.** The entries are the session's: `entries.session_id`, never a run. A write by any run is a write to the one filesystem every run reads; there is no per-run entry set. {§14.8-one-filesystem}
+
+**One overlay.** Membership — `git ls-files ∪ add − ignore` with read-only (§14.3) — is the session's: `session_constraints.session_id`, never a run. It is workspace *curation*, and the workspace *is* the session; two runs are two conversations about one curated workspace and see the same one. Divergent membership is a different session, never a per-run overlay. {§14.8-one-overlay}
+
+**A run is its log — and nothing beside.** The run-private state is the log and only the log. *What I am looking at* (OPEN/FOLD) is `log_entries.indexed`, a bit on the run's own rows, toggled by ordinary `log://` ops — not a second store, and never membership (§6.3). *What I last saw* needs no shadow either: a run learns its world moved through log entries (§14.5) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-run snapshot the run cannot see. The log is the whole of a run's memory. {§14.8-run-is-its-log}
+
+**Fork — copy the log, share the world.** A fork is a new run in the *same* session (`runs.parent_run_id`, §0.1), taken at a savepoint. It copies the **log** — the rows, their fold-state riding along — so the branch inherits everything the parent observed (§14.5 makes a run's timeline self-contained for exactly this) and diverges freely after. {§14.8-fork-copies-the-log} It shares the **world** — the one filesystem, the one overlay — live and uncopied, because the run never owned it. {§14.8-fork-shares-the-world}
+
+**A session cannot be forked.** There is nothing to branch — a session *is* the shared ground. `runs` carries `parent_run_id`; `sessions` carries no parent. Parallel histories over one workspace are forks of its runs; a divergent workspace is a new session. {§14.8-no-fork-session}
+
+**Rationale.** The model falls out of one correction: *a run is a history over a shared world, not a world.* Entries are the world (session); the log is the history (run); forking a history need not copy the world, and a run accumulates nothing the log does not already hold. The overlay's session home is forced the same way — it is the world's curation, and the world is shared; per-run it fragments the one manifest, forks the membership read-gate (the §14.3 security line), and duplicates what FOLD already does at the right level. Every "which run / what's copied / where's the per-client view" answers itself once the world/log line is drawn.
+
+**Migration path.** Mostly stating what the schema already carries: `runs.parent_run_id` and the parentless `sessions` exist (§0.1); `session_constraints` is session-level (§14.3); §14.5 already makes a run's timeline self-contained, so a fork's log copy suffices. Additive: the savepoint/branch *operation* and `run.fork` over the wire. Two repatriations: §14.7's "read-only overlay scopes a run's writable surface" becomes a *session* policy bounding every run uniformly; and the §14.5 environment door sheds its per-run watermark — a run's only memory is its log, so drift is the broadcast (run-caused) and the build-time disk-vs-entry diff (ambient), both landing as log entries, never a per-run snapshot.
 
 ---
 
