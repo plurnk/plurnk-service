@@ -22,6 +22,7 @@
     "dist/**/*",
     "migrations/**/*.sql",
     "persona.md",
+    "requirements.md",
     "README.md",
     "SPEC.md"
   ],
