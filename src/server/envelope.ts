@@ -25,10 +25,12 @@ export interface RunRow {
     cost_pico: number;
 }
 
-// Per-connection envelope. clientLoopId starts null and is lazily
-// allocated on the first client-origin op (op.edit, op.read, etc.) — a
-// connection that only calls loop.run never spends a loop sequence on
-// an empty client envelope, so the model's first run is loop 1, not 2.
+// Per-connection envelope. `runId` is the connection's own run — the client
+// actor's: `op.*` and `log.read` live there (§13.7, §14.8). `modelRunId` is the
+// model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
+// the packet renders it, so client ops are absent from the model's view with no
+// filter. Both `modelRunId` and `clientLoopId` are lazily allocated on first use —
+// a connection that never drives a model never spawns a model run.
 export interface ClientEnvelope {
     sessionId: number;
     sessionName: string;
@@ -37,6 +39,7 @@ export interface ClientEnvelope {
     runId: number;
     runName: string;
     runPersona: string | null;
+    modelRunId: number | null;
     clientLoopId: number | null;
 }
 
@@ -81,6 +84,7 @@ export default class Envelope {
             sessionId: session.id, sessionName: session.name,
             projectRoot: session.project_root, sessionPersona: session.persona,
             runId: run.id, runName: run.name, runPersona: run.persona,
+            modelRunId: null,
             clientLoopId: null,
         };
     }
@@ -126,6 +130,7 @@ export default class Envelope {
             sessionId: session.id, sessionName: session.name,
             projectRoot: session.project_root, sessionPersona: session.persona,
             runId: run.id, runName: run.name, runPersona: run.persona,
+            modelRunId: null,
             clientLoopId: null,
         };
     }
@@ -137,6 +142,16 @@ export default class Envelope {
         const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
         if (loop === undefined) throw new Error("ensureClientLoop: loop insert returned no row");
         return loop.id;
+    }
+
+    // Lazy model-run allocator (§13.7, §14.8 — the client writes to its own run).
+    // The model's conversation lives in its OWN run, distinct from the connection's
+    // (client) run, so the packet — rendered from the model's run — never carries
+    // the client's op.*. Created on the first loop.run; reused for the connection.
+    static async ensureModelRun(db: Db, sessionId: number): Promise<number> {
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: Envelope.#tsName("model"), persona: null });
+        if (run === undefined) throw new Error("ensureModelRun: run insert returned no row");
+        return run.id;
     }
 
     static async listRunsForSession(db: Db, sessionId: number): Promise<RunRow[]> {

@@ -7,6 +7,7 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import { Paths } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
+import Envelope from "../envelope.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
@@ -83,7 +84,10 @@ export default class LoopRunMethod {
                     return { status: 501, error: "no provider configured at the daemon and no alias override supplied" };
                 }
 
-                const { sessionId, runId } = ctx.session;
+                const { sessionId } = ctx.session;
+                // §13.7/§14.8 — the model runs in its OWN run, distinct from the
+                // connection's client run, so the packet never carries client op.*.
+                const modelRunId = ctx.session.modelRunId ?? (ctx.session.modelRunId = await Envelope.ensureModelRun(ctx.db, sessionId));
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 const persona = await readFile(Paths.defaultPersona, "utf8");
 
@@ -91,7 +95,7 @@ export default class LoopRunMethod {
                 // → write prompt entry for next turn (returns immediately).
                 // Idle run → enqueue + start drain (await drain to completion).
                 const injected = await ctx.daemon.inject({
-                    sessionId, runId, prompt: p.prompt,
+                    sessionId, runId: modelRunId, prompt: p.prompt,
                     provider, persona, systemPrompt,
                     maxTurns, flags: p.flags, personaOverride: loopPersona,
                 });

@@ -95,9 +95,9 @@ test("loop.run with flags.yolo=true: in-tree yolo listener auto-accepts proposal
             assert.equal(result.hitMaxTurns, false);
 
             // The proposed entry should have transitioned out of 'proposed'.
-            const rows = await (db.test_log_entries_by_run as PrepMethod).all<{
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
                 op: string; status_rx: number; scheme: string;
-            }>({ run_id: 1 });
+            }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
             assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
             // Post-accept the dispatch overwrites status with applyResolution's

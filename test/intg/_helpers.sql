@@ -113,6 +113,12 @@ FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
+-- PREP: test_log_entries_by_loop
+-- The model loop's own entries — robust to which run holds the loop (the model
+-- runs in its OWN run now, §13.7), so a test queries by the loopId it holds.
+SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
+FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
+
 -- PREP: test_get_log_rx_by_run_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
 -- recorded for a given op in a run (e.g. what a READ<L> actually sliced).

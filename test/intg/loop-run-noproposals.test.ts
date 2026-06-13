@@ -50,10 +50,10 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "trigger proposal", flags: { noProposals: true },
             });
-            const result = response.result as { finalStatus: number };
+            const result = response.result as { finalStatus: number; loopId: number };
             assert.equal(result.finalStatus, 200, "loop completes on SEND[200]; the rejected EDIT doesn't gate it");
 
-            const rows = await (db.test_log_entries_by_run as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ run_id: 1 });
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
             assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
             assert.equal(edit!.status_rx, 400,

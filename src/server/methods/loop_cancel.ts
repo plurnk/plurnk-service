@@ -21,8 +21,11 @@ export default class LoopCancelMethod {
                 if (ctx.session === null) throw new Error("loop.cancel requires an attached session");
                 const p = params as Params;
                 const reason = (typeof p.reason === "string" && p.reason.length > 0) ? p.reason : "user_cancelled";
-                const cancelled = ctx.daemon.cancelDrain(ctx.session.runId, reason);
-                return { cancelled, runId: ctx.session.runId, reason };
+                // §13.7/§14.8 — the model drain lives in the model's run, not the
+                // connection's client run. No model run yet → nothing to cancel.
+                const modelRunId = ctx.session.modelRunId;
+                const cancelled = modelRunId !== null && ctx.daemon.cancelDrain(modelRunId, reason);
+                return { cancelled, runId: modelRunId, reason };
             },
             description: "Abort the run's active drain. Returns {cancelled: true} if a drain was running; {cancelled: false} if the run was already idle. Cancelled loops close at status 499. Queued (but not yet claimed) loops remain enqueued; subsequent loop.run resumes the queue.",
             params: {
