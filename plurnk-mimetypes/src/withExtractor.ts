@@ -1,5 +1,5 @@
 import type { ParserRuleContext } from "antlr4ng";
-import type { ExtractionVisitor, MimeSymbol, SymbolKind } from "./types.ts";
+import type { ExtractionVisitor, MimeRef, MimeSymbol, RefKind, SymbolKind } from "./types.ts";
 
 // Generic constructor shape for any antlr4ng generated visitor. The `any[]`
 // rest is required by TypeScript's mixin pattern (TS2545).
@@ -13,12 +13,24 @@ type VisitorCtor = new (...args: any[]) => {
 // on the type so declaration files emit cleanly (TS4094).
 interface ExtractorMethods extends ExtractionVisitor {
     readonly inBody: boolean;
+    readonly refs: MimeRef[];
     addSymbol(
         kind: SymbolKind,
         name: string,
         ctx: ParserRuleContext,
         params?: string[],
         extra?: Partial<MimeSymbol>,
+    ): void;
+    // Emit a classified symbol use (ANTLR references grind). Positions come
+    // from `ctx` like addSymbol; `container` is the active gateContainer path
+    // (the @> join key — the enclosing emitted definition). Never emit a
+    // definition's own name node, a string-literal, or a comment as a ref —
+    // the conformance invariants reject those.
+    addRef(
+        kind: RefKind,
+        name: string,
+        ctx: ParserRuleContext,
+        extra?: Partial<MimeRef>,
     ): void;
     gateBody(ctx: ParserRuleContext): null;
     gateContainer(name: string, ctx: ParserRuleContext): null;
@@ -36,6 +48,7 @@ type MixedCtor<T extends VisitorCtor> = new (
 export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
     const Mixed = class extends Base implements ExtractorMethods {
         readonly #symbols: MimeSymbol[] = [];
+        readonly #refs: MimeRef[] = [];
         readonly #containers: string[] = [];
         #inBody = false;
 
@@ -43,8 +56,32 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             return [...this.#symbols];
         }
 
+        get refs(): MimeRef[] {
+            return [...this.#refs];
+        }
+
         get inBody(): boolean {
             return this.#inBody;
+        }
+
+        addRef(
+            kind: RefKind,
+            name: string,
+            ctx: ParserRuleContext,
+            extra?: Partial<MimeRef>,
+        ): void {
+            const startLine = ctx.start?.line ?? 0;
+            const ref: MimeRef = {
+                name,
+                kind,
+                line: startLine,
+                column: (ctx.start?.column ?? 0) + 1,
+                endLine: ctx.stop?.line ?? startLine,
+                endColumn: (ctx.stop?.column ?? 0) + (ctx.stop?.text?.length ?? 0) + 1,
+            };
+            if (this.#containers.length > 0) ref.container = this.#containers.join(".");
+            if (extra !== undefined) Object.assign(ref, extra);
+            this.#refs.push(ref);
         }
 
         addSymbol(

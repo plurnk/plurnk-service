@@ -1,6 +1,6 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
-import type { ExtractionVisitor, MimeSymbol } from "./types.ts";
+import type { ExtractionVisitor, MimeRef, MimeSymbol } from "./types.ts";
 
 // Abstract base for grammar-backed mimetype handlers. Subclasses supply two
 // methods:
@@ -31,6 +31,30 @@ export default abstract class AntlrExtractor extends BaseHandler {
             return [];
         }
         return visitor.symbols;
+    }
+
+    // References channel (ANTLR references grind). Mirrors extractRaw but
+    // returns the visitor's `refs` — the classified symbol uses it collected
+    // during the same kind of visit. Visitors that emit no refs (the default,
+    // and every ANTLR handler before its refs turn) yield []. Same parse/visit
+    // error policy as extractRaw.
+    override references(content: HandlerContent): MimeRef[] {
+        if (typeof content !== "string") return [];
+        let tree: unknown;
+        try {
+            tree = this.parseTree(content);
+        } catch {
+            return [];
+        }
+        if (tree === null || tree === undefined) return [];
+
+        const visitor = this.createVisitor();
+        try {
+            visitor.visit(tree);
+        } catch {
+            return [];
+        }
+        return visitor.refs ?? [];
     }
 
     // Deep-channel walk per issue #10. Walks the ANTLR parse tree returned by

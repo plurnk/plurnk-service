@@ -40,6 +40,10 @@ export interface HandlerMetadata {
 export interface ExtractionVisitor {
     visit(tree: unknown): unknown;
     readonly symbols: MimeSymbol[];
+    // Classified symbol uses collected during the same visit (issue #16 D4 /
+    // ANTLR references grind). Optional for back-compat — a visitor that only
+    // emits definitions omits it, and AntlrExtractor.references() returns [].
+    readonly refs?: MimeRef[];
 }
 
 // Classified reference kinds for the references channel (issue #19). Working

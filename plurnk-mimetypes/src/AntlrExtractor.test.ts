@@ -206,3 +206,37 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
         assert.equal(await e.deepJson(new Uint8Array([1, 2, 3])), null);
     });
 });
+
+describe("AntlrExtractor — references channel (ANTLR refs grind)", () => {
+    it("returns the visitor's refs from a same-shaped visit", async () => {
+        const refs = [
+            { name: "users", kind: "use" as const, line: 3, column: 6, endLine: 3, endColumn: 11, container: "v_active" },
+        ];
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return { fake: "tree" }; }
+            protected createVisitor(): ExtractionVisitor {
+                return { visit() { return null; }, get symbols() { return []; }, get refs() { return refs; } };
+            }
+        }
+        const e = new Extractor(metadata);
+        assert.deepEqual(await e.references("content"), refs);
+    });
+
+    it("returns [] when the visitor emits no refs (default ANTLR handler)", async () => {
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return { fake: "tree" }; }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        assert.deepEqual(await e.references("content"), []);
+    });
+
+    it("returns [] on parse failure (refs error policy mirrors extractRaw)", async () => {
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { throw new Error("parse fail"); }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        assert.deepEqual(await e.references("content"), []);
+    });
+});

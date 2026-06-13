@@ -165,3 +165,34 @@ describe("withExtractor mixin", () => {
         assert.equal(v.symbols.length, 1, "internal state should be unaffected by mutating the snapshot");
     });
 });
+
+describe("withExtractor — addRef (ANTLR refs grind)", () => {
+    function ctx(line: number, column: number, stopLine = line, stopColumn = column, stopText = "x") {
+        return { start: { line, column }, stop: { line: stopLine, column: stopColumn, text: stopText } } as never;
+    }
+
+    it("addRef stamps 1-indexed positions; top-level refs carry no container", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.addRef("call", "tokenize", ctx(12, 4, 12, 4, "tokenize") as never);
+        const [r] = v.refs;
+        assert.equal(r.name, "tokenize");
+        assert.equal(r.kind, "call");
+        assert.equal(r.line, 12);
+        assert.equal(r.column, 5, "antlr column 4 -> 1-indexed 5");
+        assert.equal(r.endColumn, 4 + "tokenize".length + 1);
+        assert.equal("container" in r, false);
+    });
+
+    it("refs collected inside a gateContainer carry the dotted path", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            override visitChildren(_node: unknown): unknown {
+                this.addRef("use", "accounts", ctx(5, 8, 5, 16, "accounts") as never);
+                return null;
+            }
+        }
+        const v = new V();
+        v.gateContainer("v_report", ctx(1, 0, 9, 0) as never);
+        assert.equal(v.refs[0].container, "v_report");
+    });
+});
