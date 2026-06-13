@@ -8,7 +8,9 @@ import { Paths } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
 import Envelope from "../envelope.ts";
+import DispatchAsPlurnk from "./_dispatchAsPlurnk.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
+import type { EditStatement } from "@plurnk/plurnk-grammar";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
 // Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate
@@ -63,7 +65,7 @@ export default class LoopRunMethod {
                 if (loopPersona !== null && typeof loopPersona !== "string") {
                     throw new Error("loop.run: persona must be a string or null");
                 }
-                // PLURNK_MAX_TURNS is the operator turn ceiling (§12): -1 = no
+                // PLURNK_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
                 // cap; positive = a hard cap a per-call maxTurns cannot exceed.
                 const ceiling = Number(process.env.PLURNK_MAX_TURNS ?? "-1");
                 const requested = p.maxTurns ?? ceiling;
@@ -89,11 +91,28 @@ export default class LoopRunMethod {
                 }
 
                 const { sessionId } = ctx.session;
-                // §13.7/§1.4 — the model runs in its OWN run, distinct from the
+                // §connection-lifecycle/§machine-processes — the model runs in its OWN run, distinct from the
                 // connection's client run, so the packet never carries client op.*.
                 const modelRunId = ctx.session.modelRunId ?? (ctx.session.modelRunId = await Envelope.ensureModelRun(ctx.db, sessionId));
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 const persona = await readFile(Paths.defaultPersona, "utf8");
+
+                // Operator reference docs (PLURNK_MD_<ALIAS>): materialize each as
+                // a plurnk://<ALIAS>.md entry via the self-hosting keystone (a
+                // plurnk run, §actor-boundary) so the model READs it at turn 0 (Engine.runTurn
+                // foists the READ). The materializing EDITs land in the plurnk
+                // run's log, invisible to the model. Missing files are skipped.
+                const docStmts: EditStatement[] = [];
+                for (const doc of Paths.docs()) {
+                    let content: string;
+                    try { content = await readFile(doc.path, "utf8"); } catch { continue; }
+                    docStmts.push({
+                        op: "EDIT", suffix: "", signal: null,
+                        target: { kind: "url", raw: `plurnk://${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: doc.entryName, params: {}, fragment: null },
+                        lineMarker: null, body: content, position: { line: 1, column: 1 },
+                    });
+                }
+                if (docStmts.length > 0) await DispatchAsPlurnk.dispatch(ctx.engine, ctx.db, sessionId, docStmts);
 
                 // Delegate to the daemon's unified inject surface. Active-drain
                 // → write prompt entry for next turn (returns immediately).
@@ -145,10 +164,10 @@ export default class LoopRunMethod {
                     action: "enqueued_new_loop",
                 };
             },
-            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
+            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
-                maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§12)",
+                maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§operator-config)",
                 alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
                 persona: "string? — loop-level persona (text/markdown); takes precedence over session and run personas",

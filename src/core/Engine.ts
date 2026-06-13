@@ -1,5 +1,5 @@
 import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
@@ -26,7 +26,7 @@ import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 
-// SPEC §3.6: writer must be in target scheme's manifest.writableBy.
+// SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL"]);
 
@@ -173,7 +173,7 @@ export interface ProposalPendingEvent {
 }
 
 // Resolution timeout — proposed entries auto-cancel if nothing arrives
-// within this window. SPEC.md §0.5 (proposal lifecycle) + §13.5 (loop.resolve).
+// within this window. SPEC.md §engine-rails (proposal lifecycle) + §methods (loop.resolve).
 const PROPOSAL_TIMEOUT_DEFAULT_MS = 300000;
 const readProposalTimeoutMs = (): number => {
     const raw = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
@@ -202,7 +202,7 @@ const pathnameFromPath = (path: ParsedPath): string => {
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 
 // Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
-// action routes through telemetry.errors[] (§15.1).
+// action routes through telemetry.errors[] (§telemetry).
 const TURN_STATUS_NO_OPS = 422;
 
 // Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
@@ -317,18 +317,18 @@ export default class Engine {
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #budgetCeiling: number;
-    // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
-    // contract (§2.1). Populated from the active provider's countTokens via
+    // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
+    // contract (§provider-surface). Populated from the active provider's countTokens via
     // the Daemon; a divisor tripwire stands in only for bare/standalone
     // construction before a provider is wired (same boot affordance as
-    // Mimetypes, §4.5). Real counts come from provider.countTokens.
+    // Mimetypes, §mimetype-surface). Real counts come from provider.countTokens.
     #tokenize: (text: string) => number;
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
     // Per-loop transient buffer of actionless failures pending surface in the
     // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
-    // Map<loopId, TelemetryError[]>. SPEC §15.1.
+    // Map<loopId, TelemetryError[]>. SPEC §telemetry.
     #telemetryBuffer = new Map<number, object[]>();
     // Rail #38 strike state per loop. `streak` = consecutive struck turns;
     // resets on a clean turn. `turnErrors` is bumped externally by per-turn
@@ -338,7 +338,7 @@ export default class Engine {
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Engine.runTurn awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
-    // entry-id; entries clear on resolution. SPEC.md §0.5 + §13.5 (loop.resolve).
+    // entry-id; entries clear on resolution. SPEC.md §engine-rails + §methods (loop.resolve).
     #pendingProposals = new Map<number, ProposalWaiter>();
     // External observers of proposal lifecycle events. Daemon subscribes
     // here to push `loop/proposal` notifications when an entry enters
@@ -360,7 +360,7 @@ export default class Engine {
     // buffer is also broadcast live to the connected client(s) on the
     // session. Without this, the client sees `loop/terminated` with a
     // status code but has no way to surface why the loop degraded.
-    // Per-grammar 0.17.0 protocol — see SPEC §15.1.
+    // Per-grammar 0.17.0 protocol — see SPEC §telemetry.
     #telemetryEventNotify: TelemetryEventNotify | undefined;
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
@@ -388,7 +388,7 @@ export default class Engine {
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
         this.#budgetCeiling = readCeiling();
-        // Tripwire default matches the Mimetypes boot affordance (SPEC §4.5):
+        // Tripwire default matches the Mimetypes boot affordance (SPEC §mimetype-surface):
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
         this.#tokenize = tokenize ?? ((text) => Math.ceil(text.length / 4));
@@ -412,7 +412,7 @@ export default class Engine {
     }
 
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
-    // turn, §14.2). Surfaced on loop.run + loop/terminated so clients render real
+    // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costPico is the stored pico-dollar unit.
     async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number }> {
         const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number }>({ loop_id: loopId });
@@ -541,7 +541,7 @@ export default class Engine {
             });
             turnIds.push(turn.turnId);
 
-            // SPEC §14.4: budget hard-stop — packet won't fit even collapsed → abandon.
+            // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
                 await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
                 cleanup("forceful", "budget_overflow");
@@ -560,7 +560,7 @@ export default class Engine {
             state.history.push(turn.fingerprint);
             const cycle = Engine.detectCycle(state.history, minCycles, maxCyclePeriod);
             if (cycle.detected) state.turnErrors++;
-            // SPEC §14.4: a non-soft grinder fire counts toward the strike streak.
+            // SPEC §grinder: a non-soft grinder fire counts toward the strike streak.
             if (turn.budgetStruck) state.turnErrors++;
             this.#strikeState.set(loopId, state);
 
@@ -571,7 +571,7 @@ export default class Engine {
             //  3. turnErrors — externally bumped by per-turn rails (#39 cycle).
             // Struck → streak++; clean → streak = 0. Threshold → abandon.
             // Strike accounting is engine-internal bookkeeping. Per rummy
-            // precedent (plugins/error/error.js#verdict) and SPEC §15.1
+            // precedent (plugins/error/error.js#verdict) and SPEC §telemetry
             // policy: model sees errors that happened (parse_error,
             // action_failure), never the engine's accounting about them
             // (strike counts, cycle detection, sudden-death threshold).
@@ -653,6 +653,27 @@ export default class Engine {
         // otherwise.
         let nextActionIndex = 1;
         if (seq === 1) {
+            // Operator doc READs (PLURNK_MD_<ALIAS>). The docs were materialized
+            // as plurnk://<entry> entries by the plurnk run (loop_run, via the
+            // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
+            // reads them inline. It sees only the READ — the materializing EDIT
+            // lives in the plurnk run's log, never the model's.
+            for (const doc of Paths.docs()) {
+                const docTarget: UrlPath = {
+                    kind: "url", raw: `plurnk://${doc.entryName}`, scheme: "plurnk",
+                    username: null, password: null, hostname: null, port: null,
+                    pathname: doc.entryName, params: {}, fragment: null,
+                };
+                const docRead: ReadStatement = {
+                    op: "READ", suffix: "", signal: null, target: docTarget,
+                    lineMarker: null, body: null, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({
+                    statement: docRead, sessionId, runId, loopId, turnId,
+                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                });
+                nextActionIndex++;
+            }
             const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptPath: UrlPath = {
@@ -690,7 +711,7 @@ export default class Engine {
             mimetypes: this.#mimetypes,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
-        // SPEC §14.3 D4/D5 — git-ls-files workspace membership, resolved at
+        // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // session's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
@@ -704,12 +725,12 @@ export default class Engine {
             tags: [],
         }, systemCtx, "plurnk");
 
-        // §14.5 — pre-seed environment deltas (changes since this run last
+        // §env-delta — pre-seed environment deltas (changes since this run last
         // reconciled) as system EDIT rows, before the packet composes; advance
         // the action index past them so model ops continue after.
         nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
 
-        // SPEC §15.1 — git working-tree state for the telemetry section, read once
+        // SPEC §telemetry — git working-tree state for the telemetry section, read once
         // (a service-side `git status` shell-out) and threaded into the budget
         // rebuild too so it isn't re-shelled on overflow.
         const gitStatus = await GitState.status(this.#db, sessionId, this.#loopAborts.get(loopId)?.signal);
@@ -721,7 +742,7 @@ export default class Engine {
             initialMessages: messages, persona, requirements, runId, loopId,
             currentTurnSeq: seq, provider, gitStatus,
         });
-        // SPEC §14.4 — budget grinder, pre-LLM: reclaim window on actual overflow.
+        // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#enforceBudget({
             packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
             rebuild: (telemetryErrors) => this.#buildRequestPacket({
@@ -843,7 +864,7 @@ export default class Engine {
         // Zero ops is NOT an error to report — the model knows it emitted
         // nothing. Strike accounting (engine-internal) treats it as a
         // struck turn; the model just sees an empty packet next turn.
-        // Per SPEC §15.1 gamification policy.
+        // Per SPEC §telemetry gamification policy.
 
         return { turnId, status: turnStatus, statuses, fingerprint: Engine.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false };
     }
@@ -851,7 +872,7 @@ export default class Engine {
     // Split the wire-level ProviderResponse into the two destinations:
     // packet.assistant gets the model's emission (content, ops, reasoning);
     // Turn columns get the call-metadata (usage, finishReason, model).
-    // SPEC §2.1 / plurnk-providers#1: text-fragment scraping policy lives
+    // SPEC §provider-surface / plurnk-providers#1: text-fragment scraping policy lives
     // here — engine owns the parse and the scraping rule, providers stay
     // grammar-unaware.
     //
@@ -962,7 +983,7 @@ export default class Engine {
         // template scaffolding adds bytes, but the subtotal tracks "what
         // the model has to process" closely enough for budget diagnostics.
         const countTokens = (t: string): number => provider.countTokens(t);
-        // Budget readout (SPEC.md §14.2). Two-pass: measure the wire-rendered
+        // Budget readout (SPEC.md §tokenomics). Two-pass: measure the wire-rendered
         // index/log sections (budget-independent), install the readout with a
         // tokensFree placeholder, measure the assembled total, resolve free,
         // substitute. Subtotals come from the real render — meta and fences
@@ -1014,7 +1035,7 @@ export default class Engine {
         return lines.join("\n");
     }
 
-    // SPEC §14.4 — the budget grinder. Runs pre-LLM (in runTurn, after the packet
+    // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet
     // is built, before provider.generate); fires only on actual overflow. Two
     // passes, re-measuring between. Hides (never deletes) — the prior turn's logs,
     // then the catalog except the manifest lifeline. The strike it raises and the
@@ -1050,7 +1071,7 @@ export default class Engine {
         return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
     }
 
-    // The model-facing budget event (SPEC §14.4, §15.1): which entries left the
+    // The model-facing budget event (SPEC §grinder, §telemetry): which entries left the
     // window, by scheme — the model's own terms, no mechanism vocabulary. The
     // strike this overflow triggers stays engine-internal (gamification policy).
     #emitBudgetOverflow(sessionId: number, loopId: number, folded: Map<string, number>): void {
@@ -1083,12 +1104,12 @@ export default class Engine {
         };
     }
 
-    // Render-time mimetype invocation (SPEC §4 {§4-handlers-fire-render-time},
-    // §5.1 {§5.1-preview-is-handler-output}). For each (run, entry, channel)
+    // Render-time mimetype invocation (SPEC §mimetype {§mimetype-handlers-fire-render-time},
+    // §per-entry-channels {§per-entry-channels-preview-is-handler-output}). For each (run, entry, channel)
     // with indexed=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
-    // does NOT branch on it (§5.5 {§5.5-engine-does-not-branch-on-state}).
-    // SPEC §15.1: model-facing alert surface.
+    // does NOT branch on it (§channel-state {§channel-state-engine-does-not-branch-on-state}).
+    // SPEC §telemetry: model-facing alert surface.
     // Two sources, merged on each packet build:
     //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
     //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
@@ -1119,12 +1140,12 @@ export default class Engine {
         return [...this.#drainTelemetry(loopId), ...actionFailures];
     }
 
-    // SPEC §15 packet.system.log — chronological action-entries for the loop.
+    // SPEC §packet packet.system.log — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log://<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(runId: number): Promise<object[]> {
-        // SPEC §0.6: runs own log entries — log is the run's history,
+        // SPEC §packet-terms: runs own log entries — log is the run's history,
         // not the loop's. Span all loops in the run so the model sees
         // earlier loops' work as conversational memory.
         //
@@ -1165,9 +1186,9 @@ export default class Engine {
         }));
     }
 
-    // §14.5 — at pre-turn build, reconcile each session entry against this run's
+    // §env-delta — at pre-turn build, reconcile each session entry against this run's
     // watermark. First sight sets it silently; a content change materializes a
-    // delta-EDIT (origin=plurnk, the §14.6 result span) at the next sequence and
+    // delta-EDIT (origin=plurnk, the §edit-result-render result span) at the next sequence and
     // advances the mark. Excludes plurnk:// (manifest/prompt) and bare/file
     // entries (scheme NULL — the EMI's territory). Returns the count so the
     // caller advances nextActionIndex past the pre-seeded deltas.
@@ -1182,7 +1203,7 @@ export default class Engine {
         for (const r of rows) {
             // plurnk:// is engine-derived (manifest/prompt) — skip. File entries
             // (scheme=null) ARE included: an out-of-band disk divergence, re-read by
-            // git membership, surfaces here as the §14.3 EMI signal (source="file").
+            // git membership, surfaces here as the §membership EMI signal (source="file").
             if (r.scheme === "plurnk") continue;
             const wm = await (this.#db.engine_get_watermark as PrepMethod).get<{ content: string }>({
                 run_id: runId, entry_id: r.entry_id, channel: r.channel,
@@ -1229,7 +1250,7 @@ export default class Engine {
         if (denial !== null) {
             result = denial;
         } else {
-            // SPEC §3.6 + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
+            // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
             // thrown bubble. The log_entry is the durable record; engine never
             // skips it. Logging failures (#writeLog throws) are NOT caught —
@@ -1263,7 +1284,7 @@ export default class Engine {
         }
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
-        // Proposal lifecycle (SPEC.md §0.5 + §13.5 loop.resolve). When a
+        // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve). When a
         // scheme returns status 202, the entry is written as state='proposed';
         // dispatch then PAUSES on a per-entry waiter until resolution
         // arrives via Engine.resolveProposal (from the loop/resolve RPC,
@@ -1532,7 +1553,7 @@ export default class Engine {
         return { status, outcome, body: resolution.body };
     }
 
-    // SPEC §3.6: engine rejects writes whose origin is outside the target
+    // SPEC §scheme-surface: engine rejects writes whose origin is outside the target
     // scheme's manifest.writableBy.
     // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
     // - SEND broadcast (path=null) has no target scheme; not gated.
@@ -1618,7 +1639,7 @@ export default class Engine {
         const srcPath = statement.target;
         const dstPath = statement.body;
         if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
-        // MOVE is relocation only — deletion is KILL's job (§6.5). The /dev/null
+        // MOVE is relocation only — deletion is KILL's job (§move). The /dev/null
         // and null-body delete-by-MOVE back-compat is retired: no silent debt.
         if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" };
 
@@ -1631,7 +1652,7 @@ export default class Engine {
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
         const srcPathname = pathnameFromPath(srcPath);
-        // If the dest write is a pending proposal (file dest → §14.3 review), the
+        // If the dest write is a pending proposal (file dest → §membership review), the
         // source-delete MUST wait until the dest actually lands — a rejected
         // proposal would otherwise lose the source. Thread it into the resolution:
         // dispatch deletes the source AFTER the dest applies on accept.
@@ -1722,7 +1743,7 @@ export default class Engine {
             }
         }
 
-        // `<L>` source range slicing per SPEC.md §16.8 (symmetric with READ
+        // `<L>` source range slicing per SPEC.md §op-invariants (symmetric with READ
         // `<L>` — source range, no line-number prefix).
         // Applied to every channel of the source entry. Binary channels return
         // 415 since line semantics don't apply.
@@ -1746,9 +1767,9 @@ export default class Engine {
             ? statement.signal
             : entry.tags;
 
-        // 304/409 on an existing destination (SPEC §6.4): a re-copy that would write
+        // 304/409 on an existing destination (SPEC §copy): a re-copy that would write
         // exactly what's already there — same channel contents, same tags — is a no-op
-        // (304), mirroring EDIT's 304-on-noop (§6.1). A divergent destination is a real
+        // (304), mirroring EDIT's 304-on-noop (§edit). A divergent destination is a real
         // collision (409); COPY/MOVE never clobbers.
         if (dstExisting !== null && dstExisting.status === 200 && dstExisting.entry !== null) {
             const dstChannels = dstExisting.entry.channels;
@@ -1762,7 +1783,7 @@ export default class Engine {
         }
 
         const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
-        // A file dest returns 202 (disk write → §14.3 review): propagate the
+        // A file dest returns 202 (disk write → §membership review): propagate the
         // proposal so dispatch runs the gate + routes applyResolution to the dest.
         if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
@@ -1790,7 +1811,7 @@ export default class Engine {
         const method = handler[methodName];
         if (typeof method !== "function") return { status: 501 };
         // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx
-        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §5). The dynamic
+        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §channels). The dynamic
         // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
         // the sibling reads caps, the in-tree handler reads db.
         if (this.#schemes.isExternal(schemeName)) {
@@ -1866,7 +1887,7 @@ export default class Engine {
             turn_id: turnId,
             sequence: sequence,
             origin,
-            source: null,  // dispatch entries are self-authored; §14.5 deltas set this
+            source: null,  // dispatch entries are self-authored; §env-delta deltas set this
             op: statement.op,
             suffix: statement.suffix,
             signal: this.#signalToJson(statement.signal),

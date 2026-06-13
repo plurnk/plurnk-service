@@ -10,6 +10,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,5 +53,23 @@ export default class Paths {
             return resolve(Paths.#PACKAGE_ROOT, env);
         }
         return resolve(Paths.#PACKAGE_ROOT, "requirements.md");
+    }
+
+    // Operator reference docs auto-READ into every model run at turn 0.
+    // `PLURNK_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
+    // `plurnk://<ALIAS>.md` entry the model READs — an idiomatic, userland way
+    // to inject standing context (an ordinary entry + READ op, not a bespoke
+    // packet section like persona). `~` expands to home; relative paths resolve
+    // against the package root. Resolved fresh each call so it tracks the env.
+    static docs(): Array<{ entryName: string; path: string }> {
+        const out: Array<{ entryName: string; path: string }> = [];
+        for (const [key, value] of Object.entries(process.env)) {
+            if (!key.startsWith("PLURNK_MD_") || typeof value !== "string" || value.length === 0) continue;
+            const alias = key.slice("PLURNK_MD_".length);
+            if (alias.length === 0) continue;
+            const expanded = value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : value === "~" ? homedir() : value;
+            out.push({ entryName: `${alias}.md`, path: resolve(Paths.#PACKAGE_ROOT, expanded) });
+        }
+        return out;
     }
 }

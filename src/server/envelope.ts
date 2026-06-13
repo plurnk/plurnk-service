@@ -1,4 +1,4 @@
-// Envelope lifecycle helpers for client connections. SPEC §13.7.
+// Envelope lifecycle helpers for client connections. SPEC §connection-lifecycle.
 //
 // Every connected client gets a (session, run, client-loop) envelope. Either
 // the client picks the session explicitly (session.create / session.attach)
@@ -26,7 +26,7 @@ export interface RunRow {
 }
 
 // Per-connection envelope. `runId` is the connection's own run — the client
-// actor's: `op.*` and `log.read` live there (§13.7, §1.4). `modelRunId` is the
+// actor's: `op.*` and `log.read` live there (§connection-lifecycle, §machine-processes). `modelRunId` is the
 // model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
 // the packet renders it, so client ops are absent from the model's view with no
 // filter. Both `modelRunId` and `clientLoopId` are lazily allocated on first use —
@@ -46,8 +46,8 @@ export interface ClientEnvelope {
 export default class Envelope {
     // Run names reserved for non-client actors: a client must not create OR
     // attach to a run under a reserved name (origin-impersonation — `plurnk`
-    // is the runtime actor, §0.4/§1.3). Checked case-insensitively, before
-    // lookup, so a client can neither forge nor hijack one (SPEC §13.5).
+    // is the runtime actor, §authority-terms/§actor-boundary). Checked case-insensitively, before
+    // lookup, so a client can neither forge nor hijack one (SPEC §methods).
     static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]);
 
     // Grammar 0.5.0 (#10): Session and Run carry user-renameable string names.
@@ -73,7 +73,7 @@ export default class Envelope {
         const persona = opts.persona ?? null;
         const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ name, project_root: projectRoot, persona });
         if (session === undefined) throw new Error("createClientEnvelope: session insert returned no row");
-        // SPEC §14.3 D4 — establish git-ls-files membership at workspace setup so
+        // SPEC §membership D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
         await GitMembership.resolveGitMembership(db, session.id, undefined);
@@ -144,13 +144,25 @@ export default class Envelope {
         return loop.id;
     }
 
-    // Lazy model-run allocator (§13.7, §1.4 — the client writes to its own run).
+    // Lazy model-run allocator (§connection-lifecycle, §machine-processes — the client writes to its own run).
     // The model's conversation lives in its OWN run, distinct from the connection's
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
     static async ensureModelRun(db: Db, sessionId: number): Promise<number> {
         const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: Envelope.#tsName("model"), persona: null });
         if (run === undefined) throw new Error("ensureModelRun: run insert returned no row");
+        return run.id;
+    }
+
+    // Self-hosting keystone (§actor-boundary): the session's reserved `plurnk` run, where the
+    // runtime acts as an ordinary actor (doc materialization today; fs/git work
+    // later). One per session, reused; its log is the runtime's own — invisible
+    // to other runs except through the shared session filesystem.
+    static async ensurePlurnkRun(db: Db, sessionId: number): Promise<number> {
+        const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" });
+        if (existing !== undefined) return existing.id;
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null });
+        if (run === undefined) throw new Error("ensurePlurnkRun: run insert returned no row");
         return run.id;
     }
 
@@ -171,7 +183,7 @@ export default class Envelope {
     static async updateSessionProjectRoot(db: Db, sessionId: number, projectRoot: string | null): Promise<string | null> {
         const row = await (db.envelope_update_session_project_root as PrepMethod).get<{ id: number; name: string; project_root: string | null; persona: string | null }>({ id: sessionId, project_root: projectRoot });
         if (row === undefined) throw new Error(`session ${sessionId} not found`);
-        // SPEC §14.3 D4 — (re)establish git-ls-files membership when the workspace
+        // SPEC §membership D4 — (re)establish git-ls-files membership when the workspace
         // pointer changes. No-op on null (headless) or non-git roots.
         await GitMembership.resolveGitMembership(db, sessionId, undefined);
         return row.project_root;
