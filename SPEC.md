@@ -837,9 +837,9 @@ Server-initiated events on the same WebSocket.
    |   (daemon closes the client loop; session keeps)|
 ```
 
-**Client loop.** Envelope for client-origin actions. Attached session → daemon opens loop in current run (auto-creating run if absent) with `origin = "client"`. Each `op.*` creates a turn in that loop. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client loop.
+**The client's run.** A client connection is an actor (§14.8); its `op.*` write to its **own run** — `origin = "client"`, one loop per connection — and `log.read` reads that run. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client run.
 
-`loop.run` creates a separate loop with `origin = "model"` for the model-driven turn sequence. Coexists with client loop in same run.
+`loop.run` and `inject` target the **model's run** — a separate run holding the conversation, `origin = "model"`. Both runs share the session's one filesystem (§14.8); the packet renders only the model's run, so the client's ops are structurally absent from it — no origin filter (§14.7-isolation). *Migration:* the daemon today opens both loops in the connection's one run (the conflation §14.8 corrects); the build gives the client and the model their separate runs.
 
 ### §13.8 Errors
 

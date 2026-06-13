@@ -5,7 +5,7 @@
 // around SqlRite and tests shape instead of conduct). One invariant is true today
 // and asserted for real; the rest are deferred-red conformance targets for the
 // epic this section defines — and {§14.8-run-is-its-log} is red precisely because
-// the §14.5 per-run watermark is a shadow memory the model still forbids.
+// a per-run shadow snapshot (run_watermarks) still sits beside the log, which the model forbids.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -49,10 +49,10 @@ test("[§14.8-one-filesystem] the entries are the session's — a second run wri
 });
 
 test("[§14.8-one-overlay] membership is the session's — one overlay, identical for every run",
-    { todo: "the cross-run-identical-membership proof rides on the run-split (two model runs over one manifest); red until the split lands" }, () => {});
+    { todo: "membership is session-level; the cross-run-identical proof is a focused test (two runs, one resolved member set) — deferred pending it" }, () => {});
 
 test("[§14.8-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
-    { todo: "VIOLATED today: the §14.5 per-run watermark IS a shadow memory; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
+    { todo: "VIOLATED today: a per-run shadow snapshot (run_watermarks) still sits beside the log; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
 
 test("[§14.8-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state) at the savepoint",
     { todo: "the savepoint/branch operation and run.fork are unbuilt — red until the fork primitive lands" }, () => {});
