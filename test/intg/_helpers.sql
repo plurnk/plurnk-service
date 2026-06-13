@@ -123,6 +123,10 @@ FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 -- Resolve which run a loop lives in — the model loop is in the model's own run.
 SELECT run_id FROM loops WHERE id = $loop_id;
 
+-- PREP: test_run_lineage
+-- A run's session + fork parent — for proving a fork is a new run in the same session.
+SELECT session_id, parent_run_id FROM runs WHERE id = $id;
+
 -- PREP: test_get_log_rx_by_run_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
 -- recorded for a given op in a run (e.g. what a READ<L> actually sliced).

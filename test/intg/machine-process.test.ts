@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Fork from "../../src/core/fork.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -54,11 +56,59 @@ test("[§14.8-one-overlay] membership is the session's — one overlay, identica
 test("[§14.8-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
     { todo: "VIOLATED today: a per-run shadow snapshot (run_watermarks) still sits beside the log; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
 
-test("[§14.8-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state) at the savepoint",
-    { todo: "the savepoint/branch operation and run.fork are unbuilt — red until the fork primitive lands" }, () => {});
+test("[§14.8-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state) at the savepoint", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/a.md"), "first"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/b.md"), "second"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
+        // Fold the first row — a fold-state bit on the parent's own log.
+        const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        await (db.log_set_indexed_by_id as PrepMethod).run({ id: ids[0].id, indexed: 0 });
 
-test("[§14.8-fork-shares-the-world] a fork shares the session's filesystem and overlay, live and uncopied",
-    { todo: "pairs with the fork operation: a branch reads the parent's entries + overlay, copying nothing of the world" }, () => {});
+        const branchRunId = await Fork.fork(db, runId);
 
-test("[§14.8-no-fork-session] a session cannot be forked; the surface offers no session.fork",
-    { todo: "the fork primitive is run-scoped (run.fork); red until it lands and session.fork's absence is asserted against the live method surface" }, () => {});
+        const shape = (rows: Array<{ op: string; pathname: string; indexed: number }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.indexed}`);
+        const parentLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; indexed: number }>({ run_id: runId });
+        const branchLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; indexed: number }>({ run_id: branchRunId });
+        assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and fold-state");
+        assert.ok(branchLog.some((r) => r.indexed === 0), "the row folded on the parent stayed folded in the branch");
+    } finally { db.close(); }
+});
+
+test("[§14.8-fork-shares-the-world] a fork shares the session's filesystem and overlay, live and uncopied", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "x"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        const before = (await (db.engine_list_session_entries as PrepMethod).all<{ entry_id: number }>({ session_id: sessionId })).length;
+
+        const branchRunId = await Fork.fork(db, runId);
+
+        const after = (await (db.engine_list_session_entries as PrepMethod).all<{ entry_id: number }>({ session_id: sessionId })).length;
+        const branch = await (db.test_run_lineage as PrepMethod).get<{ session_id: number }>({ id: branchRunId });
+        assert.equal(branch!.session_id, sessionId, "the branch lives in the parent's session — one shared world");
+        assert.equal(after, before, "the fork copied no entries — the filesystem is shared, not duplicated");
+    } finally { db.close(); }
+});
+
+test("[§14.8-no-fork-session] a session cannot be forked; the fork is run-scoped", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const branchRunId = await Fork.fork(db, runId);
+        assert.notEqual(branchRunId, runId, "a fork is a new run");
+        const lineage = await (db.test_run_lineage as PrepMethod).get<{ session_id: number; parent_run_id: number | null }>({ id: branchRunId });
+        assert.equal(lineage!.session_id, sessionId, "the branch is in the parent's session — the session is shared, never forked");
+        assert.equal(lineage!.parent_run_id, runId, "the branch's lineage points at the parent run");
+    } finally { db.close(); }
+});
