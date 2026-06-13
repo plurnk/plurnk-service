@@ -90,3 +90,23 @@ test("discover: empty scan of a nonexistent node_modules yields an empty registr
     const { registry } = await discover({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
     assert.equal(registry.size, 0);
 });
+
+test("discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
+    // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
+    // scope, an unscoped name, and a non-exec package that must be ignored.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "execs-scan-"));
+    const write = async (rel: string, pkg: unknown): Promise<void> => {
+        const dir = path.join(root, "node_modules", rel);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg), "utf-8");
+    };
+    await write("@plurnk/plurnk-execs-sh", { name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [{ name: "sh" }] } });
+    await write("@acme/acme-execs-cobol", { name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
+    await write("execs-fortran", { name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
+    await write("left-pad", { name: "left-pad" });
+
+    const { registry } = await discover({ cwd: root });
+
+    assert.deepEqual([...registry.keys()].sort(), ["cobol", "fortran", "sh"]);
+    assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
+});

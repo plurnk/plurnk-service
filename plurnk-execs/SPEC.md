@@ -95,7 +95,7 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
 
 ## §3 Discovery
 
-`discover(options?) → { registry }`. Scans `<cwd>/node_modules/@plurnk/` (or explicit `packageDirs`) for packages declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`:
+`discover(options?) → { registry }`. Scans **every installed package** under `<cwd>/node_modules` — scope-agnostic (scoped and unscoped) — for those declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (For the batteries-included set, an aggregator package — `@plurnk/plurnk-execs-all` — depends on the framework's daughters flat so one install surfaces them all; the framework itself stays contract-only.)
 
 ```json
 {

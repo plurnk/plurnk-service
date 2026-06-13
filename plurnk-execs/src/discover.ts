@@ -5,8 +5,10 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // Scan installed executor packages and build the runtime-tag registry the
 // consuming scheme dispatches on. Parallel to plurnk-mimetypes' discover().
 //
-// Default scan target: `<cwd>/node_modules/@plurnk/`. Tests and unusual
-// layouts can pass `packageDirs` explicitly to skip the scan.
+// Default scan target: every installed package under `<cwd>/node_modules` —
+// scope-agnostic, so third-party executors (`@acme/foo`) are discovered too,
+// not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
+// explicitly to skip the scan.
 //
 // A package is recognized as an executor when its `package.json` declares
 // `plurnk.kind === "exec"` and exposes one or more runtime tags via
@@ -38,17 +40,33 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     return { registry };
 }
 
+// Enumerate every installed package directory — scoped (`@scope/name`) and
+// unscoped (`name`) — under `<cwd>/node_modules`. The scan is scope-agnostic so
+// a THIRD PARTY can publish an executor under their own scope (`@acme/foo`) and
+// have it discovered with no involvement from us; `readExecInfos` keeps only the
+// packages that declare `plurnk.kind === "exec"`.
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    const scope = path.join(cwd, "node_modules", "@plurnk");
+    const nm = path.join(cwd, "node_modules");
     let entries: { name: string; isDirectory(): boolean }[];
     try {
-        entries = await fs.readdir(scope, { withFileTypes: true });
+        entries = await fs.readdir(nm, { withFileTypes: true });
     } catch {
         return [];
     }
-    return entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => path.join(scope, entry.name));
+    const dirs: string[] = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === ".bin" || entry.name === ".cache") continue;
+        if (entry.name.startsWith("@")) {
+            const scopeDir = path.join(nm, entry.name);
+            try {
+                const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
+                for (const s of scoped) if (s.isDirectory()) dirs.push(path.join(scopeDir, s.name));
+            } catch { /* unreadable scope dir — skip */ }
+        } else {
+            dirs.push(path.join(nm, entry.name));
+        }
+    }
+    return dirs;
 }
 
 // Produce one ExecInfo per declared runtime tag. Returns [] for non-executor
