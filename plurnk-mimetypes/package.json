@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-mimetypes",
-  "version": "0.15.7",
+  "version": "0.15.8",
   "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
   "keywords": [
     "plurnk",
@@ -93,12 +93,12 @@
     "web-tree-sitter": "^0.25.10"
   },
   "dependencies": {
-    "@plurnk/plurnk-mimetypes-application-json": "0.5.0",
-    "@plurnk/plurnk-mimetypes-application-xml": "0.1.0",
-    "@plurnk/plurnk-mimetypes-text-csv": "0.4.0",
-    "@plurnk/plurnk-mimetypes-text-html": "0.6.0",
-    "@plurnk/plurnk-mimetypes-text-markdown": "0.6.0",
-    "@plurnk/plurnk-mimetypes-text-plain": "0.7.0",
+    "@plurnk/plurnk-mimetypes-application-json": "0.5.2",
+    "@plurnk/plurnk-mimetypes-application-xml": "0.1.2",
+    "@plurnk/plurnk-mimetypes-text-csv": "0.4.2",
+    "@plurnk/plurnk-mimetypes-text-html": "0.6.2",
+    "@plurnk/plurnk-mimetypes-text-markdown": "0.6.2",
+    "@plurnk/plurnk-mimetypes-text-plain": "0.7.2",
     "@xmldom/xmldom": "^0.9.10",
     "antlr4ng": "^3.0.16",
     "jsonpath-plus": "^10.4.0",
