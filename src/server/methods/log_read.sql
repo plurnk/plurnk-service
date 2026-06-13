@@ -1,4 +1,4 @@
--- log.read RPC query. SPEC §13.5.
+-- log.read RPC query. SPEC §methods.
 -- Static query with IS-NULL guards on optional filters.
 
 -- PREP: log_read_recent_ids

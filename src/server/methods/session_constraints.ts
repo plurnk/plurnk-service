@@ -2,7 +2,7 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import type { PrepMethod } from "../../core/Db.ts";
 import GitMembership from "../../core/git-membership.ts";
 
-// Client tooling for the SPEC §14.3 constraint overlay — the supersede over git
+// Client tooling for the SPEC §membership constraint overlay — the supersede over git
 // membership. `constrain`/`unconstrain` mutate session_constraints then re-resolve
 // membership so the change lands now, not next turn; `constraints` lists them.
 const EFFECTS: ReadonlySet<string> = new Set(["add", "ignore", "read-only"]);
@@ -17,7 +17,7 @@ export default class SessionConstraintsMethod {
                 await GitMembership.resolveGitMembership(ctx.db, ctx.session.sessionId, undefined);
                 return { effect, glob };
             },
-            description: "Add a workspace membership constraint (SPEC §14.3 overlay): `add` admits files git misses (the sole source when git is absent), `ignore` drops tracked matches, `read-only` admits a member for read but refuses edits. Takes effect immediately.",
+            description: "Add a workspace membership constraint (SPEC §membership overlay): `add` admits files git misses (the sole source when git is absent), `ignore` drops tracked matches, `read-only` admits a member for read but refuses edits. Takes effect immediately.",
             params: {
                 effect: "string — one of: add | ignore | read-only",
                 glob: "string — node:path glob matched against workspace-relative paths",

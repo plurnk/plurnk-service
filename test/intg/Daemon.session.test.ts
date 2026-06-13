@@ -42,7 +42,7 @@ const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
         ws.once("error", reject);
     });
 
-test("[§13.5-session-create] session.create returns the auto-created run's identity (runId + runName) — #199", async () => {
+test("[§methods-session-create] session.create returns the auto-created run's identity (runId + runName) — #199", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {

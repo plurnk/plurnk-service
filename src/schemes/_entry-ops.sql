@@ -1,4 +1,4 @@
--- Session-entry op handlers for entry-bearing schemes (SPEC §3, §5.5).
+-- Session-entry op handlers for entry-bearing schemes (SPEC §scheme, §channel-selection).
 -- Some queries reuse PREPs declared in _entry-crud.sql:
 --   crud_find_session_entry, crud_write_tag
 

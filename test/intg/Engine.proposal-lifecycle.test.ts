@@ -1,4 +1,4 @@
-// Proposal lifecycle (SPEC.md §0.5 + §13.5). When a scheme returns
+// Proposal lifecycle (SPEC.md §engine-rails + §methods). When a scheme returns
 // status 202, the engine writes a state='proposed' log entry and pauses
 // dispatch until Engine.resolveProposal feeds back a decision. These tests
 // exercise the pause/resume machinery + the log-render visibility filter
@@ -81,7 +81,7 @@ const dispatchAndResolve = async (engine: Engine, ctx: {
     return { status: result.status, logEntryId };
 };
 
-test("[§6.9-202-pauses] proposal: 202 scheme result pauses; accept resolves to 200", async () => {
+test("[§proposal-202-pauses] proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -95,7 +95,7 @@ test("[§6.9-202-pauses] proposal: 202 scheme result pauses; accept resolves to 
     } finally { await db.close(); }
 });
 
-test("[§6.9-reject-fails] proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
+test("[§proposal-reject-fails] proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -108,7 +108,7 @@ test("[§6.9-reject-fails] proposal: reject transitions to state='failed', statu
     } finally { await db.close(); }
 });
 
-test("[§6.9-cancel-aborts] proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
+test("[§proposal-cancel-aborts] proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -145,7 +145,7 @@ test("proposal: attrs from scheme persist into log_entries.attrs JSON", async ()
     } finally { await db.close(); }
 });
 
-test("[§6.9-proposed-hidden] proposal: status=202 + state='proposed' rows hidden from packet.system.log render", async () => {
+test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows hidden from packet.system.log render", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -160,7 +160,7 @@ test("[§6.9-proposed-hidden] proposal: status=202 + state='proposed' rows hidde
         const logEntryId = await idDeferred.promise;
 
         // Render the log — proposed entry should be invisible.
-        // engine_render_log is run-scoped per SPEC §0.6 (runs own log entries).
+        // engine_render_log is run-scoped per SPEC §packet-terms (runs own log entries).
         const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ run_id: ctx.runId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");
@@ -284,7 +284,7 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
     } finally { await db.close(); }
 });
 
-test("[§6.9-timeout-cancels] proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
+test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
     const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_PROPOSAL_TIMEOUT_MS;

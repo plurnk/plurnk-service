@@ -32,7 +32,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-test("[§7.2-chunks-accumulate] streaming exec: chunks land in the channel as they arrive (not buffered until close)", async () => {
+test("[§chunk-accumulation-chunks-accumulate] streaming exec: chunks land in the channel as they arrive (not buffered until close)", async () => {
     // 5 lines, 0.5s apart — ~2.5s total. Each line is 2 bytes ("N\n").
     // We sample mid-stream and assert content has GROWN but isn't yet
     // complete, then sample again after idle to assert final state.

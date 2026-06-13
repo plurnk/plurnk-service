@@ -1,6 +1,6 @@
-// SPEC §14.5 — the environment delta. At pre-turn build the engine reconciles
+// SPEC §env-delta — the environment delta. At pre-turn build the engine reconciles
 // each tracked entry against this run's watermark; a change since the run last
-// looked materializes a system-authored EDIT carrying the §14.6 result span.
+// looked materializes a system-authored EDIT carrying the §edit-result-render result span.
 // Here the change is simulated by mutating a channel directly (an exec stream
 // or a sibling would do the same out-of-band), bypassing editSessionEntry so
 // the watermark is NOT reconciled the way the model's own edits are.
@@ -31,7 +31,7 @@ const makeEngine = (db: Db): Engine => {
     return e;
 };
 
-test("an out-of-band change to a tracked entry surfaces next turn as a system delta-EDIT (§14.5)", async () => {
+test("an out-of-band change to a tracked entry surfaces next turn as a system delta-EDIT (§env-delta)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ed-${crypto.randomUUID()}`);
@@ -56,6 +56,6 @@ test("an out-of-band change to a tracked entry surfaces next turn as a system de
         const delta = rows.find((r) => r.scheme === "known" && r.origin === "plurnk" && r.op === "EDIT");
         assert.ok(delta, "the out-of-band change materialized a system delta-EDIT");
         assert.equal(delta!.source, null, "a self/ambient change is self-attributed — no run= label");
-        assert.match(JSON.parse(delta!.rx).span as string, /3:\tline3-new/, "the delta carries the changed span, line-numbered (§14.6)");
+        assert.match(JSON.parse(delta!.rx).span as string, /3:\tline3-new/, "the delta carries the changed span, line-numbered (§edit-result-render)");
     } finally { await db.close(); }
 });

@@ -1,5 +1,5 @@
-// Channel-write helpers for streaming schemes. SPEC §5.5 (channel state),
-// §7.1 (subscription registry), §13.6 (stream/event notification).
+// Channel-write helpers for streaming schemes. SPEC §channel-state (channel state),
+// §subscriptions (subscription registry), §notifications (stream/event notification).
 //
 // Schemes import these and call them as their connection lifecycle progresses.
 // Helpers update entry_channels (content / state) and subscriptions, and emit
@@ -44,7 +44,7 @@ export type WakeRunNotify = (payload: WakeRunPayload) => void;
 // max_commands_exceeded, action_failure) it pushes to a loop's buffer.
 // Daemon broadcasts as `telemetry/event` scoped to the loop's session.
 // Same envelope on both ends: the model sees it on the next packet's
-// telemetry.errors[]; the client sees it live. SPEC §15.1.
+// telemetry.errors[]; the client sees it live. SPEC §telemetry.
 export interface TelemetryEventPayload {
     loopId: number;
     event: object;                 // TelemetryEvent per @plurnk/plurnk-grammar

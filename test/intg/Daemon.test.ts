@@ -28,7 +28,7 @@ test("Daemon: ping returns empty result without requiring init", async () => {
     });
 });
 
-test("[§13.4-discover] Daemon: discover returns catalog", async () => {
+test("[§discovery-discover] Daemon: discover returns catalog", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -45,7 +45,7 @@ test("[§13.4-discover] Daemon: discover returns catalog", async () => {
     });
 });
 
-test("[§13.8-error-codes] Daemon: unknown method returns -32601 method-not-found", async () => {
+test("[§errors-error-codes] Daemon: unknown method returns -32601 method-not-found", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -115,7 +115,7 @@ test("session.create with no name auto-generates a unique name", async () => {
     });
 });
 
-test("[§13.5-rebind] session.create on an already-attached connection re-binds in place (no reject)", async () => {
+test("[§methods-rebind] session.create on an already-attached connection re-binds in place (no reject)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -144,7 +144,7 @@ test("session.list returns sessions most-recent-first", async () => {
     });
 });
 
-test("[§13.5-session-attach] session.attach binds to existing session", async () => {
+test("[§methods-session-attach] session.attach binds to existing session", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const existing = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "existing" });
 

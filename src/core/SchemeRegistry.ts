@@ -69,7 +69,7 @@ export default class SchemeRegistry {
         }
     }
 
-    // Active set under the given loop flags (SPEC §0.5). Delegates to
+    // Active set under the given loop flags (SPEC §engine-rails). Delegates to
     // the in-tree ResolveForLoop utility.
     resolveForLoop(flags: LoopFlags): Set<string> {
         return ResolveForLoop.resolveForLoop(this.#handlers, flags);

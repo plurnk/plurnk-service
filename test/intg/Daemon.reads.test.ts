@@ -41,7 +41,7 @@ const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
         ws.once("error", reject);
     });
 
-test("[§13.5-entry-read] entry.read returns full entry shape (channels + tags + metadata)", async () => {
+test("[§methods-entry-read] entry.read returns full entry shape (channels + tags + metadata)", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -105,7 +105,7 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
     });
 });
 
-test("[§13.5-log-read] log.read returns recent entries from the attached session", async () => {
+test("[§methods-log-read] log.read returns recent entries from the attached session", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {

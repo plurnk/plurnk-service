@@ -86,7 +86,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 499 and hitMaxTurns 
     } finally { await db.close(); }
 });
 
-test("[§12-max-turns-ceiling] maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
+test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // Four non-terminal turns then SEND[200]. A positive cap of 3 would
@@ -172,7 +172,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     } finally { await db.close(); }
 });
 
-test("[§2.2-signal-wired] Engine.runLoop: signal abort between turns throws AbortError", async () => {
+test("[§provider-guarantees-signal-wired] Engine.runLoop: signal abort between turns throws AbortError", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const controller = new AbortController();

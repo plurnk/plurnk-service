@@ -1,4 +1,4 @@
-// Tests for daemon's telemetry/event notification. SPEC §15.1 client
+// Tests for daemon's telemetry/event notification. SPEC §telemetry client
 // surface — every TelemetryEvent the engine pushes to a loop's buffer
 // also broadcasts live, scoped to the loop's session.
 
@@ -17,7 +17,7 @@ test("daemon registers telemetry/event in discover catalog", async () => {
     });
 });
 
-test("[§13.6-telemetry-event] notifyTelemetryEvent broadcasts to clients attached to the loop's session", async () => {
+test("[§notifications-telemetry-event] notifyTelemetryEvent broadcasts to clients attached to the loop's session", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

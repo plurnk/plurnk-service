@@ -1,4 +1,4 @@
--- Engine SQL. SPEC §1 (architecture), §3 (op dispatch + log).
+-- Engine SQL. SPEC §arch (architecture), §scheme (op dispatch + log).
 
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
@@ -32,7 +32,7 @@ WHERE l.id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
--- system-origin EDIT against plurnk://prompt/<loop_id>/1 (§15), at the
+-- system-origin EDIT against plurnk://prompt/<loop_id>/1 (§packet), at the
 -- turn's first action sequence. Prompts are first-class log entries
 -- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
@@ -47,7 +47,7 @@ UPDATE loops SET status = $status WHERE id = $loop_id;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_usage
--- Per-loop usage totals — SUM the loop's turns (§14.2 stores usage per turn).
+-- Per-loop usage totals — SUM the loop's turns (§tokenomics stores usage per turn).
 -- Surfaced on loop.run + loop/terminated (#197).
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
@@ -104,12 +104,12 @@ WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
 
 -- PREP: engine_get_watermark
--- §14.5 — the content this run last reconciled for (entry, channel). No row = first sight.
+-- §env-delta — the content this run last reconciled for (entry, channel). No row = first sight.
 SELECT content FROM run_watermarks
 WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
 
 -- PREP: engine_set_watermark
--- §14.5 — set / advance the reconciled content for (run, entry, channel).
+-- §env-delta — set / advance the reconciled content for (run, entry, channel).
 INSERT INTO run_watermarks (run_id, entry_id, channel, content)
 VALUES ($run_id, $entry_id, $channel, $content)
 ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET content = excluded.content;
@@ -118,7 +118,7 @@ ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET content = excluded.content
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_render_telemetry_errors
--- SPEC §15.1: action-bound failures from the immediately previous turn
+-- SPEC §telemetry: action-bound failures from the immediately previous turn
 -- are mirrored into the next packet's telemetry.errors[]. Forces the
 -- model to confront 4xx/5xx outcomes instead of letting them rot in
 -- log://. "Previous turn" = sequence one below the currently-open one
@@ -137,7 +137,7 @@ WHERE le.loop_id = $loop_id
 ORDER BY le.sequence;
 
 -- PREP: engine_grinder_prior_turn_logs
--- §14.4 pass 1 (prior-turn rollback): the immediately-prior turn's still-open
+-- §grinder pass 1 (prior-turn rollback): the immediately-prior turn's still-open
 -- log entries — the latest emissions that pushed the packet over. Folding them
 -- (collapse to coordinate, not deleting) lightens the render; bodies persist, re-OPENable.
 SELECT le.id, le.scheme
@@ -146,20 +146,20 @@ WHERE le.loop_id = $loop_id AND le.indexed = 1
   AND le.turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_grinder_fold_prior_turn_logs
--- §14.4 pass 1: fold the prior turn's still-open logs in one set-op (same WHERE
+-- §grinder pass 1: fold the prior turn's still-open logs in one set-op (same WHERE
 -- as engine_grinder_prior_turn_logs above). Rows + bodies stay, re-OPENable.
 UPDATE log_entries SET indexed = 0
 WHERE loop_id = $loop_id AND indexed = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_render_log
--- Render-time log assembly (SPEC §15 packet.system.log).
+-- Render-time log assembly (SPEC §packet packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working
 -- memory carries across loops within a session's run, not just the
 -- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `indexed = 0` rows are FOLDED — listed but collapsed to their coordinate
--- (FOLD); the renderer elides the body. §6.3: folded rows stay listed, re-OPENable.
+-- (FOLD); the renderer elides the body. §open-fold: folded rows stay listed, re-OPENable.
 SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,

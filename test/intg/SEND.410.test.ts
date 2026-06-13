@@ -1,4 +1,4 @@
-// Tests for SEND[410] → scheme.delete pattern (SPEC §3.5, §6.7).
+// Tests for SEND[410] → scheme.delete pattern (SPEC §send-dispatch, §send).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +21,7 @@ const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopI
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 
 // De-anchored: SEND[410]-delete is an implemented side-effect, not a model-facing
-// promise (delete idiom is MOVE to /dev/null, §6.5). Kept as engine regression coverage.
+// promise (delete idiom is MOVE to /dev/null, §move). Kept as engine regression coverage.
 test("SEND[410](known://x) deletes the entry (side-effect; not model-facing)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
@@ -68,7 +68,7 @@ test("SEND[410] with #fragment on missing channel returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
+test("[§send-dispatch-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
@@ -77,12 +77,12 @@ test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501
     } finally { await db.close(); }
 });
 
-// SPEC.md §16.9 — directed-SEND status code policy. Entry schemes interpret
+// SPEC.md §send-status-policy — directed-SEND status code policy. Entry schemes interpret
 // 410 (Gone → delete) and 499 (Client Closed Request → cancel subscription).
 // Every other status code returns 501 by default. New per-scheme overrides
 // land when concrete use cases arise; the default stays 501.
 for (const status of [201, 204, 304, 400, 404, 418, 422, 500, 503]) {
-    test(`[§3.5-entry-schemes-501-on-non-410] SEND[${status}](known://x) returns 501 (default policy)`, async () => {
+    test(`[§send-dispatch-entry-schemes-501-on-non-410] SEND[${status}](known://x) returns 501 (default policy)`, async () => {
         const { db, sessionId, runId, loopId, turnId, engine } = await setup();
         try {
             await new Known().edit(editStmt(urlPath("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));

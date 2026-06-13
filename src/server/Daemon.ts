@@ -1,6 +1,6 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
 // the WebSocketServer, and the active client connections.
-// SPEC §13.
+// SPEC §rpc.
 
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
@@ -111,7 +111,7 @@ export default class Daemon {
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // Same provider-backed source as the Mimetypes tokenize lambda
-            // above; sync here because countTokens is sync (§2.1) and the
+            // above; sync here because countTokens is sync (§provider-surface) and the
             // write helpers store the count inline. Divisor tripwire only
             // until a provider is resolved.
             tokenize: (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
@@ -322,7 +322,7 @@ export default class Daemon {
     /**
      * Emit a stream/event notification scoped to the session containing the
      * entry. ChannelWrite helpers (src/core/ChannelWrite.ts) invoke this when
-     * they update channel content or state. SPEC §13.6.
+     * they update channel content or state. SPEC §notifications.
      */
     notifyStreamEvent(sessionId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
         this.#broadcast({ sessionId }, null, "stream/event", event);
@@ -333,7 +333,7 @@ export default class Daemon {
      * the loop. Engine.#pushTelemetry invokes this for every TelemetryEvent
      * (parse_error, strike, cycle, sudden_death, no_ops, max_commands_exceeded,
      * action_failure) the moment it lands in the loop's telemetry buffer.
-     * SPEC §15.1.
+     * SPEC §telemetry.
      */
     notifyTelemetryEvent(sessionId: number, payload: { loopId: number; event: object }): void {
         this.#broadcast({ sessionId }, null, "telemetry/event", payload);

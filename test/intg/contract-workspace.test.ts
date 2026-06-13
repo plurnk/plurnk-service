@@ -1,9 +1,9 @@
-// SPEC §14 architectural-decision contract tests.
+// SPEC §decisions architectural-decision contract tests.
 //
-//   ALL of §14.3 is BUILT — the tests below pass: git-substrate membership
-//   (§14.3-git-membership), the membership-bound edit (§14.3-edit-membership-gate),
-//   the full constraint overlay (§14.3-constraint-ignore / -readonly / -add), and
-//   the out-of-band divergence signal (§14.3-emi-divergence-signal). No §14.3
+//   ALL of §membership is BUILT — the tests below pass: git-substrate membership
+//   (§membership-git-membership), the membership-bound edit (§membership-edit-membership-gate),
+//   the full constraint overlay (§membership-constraint-ignore / -readonly / -add), and
+//   the out-of-band divergence signal (§membership-emi-divergence-signal). No §membership
 //   deferrals remain.
 
 import test from "node:test";
@@ -55,14 +55,14 @@ const mockResponse = (ops: PlurnkStatement[]) => ({
     assistant: { content: "", ops, reasoning: null },
 });
 
-// ───────────────────────────── §14.3 ─────────────────────────────
+// ───────────────────────────── §membership ─────────────────────────────
 //
-// git-substrate membership (§14.3-git-membership) is BUILT — these two pass.
+// git-substrate membership (§membership-git-membership) is BUILT — these two pass.
 // The two deferred reds (overlay, divergence signal) follow at the bottom.
 
 // Set up a session whose project_root is a freshly `git init`'d repo holding
 // one COMMITTED, git-tracked file that is NEVER added via
-// crud_insert_session_entry. Per §14.3 D4 it should be a member by virtue of
+// crud_insert_session_entry. Per §membership D4 it should be a member by virtue of
 // `git ls-files`.
 const withGitWorkspace = async (
     fn: (root: string, ctx: PlurnkSchemeContext, db: Db, trackedPath: string) => Promise<void>,
@@ -86,7 +86,7 @@ const withGitWorkspace = async (
 
         const sessionId = await insertSession(db, `git-ws-${crypto.randomUUID()}`);
         // Set the workspace pointer through the production session-root setter
-        // (the session.set_root backend) so git-ls-files membership (SPEC §14.3
+        // (the session.set_root backend) so git-ls-files membership (SPEC §membership
         // D4) is established at workspace setup — exactly what a real client's
         // session.create({projectRoot}) / set_root does. This is the workspace
         // identity assignment (D1); a raw UPDATE here would skip it.
@@ -106,17 +106,17 @@ const withGitWorkspace = async (
     }
 };
 
-test("[§14.3-git-membership] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
+test("[§membership-git-membership] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO crud_insert_session_entry was
-        // issued for it. Under §14.3 D4 (git present → ls-files membership),
+        // issued for it. Under §membership D4 (git present → ls-files membership),
         // it MUST register as a member of the session.
         const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({
             session_id: ctx.sessionId, scheme: null, pathname: trackedPath,
         });
         assert.notEqual(
             member, undefined,
-            "git-tracked file must be a session member via `git ls-files` (SPEC §14.3)",
+            "git-tracked file must be a session member via `git ls-files` (SPEC §membership)",
         );
 
         // And the membership gate in File.read must therefore admit it (200),
@@ -132,7 +132,7 @@ test("[§14.3-git-membership] git-tracked file (never client-added) is a workspa
     });
 });
 
-test("[§14.3-edit-membership-gate] EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
+test("[§membership-edit-membership-gate] EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         // A gitignored/untracked secret on disk: it EXISTS but is never a member
         // (not in `git ls-files`, never client-added), so the model can't see it.
@@ -156,14 +156,14 @@ test("[§14.3-edit-membership-gate] EDIT of an existing non-member is refused �
     });
 });
 
-// ───────────── §14.3 deferred — `{ todo }` until built ─────────────
+// ───────────── §membership deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
 // still RUNS — it's the coverage — and reports as a known not-yet-passing, not a
 // false green; it FLIPS to a flagged passing-todo the day the feature lands. That
 // keeps CI a live gate instead of red-forever noise. Don't weaken to a real pass.
 
-test("[§14.3-constraint-ignore] an ignore-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
+test("[§membership-constraint-ignore] an ignore-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
         const before = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
@@ -181,7 +181,7 @@ test("[§14.3-constraint-ignore] an ignore-glob drops a tracked file from member
     });
 });
 
-test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", async () => {
+test("[§membership-constraint-add] an add-glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
@@ -195,7 +195,7 @@ test("[§14.3-constraint-add] an add-glob admits an untracked file git misses", 
     });
 });
 
-test("[§14.3-constraint-readonly] a read-only-glob keeps a member readable but refuses edits", async () => {
+test("[§membership-constraint-readonly] a read-only-glob keeps a member readable but refuses edits", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "read-only", glob: trackedPath });
         await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
@@ -208,7 +208,7 @@ test("[§14.3-constraint-readonly] a read-only-glob keeps a member readable but 
     });
 });
 
-test("[§14.3-emi-divergence-signal] out-of-band change to a member surfaces as a system delta-EDIT", async () => {
+test("[§membership-emi-divergence-signal] out-of-band change to a member surfaces as a system delta-EDIT", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         // EMI re-reads disk each turn (git materialization); the build-time delta
         // detector turns an out-of-band member change into a system EDIT naming the

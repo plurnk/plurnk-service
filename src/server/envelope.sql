@@ -1,4 +1,4 @@
--- Envelope lifecycle queries. SPEC §13.7.
+-- Envelope lifecycle queries. SPEC §connection-lifecycle.
 
 -- PREP: envelope_insert_session
 INSERT INTO sessions (name, project_root, persona)

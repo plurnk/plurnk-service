@@ -158,7 +158,7 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
     } finally { await db.close(); }
 });
 
-// Suffix invariance (SPEC.md §16 — opening/closing tag suffix is disambiguation
+// Suffix invariance (SPEC.md §matcher — opening/closing tag suffix is disambiguation
 // only). Per plurnk.md: `<<EDITouter(...):...:EDITouter` is the same statement
 // as `<<EDIT(...):...:EDIT` except the suffix string itself. Verifying so
 // downstream code can rely on it without case analysis on `statement.suffix`.

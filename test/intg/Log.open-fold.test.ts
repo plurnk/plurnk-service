@@ -111,7 +111,7 @@ test("FOLD on malformed path returns 400", async () => {
 test("engine_render_log carries the delta source; self-authored entries stay null", async () => {
     const { db, sessionId: _sessionId, runId, loopId, turnId } = await setup();
     try {
-        // A synthetic environment-delta row (§14.5): origin=plurnk, source=a scheme.
+        // A synthetic environment-delta row (§env-delta): origin=plurnk, source=a scheme.
         await (db.engine_insert_log_entry as PrepMethod).get({
             run_id: runId, loop_id: loopId, turn_id: turnId,
             sequence: 2, origin: "plurnk", source: "file",

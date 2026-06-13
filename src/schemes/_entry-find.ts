@@ -1,4 +1,4 @@
-// FIND helper for entry-bearing schemes (SPEC §6.6; plurnk.md FIND row).
+// FIND helper for entry-bearing schemes (SPEC §find; plurnk.md FIND row).
 // Used by FIND (the body-matcher candidate selector).
 //
 // Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):

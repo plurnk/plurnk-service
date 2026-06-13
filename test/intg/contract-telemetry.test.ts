@@ -1,5 +1,5 @@
 // SPEC contract coverage for the user-packet telemetry + prompt-foist
-// surface (§15 / §15.1). One test per contract tag. Every assertion is
+// surface (§packet / §telemetry). One test per contract tag. Every assertion is
 // against real DB artifacts and the real wire render — no stand-ins.
 //
 // Parse errors are driven END-TO-END: the Mock response supplies `content`
@@ -66,7 +66,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     };
 };
 
-test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
+test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -106,7 +106,7 @@ test("[§15.1-content-offset-snippet] content-offset parse_error renders N:\\t s
     } finally { await db.close(); }
 });
 
-test("[§15.1-drain-on-read] telemetry buffer drains — parse_error appears on exactly one packet, then is gone", async () => {
+test("[§telemetry-drain-on-read] telemetry buffer drains — parse_error appears on exactly one packet, then is gone", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -134,7 +134,7 @@ test("[§15.1-drain-on-read] telemetry buffer drains — parse_error appears on 
     } finally { await db.close(); }
 });
 
-test("[§15.1-no-error-scheme] actionless parse failures route to telemetry, not a queryable error:// entry namespace", async () => {
+test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry, not a queryable error:// entry namespace", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -168,7 +168,7 @@ test("[§15.1-no-error-scheme] actionless parse failures route to telemetry, not
     } finally { await db.close(); }
 });
 
-test("[§15.1-telemetry-event-notify] every pushed event broadcasts live with the same envelope the model later drains", async () => {
+test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live with the same envelope the model later drains", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);

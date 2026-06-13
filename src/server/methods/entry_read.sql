@@ -1,4 +1,4 @@
--- entry.read RPC queries. SPEC §13.5.
+-- entry.read RPC queries. SPEC §methods.
 
 -- PREP: entry_read_lookup
 SELECT id, scope, session_id, scheme, pathname

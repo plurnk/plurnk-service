@@ -24,7 +24,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
 
-test("[§16.6-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
+test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -43,7 +43,7 @@ test("[§16.6-line-navigable-prefix] log render: READ@200 with text/markdown rx 
     assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
 });
 
-test("[§16.6-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
+test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
     const system = {
         system_definition: "SD",
         persona: "",
@@ -296,14 +296,14 @@ test("telemetry render: telemetry without snippet → meta-only (no fence)", () 
     assert.doesNotMatch(out, /<<error:\/\//);
 });
 
-test("[§15.2-requirements-render-last] system_requirements renders LAST in the user packet, under its own header", () => {
+test("[§requirements-requirements-render-last] system_requirements renders LAST in the user packet, under its own header", () => {
     const user = {
         prompt: "Reply with just the number.",
         telemetry: { budget: "5000 free", errors: [{ kind: "no_ops", coordinate: "1/1/1" }] },
         system_requirements: "Conclude the loop with <<SEND[200]:answer:SEND",
     };
     const out = PacketWire.renderUserContent(user);
-    // §15.2: requirements is the contract that must win conflicts with the
+    // §requirements: requirements is the contract that must win conflicts with the
     // natural-language prompt, so it renders closest to the assistant turn —
     // after the prompt, budget, and errors, with nothing following it.
     assert.match(out, /# Plurnk System Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
@@ -314,7 +314,7 @@ test("[§15.2-requirements-render-last] system_requirements renders LAST in the 
     assert.ok(reqIdx > out.indexOf("# Plurnk System Errors"), "requirements follows the errors");
 });
 
-test("[§15.2-requirements-omitted-when-empty] empty system_requirements emits no header", () => {
+test("[§requirements-requirements-omitted-when-empty] empty system_requirements emits no header", () => {
     const out = PacketWire.renderUserContent({ prompt: "P", telemetry: { budget: "", errors: [] }, system_requirements: "" });
     assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the string is empty");
 });

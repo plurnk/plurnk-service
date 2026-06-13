@@ -14,7 +14,7 @@
 //
 // Status: 200 = matches; 204 = matcher applied, zero results; 400 = malformed
 // matcher expression; 203 = source unparseable for its mimetype → raw bytes as
-// text so the model can fall back to regex/visual parsing (SPEC §16.1).
+// text so the model can fall back to regex/visual parsing (SPEC §matcher-dispatch).
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
 import type { Mimetypes, QueryMatch } from "@plurnk/plurnk-mimetypes";

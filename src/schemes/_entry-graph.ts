@@ -5,7 +5,7 @@
 // `@<sym` surface). Cross-entry resolution is name-match (ctags-grade-plus per #186).
 //
 // Derivation does NOT happen at write — a scheme write never invokes the mimetypes
-// handler (§4). The engine extracts symbols+references once per entry at manifest-add
+// handler (§mimetype). The engine extracts symbols+references once per entry at manifest-add
 // (EntryManifest.buildManifestBody) and hands them here via populateFrom; this module
 // only owns the relational index (insert + the @</@>/@ resolution).
 

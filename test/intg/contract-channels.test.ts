@@ -1,6 +1,6 @@
-// Integration coverage for SPEC §5 channel-topology contract tags that
+// Integration coverage for SPEC §channels channel-topology contract tags that
 // previously had no test. Each test name carries its §-anchor and exercises
-// the real path for one tagged sentence in SPEC.md §5.
+// the real path for one tagged sentence in SPEC.md §channels.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -41,7 +41,7 @@ const seedExecEntry = async (
     return entryId;
 };
 
-test("[§5.4-fragment-selects-named-channel] fragment targets the named channel; fragment-less targets default", async () => {
+test("[§channel-selection-fragment-selects-named-channel] fragment targets the named channel; fragment-less targets default", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedExecEntry(db, sessionId, runId, "run/abc", "OUT-content", "ERR-content");
@@ -61,7 +61,7 @@ test("[§5.4-fragment-selects-named-channel] fragment targets the named channel;
     } finally { await db.close(); }
 });
 
-test("[§5.4-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
+test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();
@@ -82,7 +82,7 @@ test("[§5.4-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404;
     } finally { await db.close(); }
 });
 
-test("[§5-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
+test("[§channels-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
@@ -102,7 +102,7 @@ test("[§5-channels-append-only] channels are keyed by (entry_id, name); same ke
     } finally { await db.close(); }
 });
 
-test("[§5.5-schemes-own-state-transitions] the exec scheme transitions channel state across the connection lifecycle", async () => {
+test("[§channel-state-schemes-own-state-transitions] the exec scheme transitions channel state across the connection lifecycle", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const exec = new Exec();
@@ -131,7 +131,7 @@ test("[§5.5-schemes-own-state-transitions] the exec scheme transitions channel 
     } finally { await db.close(); }
 });
 
-test("[§5.5-state-is-metadata] channel state does not gate reads — errored/closed channels still return content", async () => {
+test("[§channel-state-state-is-metadata] channel state does not gate reads — errored/closed channels still return content", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Seed an entry whose channel is in the 'errored' terminal state with

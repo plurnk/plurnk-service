@@ -1,10 +1,10 @@
-// #194 / §13.7 / §1.4 — the client writes to its own run, end-to-end.
+// #194 / §connection-lifecycle / §machine-processes — the client writes to its own run, end-to-end.
 //
 // A client `op.*` lands in the connection's CLIENT run; `loop.run` runs the model
 // in its OWN run; the packet renders the model's run, so no client-origin row ever
 // reaches the model's conversation — invisibility by run, no origin filter. This
 // proves the server wiring (op.* → client run, loop.run → model run) that the
-// engine-level §1.3-isolation guarantee rests on.
+// engine-level §actor-boundary-isolation guarantee rests on.
 
 import test from "node:test";
 import assert from "node:assert/strict";

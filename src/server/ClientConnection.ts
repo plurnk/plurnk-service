@@ -2,7 +2,7 @@
 // Owns session attachment state, calls into the engine for auto-create on
 // first requiresInit RPC, closes the client loop on disconnect.
 //
-// SPEC §13.2 (protocol), §13.7 (lifecycle), §13.8 (errors).
+// SPEC §protocol (protocol), §connection-lifecycle (lifecycle), §errors (errors).
 
 import type { WebSocket } from "ws";
 import type Engine from "../core/Engine.ts";
@@ -12,13 +12,13 @@ import type { Db } from "../core/Db.ts";
 import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
-// JSON-RPC 2.0 standard error codes (SPEC §13.8).
+// JSON-RPC 2.0 standard error codes (SPEC §errors).
 const ERR_PARSE = -32700;
 const ERR_INVALID_REQUEST = -32600;
 const ERR_METHOD_NOT_FOUND = -32601;
 const ERR_INTERNAL = -32603;
 
-// Plurnk-specific (SPEC §13.8).
+// Plurnk-specific (SPEC §errors).
 const ERR_NOT_INITIALIZED = -32000;
 
 interface JsonRpcRequest {

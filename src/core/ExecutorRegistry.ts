@@ -26,7 +26,7 @@ export interface RegistryEntry {
 // host actually has, instead of stamping all of them with the first tag's
 // probe. Probes are cheap + local (command -v / env read / `gh auth status`),
 // so per-tag costs nothing. A probe that rejects or exceeds its timeout
-// degrades that tag to unavailable — it never crashes boot. SPEC §3;
+// degrades that tag to unavailable — it never crashes boot. SPEC §scheme;
 // plurnk-service#181, #185.
 export default class ExecutorRegistry {
     readonly #byTag: ReadonlyMap<string, RegistryEntry>;

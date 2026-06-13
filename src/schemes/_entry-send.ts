@@ -1,5 +1,5 @@
 // Shared SEND dispatcher for entry-bearing schemes. Schemes interpret
-// status codes per SPEC §3.5. v0 handles 410 (Gone, delete the resource)
+// status codes per SPEC §send-dispatch. v0 handles 410 (Gone, delete the resource)
 // and 499 (Client Closed Request, cancel active subscription).
 
 import type { SendStatement } from "@plurnk/plurnk-grammar";
@@ -33,7 +33,7 @@ export default class EntrySend {
         const status = statement.signal;
         if (status === null) return { status: 400, error: "SEND requires a numeric status code" };
 
-        // SEND[410] Gone — delete the targeted resource (SPEC §3.5). With a
+        // SEND[410] Gone — delete the targeted resource (SPEC §send-dispatch). With a
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
@@ -50,7 +50,7 @@ export default class EntrySend {
             return { status: result.status };
         }
 
-        // SEND[499] Client Closed Request — cancel active subscription (SPEC §3.5, §7.5).
+        // SEND[499] Client Closed Request — cancel active subscription (SPEC §send-dispatch, §stream-control).
         // Entry-bearing schemes never have subscriptions in v0; always return 404.
         // Streaming schemes (sse / exec / etc.) override this and look up via
         // findActiveSubscription, then call their teardown using the stored handle.

@@ -1,5 +1,5 @@
 // entry.read — return the full entry shape (all channels + tags + metadata)
-// for a given path. SPEC §13.5.
+// for a given path. SPEC §methods.
 
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { Db, PrepMethod } from "../../core/Db.ts";

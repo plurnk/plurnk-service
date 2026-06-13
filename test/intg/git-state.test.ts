@@ -1,4 +1,4 @@
-// SPEC §15.1 — git working-tree state in the telemetry section. GitState shells
+// SPEC §telemetry — git working-tree state in the telemetry section. GitState shells
 // `git status` (service-side, the same surface membership uses), gated by
 // PLURNK_GIT_ENABLED (the hard service ceiling) + a git worktree.
 
@@ -15,7 +15,7 @@ import { openMigrated, insertSession } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
-test("GitState.status reads the working tree, gated by PLURNK_GIT_ENABLED (§15.1 git telemetry)", async () => {
+test("GitState.status reads the working tree, gated by PLURNK_GIT_ENABLED (§telemetry git telemetry)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_GIT_ENABLED;

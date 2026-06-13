@@ -127,7 +127,7 @@ export default class PacketWire {
         const user: UserSection = packet.user;
         const logEntries: LogEntryView[] = Array.isArray(system.log) ? system.log : [];
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
-        // Per-scheme log breakdown (§14.2 {§14.2-per-scheme-balance}): each entry's
+        // Per-scheme log breakdown (§tokenomics {§tokenomics-per-scheme-balance}): each entry's
         // render-weight grouped by the scheme it acted on, heaviest first — the
         // model's "what's eating my window" signal and its FOLD target. Render-
         // weight (not stored depth), consistent with the headline; tokenizing per
@@ -283,7 +283,7 @@ export default class PacketWire {
     // pending the COPY/MOVE-specific log shape pass).
     //
     // On error, status >= 400 signals the failure; the message lives in
-    // the next packet's user.telemetry.errors[] per SPEC §15.1. (Forward:
+    // the next packet's user.telemetry.errors[] per SPEC §telemetry. (Forward:
     // meta will gain tokensBefore/After + linesBefore/After to convey
     // change scope without carrying the body content.)
     //
@@ -303,7 +303,7 @@ export default class PacketWire {
             if (coordinate !== null && op !== null) meta.path = `log://${coordinate}/${op}`;
             else if (coordinate !== null) meta.path = `log://${coordinate}`;
             if (typeof e.origin === "string") meta.origin = e.origin;
-            // §14.5: the environment-delta cause (a sibling run or a scheme),
+            // §env-delta: the environment-delta cause (a sibling run or a scheme),
             // rendered when present; absent ⇒ the owning run itself (self).
             if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
             if (op !== null) meta.op = op;
@@ -330,7 +330,7 @@ export default class PacketWire {
             const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
 
             // FOLD (indexed=0): the model collapsed this row to its one-line
-            // summary (§6.3) — render the meta line only, eliding the body.
+            // summary (§open-fold) — render the meta line only, eliding the body.
             // Re-OPEN restores it. The row stays listed; only its weight drops.
             if (e.folded === true) return metaLine;
 
@@ -346,7 +346,7 @@ export default class PacketWire {
                     // navigable (JSON, XML, HTML) render verbatim — line
                     // numbers in the wrapper would collide with structural
                     // navigation (jsonpath/xpath) used on these formats.
-                    // Classifier is consumer-side in this repo (SPEC.md §16.6).
+                    // Classifier is consumer-side in this repo (SPEC.md §render-rule).
                     const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
                     if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
                         const start = typeof rx.startLine === "number" ? rx.startLine : 1;
@@ -355,11 +355,11 @@ export default class PacketWire {
                     return `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.content)}`;
                 }
             }
-            // EDIT (§14.6): render the resulting span — the edited area as it
+            // EDIT (§edit-result-render): render the resulting span — the edited area as it
             // looks now — instead of the input statement. The meta line still
             // carries op + target, so "I EDITed X" stays legible; the body says
             // "and here's X now." Serves the model's own EDITs and the system
-            // delta-EDITs (§14.5) identically. Empty span (content emptied) →
+            // delta-EDITs (§env-delta) identically. Empty span (content emptied) →
             // meta line only.
             if (op === "EDIT") {
                 const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as { span?: unknown } | null;

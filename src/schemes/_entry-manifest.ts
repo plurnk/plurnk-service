@@ -46,7 +46,7 @@ export default class EntryManifest {
             // at entry level — a clock on running execs, absent for static entries.
             if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
             // Manifest-add is the engine-side point where the mimetypes handler
-            // legitimately fires (never at a scheme write, §4). For the body channel
+            // legitimately fires (never at a scheme write, §mimetype). For the body channel
             // we re-derive every deep channel from ONE process() — the @graph symbol
             // index (#186) and the ~semantic FTS + embedding — alongside the catalog's
             // totalLines, but ONLY when the content changed since the last derivation

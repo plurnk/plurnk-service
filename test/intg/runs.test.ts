@@ -7,7 +7,7 @@ import Envelope from "../../src/server/envelope.ts";
 let nameCounter = 0;
 const n = (suffix: string): string => `run-${suffix}-${++nameCounter}`;
 
-test("[§13.5-run-name-reserved] a client cannot create or resume a run named 'plurnk' (runtime impersonation)", async () => {
+test("[§methods-run-name-reserved] a client cannot create or resume a run named 'plurnk' (runtime impersonation)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, "ws-reserved");

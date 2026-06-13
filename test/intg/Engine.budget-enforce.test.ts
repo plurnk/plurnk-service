@@ -1,4 +1,4 @@
-// SPEC §14.4 — the budget grinder. The model "behaves" here (a clean SEND each
+// SPEC §grinder — the budget grinder. The model "behaves" here (a clean SEND each
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
@@ -41,7 +41,7 @@ const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loo
     return { sessionId, runId, loopId };
 };
 
-test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothing is hidden", async () => {
+test("[§grinder-overflow-only] under the ceiling the grinder never fires — nothing is hidden", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -56,7 +56,7 @@ test("[§14.4-overflow-only] under the ceiling the grinder never fires — nothi
     } finally { await db.close(); }
 });
 
-test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are folded to their coordinate", async () => {
+test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are folded to their coordinate", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -72,7 +72,7 @@ test("[§14.4-layer1-rollback] on overflow the prior turn's log entries are fold
     } finally { await db.close(); }
 });
 
-test("[§14.4-hard-413-abort] when even the manifest won't fit, the loop abandons at 499 (budget_overflow)", async () => {
+test("[§grinder-hard-413-abort] when even the manifest won't fit, the loop abandons at 499 (budget_overflow)", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -83,7 +83,7 @@ test("[§14.4-hard-413-abort] when even the manifest won't fit, the loop abandon
     } finally { await db.close(); }
 });
 
-test("[§14.4-strike-coupling] a grinder fire past the first turn counts toward the strike streak", async () => {
+test("[§grinder-strike-coupling] a grinder fire past the first turn counts toward the strike streak", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -93,7 +93,7 @@ test("[§14.4-strike-coupling] a grinder fire past the first turn counts toward 
     } finally { await db.close(); }
 });
 
-test("[§14.4-soft-turn-0-1] the first turn's overflow is soft — no strike (the environment, not the model)", async () => {
+test("[§grinder-soft-turn-0-1] the first turn's overflow is soft — no strike (the environment, not the model)", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -104,7 +104,7 @@ test("[§14.4-soft-turn-0-1] the first turn's overflow is soft — no strike (th
     } finally { await db.close(); }
 });
 
-test("[§14.4-event-model-terms] the overflow event names hidden entries by scheme, no mechanism vocabulary", async () => {
+test("[§grinder-event-model-terms] the overflow event names hidden entries by scheme, no mechanism vocabulary", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);

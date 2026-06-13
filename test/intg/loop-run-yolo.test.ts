@@ -73,7 +73,7 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
     });
 });
 
-test("[§14.7-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tree yolo listener auto-accepts proposal", async () => {
+test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tree yolo listener auto-accepts proposal", async () => {
     // Model emits EDIT against the proposing-test scheme (status=202), then
     // SEND[200]. With server YOLO on, the proposal resolves in-process; the
     // loop completes without any client loop.resolve. Assert: final status
@@ -109,7 +109,7 @@ test("[§14.7-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tree yo
     });
 });
 
-test("[§14.7-proposal-carries-flags] loop/proposal notification carries flags.yolo", async () => {
+test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries flags.yolo", async () => {
     // Without YOLO active: dispatch pauses awaiting resolution. We capture
     // the broadcast, confirm flags is present and yolo=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.

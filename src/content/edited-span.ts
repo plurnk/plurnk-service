@@ -1,10 +1,10 @@
 import { diffLines } from "diff";
 
-// §14.6 — the resulting span: the changed region of `updated` (relative to
+// §edit-result-render — the resulting span: the changed region of `updated` (relative to
 // `original`), line-numbered (1-indexed), with `context` lines of padding above
 // and below. Diff to find the changed lines, render their post-edit state.
 // Shared by EDIT result rendering (`_entry-ops`) and the environment-delta
-// materialization (`Engine`, §14.5) — both show "the edited area as it is now."
+// materialization (`Engine`, §env-delta) — both show "the edited area as it is now."
 export const editedSpan = (original: string, updated: string, context = 2): string => {
     const rows: { text: string; changed: boolean }[] = [];
     for (const part of diffLines(original, updated)) {

@@ -1,4 +1,4 @@
--- Channel-write SQL for streaming schemes. SPEC §5.6 + §7.1 + §13.6.
+-- Channel-write SQL for streaming schemes. SPEC §channel-state + §subscriptions + §notifications.
 
 -- PREP: channel_meta
 SELECT e.session_id, e.scheme, e.pathname, ec.state, length(ec.content) AS contentLength

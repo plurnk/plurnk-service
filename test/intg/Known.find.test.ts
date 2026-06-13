@@ -1,4 +1,4 @@
-// Tests for FIND on entry-bearing schemes (SPEC §6.6).
+// Tests for FIND on entry-bearing schemes (SPEC §find).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +53,7 @@ test("Known.find returns all entries when scope is broad and no matcher", async 
     } finally { db.close(); }
 });
 
-test("[§6.6-scope-prefix-filter] Known.find with scope prefix filters to that subtree", async () => {
+test("[§find-scope-prefix-filter] Known.find with scope prefix filters to that subtree", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -65,7 +65,7 @@ test("[§6.6-scope-prefix-filter] Known.find with scope prefix filters to that s
     } finally { db.close(); }
 });
 
-test("[§6.6-glob-filter-on-content] Known.find with glob matcher filters by CONTENT", async () => {
+test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CONTENT", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Pathnames are neutral (a/b/c); the matchable token lives in the content.
@@ -78,7 +78,7 @@ test("[§6.6-glob-filter-on-content] Known.find with glob matcher filters by CON
     } finally { db.close(); }
 });
 
-test("[§6.6-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
+test("[§find-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -190,7 +190,7 @@ test("Known.find with no matches returns 200 with empty results", async () => {
     } finally { db.close(); }
 });
 
-test("[§6.6-scoped-isolation] Known.find is scoped to the session (doesn't leak across sessions)", async () => {
+test("[§find-scoped-isolation] Known.find is scoped to the session (doesn't leak across sessions)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Seed in this session

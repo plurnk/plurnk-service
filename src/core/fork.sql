@@ -1,15 +1,15 @@
--- Fork a run: deep-copy its log into a NEW run in the SAME session (SPEC §14.8 —
+-- Fork a run: deep-copy its log into a NEW run in the SAME session (SPEC §machine-processes —
 -- branch the log, share the world). loops → turns → entries are copied with their
 -- fold-state (indexed) and attribution (origin/source) intact; only the run/loop/
 -- turn ids are remapped. Nothing of the world is copied — the session's entries and
--- overlay are shared. The §14.5 reconciliation snapshot (run_watermarks) is NOT
+-- overlay are shared. The §env-delta reconciliation snapshot (run_watermarks) is NOT
 -- copied; the branch first-sights its world like any fresh run.
 
 -- PREP: fork_get_run
 SELECT session_id, name, persona FROM runs WHERE id = $id;
 
 -- PREP: fork_insert_run
--- A new run in the parent's session; lineage recorded via parent_run_id (§0.1).
+-- A new run in the parent's session; lineage recorded via parent_run_id (§lifecycle-terms).
 INSERT INTO runs (session_id, name, persona, parent_run_id)
 VALUES ($session_id, $name, $persona, $parent_run_id)
 RETURNING id;

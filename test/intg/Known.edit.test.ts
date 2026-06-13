@@ -66,7 +66,7 @@ test("Known.edit: new entry — inserts entries row, body channel, tags", async 
     } finally { await db.close(); }
 });
 
-test("[§6.1-status-201-200] Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
+test("[§edit-status-201-200] Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -80,7 +80,7 @@ test("[§6.1-status-201-200] Known.edit: second EDIT against same path — same 
     } finally { await db.close(); }
 });
 
-test("[§6.1-noop-304] EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
+test("[§edit-noop-304] EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -99,7 +99,7 @@ test("[§6.1-noop-304] EDIT that changes nothing returns 304; content change or 
     } finally { await db.close(); }
 });
 
-test("[§6.1-null-clears] Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
+test("[§edit-null-clears] Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -112,7 +112,7 @@ test("[§6.1-null-clears] Known.edit: empty body clears the channel content (doe
     } finally { await db.close(); }
 });
 
-test("[§6.1-tags-additive] Known.edit: tags merge additively across multiple EDITs", async () => {
+test("[§edit-tags-additive] Known.edit: tags merge additively across multiple EDITs", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -227,7 +227,7 @@ test("Known.edit: bare local path is treated as the raw pathname", async () => {
 
 // --- Structural <L> EDIT on JSON (M.8 / grammar 0.13.0 + 0.14.0) ---
 
-test("[§16.4-structural-json-edit] Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
+test("[§json-edit-structural-json-edit] Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -300,7 +300,7 @@ test("Known.edit: <L> on no-suffix path is line-based; .json siblings get struct
     } finally { await db.close(); }
 });
 
-test("[§16.4-json-parse-fail-400] Known.edit: <L> on JSON path with malformed body → 400", async () => {
+test("[§json-edit-json-parse-fail-400] Known.edit: <L> on JSON path with malformed body → 400", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -318,7 +318,7 @@ test("[§16.4-json-parse-fail-400] Known.edit: <L> on JSON path with malformed b
     } finally { await db.close(); }
 });
 
-test("Known.edit result carries the edited span — post-edit state, line-numbered (§14.6)", async () => {
+test("Known.edit result carries the edited span — post-edit state, line-numbered (§edit-result-render)", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const ctx = makeSchemeCtx({ db, sessionId, runId });

@@ -1,5 +1,5 @@
 // log.read — return recent log entries filterable by loop / turn / since-id,
-// scoped to the connection's attached session. SPEC §13.5.
+// scoped to the connection's attached session. SPEC §methods.
 
 import type MethodRegistry from "../MethodRegistry.ts";
 import type { Db, PrepMethod } from "../../core/Db.ts";

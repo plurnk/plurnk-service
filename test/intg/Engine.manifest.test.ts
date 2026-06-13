@@ -1,4 +1,4 @@
-// SPEC §15 — plurnk://manifest.json is the complete, unranked directory of the
+// SPEC §packet — plurnk://manifest.json is the complete, unranked directory of the
 // session's entries, rewritten every turn by Engine.runTurn. This drives the
 // LIVE path: a real turn materializes the manifest; we parse its body and assert
 // the directory contract — every entry listed, NO `shown`/relevance field, the
@@ -19,7 +19,7 @@ const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reas
 
 type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
-test("[§15-manifest-catalog] manifest.json is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
+test("[§packet-manifest-catalog] manifest.json is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `manifest-${crypto.randomUUID()}`);

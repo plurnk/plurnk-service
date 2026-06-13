@@ -1,7 +1,7 @@
 // loop.resolve — client→server RPC that accepts/rejects a pending proposal.
 // Engine.dispatch is paused on the matching log_entry; this method feeds
 // the decision back in. Returns once the resolution is applied.
-// SPEC.md §13.5 (loop.resolve) + §0.5 (proposal lifecycle).
+// SPEC.md §methods (loop.resolve) + §engine-rails (proposal lifecycle).
 
 import type MethodRegistry from "../MethodRegistry.ts";
 

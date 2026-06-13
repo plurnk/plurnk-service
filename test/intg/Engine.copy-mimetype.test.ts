@@ -1,4 +1,4 @@
-// SPEC §5.3 — cross-mimetype COPY/MOVE → 415. A destination scheme fixes its
+// SPEC §channel-mimetype — cross-mimetype COPY/MOVE → 415. A destination scheme fixes its
 // channel mimetypes via its manifest (Known: body=text/markdown); a source
 // channel of a different mimetype can't be copied in. Seed a known entry with a
 // json body (the seed bypasses write-time markdown enforcement) to get the
@@ -21,7 +21,7 @@ const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
     op: "COPY", suffix: "", signal: null, target: src, lineMarker: null, body: dst, position: { line: 1, column: 1 },
 });
 
-test("[§5.3-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed known:// dst returns 415", async () => {
+test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed known:// dst returns 415", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `copy-415-${crypto.randomUUID()}`);

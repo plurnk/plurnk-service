@@ -1,6 +1,6 @@
 // Daemon's method + notification registry. Methods are JSON-RPC endpoints
 // the daemon exposes; notifications are server-initiated events the daemon
-// may emit. Both have metadata that surfaces via `discover` (SPEC §13.4).
+// may emit. Both have metadata that surfaces via `discover` (SPEC §discovery).
 
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";

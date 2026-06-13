@@ -27,7 +27,7 @@ const costs = async (db: Db, sessionId: number, runId: number) => ({
     session: (await (db.test_cost_session as PrepMethod).get<{ cost_pico: number }>({ id: sessionId }))?.cost_pico ?? 0,
 });
 
-test("[§2.1-costfor] cost rollups: turn insert propagates to run AND session", async () => {
+test("[§provider-surface-costfor] cost rollups: turn insert propagates to run AND session", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, "ws-cost-single");

@@ -1,4 +1,4 @@
-// Tests for SPEC §9 plugin discovery.
+// Tests for SPEC §plugin-discovery plugin discovery.
 
 import test from "node:test";
 import assert from "node:assert/strict";

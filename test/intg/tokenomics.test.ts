@@ -8,7 +8,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT
 import { Mock } from "@plurnk/plurnk-providers";
 import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
 
-// Tokenomics Phase 1: real token counts are stored at write time (SPEC §14.2).
+// Tokenomics Phase 1: real token counts are stored at write time (SPEC §tokenomics).
 // entry_channels.tokens comes from the entry write helpers via ctx.tokenize;
 // log_entries.tokens from Engine.#writeLog over tx+rx. Both route through the
 // engine's #tokenize — here the divisor tripwire default (no provider wired in
@@ -36,7 +36,7 @@ const setup = async () => {
     return { db, engine, sessionId, runId, loopId, turnId };
 };
 
-test("[§14.2-tokens-stored-at-write] EDIT stores entry_channels.tokens from the active tokenizer", async () => {
+test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens from the active tokenizer", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
@@ -53,7 +53,7 @@ test("[§14.2-tokens-stored-at-write] EDIT stores entry_channels.tokens from the
     } finally { await db.close(); }
 });
 
-test("[§14.2-tokens-stored-at-write] dispatched op stores log_entries.tokens from tx+rx", async () => {
+test("[§tokenomics-tokens-stored-at-write] dispatched op stores log_entries.tokens from tx+rx", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         let logEntryId = 0;
@@ -68,7 +68,7 @@ test("[§14.2-tokens-stored-at-write] dispatched op stores log_entries.tokens fr
     } finally { await db.close(); }
 });
 
-test("[§14.2-tokens-stored-at-write] entry_channels.tokens uses the injected provider tokenizer, not the divisor fallback", async () => {
+test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens uses the injected provider tokenizer, not the divisor fallback", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-prov-${crypto.randomUUID()}`);
@@ -86,7 +86,7 @@ test("[§14.2-tokens-stored-at-write] entry_channels.tokens uses the injected pr
     } finally { await db.close(); }
 });
 
-test("[§14.2-render-weight-budget] budget headline shows ceiling/usage/free, measured from the assembled packet", async () => {
+test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/free, measured from the assembled packet", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-bud-${crypto.randomUUID()}`);
@@ -105,7 +105,7 @@ test("[§14.2-render-weight-budget] budget headline shows ceiling/usage/free, me
     } finally { await db.close(); }
 });
 
-test("[§14.2-per-scheme-balance] budget breaks the log down by scheme, render-weight", async () => {
+test("[§tokenomics-per-scheme-balance] budget breaks the log down by scheme, render-weight", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-scheme-${crypto.randomUUID()}`);
@@ -129,7 +129,7 @@ test("[§14.2-per-scheme-balance] budget breaks the log down by scheme, render-w
     } finally { await db.close(); }
 });
 
-test("[§14.2-context-percent] budget headline shows usage as a percent of the ceiling", async () => {
+test("[§tokenomics-context-percent] budget headline shows usage as a percent of the ceiling", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-pct-${crypto.randomUUID()}`);
@@ -146,7 +146,7 @@ test("[§14.2-context-percent] budget headline shows usage as a percent of the c
     } finally { await db.close(); }
 });
 
-test("[§14.2-over-budget-floor] over budget, free floors at 0 and percent passes 100 — the overshoot is honest", async () => {
+test("[§tokenomics-over-budget-floor] over budget, free floors at 0 and percent passes 100 — the overshoot is honest", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-over-${crypto.randomUUID()}`);

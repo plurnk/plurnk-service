@@ -1,4 +1,4 @@
-// Tests for SPEC §6.4 (Engine.copy orchestration) and §6.5 (Engine.move).
+// Tests for SPEC §copy (Engine.copy orchestration) and §move (Engine.move).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +40,7 @@ test("Engine.copy same-scheme (known → known)", async () => {
     } finally { await db.close(); }
 });
 
-test("[§6.4-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", async () => {
+test("[§copy-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
@@ -56,7 +56,7 @@ test("[§6.4-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", a
     } finally { await db.close(); }
 });
 
-test("[§6.4-missing-source-404] Engine.copy missing source returns 404", async () => {
+test("[§copy-missing-source-404] Engine.copy missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "nope"), urlPath("known", "elsewhere")));
@@ -64,7 +64,7 @@ test("[§6.4-missing-source-404] Engine.copy missing source returns 404", async 
     } finally { await db.close(); }
 });
 
-test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", async () => {
+test("[§copy-conflict-409] Engine.copy conflicting destination returns 409", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
@@ -78,7 +78,7 @@ test("[§6.4-conflict-409] Engine.copy conflicting destination returns 409", asy
     } finally { await db.close(); }
 });
 
-test("[§6.4-noop-304] Engine.copy to a destination already holding identical content returns 304", async () => {
+test("[§copy-noop-304] Engine.copy to a destination already holding identical content returns 304", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
@@ -97,7 +97,7 @@ test("[§6.4-noop-304] Engine.copy to a destination already holding identical co
     } finally { await db.close(); }
 });
 
-test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
+test("[§copy-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "src"), "x", ["original", "tags"]), makeSchemeCtx({ db, sessionId, runId }));
@@ -110,7 +110,7 @@ test("[§6.4-signal-replaces-source-tags] Engine.copy tag policy — signal pres
     } finally { await db.close(); }
 });
 
-test("[§6.4-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
+test("[§copy-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "src"), "x", ["a", "b"]), makeSchemeCtx({ db, sessionId, runId }));
@@ -123,7 +123,7 @@ test("[§6.4-no-signal-carries-source-tags] Engine.copy tag policy — no signal
     } finally { await db.close(); }
 });
 
-test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
+test("[§move-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "src"), "movable"), makeSchemeCtx({ db, sessionId, runId }));
@@ -139,7 +139,7 @@ test("[§6.5-relocation-deletes-source] Engine.move relocates: source deleted, d
     } finally { await db.close(); }
 });
 
-test("[§6.5-null-body-400] Engine.move with no destination → 400, source survives", async () => {
+test("[§move-null-body-400] Engine.move with no destination → 400, source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "trash-me"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
@@ -153,7 +153,7 @@ test("[§6.5-null-body-400] Engine.move with no destination → 400, source surv
     } finally { await db.close(); }
 });
 
-test("[§6.5-dev-null-not-special] Engine.move to /dev/null no longer deletes — source survives", async () => {
+test("[§move-dev-null-not-special] Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await new Known().edit(editStmt(urlPath("known", "obsolete"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
@@ -168,7 +168,7 @@ test("[§6.5-dev-null-not-special] Engine.move to /dev/null no longer deletes �
     } finally { await db.close(); }
 });
 
-test("[§6.5-missing-source-404] Engine.move missing source returns 404", async () => {
+test("[§move-missing-source-404] Engine.move missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "nope"), urlPath("known", "elsewhere")));
@@ -176,7 +176,7 @@ test("[§6.5-missing-source-404] Engine.move missing source returns 404", async 
     } finally { await db.close(); }
 });
 
-test("[§6.5-cross-scheme-move] Engine.move cross-scheme (unknown → known) deletes source, creates dest", async () => {
+test("[§move-cross-scheme-move] Engine.move cross-scheme (unknown → known) deletes source, creates dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;

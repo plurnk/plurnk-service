@@ -2,7 +2,7 @@
 // the capability surface a third-party @plurnk/plurnk-schemes-* sibling receives:
 // identity fields lifted off the PlurnkSchemeContext, the five db-backed caps,
 // and the deferred crossScheme stub. A sibling reaches the substrate ONLY through
-// this — never the raw ctx.db (schemes SPEC §5). `visibility` is absent: entry
+// this — never the raw ctx.db (schemes SPEC §channels). `visibility` is absent: entry
 // visibility is gone post-teardown, so schemes dropped the cap (0.4.3).
 
 import type {

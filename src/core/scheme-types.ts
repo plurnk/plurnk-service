@@ -64,8 +64,8 @@ export interface PlurnkSchemeContext {
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
     // absent rather than silently falling back to a default runtime.
     readonly executors?: ExecutorRegistry;
-    // Write-time tokenizer (SPEC §14.2). Synchronous per the provider
-    // contract (§2.1). Engine populates it from its configured tokenizer;
+    // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
+    // contract (§provider-surface). Engine populates it from its configured tokenizer;
     // the entry/log write helpers count content tokens through it at write
     // time and store the count on entry_channels.tokens / log_entries.tokens.
     // Optional like the other engine-populated capabilities (absent in bare
@@ -76,6 +76,6 @@ export interface PlurnkSchemeContext {
     // sessionId + loopId so the scheme just provides the event payload.
     // Wired by Engine to #pushTelemetry → fans out to the next packet's
     // user.telemetry.errors[] AND the live `telemetry/event` client
-    // notification. SPEC §15.1.
+    // notification. SPEC §telemetry.
     readonly pushTelemetry?: (event: TelemetryEvent) => void;
 }

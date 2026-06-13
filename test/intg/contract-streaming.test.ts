@@ -1,14 +1,14 @@
-// Contract coverage for SPEC §7 (stream model) + §13.6 (notifications).
+// Contract coverage for SPEC §stream (stream model) + §notifications (notifications).
 // One test per zero-coverage anchor, each driven against its REAL vehicle:
-//   - §7.1  : Engine SEND[499] routing through the subscription registry to
+//   - §subscriptions  : Engine SEND[499] routing through the subscription registry to
 //             the owning scheme (synthetic streaming scheme, the same pattern
 //             SEND.499.test.ts proves for the entry-bearing 501 case).
-//   - §7.3  : a live streaming exec emits many chunks but writes ONE log row.
-//   - §7.6  : the single engine-level cap (100 MiB / channel) — and nothing else.
-//   - §7.7  : daemon fires stream/event per chunk as channel content grows.
-//   - §7    : engine has no transaction / connection-lifecycle surface; schemes
+//   - §no-chunk-rows  : a live streaming exec emits many chunks but writes ONE log row.
+//   - §stream-constraints  : the single engine-level cap (100 MiB / channel) — and nothing else.
+//   - §live-updates  : daemon fires stream/event per chunk as channel content grows.
+//   - §stream    : engine has no transaction / connection-lifecycle surface; schemes
 //             own connection lifecycle, channels are static storage to the engine.
-//   - §13.6 : stream/event fires on a state TRANSITION (not just content growth),
+//   - §notifications : stream/event fires on a state TRANSITION (not just content growth),
 //             metadata-only payload.
 
 import test from "node:test";
@@ -33,13 +33,13 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-// §7.1 — The subscription registry maps (sessionId, entryId) → scheme + handle
+// §subscriptions — The subscription registry maps (sessionId, entryId) → scheme + handle
 // so SEND[499] routes cancellation to the OWNING scheme, which tears down via
 // the stored handle. We register a synthetic streaming scheme that owns its
 // subscription; dispatching SEND[499] through the Engine must reach that
 // scheme's send(), resolve the registry to the stored handle, fire teardown
 // with that exact handle, and close the registry row at 499.
-test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
+test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId, turnId } = await seedEnvelope(db, `sub-route-${crypto.randomUUID()}`);
@@ -72,7 +72,7 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
                     session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,
                 });
                 if (e === undefined) return { status: 404 };
-                // Registry lookup — the whole point of §7.1: route by (run, entry) to scheme+handle.
+                // Registry lookup — the whole point of §subscriptions: route by (run, entry) to scheme+handle.
                 const sub = await ChannelWrite.findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
                 if (sub === null) return { status: 404 };
                 if (sub.scheme !== "fakestream") return { status: 501 };
@@ -105,11 +105,11 @@ test("[§7.1-subscription-registry-routes-cancellation] SEND[499] resolves the r
     } finally { await db.close(); }
 });
 
-// §7.3 — Channels are the source of truth for chunk content; the log captures
+// §no-chunk-rows — Channels are the source of truth for chunk content; the log captures
 // lifecycle ONLY (open/close), never one row per chunk. A real streaming exec
 // emits ≥5 stdout chunks (one per line) yet produces exactly ONE EXEC log row,
 // resolved at status 200 — proving chunks live on the channel, not in the log.
-test("[§7.3-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
+test("[§no-chunk-rows-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
     const db = await openMigrated();
     try {
         const chunkEvents: Array<{ channel: string; state: string }> = [];
@@ -154,11 +154,11 @@ test("[§7.3-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle 
     } finally { await db.close(); }
 });
 
-// §7.6 — ONE engine-level constraint: 100 MiB (104857600 chars) per channel
+// §stream-constraints — ONE engine-level constraint: 100 MiB (104857600 chars) per channel
 // body, enforced by CHECK on entry_channels.content. Over-cap → SQLITE_CONSTRAINT.
 // And NOTHING else is capped: a write well under the cap (1 MiB here) is stored
 // verbatim, un-truncated/un-throttled — the engine doesn't impose any smaller limit.
-test("[§7.6-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
+test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `cap-${crypto.randomUUID()}`);
@@ -192,11 +192,11 @@ test("[§7.6-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine
     } finally { await db.close(); }
 });
 
-// §7.7 — The daemon emits stream/event when channel content CHANGES, so clients
+// §live-updates — The daemon emits stream/event when channel content CHANGES, so clients
 // render live waterfalls without polling. Driving appendToChannel with the
 // daemon's notify callback must fire one event PER chunk (not just at close),
 // each carrying the new (growing) contentLength.
-test("[§7.7-stream-event-fires-on-chunk] daemon fires stream/event per chunk with growing contentLength", async () => {
+test("[§live-updates-stream-event-fires-on-chunk] daemon fires stream/event per chunk with growing contentLength", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -222,18 +222,18 @@ test("[§7.7-stream-event-fires-on-chunk] daemon fires stream/event per chunk wi
     });
 });
 
-// §7 — No engine-level transaction abstraction; schemes own connection
+// §stream — No engine-level transaction abstraction; schemes own connection
 // lifecycle. Structural: the Engine exposes dispatch/run loops but NO
 // connection/transaction surface (begin/commit/rollback/open/close). And
 // to the engine, channels are static storage — content arrives by a scheme
 // calling appendToChannel directly, with zero engine brokering.
-test("[§7-no-engine-transaction-abstraction] engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
+test("[§stream-no-engine-transaction-abstraction] engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         // The engine offers no transaction/connection lifecycle methods —
-        // those belong to schemes (SPEC §8.2: "Scheme-handler invocation
+        // those belong to schemes (SPEC §sql-ts-boundary: "Scheme-handler invocation
         // (connections, subprocesses, fetch)" + "Stream AbortController lifecycle").
         for (const forbidden of ["beginTransaction", "commit", "rollback", "openConnection", "closeConnection", "subscribe", "transaction"]) {
             assert.equal(
@@ -258,11 +258,11 @@ test("[§7-no-engine-transaction-abstraction] engine has no connection/transacti
     } finally { await db.close(); }
 });
 
-// §13.6 — stream/event fires on a STATE TRANSITION (the other arm of "channel
+// §notifications — stream/event fires on a STATE TRANSITION (the other arm of "channel
 // content grows OR state transitions"), and the payload is metadata-only:
 // { entryId, channel, state, contentLength } — the new state, the existing
 // content length, and never any content body.
-test("[§13.6-stream-event-on-channel-change] state transition fires metadata-only stream/event with new state", async () => {
+test("[§notifications-stream-event-on-channel-change] state transition fires metadata-only stream/event with new state", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

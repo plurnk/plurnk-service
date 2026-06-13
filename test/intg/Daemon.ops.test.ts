@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
-test("[§13.5-op-mirror] op.edit creates an entry via engine.dispatch (origin=client)", async () => {
+test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin=client)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -99,7 +99,7 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
     });
 });
 
-test("[§13.6-log-entry-notify] op.* fires log/entry notification with the entry shape", async () => {
+test("[§notifications-log-entry-notify] op.* fires log/entry notification with the entry shape", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -140,7 +140,7 @@ test("log/entry notification is scoped to session", async () => {
     });
 });
 
-test("[§13.5-auto-envelope] op.* methods require init: Auto-create kicks in", async () => {
+test("[§methods-auto-envelope] op.* methods require init: Auto-create kicks in", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

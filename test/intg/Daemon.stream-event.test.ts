@@ -1,4 +1,4 @@
-// Tests for daemon's stream/event notification. SPEC §7.7 + §13.6.
+// Tests for daemon's stream/event notification. SPEC §live-updates + §notifications.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ test("daemon registers stream/event in discover catalog", async () => {
     });
 });
 
-test("[§13.6-envelope-carries-sessionid] notifyStreamEvent broadcasts to a session's clients, envelope stamped with the scope", async () => {
+test("[§notifications-envelope-carries-sessionid] notifyStreamEvent broadcasts to a session's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

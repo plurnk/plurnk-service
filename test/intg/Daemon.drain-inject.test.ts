@@ -29,7 +29,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
-test("[§13.6-stream-concluded] loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
+test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
     // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
@@ -83,7 +83,7 @@ test("[§13.6-stream-concluded] loop.cancel terminates a backgrounded exec; the 
     });
 });
 
-test("[§13.5-loop-cancel] loop.cancel: no active drain → cancelled=false", async () => {
+test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [sendOnly("<<SEND[200]:done:SEND")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -1,4 +1,4 @@
-// SPEC §14.3 constraint-overlay client tooling (F.3). The membership EFFECTS are
+// SPEC §membership constraint-overlay client tooling (F.3). The membership EFFECTS are
 // proven in contract-workspace.test.ts; this is the RPC wire round-trip:
 // session.constrain / .constraints / .unconstrain, and input validation.
 
@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { withDaemon, connect, rpcCall } from "./_rpc.ts";
 
-test("session.constrain / .constraints / .unconstrain round-trip over RPC (SPEC §14.3 overlay tooling)", async () => {
+test("session.constrain / .constraints / .unconstrain round-trip over RPC (SPEC §membership overlay tooling)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

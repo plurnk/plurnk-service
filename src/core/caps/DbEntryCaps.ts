@@ -2,7 +2,7 @@
 // schemes exports the capability interfaces; plurnk-service injects this
 // db-backed impl so a third-party `@plurnk/plurnk-schemes-*` sibling reaches
 // entries through intent (read/write/delete) instead of the forbidden raw
-// `ctx.db` (schemes SPEC §5). Binds a PlurnkSchemeContext + the scheme name and
+// `ctx.db` (schemes SPEC §channels). Binds a PlurnkSchemeContext + the scheme name and
 // delegates 1:1 to EntryCrud — the same path the in-tree schemes use during
 // transition, so the adapter is zero-behavior-change over a proven primitive.
 

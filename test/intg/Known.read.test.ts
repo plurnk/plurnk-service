@@ -40,7 +40,7 @@ const setupContext = async () => {
     return { db, sessionId, runId };
 };
 
-test("[§6.2-read-content] Known.read: existing entry — returns body content and mimetype with status 200", async () => {
+test("[§read-read-content] Known.read: existing entry — returns body content and mimetype with status 200", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -52,7 +52,7 @@ test("[§6.2-read-content] Known.read: existing entry — returns body content a
     } finally { db.close(); }
 });
 
-test("[§6.2-read-404] Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
+test("[§read-read-404] Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, sessionId } = await setupContext();
     try {
         const result = await new Known().read(readStatement({ target: urlPath("known", "/nope") }), makeSchemeCtx({ db, sessionId }));
@@ -72,7 +72,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("[§16.7-text-markdown-normalize] Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
+test("[§markdown-primitive-text-markdown-normalize] Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, sessionId, runId } = await setupContext();
     try {
         const k = new Known();
@@ -219,7 +219,7 @@ test("Known.read: read against session A doesn't surface session B's entry", asy
 
 // --- Extension-based mimetype (plurnk-grammar 0.14.0) ---------------
 
-test("[§16.5-extension-mimetype] Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("[§ext-mimetype-extension-mimetype] Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, sessionId, runId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

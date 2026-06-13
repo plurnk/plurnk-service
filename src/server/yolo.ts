@@ -24,7 +24,7 @@
 //     - The wire roundtrip still happens; the daemon stays unaware that
 //       no human reviewed.
 //     - Use cases: real users who want "stop bothering me" ergonomics
-//       across an interactive session. Documented in client SPEC §6.3.
+//       across an interactive session. Documented in client SPEC §open-fold.
 //
 // Listener fires BEFORE Engine.#awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch

@@ -37,7 +37,7 @@ const wire = async () => {
     return { db, engine, exec, sessionId, runId, loopId, turnId };
 };
 
-test("[§6.8-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs in-process, returns output in-band — no proposal", async () => {
+test("[§exec-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs in-process, returns output in-band — no proposal", async () => {
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
         // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
@@ -54,7 +54,7 @@ test("[§6.8-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs in
     } finally { await db.close(); }
 });
 
-test("[§6.8-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
+test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
         const idDeferred = deferred<number>();
@@ -72,7 +72,7 @@ test("[§6.8-host-proposes] effect-gating: sh (host) proposes — entry sits at 
     } finally { await db.close(); }
 });
 
-test("[§6.8-registry-resolves] unknown runtime → 501 (registry resolves; no such executor)", async () => {
+test("[§exec-registry-resolves] unknown runtime → 501 (registry resolves; no such executor)", async () => {
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({

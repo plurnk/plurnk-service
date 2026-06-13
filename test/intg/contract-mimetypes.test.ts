@@ -1,14 +1,14 @@
 // Integration coverage for previously-untagged SPEC.md contract anchors that
-// concentrate around the mimetype seam: matcher soft-fallback (§16.1),
-// compose-pattern (§16.3), 410 channel-delete
-// (§3.5), the Mimetypes.process entry point (§4.2), and the write-time vs
-// render-time handler firing boundary (§4 — schemes do not invoke handlers).
+// concentrate around the mimetype seam: matcher soft-fallback (§matcher-dispatch),
+// compose-pattern (§slice-semantics), 410 channel-delete
+// (§send-dispatch), the Mimetypes.process entry point (§mimetype-methods), and the write-time vs
+// render-time handler firing boundary (§mimetype — schemes do not invoke handlers).
 //
 // Vehicles are the real production paths:
-//   - §16.1 / §16.3 — Known.read matcher dispatch (Matcher.matchAgainstContent → 203)
+//   - §matcher-dispatch / §slice-semantics — Known.read matcher dispatch (Matcher.matchAgainstContent → 203)
 //                     + Log.read structural <L> compose over the matcher result.
-//   - §3.5 — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
-//   - §4.2 / §4 — Mimetypes.process shape + a spy handler proving write (detect)
+//   - §send-dispatch — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
+//   - §mimetype-methods / §mimetype — Mimetypes.process shape + a spy handler proving write (detect)
 //                 never fires preview, but render (manifest build → process) does.
 
 import test from "node:test";
@@ -44,12 +44,12 @@ const setup = async () => {
     return { db, sessionId, runId, mimetypes };
 };
 
-// --- §16.1 matcher 203 soft-fallback ---------------------------------------
+// --- §matcher-dispatch matcher 203 soft-fallback ---------------------------------------
 // jsonpath against a `.json` entry whose body is malformed JSON: the json
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
-test("[§16.1-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
+test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const k = new Known();
@@ -78,12 +78,12 @@ test("[§16.1-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 wi
     } finally { await db.close(); }
 });
 
-// --- §16.3 killer composition: matcher-then-<L> ----------------------------
+// --- §slice-semantics killer composition: matcher-then-<L> ----------------------------
 // Dispatch a regex matcher READ through the Engine (lands at log://1/1/1 as
 // an application/json result), then structural <L><P> over that log entry
 // picks the P-th match — matcher rx is application/json, <L> selects the item.
 
-test("[§16.3-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match from a prior matcher result", async () => {
+test("[§slice-semantics-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match from a prior matcher result", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, runId, 1, "compose");
@@ -117,14 +117,14 @@ test("[§16.3-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match
         );
         assert.equal(picked.status, 200);
         assert.equal((picked.content ?? "").split("\n").length, 1, "<L><2> selects exactly the P-th line");
-        // §16.2: a single anonymous capture group extracts as a one-element
+        // §matcher-result: a single anonymous capture group extracts as a one-element
         // array, JSON-encoded as ["gamma"] for the 2nd match.
         assert.match(picked.content ?? "", /\["gamma"\]/);
         assert.doesNotMatch(picked.content ?? "", /alpha/);
     } finally { await db.close(); }
 });
 
-// --- §3.5 SEND[410](path#fragment) deletes only the named channel ----------
+// --- §send-dispatch SEND[410](path#fragment) deletes only the named channel ----------
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 
@@ -163,13 +163,13 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
     } finally { await db.close(); }
 });
 
-// --- §4.2 Mimetypes.process is the projection entry point -------------------
+// --- §mimetype-methods Mimetypes.process is the projection entry point -------------------
 // process(input, { channels }) returns the structural projections + extent
 // ({ mimetype, ok, totalLines, symbols?/deepJson?/deepXml? }) — no preview
 // post-0.15. Assert the shape against the real auto-discovered service for a
 // known mimetype (markdown → symbols) and an unknown one (ok:false).
 
-test("[§4.2-process-entry-point] Mimetypes.process returns the structural projections + extent", async () => {
+test("[§mimetype-methods-process-entry-point] Mimetypes.process returns the structural projections + extent", async () => {
     const md = "# Title\n\nbody paragraph\n\n## Sub\n\nmore";
     const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { channels: ["symbols"] });
     assert.equal(known.mimetype, "text/markdown", "process echoes the resolved mimetype");
@@ -183,13 +183,13 @@ test("[§4.2-process-entry-point] Mimetypes.process returns the structural proje
     assert.equal(unknown.ok, false, "ok:false signals the handler-miss");
 });
 
-// --- §4 schemes do NOT invoke mimetype handlers at write time --------------
+// --- §mimetype schemes do NOT invoke mimetype handlers at write time --------------
 // A spy handler instrumented on preview/query. Writing (Known.edit) resolves
 // the mimetype via Mimetypes.detect — it must NOT fire the handler. Rendering
 // (the manifest build → Mimetypes.process) MUST fire it. Same handler, two
 // phases: 0 firings after write, >0 after render.
 
-test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firing the handler; render fires it", async () => {
+test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype without firing the handler; render fires it", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
@@ -236,8 +236,8 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
         const channel = await (db.test_get_channel as PrepMethod).get<{ mimetype: string }>({ entry_id: edited.entryId, name: "body" });
         assert.equal(channel?.mimetype, "text/x-spy", "write-time detect resolved the spy mimetype");
-        assert.equal(previewCalls.length, 0, "§4: scheme write did NOT invoke the handler's preview");
-        assert.equal(queryCalls.length, 0, "§4: scheme write did NOT invoke the handler's query");
+        assert.equal(previewCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's preview");
+        assert.equal(queryCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's query");
 
         // RENDER phase: a turn assembles the packet; the manifest build routes
         // the spy channel through Mimetypes.process → handler.preview fires.
@@ -247,7 +247,7 @@ test("[§4-schemes-do-not-invoke-handlers] write resolves mimetype without firin
             responses: [{ assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } }],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        assert.ok(previewCalls.length > 0, "§4: render-time manifest build DID invoke the handler's preview");
+        assert.ok(previewCalls.length > 0, "§mimetype: render-time manifest build DID invoke the handler's preview");
         assert.ok(previewCalls.includes("alpha\nbeta\ngamma"), "handler saw the stored channel content at render time");
     } finally { await db.close(); }
 });

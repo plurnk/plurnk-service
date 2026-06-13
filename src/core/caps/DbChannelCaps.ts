@@ -1,7 +1,7 @@
 // db-backed ChannelCaps (@plurnk/plurnk-schemes) — keystone PR-2 seam (#180).
 // append/replace/setState over a single channel, addressed by pathname. Resolves
 // pathname→entryId, then drives the ChannelWrite SQL. append grows existing
-// content (token re-count deferred to render, per §14.2); replace swaps content
+// content (token re-count deferred to render, per §tokenomics); replace swaps content
 // and re-tokenizes at write. Absent entry or channel → 404.
 
 import type { ChannelCaps, ChannelState } from "@plurnk/plurnk-schemes";

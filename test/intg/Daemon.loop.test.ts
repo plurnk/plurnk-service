@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
-test("[§13.5-loop-run] loop.run with mock provider runs a model turn and persists entries", async () => {
+test("[§methods-loop-run] loop.run with mock provider runs a model turn and persists entries", async () => {
     const dsl = "<<EDIT(known://france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 142)] });
 
@@ -42,7 +42,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries();
-            // §13.6 / #198 — the turn-1 prompt-foist (system-origin EDIT, the
+            // §notifications / #198 — the turn-1 prompt-foist (system-origin EDIT, the
             // user's words entering the run) broadcasts too, ahead of the
             // model's ops; previously it was written but never notified.
             assert.equal(captured.length, 3);

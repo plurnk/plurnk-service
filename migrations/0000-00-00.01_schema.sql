@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS entries (
     pathname   TEXT    NOT NULL,
     params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
-    -- SPEC §14.3 — how a file member entered the curated surface. 'git' rows are
+    -- SPEC §membership — how a file member entered the curated surface. 'git' rows are
     -- reconciled against `git ls-files − ignore` each turn (registered + un-registered
     -- so entries == members); 'client'/'constraint' (model-created, add-glob) are not
     -- git's to reclaim. NULL = not a file member (other schemes don't carry origin).
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE UNIQUE INDEX IF NOT EXISTS entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
 CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
 
--- The ONE engine-imposed constraint (SPEC §7.8): 100 MiB char-length cap
+-- The ONE engine-imposed constraint (SPEC §stream-constraints): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
 CREATE TABLE IF NOT EXISTS entry_channels (
     entry_id INTEGER NOT NULL,
@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
-    -- §14.5 environment-delta cause: a sibling run-id or a scheme ('file');
+    -- §env-delta environment-delta cause: a sibling run-id or a scheme ('file');
     -- NULL = the owning run itself (self), rendered without a run= label.
     source          TEXT,
 
@@ -354,7 +354,7 @@ BEGIN
 END;
 
 -- INIT: subscriptions
--- Subscription registry per SPEC §7.1. Exists ONLY for cancellation
+-- Subscription registry per SPEC §subscriptions. Exists ONLY for cancellation
 -- routing (SEND[499] → lookup → scheme teardown). Closed rows persist
 -- for forensics; partial unique index enforces one active subscription
 -- per (run, entry).
@@ -385,9 +385,9 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
 -- INIT: run_watermarks
--- §14.5 environment-delta detection. Per (run, entry, channel): the content this
+-- §env-delta environment-delta detection. Per (run, entry, channel): the content this
 -- run last reconciled. First sight sets it silently (no delta); a later content
--- change materializes a delta-EDIT (the diff span, §14.6) and advances the mark.
+-- change materializes a delta-EDIT (the diff span, §edit-result-render) and advances the mark.
 -- plurnk:// derived entries (manifest/prompt) are excluded at the query, not here.
 CREATE TABLE IF NOT EXISTS run_watermarks (
     run_id   INTEGER NOT NULL,
@@ -400,7 +400,7 @@ CREATE TABLE IF NOT EXISTS run_watermarks (
 ) STRICT, WITHOUT ROWID;
 
 -- INIT: session_constraints
--- SPEC §14.3 constraint overlay — the client's supersede over git membership.
+-- SPEC §membership constraint overlay — the client's supersede over git membership.
 -- Per (session, effect, glob): `add` (members git misses, resolved by a targeted
 -- client-dictated scan), `ignore` (drop git-tracked matches), `read-only` (member
 -- for read; File.edit rejects the write). git-absent, `add` rows are the sole

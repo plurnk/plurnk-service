@@ -279,7 +279,7 @@ test("entry_channels: (entry_id, name) UNIQUE", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §7.6)", async () => {
+test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §stream-constraints)", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertAgentEntry(db, "known", "big");

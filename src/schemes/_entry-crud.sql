@@ -1,4 +1,4 @@
--- Entry CRUD primitives (SPEC §3.2). Used by entry-bearing schemes
+-- Entry CRUD primitives (SPEC §crud). Used by entry-bearing schemes
 -- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
 
 -- PREP: crud_find_session_entry
@@ -20,7 +20,7 @@ VALUES ('session', $session_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_register_session_member
--- Idempotent bare-membership insert (SPEC §14.3 D4 — git ls-files membership).
+-- Idempotent bare-membership insert (SPEC §membership D4 — git ls-files membership).
 -- A git-tracked file is a session member by virtue of being tracked; the row
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
@@ -63,7 +63,7 @@ SELECT id, pathname FROM entries
 WHERE scope = 'session' AND session_id = $session_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_session_constraint
--- SPEC §14.3 constraint overlay — the client supersede. Idempotent per
+-- SPEC §membership constraint overlay — the client supersede. Idempotent per
 -- (session, effect, glob); effect ∈ {add, ignore, read-only}.
 INSERT OR IGNORE INTO session_constraints (session_id, effect, glob)
 VALUES ($session_id, $effect, $glob);

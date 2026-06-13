@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import MethodRegistry from "../../src/server/MethodRegistry.ts";
 
-test("[§13.3-register] MethodRegistry: registerMethod accepts a new method", () => {
+test("[§method-registration-register] MethodRegistry: registerMethod accepts a new method", () => {
     const r = new MethodRegistry();
     r.registerMethod("ping", { handler: async () => ({}), description: "liveness" });
     assert.equal(r.hasMethod("ping"), true);

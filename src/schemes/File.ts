@@ -11,7 +11,7 @@ import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { ReadEntryResult, EntryData, WriteEntryResult } from "./_entry-crud.ts";
 
-// Resolved + §14.3-gated disk-write target, or the error status to return.
+// Resolved + §membership-gated disk-write target, or the error status to return.
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string }
     | { ok: false; status: number; error: string };
@@ -51,11 +51,11 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // entry, so read/find/readEntry 404 it for free, the same invariant Known runs on
 // (a gitignored `.env` is never a member → never an entry → never readable). Disk
 // I/O is confined to the two edges that own it: the git-membership materialize-IN
-// and edit()/applyResolution()'s proposal-gated write-OUT (§14.3), where the
+// and edit()/applyResolution()'s proposal-gated write-OUT (§membership), where the
 // containment/traversal checks live.
 //
 // writeEntry() is deliberately ABSENT: a COPY/MOVE *into* file:// is a disk write
-// and MUST flow through the §14.3 proposal gate (like EDIT), not an ungated
+// and MUST flow through the §membership proposal gate (like EDIT), not an ungated
 // overwrite — the `.env`-wipe this guard prevents. So COPY/MOVE *from* file://
 // works (readEntry); *into* file:// stays 501 until the proposal-gated write-back
 // lands. The 501 is duck-typed on writeEntry's absence (Engine.#copyOrchestration).
@@ -92,7 +92,7 @@ export default class File {
         return EntryCrud.readEntry(pathname, ctx, null);
     }
 
-    // §14.3 disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
+    // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
     // dest). Resolves the canonical path; enforces containment (traversal → 403),
     // membership (existing non-member → 403, the `.env` protection), the read-only
     // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
@@ -144,7 +144,7 @@ export default class File {
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
         // LineMarkerOps.applyLineMarkerEdit (line edit). On a non-existent file,
-        // body becomes content regardless of marker (per "Resolved ambiguities" §3).
+        // body becomes content regardless of marker (per "Resolved ambiguities" §scheme).
         const body = statement.body ?? "";
         let patched: string;
         if (statement.lineMarker !== null && fileExists) {
@@ -161,7 +161,7 @@ export default class File {
         return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched } };
     }
 
-    // COPY/MOVE INTO file:// — the dest write. Same §14.3 gate as edit, same 202
+    // COPY/MOVE INTO file:// — the dest write. Same §membership gate as edit, same 202
     // proposal + applyResolution path: a copy onto disk is a disk write and earns
     // the identical human review. Engine.#copyOrchestration propagates this 202;
     // Engine.#runApplyResolution routes the accept back here via the dest scheme;
@@ -221,7 +221,7 @@ export default class File {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
             }, ctx, null);
-            // §14.3/§14.5 — advance this run's watermark to the just-written content,
+            // §membership/§env-delta — advance this run's watermark to the just-written content,
             // so the model's own accepted edit isn't re-reported next turn as an
             // external disk divergence (the EMI signal is for OUT-of-band changes
             // only). Mirrors editSessionEntry's reconcile.

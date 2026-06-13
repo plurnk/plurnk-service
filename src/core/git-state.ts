@@ -11,7 +11,7 @@ export interface GitStatus {
     untracked: number;
 }
 
-// SPEC §15.1 — git working-tree state for the telemetry section: the model's
+// SPEC §telemetry — git working-tree state for the telemetry section: the model's
 // ambient "where am I, what have I touched" without running a command. A
 // service-side shell-out (git is local + cheap, the same surface git membership
 // uses), gated by `PLURNK_GIT_ENABLED` (the hard service ceiling) + a git

@@ -139,7 +139,7 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("[§3.3-op-dispatch] Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, writes entry", async () => {
+test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -293,10 +293,10 @@ test("Engine.dispatch: origin field captured in log", async () => {
     } finally { await db.close(); }
 });
 
-// SPEC §3.6: writer must be in target scheme's manifest.writableBy or dispatch
+// SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("[§3.6-writableby-403] Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
+test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -376,10 +376,10 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     } finally { await db.close(); }
 });
 
-// SPEC §3.6 / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
+// SPEC §scheme-surface / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
-test("[§3.6-exception-500] Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+test("[§scheme-surface-exception-500] Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();

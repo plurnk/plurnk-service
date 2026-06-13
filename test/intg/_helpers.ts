@@ -40,7 +40,7 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     writer: "model",
     signal: undefined,
     mimetypes: DEFAULT_MIMETYPES,
-    // Write-time token accounting (SPEC §14.2). Divisor stand-in mirrors the
+    // Write-time token accounting (SPEC §tokenomics). Divisor stand-in mirrors the
     // production boot tripwire; the entry/log write helpers require it.
     tokenize: (text: string) => Math.ceil(text.length / 4),
     ...overrides,

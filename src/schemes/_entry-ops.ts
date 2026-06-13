@@ -6,12 +6,12 @@ import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
-// follows SPEC §5.4: path.fragment ?? manifest.defaultChannel.
+// follows SPEC §channel-selection: path.fragment ?? manifest.defaultChannel.
 
 // The model sees its EDIT's RESULT — the edited area as it looks now,
-// line-numbered with a couple lines of context (§14.6) — rendered from the
+// line-numbered with a couple lines of context (§edit-result-render) — rendered from the
 // `span` computed here and carried on rx. Post-edit state inline, no
-// confirming READ; the same rendering serves system delta-EDITs (§14.5).
+// confirming READ; the same rendering serves system delta-EDITs (§env-delta).
 // Supersedes the prior input-echo of the source statement.
 export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null };
 // startLine = 1-indexed position the content starts at in the original
@@ -75,7 +75,7 @@ export default class EntryOps {
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
-        // 415 on binary entries (SPEC.md §16.8).
+        // 415 on binary entries (SPEC.md §op-invariants).
         if (existing !== undefined) {
             const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
                 session_id: sessionId, scheme, pathname, channel: targetChannel,
@@ -104,7 +104,7 @@ export default class EntryOps {
         // JSON → LineMarkerOps.applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
         // otherwise → LineMarkerOps.applyLineMarkerEdit (line edit, original semantics).
         // On a non-existent entry, body becomes the content regardless of marker
-        // (per "Resolved ambiguities" §3 — sentinels/positions only apply to
+        // (per "Resolved ambiguities" §scheme — sentinels/positions only apply to
         // existing content).
         let newContent: string;
         if (statement.lineMarker !== null && existing !== undefined) {
@@ -117,7 +117,7 @@ export default class EntryOps {
             newContent = body;
         }
 
-        // 304 no-op (SPEC §6.1): an existing entry whose write would change nothing —
+        // 304 no-op (SPEC §edit): an existing entry whose write would change nothing —
         // identical content and no new tag. Mirrors OPEN/FOLD's 304 on no-op; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
@@ -148,12 +148,12 @@ export default class EntryOps {
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
         // NB: NO @graph derivation here — a scheme write resolves the mimetype
-        // label but never invokes the mimetypes handler (§4). The symbol index is
+        // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).
 
-        // §14.5 — reconcile this run's watermark to the just-written content, so the
+        // §env-delta — reconcile this run's watermark to the just-written content, so the
         // build-time delta detector doesn't re-report the model's own edit (it's
-        // already on the log via §14.6's EDIT row).
+        // already on the log via §edit-result-render's EDIT row).
         if (ctx.runId !== undefined) {
             await (db.engine_set_watermark as PrepMethod).run({ run_id: ctx.runId, entry_id: entryId, channel: targetChannel, content: newContent });
         }

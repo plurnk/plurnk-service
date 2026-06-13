@@ -2,7 +2,7 @@
 // queryJsonpathObject) live in @plurnk/plurnk-mimetypes and run REAL here over
 // fixed content — they're pure functions, so their output is deterministic.
 // What plurnk-service OWNS and this file tests is the orchestration: dialect
-// dispatch, the `<line>:\t<value>` rendering (§16.2), the <L> baseLine shift,
+// dispatch, the `<line>:\t<value>` rendering (§matcher-result), the <L> baseLine shift,
 // and the status mapping (200/204/203/400/501). Only `mimetypes.process` (the
 // structural projection) is stubbed — it's the one daughter method matcher.ts
 // calls; glob/regex go straight to the imported primitives.
@@ -23,21 +23,21 @@ const noProcess = stubProcess(async () => ({ deepJson: null, deepXml: "" }));
 
 const regexBody = (pattern: string): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" });
 
-test("[§16.2-match-line-form] regex hits → 200, one `<line>:\\t<value>` per match", async () => {
+test("[§matcher-result-match-line-form] regex hits → 200, one `<line>:\\t<value>` per match", async () => {
     const r = await Matcher.matchAgainstContent(regexBody("foo"), "alpha\nfoo bar\nbeta\nfoo baz", "text/markdown", noProcess);
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
     assert.equal(r.body, "2:\tfoo\n4:\tfoo");  // matched = the regex match, not the line
 });
 
-test("[§16.2-empty-204] matcher applied with zero hits → 204, no body", async () => {
+test("[§matcher-result-empty-204] matcher applied with zero hits → 204, no body", async () => {
     const r = await Matcher.matchAgainstContent(regexBody("zzz"), "alpha\nbeta", "text/markdown", noProcess);
     assert.equal(r.status, 204);
     assert.equal(r.matches, 0);
     assert.equal(r.body, undefined);
 });
 
-test("[§16.2-value-encoding] object hits → compact JSON one-per-line; the `matching` discriminator is dropped", async () => {
+test("[§matcher-result-value-encoding] object hits → compact JSON one-per-line; the `matching` discriminator is dropped", async () => {
     // jsonpath runs over the daughter's deepJson projection (stubbed here). Both
     // hits resolve to source line 1; their distinguishing `matching` paths
     // ($['users'][0] / [1]) are NOT rendered — only line + value.

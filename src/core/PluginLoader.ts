@@ -1,4 +1,4 @@
-// Plugin discovery + loading for the daemon. SPEC §9.
+// Plugin discovery + loading for the daemon. SPEC §plugin-discovery.
 //
 // Boot-time scan of node_modules/@plurnk/*/package.json — filter for those
 // with a `plurnk` manifest field, dynamic-import them, register with the

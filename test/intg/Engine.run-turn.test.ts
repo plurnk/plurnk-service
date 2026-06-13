@@ -148,7 +148,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
     } finally { await db.close(); }
 });
 
-test("[§2.2-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
+test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
     // Turn-as-container model, 1-based. Turn 1 opens with sequence=1
     // reserved for the prompt (system-origin EDIT against
     // plurnk://prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
@@ -213,7 +213,7 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
 });
 
 test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification policy", async () => {
-    // Per SPEC §15.1 gamification policy: zero ops is the model's emission
+    // Per SPEC §telemetry gamification policy: zero ops is the model's emission
     // choice, not an error to report. Engine still treats it as a struck
     // turn internally (strike accounting), but no model-facing telemetry.
     const { db, engine, sessionId, runId, loopId } = await setup();
@@ -299,7 +299,7 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
 // window before maxTurns. Soft: no strike, no loop-status change.
 
 test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
-    // Per SPEC §15.1 gamification policy: telling the model "you're near
+    // Per SPEC §telemetry gamification policy: telling the model "you're near
     // my abandonment threshold" is engine bookkeeping, not an error. The
     // loop still abandons at maxTurns; the model just doesn't see warnings.
     const { db, engine, sessionId, runId, loopId } = await setup();
@@ -434,7 +434,7 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
 });
 
 test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT strike telemetry", async () => {
-    // Per SPEC §15.1 gamification policy: model sees the failed action
+    // Per SPEC §telemetry gamification policy: model sees the failed action
     // (action_failure surfaces the 403), never the engine's strike
     // counter. Telling the model "strike 1 of 5" would let it optimize
     // for the meter instead of the task.
@@ -687,7 +687,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
     } finally { await db.close(); }
 });
 
-// SPEC §15 packet.system.log — chronological action-entries for the loop.
+// SPEC §packet packet.system.log — chronological action-entries for the loop.
 // Task #44.
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
@@ -771,7 +771,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
     } finally { await db.close(); }
 });
 
-// SPEC §15.1 — action-bound failures mirror into next packet's telemetry.errors[].
+// SPEC §telemetry — action-bound failures mirror into next packet's telemetry.errors[].
 // Task #49.
 
 test("Engine.runTurn: telemetry.errors empty on first turn", async () => {

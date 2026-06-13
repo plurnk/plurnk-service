@@ -1,4 +1,4 @@
-// SPEC §14.3 D4 — git-ls-files workspace membership.
+// SPEC §membership D4 — git-ls-files workspace membership.
 //
 // When a session's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
@@ -74,7 +74,7 @@ export default class GitMembership {
     }
 
     // Resolve a session's file membership: the desired set is (git ls-files ∪ add
-    // globs) − ignore globs (SPEC §14.3 overlay), reconciled against the registered
+    // globs) − ignore globs (SPEC §membership overlay), reconciled against the registered
     // overlay-owned members so entries == members. Channel-less rows — disk is the
     // truth (D3); the row is the membership marker File.read gates on. Returns the
     // desired pathnames so the caller can materialize them through writeEntry.
@@ -94,7 +94,7 @@ export default class GitMembership {
         const addGlobs = constraints.filter((c) => c.effect === "add").map((c) => c.glob);
 
         // git substrate — empty when root isn't a git worktree, so `add` is then the
-        // SOLE membership source (SPEC §14.3). No early-return on non-git.
+        // SOLE membership source (SPEC §membership). No early-return on non-git.
         const tracked = await GitMembership.#isGitWorkTree(root, signal)
             ? await GitMembership.#gitTrackedFiles(root, signal)
             : [];
@@ -131,7 +131,7 @@ export default class GitMembership {
         return desired;
     }
 
-    // Targeted client-dictated scan (SPEC §14.3 `add`) — enumerate disk files
+    // Targeted client-dictated scan (SPEC §membership `add`) — enumerate disk files
     // matching the client's add-globs via node:fs glob (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.

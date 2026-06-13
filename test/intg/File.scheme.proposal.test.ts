@@ -1,5 +1,5 @@
-// File scheme as the canonical proposal consumer (SPEC.md §0.5 + §13.5
-// + §14.3 D3 — disk co-location). EDIT against file:// returns status=202 with a udiff body
+// File scheme as the canonical proposal consumer (SPEC.md §engine-rails + §methods
+// + §membership D3 — disk co-location). EDIT against file:// returns status=202 with a udiff body
 // and {path, canonical, patch, patched} attrs; on accept the engine calls
 // File.applyResolution which writes patched content to disk.
 
@@ -68,11 +68,11 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     }
 };
 
-test("[§6.9-accept-applies] file.edit: writes file on accept via applyResolution", async () => {
+test("[§proposal-accept-applies] file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
-        // File.edit gates on membership (SPEC §14.3): a pre-existing file must be a
+        // File.edit gates on membership (SPEC §membership): a pre-existing file must be a
         // member (git-tracked or client-added) to be editable — register it, the same
         // way READ's gate is satisfied below. A NEW path needs no prior member.
         await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
@@ -108,7 +108,7 @@ test("[§6.9-accept-applies] file.edit: writes file on accept via applyResolutio
 test("file.edit: rejection leaves file untouched", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
-        // pre-existing file must be a member to be editable (SPEC §14.3 edit gate)
+        // pre-existing file must be a member to be editable (SPEC §membership edit gate)
         await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
         await writeFile(join(root, target), "original\n", "utf8");
 
@@ -163,7 +163,7 @@ test("file.edit: refuses traversal escape", async () => {
 test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
-        // pre-existing file must be a member to be editable (SPEC §14.3 edit gate)
+        // pre-existing file must be a member to be editable (SPEC §membership edit gate)
         await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
         await writeFile(join(root, target), "original\n", "utf8");
 

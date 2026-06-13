@@ -1,5 +1,5 @@
 // Shared CRUD primitives for entry-bearing schemes (Known, Unknown, Skill).
-// Per SPEC §3.2 — uniform read/write/delete that the engine drives for
+// Per SPEC §crud — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
 import type { PrepMethod } from "../core/Db.ts";
@@ -21,7 +21,7 @@ export interface WriteEntryResult {
     status: number;
     created: boolean;
     entryId: number | null;
-    // 202 proposal: a write INTO file:// is a disk write under §14.3 review —
+    // 202 proposal: a write INTO file:// is a disk write under §membership review —
     // carries the udiff for the client + the applyResolution inputs. Absent for
     // synchronous entry schemes (known/unknown/skill write directly).
     body?: string;
@@ -80,7 +80,7 @@ export default class EntryCrud {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
         }
         // NB: NO @graph derivation here — a write stores content + label; the
-        // mimetypes handler is never invoked at write (§4). The symbol index is
+        // mimetypes handler is never invoked at write (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody),
         // which walks every entry — files included — once per turn.
 

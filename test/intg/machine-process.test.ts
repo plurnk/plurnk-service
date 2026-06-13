@@ -1,10 +1,10 @@
-// SPEC §1.4 — the machine and its processes (session = world, run = log, fork).
+// SPEC §machine-processes — the machine and its processes (session = world, run = log, fork).
 //
 // These prove the ownership line through BEHAVIOR on the real op surface — never
 // by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
 // around SqlRite and tests shape instead of conduct). One invariant is true today
 // and asserted for real; the rest are deferred-red conformance targets for the
-// epic this section defines — and {§1.4-run-is-its-log} is red precisely because
+// epic this section defines — and {§machine-processes-run-is-its-log} is red precisely because
 // a per-run shadow snapshot (run_watermarks) still sits beside the log, which the model forbids.
 
 import test from "node:test";
@@ -26,7 +26,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§1.4-one-filesystem] the entries are the session's — a second run writing the same path updates the one shared entry, it does not mint a second", async () => {
+test("[§machine-processes-one-filesystem] the entries are the session's — a second run writing the same path updates the one shared entry, it does not mint a second", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -50,13 +50,13 @@ test("[§1.4-one-filesystem] the entries are the session's — a second run writ
     } finally { db.close(); }
 });
 
-test("[§1.4-one-overlay] membership is the session's — one overlay, identical for every run",
+test("[§machine-processes-one-overlay] membership is the session's — one overlay, identical for every run",
     { todo: "membership is session-level; the cross-run-identical proof is a focused test (two runs, one resolved member set) — deferred pending it" }, () => {});
 
-test("[§1.4-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
+test("[§machine-processes-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
     { todo: "VIOLATED today: a per-run shadow snapshot (run_watermarks) still sits beside the log; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
 
-test("[§1.4-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
+test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -80,7 +80,7 @@ test("[§1.4-fork-copies-the-log] a fork copies the parent's log (rows + their f
     } finally { db.close(); }
 });
 
-test("[§1.4-fork-shares-the-world] a fork shares the session's filesystem and overlay, live and uncopied", async () => {
+test("[§machine-processes-fork-shares-the-world] a fork shares the session's filesystem and overlay, live and uncopied", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -100,7 +100,7 @@ test("[§1.4-fork-shares-the-world] a fork shares the session's filesystem and o
     } finally { db.close(); }
 });
 
-test("[§1.4-no-fork-session] a session cannot be forked; the fork is run-scoped", async () => {
+test("[§machine-processes-no-fork-session] a session cannot be forked; the fork is run-scoped", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);

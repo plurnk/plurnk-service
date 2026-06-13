@@ -1,4 +1,4 @@
--- Token-accounting reads (SPEC §14.2). Surface the tokens columns populated
+-- Token-accounting reads (SPEC §tokenomics). Surface the tokens columns populated
 -- at write time so tokenomics.test.ts can assert them directly.
 
 -- PREP: tok_channel_tokens

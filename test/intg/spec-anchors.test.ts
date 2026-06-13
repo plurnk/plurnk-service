@@ -5,14 +5,16 @@
 // cites an anchor that no longer exists in SPEC.md (orphan — typo or stale
 // reference), AND fails if a SPEC promise has no test citing its anchor
 // (uncovered — the contract isn't pinned by any test, the failure mode that
-// let §14.3 membership ship as a façade). A red test for an unbuilt contract
-// still counts as cited; the anchor must simply exist in a test name.
+// let the §membership contract ship as a façade). A red test for an unbuilt
+// contract still counts as cited; the anchor must simply exist in a test name.
 //
 // Conventions:
-//   In SPEC.md:  trailing `{§<id>}` at the end of each promise bullet.
-//   In tests:    `test("[§<id>] <description>", ...)`.
+//   In SPEC.md:  trailing `{§<tag>}` at the end of each promise bullet.
+//   In tests:    `test("[§<tag>] <description>", ...)`.
 //
-// IDs are `<section>-<semantic>` kebab-cased.
+// Tags are terse, kebab-cased, section-independent: the prefix names the section
+// (`§discovery`), the postfix the promise (`§discovery-discover`). No digits —
+// renumbering SPEC never orphans a citation; the tag travels with the promise.
 
 import test from "node:test";
 import assert from "node:assert/strict";
