@@ -15,7 +15,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
-test("PLURNK_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
+test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
     const docPath = join(dir, "agents.md");
     const docBody = "# Project rules\nBe excellent.\n";

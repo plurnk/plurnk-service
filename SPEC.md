@@ -142,7 +142,9 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation §membership, git auto-add) is an **ephemeral `plurnk` run** firing ordinary ops, seen by other runs through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel runs stand on (spawn, dispatch, packet assembly, the budget rails §grinder, the fs-watch); everything expressible as ops on session entries is a run doing ops, through the same `op.*` surface (§methods) the service offers clients. Dogfooding is the architecture, not a test mode. {§actor-boundary-self-hosting}
 
-**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. What remains is *repatriation* — the inline plurnk dispatches (the §env-delta materialization, today bolted into the model's loop) move into ephemeral plurnk runs via a headless spawn primitive mirroring `_dispatchAsClient`.
+**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. The keystone is **built** — `dispatchAsPlurnk` spawns the session's reserved `plurnk` run and fires ops through dispatch, mirroring `_dispatchAsClient`. What remains is *repatriation* — the inline plurnk dispatches still bolted into the model's loop (the §env-delta materialization, the manifest build, git auto-add) move onto it.
+
+**The keystone's first use: operator reference docs.** `PLURNK_MD_<ALIAS>=<path>` (§operator-config) materializes `<path>` as a `plurnk://<ALIAS>.md` entry — a `dispatchAsPlurnk` EDIT in the plurnk run, **not** the model's — and the model's turn-0 foists a READ of it. The model reads the doc inline while the materializing EDIT stays out of its log: idiomatic context injection, an ordinary entry + READ rather than a bespoke packet section. The same `PLURNK_MD_*` convention cascades to clients. {§actor-boundary-doc-injection}
 
 ### §machine-processes The machine and its processes: session, run, fork
 
@@ -701,6 +703,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§engine-rails).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§engine-rails).            |
 | `PLURNK_PERSONA`                     | `persona.md`       | enforced   | Path to the default persona file. Tail of the persona cascade: loops.persona > runs.persona > sessions.persona > this file. |
+| `PLURNK_MD_<ALIAS>`                  | (unset)            | enforced   | Operator reference doc: materializes `<path>` as `plurnk://<ALIAS>.md`, auto-READ into every model run's turn 0 (§actor-boundary). `~` expands to home. |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_REASON`                      | `0`                | enforced   | Reasoning-token budget. 0 = disabled. Positive = budget in tokens; provider modules translate to wire format. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
