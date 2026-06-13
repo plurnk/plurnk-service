@@ -63,7 +63,11 @@ export default class LoopRunMethod {
                 if (loopPersona !== null && typeof loopPersona !== "string") {
                     throw new Error("loop.run: persona must be a string or null");
                 }
-                const maxTurns = p.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50");
+                // PLURNK_MAX_TURNS is the operator turn ceiling (§12): -1 = no
+                // cap; positive = a hard cap a per-call maxTurns cannot exceed.
+                const ceiling = Number(process.env.PLURNK_MAX_TURNS ?? "-1");
+                const requested = p.maxTurns ?? ceiling;
+                const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
 
                 // Resolve provider for this call. Per-call alias override (issue
                 // #128) takes precedence over ctx.provider; absence falls back to
@@ -144,7 +148,7 @@ export default class LoopRunMethod {
             description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §6.3 for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
-                maxTurns: "number? — safety cap on turns (default PLURNK_MAX_TURNS or 50)",
+                maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§12)",
                 alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
                 persona: "string? — loop-level persona (text/markdown); takes precedence over session and run personas",

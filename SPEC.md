@@ -671,7 +671,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_M
 | `PLURNK_DB_PATH`                     | `./plurnk.db`      | enforced   | SQLite file path.                                             |
 | `PLURNK_HOST`                        | `127.0.0.1`        | enforced   | Bind address for the daemon WebSocket. Local-only by default. |
 | `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the daemon WebSocket.                            |
-| `PLURNK_MAX_TURNS`                   | `999`              | enforced   | Per-loop turn cap (overridable per `loop.run` call).          |
+| `PLURNK_MAX_TURNS`                   | `-1`               | enforced   | Operator turn **ceiling** — `-1` = no cap; a positive value caps a per-call `loop.run({maxTurns})`. |
 | `PLURNK_MAX_COMMANDS`                | `99`               | enforced   | Per-emission op cap. Overflow ops drop silently; one `max_commands_exceeded` telemetry entry surfaces on the next packet. |
 | `PLURNK_RPC_TIMEOUT`                 | `30000`            | reserved   | ms timeout for non-`longRunning` RPC handlers. Not yet enforced. |
 | `PLURNK_LOOP_TIMEOUT`                | `86400000`         | reserved   | ms wall-clock budget for a single `loop.run`. Not yet enforced. |
@@ -688,10 +688,10 @@ Model selection: separate alias cascade in `ProviderRegistry` (§2.3). `PLURNK_M
 **enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.example` (forward-spec) but no-op until wired.
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ENABLED` (`=0` flatly denies git service-wide, §14.3), `PLURNK_BUDGET_CEILING` (§14.2), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, and `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ENABLED` (`=0` flatly denies git service-wide, §14.3), `PLURNK_BUDGET_CEILING` (§14.2), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_PERSONA` / `PLURNK_REQUIREMENTS` (the §15.3 persona cascade / per-call requirements), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
-Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` is today a **default** (`loop.run({maxTurns})` overrides it with no cap check) despite its "cap" wording — open: if an operator turn-limit should be inviolable, it moves to ceiling semantics (a per-call `min()` against the env value).
+Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§12-max-turns-ceiling}
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 

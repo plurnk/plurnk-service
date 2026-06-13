@@ -529,7 +529,7 @@ export default class Engine {
                 return { turnIds, finalStatus: row.status, hitMaxTurns: false, reason: "external" };
             }
 
-            if (turnIds.length >= maxTurns) {
+            if (maxTurns >= 0 && turnIds.length >= maxTurns) {
                 await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
                 cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };

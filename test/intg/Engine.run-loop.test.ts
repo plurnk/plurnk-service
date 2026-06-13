@@ -86,6 +86,33 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 499 and hitMaxTurns 
     } finally { await db.close(); }
 });
 
+test("[§12-max-turns-ceiling] maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Four non-terminal turns then SEND[200]. A positive cap of 3 would
+        // force-terminate at turn 3 (499); -1 = no cap, so the loop runs all
+        // five and ends gracefully on the model's SEND. (A naive `length >= -1`
+        // terminator would also wrongly stop at turn 1 — this guards that too.)
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                response([sendStmt(102, "1")]),
+                response([sendStmt(102, "2")]),
+                response([sendStmt(102, "3")]),
+                response([sendStmt(102, "4")]),
+                response([sendStmt(200, "done")]),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider, sessionId, runId, loopId, maxTurns: -1,
+            messages: [{ role: "user", content: "run until I say done" }],
+        });
+        assert.equal(result.turnIds.length, 5, "ran all five turns — no turn cap");
+        assert.equal(result.finalStatus, 200);
+        assert.equal(result.hitMaxTurns, false);
+    } finally { await db.close(); }
+});
+
 test("Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
