@@ -56,7 +56,7 @@ test("[§14.8-one-overlay] membership is the session's — one overlay, identica
 test("[§14.8-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
     { todo: "VIOLATED today: a per-run shadow snapshot (run_watermarks) still sits beside the log; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
 
-test("[§14.8-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state) at the savepoint", async () => {
+test("[§14.8-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
