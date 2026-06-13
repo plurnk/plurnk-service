@@ -71,8 +71,23 @@ test("[§14.7-isolation] a packet renders one run's log; a sibling run's log is 
     } finally { db.close(); }
 });
 
-test("[§14.7-origin-not-filter] origin is attribution (provenance), never read to hide a row at render",
-    { todo: "Phase 1 — pairs with the isolation packet fixture: an in-run row of any origin still renders" }, () => {});
+test("[§14.7-origin-not-filter] origin is attribution (provenance), never read to hide a row at render", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        // A CLIENT-origin row living IN this run must still render: the renderer
+        // scopes by run, never hides by origin.
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/in-run.md"), "x"), sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
+        const packet = await (db.engine_render_log as PrepMethod).all<{ pathname: string; origin: string }>({ run_id: runId });
+        const row = packet.find((r) => r.pathname.includes("in-run"));
+        assert.ok(row !== undefined, "an in-run row renders regardless of origin");
+        assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
+    } finally { db.close(); }
+});
 
 test("[§14.7-two-doors] state crosses runs via the §14.5 delta; messages via inject — no third channel",
     { todo: "Phase 1 — the voice door (inject, #193) is unbuilt; the environment door is exercised under §14.5" }, () => {});
