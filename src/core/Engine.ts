@@ -1087,7 +1087,7 @@ export default class Engine {
     // §5.1 {§5.1-preview-is-handler-output}). For each (run, entry, channel)
     // with indexed=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
-    // does NOT branch on it (§5.6 {§5.6-engine-does-not-branch-on-state}).
+    // does NOT branch on it (§5.5 {§5.5-engine-does-not-branch-on-state}).
     // SPEC §15.1: model-facing alert surface.
     // Two sources, merged on each packet build:
     //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
@@ -1722,7 +1722,7 @@ export default class Engine {
             }
         }
 
-        // `<L>` source range slicing per SPEC.md §16.9 (symmetric with READ
+        // `<L>` source range slicing per SPEC.md §16.8 (symmetric with READ
         // `<L>` — source range, no line-number prefix).
         // Applied to every channel of the source entry. Binary channels return
         // 415 since line semantics don't apply.

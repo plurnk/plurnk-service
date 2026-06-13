@@ -85,7 +85,7 @@ export default class LoopRunMethod {
                 }
 
                 const { sessionId } = ctx.session;
-                // §13.7/§14.8 — the model runs in its OWN run, distinct from the
+                // §13.7/§1.4 — the model runs in its OWN run, distinct from the
                 // connection's client run, so the packet never carries client op.*.
                 const modelRunId = ctx.session.modelRunId ?? (ctx.session.modelRunId = await Envelope.ensureModelRun(ctx.db, sessionId));
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");

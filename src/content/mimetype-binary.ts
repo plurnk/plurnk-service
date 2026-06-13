@@ -3,7 +3,7 @@
 // daughter's functions (mandate: static-method class); call sites stay
 // `MimetypeBinary.isBinaryMimetype(...)`.
 //
-//   isBinaryMimetype       — enforces 415 on binary entries (SPEC §16.9)
+//   isBinaryMimetype       — enforces 415 on binary entries (SPEC §16.8)
 //   isLineNavigableMimetype — decides the render layer's `N:\t` line prefixes
 //   TEXT_PRIMITIVE_MIMETYPE — text/markdown, the auto-derived text default
 import { MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE as _TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";

@@ -88,6 +88,8 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 ## §1 Architecture
 
+The ecosystem and the in-process shape (§1.1–§1.2), then the two invariants the rest of the spec rests on: isolation by run (§1.3) and the session/run/fork ownership model (§1.4).
+
 ### §1.1 Ecosystem
 
 The plurnk project is a modular monorepo-of-repos in the `@plurnk/*` npm namespace. Each repo has one published package and one agent who owns it; cross-repo coordination happens through issues, not shared code. This service sits in the middle of that ecosystem and is its **runtime substrate** — the daemon other repos plug into.
@@ -122,6 +124,46 @@ The grammar (`@plurnk/plurnk-grammar`) owns parser + AST contract. Schemes recei
 
 Server posture: this package is the runtime. User-facing CLI lives in `plurnk` and consumes the library API (`src/index.ts` + `PATHS`).
 
+### §1.3 The actor boundary: isolation by run, two doors, self-hosting
+
+**Question.** A session holds many runs — model, client, plurnk (§0.1, §0.4) — over one shared manifest. What keeps one run's activity out of another's conversation; what are the *only* ways a run's work reaches another; and does the engine's own work obey the boundary or get a privileged back channel?
+
+**Decision — isolation by run; the model is not privileged.** A packet renders exactly one run's log — the assembling run's — against the session's shared manifest (§15). A run cannot see another's log: isolation is *structural*, a consequence of "a run owns its log entries" (§0.1) and "one packet, one run," never an `origin` filter at render time. `origin` (§0.4) is **attribution** — the delta's provenance (§14.5) — never read to hide a row. {§1.3-isolation} {§1.3-origin-not-filter}
+
+**Two doors, and only two.** A run's work reaches another run by exactly two channels, and a private log is reachable no other way:
+- the **environment door** — a write to a *shared entry* surfaces to every run sharing it as a folded, attributed delta (§14.5). *State.*
+- the **voice door** — an **inject** delivers a turn into a *specific* run's log; `btw` is the user's mid-loop inject. *Message.*
+
+{§1.3-two-doors}
+
+**Wild west — no mutual exclusion.** Runs share the manifest without locks. Coordination is cooperative (tags + the shared workspace convention) and softly fenced (the §14.3 `read-only` overlay, a session policy, bounds every run's writable surface uniformly — §1.4); a conflict *surfaces* as a delta rather than being prevented. Inform, never override. {§1.3-no-mutex}
+
+**Passive wake.** An idle run wakes on exactly two events — a prompt injected into it (voice; user or system) or a stream-status transition it subscribes to (§5.5). A delta never wakes a run; it queues and drains at the next turn one of those produces (§14.5). {§1.3-passive-wake}
+
+**Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation §14.3, git auto-add) is an **ephemeral `plurnk` run** firing ordinary ops, seen by other runs through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel runs stand on (spawn, dispatch, packet assembly, the budget rails §14.4, the fs-watch); everything expressible as ops on session entries is a run doing ops, through the same `op.*` surface (§13.5) the service offers clients. Dogfooding is the architecture, not a test mode. {§1.3-self-hosting}
+
+**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. What remains is *repatriation* — the inline plurnk dispatches (the §14.5 materialization, today bolted into the model's loop) move into ephemeral plurnk runs via a headless spawn primitive mirroring `_dispatchAsClient`.
+
+### §1.4 The machine and its processes: session, run, fork
+
+**Question.** §1.3 isolates runs and lets the runtime self-host, but it stands on an ownership model it never states: what does a *session* own versus a *run*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which run `log.read` reads, what a fork copies, where a per-client view of the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
+
+**Decision — the session is the world; a run is a log on it.** A **session** is the world: one shared filesystem — the `session`-scoped entries, surfaced as `plurnk://manifest.json` (§15) — under one membership overlay (§14.3). Exactly one filesystem and one overlay per session; neither is per-run. A **run** is a process whose entire private memory is its **log** (§0.1) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, §14.5), and fold-state (`indexed`). A run owns **no entries** and **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
+
+**One filesystem.** The entries are the session's: `entries.session_id`, never a run. A write by any run is a write to the one filesystem every run reads; there is no per-run entry set. {§1.4-one-filesystem}
+
+**One overlay.** Membership — `git ls-files ∪ add − ignore` with read-only (§14.3) — is the session's: `session_constraints.session_id`, never a run. It is workspace *curation*, and the workspace *is* the session; two runs are two conversations about one curated workspace and see the same one. Divergent membership is a different session, never a per-run overlay. {§1.4-one-overlay}
+
+**A run is its log — and nothing beside.** The run-private state is the log and only the log. *What I am looking at* (OPEN/FOLD) is `log_entries.indexed`, a bit on the run's own rows, toggled by ordinary `log://` ops — not a second store, and never membership (§6.3). *What I last saw* needs no shadow either: a run learns its world moved through log entries (§14.5) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-run snapshot the run cannot see. The log is the whole of a run's memory. {§1.4-run-is-its-log}
+
+**Fork — copy the log, share the world.** A fork is a new run in the *same* session (`runs.parent_run_id`, §0.1). It copies the **log** — the rows, their fold-state riding along — so the branch inherits everything the parent observed (§14.5 makes a run's timeline self-contained for exactly this) and diverges freely after. {§1.4-fork-copies-the-log} It shares the **world** — the one filesystem, the one overlay — live and uncopied, because the run never owned it. {§1.4-fork-shares-the-world}
+
+**A session cannot be forked.** There is nothing to branch — a session *is* the shared ground. `runs` carries `parent_run_id`; `sessions` carries no parent. Parallel histories over one workspace are forks of its runs; a divergent workspace is a new session. {§1.4-no-fork-session}
+
+**Rationale.** The model falls out of one correction: *a run is a history over a shared world, not a world.* Entries are the world (session); the log is the history (run); forking a history need not copy the world, and a run accumulates nothing the log does not already hold. The overlay's session home is forced the same way — it is the world's curation, and the world is shared; per-run it fragments the one manifest, forks the membership read-gate (the §14.3 security line), and duplicates what FOLD already does at the right level. Every "which run / what's copied / where's the per-client view" answers itself once the world/log line is drawn.
+
+**Migration path.** Mostly stating what the schema already carries: `runs.parent_run_id` and the parentless `sessions` exist (§0.1); `session_constraints` is session-level (§14.3); §14.5 already makes a run's timeline self-contained, so a fork's log copy suffices. Additive: `run.fork` over the wire (the engine fork is built). Two repatriations: §1.3's "read-only overlay scopes a run's writable surface" becomes a *session* policy bounding every run uniformly; and the §14.5 environment door sheds its per-run watermark — a run's only memory is its log, so drift is the broadcast (run-caused) and the build-time disk-vs-entry diff (ambient), both landing as log entries, never a per-run snapshot.
+
 ---
 
 ## §2 Provider Contract
@@ -136,7 +178,7 @@ Three entry points:
 - `provider.countTokens(text)` — synchronous, called at write-time (§14.2) and render-time. Non-negative integer. {§2.1-counttokens}
 - `provider.costFor(usage)` — once per completed turn; pico-USD. Engine writes to `turns.usage_cost_pico`; triggers cascade to `runs.cost_pico` / `sessions.cost_pico`. {§2.1-costfor}
 
-Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info"), read by the budget {§2.1-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§14.2-hot-switch-recompute), exposed but not yet consumed here.
+Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info"), read by the budget {§2.1-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§14.2), exposed but not yet consumed here.
 
 ### §2.2 Engine → provider guarantees
 
@@ -334,7 +376,7 @@ Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body
 
 ### §5.2 Entries carry no visibility
 
-Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable — entries have no per-run open/folded state. Context curation is the model's, on the **log** (OPEN/FOLD collapse/expand log rows, §6.3), never on entries.
+Every entry is uniformly listed in `plurnk://manifest.json` (§15) and READable — entries have no per-run open/folded state. Context curation is the model's, on the **log** (via OPEN/FOLD, §6.3), never on entries.
 
 ### §5.3 Mimetype is a (scheme, channel) property — never a default
 
@@ -342,17 +384,17 @@ Mimetype is declared by scheme manifest (§3.1) or supplied per-call for dynamic
 
 - Cross-mimetype COPY/MOVE → 415, never coerces (§6.4). {§5.3-cross-mimetype-415}
 
-### §5.5 Channel selection in the DSL
+### §5.4 Channel selection in the DSL
 
 DSL targets a specific channel via the URL fragment (`#name`).
 
 Rules:
 
-1. Fragment-less paths target the scheme's `defaultChannel`. {§5.5-fragmentless-targets-default-channel}
-2. Paths with a fragment target the named channel. {§5.5-fragment-selects-named-channel}
-3. Unknown channel name → 400. {§5.5-unknown-channel-400}
+1. Fragment-less paths target the scheme's `defaultChannel`. {§5.4-fragmentless-targets-default-channel}
+2. Paths with a fragment target the named channel. {§5.4-fragment-selects-named-channel}
+3. Unknown channel name → 400. {§5.4-unknown-channel-400}
 4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
-5. Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. {§5.5-fragment-on-nonexistent-404}
+5. Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. {§5.4-fragment-on-nonexistent-404}
 | URI | Channel |
 |---|---|
 | `known://france/capital` | body (default) |
@@ -378,16 +420,16 @@ RPC params carry fragments inline via the `target` string (`{ target: "known://x
 <<log://1/1/0:...:log://1/1/0       — atomic log row
 ```
 
-### §5.6 Channel state — metadata, not gating
+### §5.5 Channel state — metadata, not gating
 
-Each channel has `state ∈ {static, active, closed, errored}`. Metadata only, not an engine gate. {§5.6-state-is-metadata}
+Each channel has `state ∈ {static, active, closed, errored}`. Metadata only, not an engine gate. {§5.5-state-is-metadata}
 
 - `static` — content final, not being written. Entry schemes after EDIT.
 - `active` — scheme is writing (chunks arriving). Streaming schemes during accumulation.
 - `closed` — stream ended cleanly. Content final.
 - `errored` — stream ended in error. Content may be partial; reads return what accumulated.
 
-Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. {§5.6-schemes-own-state-transitions} State does not gate reads — schemes return accumulated `content` regardless (§5.6-state-is-metadata).
+Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. {§5.5-schemes-own-state-transitions} State does not gate reads — schemes return accumulated `content` regardless (§5.5-state-is-metadata).
 
 Model uses state to anticipate growth between turns. Clients use state for UI (spinner / red border / etc.).
 
@@ -401,7 +443,7 @@ Per-op semantics. AST shapes from `@plurnk/plurnk-grammar`'s `PlurnkStatement`. 
 
 AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker? }`.
 
-- Resolves target channel from fragment (§5.5); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
+- Resolves target channel from fragment (§5.4); unknown channel → 400; undeclared in manifest → engine crash (§5.3).
 - Writes body; `body: null` clears. {§6.1-null-clears}- Returns `{ status: 201, entryId }` for new entries; `{ status: 200, entryId }` for content updates. {§6.1-status-201-200}
 - A write that changes nothing — identical content and no new tag — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's no-op (§6.3). {§6.1-noop-304}
 - Tags from `signal[]` apply additively via `entry_tags` (scheme may vary). {§6.1-tags-additive}
@@ -466,11 +508,11 @@ AST: `{ op: "EXEC", target (cwd), body: string | null (command), signal: string 
 
 Engine routes unconditionally to `exec` scheme (path slot is `cwd`, not a URI). The runtime slot (`signal`) selects an executor, resolved against the boot-time `ExecutorRegistry` — siblings discovered and probed at startup, availability cached, default `sh`. Unknown or unavailable runtime → 501 carrying the probe `detail`. {§6.8-registry-resolves}
 
-**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose**: the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec://sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.6). {§6.8-host-proposes}
+**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose**: the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec://sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.5). {§6.8-host-proposes}
 
 A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run** in-process: no proposal, no human gate, no notification. The run is awaited synchronously and its channel content rides back as the EXEC result body the same turn — not streamed to the entry for a next-turn read. {§6.8-readpure-inline}
 
-`SEND[499](exec://<runtime>/<loop>/<turn>/<seq>)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.7).
+`SEND[499](exec://<runtime>/<loop>/<turn>/<seq>)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.5).
 
 ---
 
@@ -482,7 +524,7 @@ Streams are static content from the engine's perspective — content arrives ove
 
 READ on a streaming scheme is a subscription, not a one-shot. Scheme opens the connection (SSE/WS/subprocess), returns `102 Processing` immediately, stays alive. Engine records `(sessionId, entryId) → schemeName + handle` in a subscription registry so `SEND[499]` cancellation routes to the owning scheme. {§7.1-subscription-registry-routes-cancellation}
 
-Subscription registry is plurnk-service runtime state (its own SQLite table). Exists ONLY for cancellation routing. Channel state (§5.6) + log entries (§7.3) carry lifecycle.
+Subscription registry is plurnk-service runtime state (its own SQLite table). Exists ONLY for cancellation routing. Channel state (§5.5) + log entries (§7.3) carry lifecycle.
 
 ### §7.2 Chunk accumulation
 
@@ -494,24 +536,24 @@ Channels are the source of truth for chunk content. Log captures lifecycle event
 
 Model sees lifecycle events in `packet.system.log[]` per turn.
 
-### §7.5 Deep slices on demand
+### §7.4 Deep slices on demand
 
 `<<READ(sse://feed/x#data)<N-M>:…:READ` pulls a slice into a log row when the model wants a specific line-range of the stream.
 
-### §7.7 SEND for stream control
+### §7.5 SEND for stream control
 
 - **Cancel:** `<<SEND[499](sse://feed/x)::SEND` — scheme tears down via AbortController.
 - **Write:** `<<SEND[200](wss://feed/x):body:SEND` — pipes body into active connection (WS, exec stdin, etc.).
 
-### §7.8 Engine constraints
+### §7.6 Engine constraints
 
 ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/001_schema.sql). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
 
-All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else. {§7.8-engine-one-cap}
+All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else. {§7.6-engine-one-cap}
 
-### §7.9 Live updates for clients (between turns)
+### §7.7 Live updates for clients (between turns)
 
-Daemon emits `stream/event` notifications (§13.6) when channel content changes; clients use them for live waterfalls without polling. {§7.9-stream-event-fires-on-chunk}
+Daemon emits `stream/event` notifications (§13.6) when channel content changes; clients use them for live waterfalls without polling. {§7.7-stream-event-fires-on-chunk}
 
 The model is NOT a stream/event consumer — turn-based only; sees whatever's in the channel at the next turn boundary.
 
@@ -610,11 +652,11 @@ Plugin discovery (§9) registers whatever's in `node_modules/@plurnk/*`.
 ### §11.2 What plurnk-service tracks (NOT in grammar)
 
 - Channel state (`active`/`closed`/`errored`) — subscription registry, not on `ChannelContent`.
-- Backpressure caps — none (§7.8).
-- Stream cancel — `SEND[499]` (§7.7).
+- Backpressure caps — none (§7.6).
+- Stream cancel — `SEND[499]` (§7.5).
 - Delete — MOVE to `/dev/null` (§6.5); `SEND[410]` also deletes as a side-effect (§3.5).
 - Per-loop flags — `loops.flags` JSON column; `yolo` end-to-end today, others scheduled.
-- Default-channel wire rendering — §5.5.
+- Default-channel wire rendering — §5.4.
 
 ---
 
@@ -837,9 +879,9 @@ Server-initiated events on the same WebSocket.
    |   (daemon closes the client loop; session keeps)|
 ```
 
-**The client's run.** A client connection is an actor (§14.8); its `op.*` write to its **own run** — `origin = "client"`, one loop per connection — and `log.read` reads that run. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client run.
+**The client's run.** A client connection is an actor (§1.4); its `op.*` write to its **own run** — `origin = "client"`, one loop per connection — and `log.read` reads that run. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client run.
 
-`loop.run` and `inject` target the **model's run** — a separate run holding the conversation, `origin = "model"`. Both runs share the session's one filesystem (§14.8); the packet renders only the model's run, so the client's ops are structurally absent from it — no origin filter (§14.7-isolation). *Migration:* the daemon today opens both loops in the connection's one run (the conflation §14.8 corrects); the build gives the client and the model their separate runs.
+`loop.run` and `inject` target the **model's run** — a separate run holding the conversation, `origin = "model"`. Both runs share the session's one filesystem (§1.4); the packet renders only the model's run, so the client's ops are structurally absent from it — no origin filter (§1.3-isolation). *Migration:* the daemon today opens both loops in the connection's one run (the conflation §1.4 corrects); the build gives the client and the model their separate runs.
 
 ### §13.8 Errors
 
@@ -982,45 +1024,20 @@ Each entry: question, answer, rationale, migration path.
 
 **Migration path.** Changes what EDIT rows *show* (input → output); the op surface and EDIT's behaviour are unchanged. Tests asserting the input-heredoc render move to the resulting-span render.
 
-### §14.7 The actor boundary: isolation by run, two doors, self-hosting
+### §14.7 Dual-YOLO: server- and client-side auto-accept
 
-**Question.** A session holds many runs — model, client, plurnk (§0.1, §0.4) — over one shared manifest. What keeps one run's activity out of another's conversation; what are the *only* ways a run's work reaches another; and does the engine's own work obey the boundary or get a privileged back channel?
+**Question.** A side-effecting op proposes (§6.8) — dispatch pauses at 202 awaiting a client accept/reject (§0.5, §13.5). But two unrelated needs want to skip the human gate: a service running *headless* (a benchmark, a CI job, a fixture — there may be no client at all), and a *human* who wants "stop asking me" ergonomics in an interactive session. One flag, or two mechanisms?
 
-**Decision — isolation by run; the model is not privileged.** A packet renders exactly one run's log — the assembling run's — against the session's shared manifest (§15). A run cannot see another's log: isolation is *structural*, a consequence of "a run owns its log entries" (§0.1) and "one packet, one run," never an `origin` filter at render time. `origin` (§0.4) is **attribution** — the delta's provenance (§14.5) — never read to hide a row. {§14.7-isolation} {§14.7-origin-not-filter}
+**Decision — two distinct, complementary mechanisms.** Auto-accept lives at two layers that never substitute for each other:
 
-**Two doors, and only two.** A run's work reaches another run by exactly two channels, and a private log is reachable no other way:
-- the **environment door** — a write to a *shared entry* surfaces to every run sharing it as a folded, attributed delta (§14.5). *State.*
-- the **voice door** — an **inject** delivers a turn into a *specific* run's log; `btw` is the user's mid-loop inject. *Message.*
+- **Server-side YOLO** — a per-loop flag, `loops.flags.yolo=true`, set via `loop.run({flags:{yolo:true}})`. The engine auto-resolves the proposal **in-process** — the in-tree `yolo` listener reads the pending proposal and accepts it without any `loop.resolve` ever crossing the wire. No client need be connected. {§14.7-server-yolo-auto-accept} Its uses are non-interactive: benchmarks, CI runs, internal automation, test fixtures. Client apps deliberately do **not** expose it — it is not end-user ergonomics.
+- **Client-side YOLO** — the *client's* own setting (`--yolo` / `PLURNK_YOLO`). The daemon emits the `loop/proposal` notification exactly as always; the client immediately answers `loop.resolve({decision:"accept"})`. The wire roundtrip still happens and the daemon stays **unaware** the acceptance was automatic — indistinguishable from a fast human. Its use is the interactive "stop bothering me" session.
 
-{§14.7-two-doors}
+**The notification carries the flag.** `loop/proposal` carries `flags` (§13.6), `yolo` among them, so a client attached to a *server*-YOLO loop can suppress its review UI — those proposals resolve in-process before any human could react, and rendering a doomed review prompt is noise. {§14.7-proposal-carries-flags}
 
-**Wild west — no mutual exclusion.** Runs share the manifest without locks. Coordination is cooperative (tags + the shared workspace convention) and softly fenced (the §14.3 `read-only` overlay, a session policy, bounds every run's writable surface uniformly — §14.8); a conflict *surfaces* as a delta rather than being prevented. Inform, never override. {§14.7-no-mutex}
+**Why two.** They answer different questions. Server-side asks *"is a human in the loop at all?"* — and when the answer is no, dispatch must not block on a `loop.resolve` that will never come. Client-side asks *"does this human want to review each one?"* — a presentation choice that leaves the protocol untouched. Collapsing them would either force a client onto every headless run or leak an interactive preference into the engine's dispatch path. They are orthogonal by construction: the engine gate and the human gate, each bypassable on its own terms.
 
-**Passive wake.** An idle run wakes on exactly two events — a prompt injected into it (voice; user or system) or a stream-status transition it subscribes to (§5.6). A delta never wakes a run; it queues and drains at the next turn one of those produces (§14.5). {§14.7-passive-wake}
-
-**Self-hosting — the runtime is an actor, not a back channel.** Runtime-initiated work (fs reconciliation §14.3, git auto-add) is an **ephemeral `plurnk` run** firing ordinary ops, seen by other runs through the environment door like any actor's — not a privileged engine pathway. The engine keeps only the irreducible kernel runs stand on (spawn, dispatch, packet assembly, the budget rails §14.4, the fs-watch); everything expressible as ops on session entries is a run doing ops, through the same `op.*` surface (§13.5) the service offers clients. Dogfooding is the architecture, not a test mode. {§14.7-self-hosting}
-
-**Migration path.** Largely realized: `Engine.dispatch` is origin-agnostic; client ops run in a per-connection client loop (`_dispatchAsClient`); plurnk EDITs already carry `origin=plurnk`. What remains is *repatriation* — the inline plurnk dispatches (the §14.5 materialization, today bolted into the model's loop) move into ephemeral plurnk runs via a headless spawn primitive mirroring `_dispatchAsClient`.
-
-### §14.8 The machine and its processes: session, run, fork
-
-**Question.** §14.7 isolates runs and lets the runtime self-host, but it stands on an ownership model it never states: what does a *session* own versus a *run*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which run `log.read` reads, what a fork copies, where a per-client view of the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
-
-**Decision — the session is the world; a run is a log on it.** A **session** is the world: one shared filesystem — the `session`-scoped entries, surfaced as `plurnk://manifest.json` (§15) — under one membership overlay (§14.3). Exactly one filesystem and one overlay per session; neither is per-run. A **run** is a process whose entire private memory is its **log** (§0.1) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, §14.5), and fold-state (`indexed`). A run owns **no entries** and **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
-
-**One filesystem.** The entries are the session's: `entries.session_id`, never a run. A write by any run is a write to the one filesystem every run reads; there is no per-run entry set. {§14.8-one-filesystem}
-
-**One overlay.** Membership — `git ls-files ∪ add − ignore` with read-only (§14.3) — is the session's: `session_constraints.session_id`, never a run. It is workspace *curation*, and the workspace *is* the session; two runs are two conversations about one curated workspace and see the same one. Divergent membership is a different session, never a per-run overlay. {§14.8-one-overlay}
-
-**A run is its log — and nothing beside.** The run-private state is the log and only the log. *What I am looking at* (OPEN/FOLD) is `log_entries.indexed`, a bit on the run's own rows, toggled by ordinary `log://` ops — not a second store, and never membership (§6.3). *What I last saw* needs no shadow either: a run learns its world moved through log entries (§14.5) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-run snapshot the run cannot see. The log is the whole of a run's memory. {§14.8-run-is-its-log}
-
-**Fork — copy the log, share the world.** A fork is a new run in the *same* session (`runs.parent_run_id`, §0.1). It copies the **log** — the rows, their fold-state riding along — so the branch inherits everything the parent observed (§14.5 makes a run's timeline self-contained for exactly this) and diverges freely after. {§14.8-fork-copies-the-log} It shares the **world** — the one filesystem, the one overlay — live and uncopied, because the run never owned it. {§14.8-fork-shares-the-world}
-
-**A session cannot be forked.** There is nothing to branch — a session *is* the shared ground. `runs` carries `parent_run_id`; `sessions` carries no parent. Parallel histories over one workspace are forks of its runs; a divergent workspace is a new session. {§14.8-no-fork-session}
-
-**Rationale.** The model falls out of one correction: *a run is a history over a shared world, not a world.* Entries are the world (session); the log is the history (run); forking a history need not copy the world, and a run accumulates nothing the log does not already hold. The overlay's session home is forced the same way — it is the world's curation, and the world is shared; per-run it fragments the one manifest, forks the membership read-gate (the §14.3 security line), and duplicates what FOLD already does at the right level. Every "which run / what's copied / where's the per-client view" answers itself once the world/log line is drawn.
-
-**Migration path.** Mostly stating what the schema already carries: `runs.parent_run_id` and the parentless `sessions` exist (§0.1); `session_constraints` is session-level (§14.3); §14.5 already makes a run's timeline self-contained, so a fork's log copy suffices. Additive: `run.fork` over the wire (the engine fork is built). Two repatriations: §14.7's "read-only overlay scopes a run's writable surface" becomes a *session* policy bounding every run uniformly; and the §14.5 environment door sheds its per-run watermark — a run's only memory is its log, so drift is the broadcast (run-caused) and the build-time disk-vs-entry diff (ambient), both landing as log entries, never a per-run snapshot.
+**Migration path.** Built. `loops.flags.yolo` persists and the `yolo` listener (`src/server/yolo.ts`) auto-resolves; `loop/proposal` already carries `flags`. Client-side YOLO is wholly the client's (`@plurnk/plurnk`) concern — the service offers nothing to build for it beyond the `loop.resolve` RPC it already has.
 
 ---
 
@@ -1221,7 +1238,7 @@ Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdo
 
 `text/plain` survives only where a scheme explicitly declares it (exec stdout/stderr — subprocess byte-streams aren't markdown). The model never auto-encounters `text/plain` from defaults.
 
-### §16.9 Op-level invariants and resolved ambiguities
+### §16.8 Op-level invariants and resolved ambiguities
 
 Carried from the contract walk; durable.
 
@@ -1235,6 +1252,6 @@ Carried from the contract walk; durable.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §6.5): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
 
-### §16.10 Directed-SEND status code policy
+### §16.9 Directed-SEND status code policy
 
 Status codes outside 410/499 on directed SEND return 501 from entry schemes. plurnk.md doesn't prescribe semantics for arbitrary HTTP status codes on directed sends; each scheme decides. 501 is the default; new interpretations land as concrete use cases arise.

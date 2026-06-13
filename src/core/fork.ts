@@ -1,4 +1,4 @@
-// Fork a run — branch the log, share the session (SPEC §14.8).
+// Fork a run — branch the log, share the session (SPEC §1.4).
 //
 // A fork is a NEW run in the SAME session (`parent_run_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their

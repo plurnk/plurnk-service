@@ -77,7 +77,7 @@ test("[§3.5-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501
     } finally { await db.close(); }
 });
 
-// SPEC.md §16.10 — directed-SEND status code policy. Entry schemes interpret
+// SPEC.md §16.9 — directed-SEND status code policy. Entry schemes interpret
 // 410 (Gone → delete) and 499 (Client Closed Request → cancel subscription).
 // Every other status code returns 501 by default. New per-scheme overrides
 // land when concrete use cases arise; the default stays 501.

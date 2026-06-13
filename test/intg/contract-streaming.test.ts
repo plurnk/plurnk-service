@@ -4,8 +4,8 @@
 //             the owning scheme (synthetic streaming scheme, the same pattern
 //             SEND.499.test.ts proves for the entry-bearing 501 case).
 //   - §7.3  : a live streaming exec emits many chunks but writes ONE log row.
-//   - §7.8  : the single engine-level cap (100 MiB / channel) — and nothing else.
-//   - §7.9  : daemon fires stream/event per chunk as channel content grows.
+//   - §7.6  : the single engine-level cap (100 MiB / channel) — and nothing else.
+//   - §7.7  : daemon fires stream/event per chunk as channel content grows.
 //   - §7    : engine has no transaction / connection-lifecycle surface; schemes
 //             own connection lifecycle, channels are static storage to the engine.
 //   - §13.6 : stream/event fires on a state TRANSITION (not just content growth),
@@ -154,11 +154,11 @@ test("[§7.3-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle 
     } finally { await db.close(); }
 });
 
-// §7.8 — ONE engine-level constraint: 100 MiB (104857600 chars) per channel
+// §7.6 — ONE engine-level constraint: 100 MiB (104857600 chars) per channel
 // body, enforced by CHECK on entry_channels.content. Over-cap → SQLITE_CONSTRAINT.
 // And NOTHING else is capped: a write well under the cap (1 MiB here) is stored
 // verbatim, un-truncated/un-throttled — the engine doesn't impose any smaller limit.
-test("[§7.8-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
+test("[§7.6-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `cap-${crypto.randomUUID()}`);
@@ -192,11 +192,11 @@ test("[§7.8-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine
     } finally { await db.close(); }
 });
 
-// §7.9 — The daemon emits stream/event when channel content CHANGES, so clients
+// §7.7 — The daemon emits stream/event when channel content CHANGES, so clients
 // render live waterfalls without polling. Driving appendToChannel with the
 // daemon's notify callback must fire one event PER chunk (not just at close),
 // each carrying the new (growing) contentLength.
-test("[§7.9-stream-event-fires-on-chunk] daemon fires stream/event per chunk with growing contentLength", async () => {
+test("[§7.7-stream-event-fires-on-chunk] daemon fires stream/event per chunk with growing contentLength", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

@@ -1,4 +1,4 @@
-// Tests for SPEC §3.1 channel manifest + §5.5 fragment-as-channel-selector.
+// Tests for SPEC §3.1 channel manifest + §5.4 fragment-as-channel-selector.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -34,7 +34,7 @@ test("[§5.1-edit-writes-only-body] Known.edit writes only the body channel; pre
     } finally { await db.close(); }
 });
 
-test("[§5.5-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
+test("[§5.4-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const r = await new Known().edit(editStmt(urlPath("known", "x", "not-a-channel"), "x"), makeSchemeCtx({ db, sessionId, runId }));
@@ -43,7 +43,7 @@ test("[§5.5-unknown-channel-400] Known.edit with unknown channel returns 400", 
     } finally { await db.close(); }
 });
 
-test("[§5.5-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
+test("[§5.4-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const k = new Known();

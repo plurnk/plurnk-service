@@ -6,7 +6,7 @@ import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } 
 // Shared static-method helpers for session-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
-// follows SPEC §5.5: path.fragment ?? manifest.defaultChannel.
+// follows SPEC §5.4: path.fragment ?? manifest.defaultChannel.
 
 // The model sees its EDIT's RESULT — the edited area as it looks now,
 // line-numbered with a couple lines of context (§14.6) — rendered from the
@@ -75,7 +75,7 @@ export default class EntryOps {
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
-        // 415 on binary entries (SPEC.md §16.9).
+        // 415 on binary entries (SPEC.md §16.8).
         if (existing !== undefined) {
             const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({
                 session_id: sessionId, scheme, pathname, channel: targetChannel,

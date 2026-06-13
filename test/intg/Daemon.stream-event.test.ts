@@ -1,4 +1,4 @@
-// Tests for daemon's stream/event notification. SPEC §7.9 + §13.6.
+// Tests for daemon's stream/event notification. SPEC §7.7 + §13.6.
 
 import test from "node:test";
 import assert from "node:assert/strict";

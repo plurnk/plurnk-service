@@ -50,7 +50,7 @@ export default class EntrySend {
             return { status: result.status };
         }
 
-        // SEND[499] Client Closed Request — cancel active subscription (SPEC §3.5, §7.7).
+        // SEND[499] Client Closed Request — cancel active subscription (SPEC §3.5, §7.5).
         // Entry-bearing schemes never have subscriptions in v0; always return 404.
         // Streaming schemes (sse / exec / etc.) override this and look up via
         // findActiveSubscription, then call their teardown using the stored handle.

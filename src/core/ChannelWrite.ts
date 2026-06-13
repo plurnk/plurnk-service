@@ -1,4 +1,4 @@
-// Channel-write helpers for streaming schemes. SPEC §5.6 (channel state),
+// Channel-write helpers for streaming schemes. SPEC §5.5 (channel state),
 // §7.1 (subscription registry), §13.6 (stream/event notification).
 //
 // Schemes import these and call them as their connection lifecycle progresses.

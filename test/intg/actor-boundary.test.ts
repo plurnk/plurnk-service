@@ -1,10 +1,10 @@
-// SPEC §14.7 — the actor boundary (isolation by run, two doors, self-hosting).
+// SPEC §1.3 — the actor boundary (isolation by run, two doors, self-hosting).
 //
 // The contract landed (Phase 0); this is its rule-C skeleton. One invariant is
 // already true and pinned for real (no-mutex); the rest are deferred-red until
 // the self-hosting refactor builds the machinery they assert — each cites its
 // anchor (so the spec-anchor guard is satisfied) and names the phase that turns
-// it green. A red test for an unbuilt contract is the point: it stops §14.7
+// it green. A red test for an unbuilt contract is the point: it stops §1.3
 // shipping as a façade, the way §14.3 membership once did.
 
 import test from "node:test";
@@ -25,7 +25,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§14.7-no-mutex] two runs in one session both write the same shared entry — no lock", async () => {
+test("[§1.3-no-mutex] two runs in one session both write the same shared entry — no lock", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -48,7 +48,7 @@ test("[§14.7-no-mutex] two runs in one session both write the same shared entry
     } finally { db.close(); }
 });
 
-test("[§14.7-isolation] a packet renders one run's log; a sibling run's log is absent", async () => {
+test("[§1.3-isolation] a packet renders one run's log; a sibling run's log is absent", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -71,7 +71,7 @@ test("[§14.7-isolation] a packet renders one run's log; a sibling run's log is 
     } finally { db.close(); }
 });
 
-test("[§14.7-origin-not-filter] origin is attribution (provenance), never read to hide a row at render", async () => {
+test("[§1.3-origin-not-filter] origin is attribution (provenance), never read to hide a row at render", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -89,11 +89,11 @@ test("[§14.7-origin-not-filter] origin is attribution (provenance), never read 
     } finally { db.close(); }
 });
 
-test("[§14.7-two-doors] state crosses runs via the §14.5 delta; messages via inject — no third channel",
+test("[§1.3-two-doors] state crosses runs via the §14.5 delta; messages via inject — no third channel",
     { todo: "Phase 1 — the voice door (inject, #193) is unbuilt; the environment door is exercised under §14.5" }, () => {});
 
-test("[§14.7-passive-wake] an idle run wakes on an inject or a stream-status transition, never on a delta",
+test("[§1.3-passive-wake] an idle run wakes on an inject or a stream-status transition, never on a delta",
     { todo: "Phase 1 — needs inject (#193) plus the idle-run wake path" }, () => {});
 
-test("[§14.7-self-hosting] runtime work is an ephemeral plurnk run firing ops, not a privileged engine pathway",
+test("[§1.3-self-hosting] runtime work is an ephemeral plurnk run firing ops, not a privileged engine pathway",
     { todo: "Phase 2 — the keystone (dispatchAsPlurnk) + the EMI repatriation make this assertable" }, () => {});

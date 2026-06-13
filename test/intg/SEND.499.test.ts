@@ -1,4 +1,4 @@
-// Tests for SEND[499] cancellation propagation (SPEC §3.5, §7.7).
+// Tests for SEND[499] cancellation propagation (SPEC §3.5, §7.5).
 
 import test from "node:test";
 import assert from "node:assert/strict";

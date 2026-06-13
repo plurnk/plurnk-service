@@ -26,7 +26,7 @@ export interface RunRow {
 }
 
 // Per-connection envelope. `runId` is the connection's own run — the client
-// actor's: `op.*` and `log.read` live there (§13.7, §14.8). `modelRunId` is the
+// actor's: `op.*` and `log.read` live there (§13.7, §1.4). `modelRunId` is the
 // model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
 // the packet renders it, so client ops are absent from the model's view with no
 // filter. Both `modelRunId` and `clientLoopId` are lazily allocated on first use —
@@ -46,7 +46,7 @@ export interface ClientEnvelope {
 export default class Envelope {
     // Run names reserved for non-client actors: a client must not create OR
     // attach to a run under a reserved name (origin-impersonation — `plurnk`
-    // is the runtime actor, §0.4/§14.7). Checked case-insensitively, before
+    // is the runtime actor, §0.4/§1.3). Checked case-insensitively, before
     // lookup, so a client can neither forge nor hijack one (SPEC §13.5).
     static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]);
 
@@ -144,7 +144,7 @@ export default class Envelope {
         return loop.id;
     }
 
-    // Lazy model-run allocator (§13.7, §14.8 — the client writes to its own run).
+    // Lazy model-run allocator (§13.7, §1.4 — the client writes to its own run).
     // The model's conversation lives in its OWN run, distinct from the connection's
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
