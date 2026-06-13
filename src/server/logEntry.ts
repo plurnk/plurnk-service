@@ -8,7 +8,9 @@ export interface LogEntryWire {
     id: number;
     run_id: number;
     loop_id: number;
+    loop_seq: number;
     turn_id: number;
+    turn_seq: number;
     sequence: number;
     at: string;
     origin: string;
@@ -46,7 +48,9 @@ export default class LogEntry {
             id: row.id as number,
             run_id: row.run_id as number,
             loop_id: row.loop_id as number,
+            loop_seq: row.loop_seq as number,
             turn_id: row.turn_id as number,
+            turn_seq: row.turn_seq as number,
             sequence: row.sequence as number,
             at: row.at as string,
             origin: row.origin as string,

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import LogEntry from "../../src/server/logEntry.ts";
 
 type SqlValue = string | number | bigint | null;
 
@@ -21,6 +22,22 @@ const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: 
     if (row === undefined) throw new Error("log_entries insert returned no row");
     return row.id;
 };
+
+test("[§13.5-log-coordinate] fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 3);   // loop ordinal 3
+        const turnId = await insertTurn(db, loopId, 2);  // turn ordinal 2
+        const id = await minimalLog(db, { runId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
+        const wire = await LogEntry.fetchLogEntry(db, id);
+        assert.equal(wire.loop_seq, 3, "loop ordinal on the wire");
+        assert.equal(wire.turn_seq, 2, "turn ordinal on the wire");
+        assert.equal(wire.loop_id, loopId, "DB loop id still present");
+        assert.equal(wire.turn_id, turnId, "DB turn id still present");
+    } finally { await db.close(); }
+});
 
 test("log_entries: table is STRICT", async () => {
     const db = await openMigrated();

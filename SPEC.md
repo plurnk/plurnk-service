@@ -764,6 +764,8 @@ registry.register("loop.run", {
 | `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. {§13.5-entry-read} |
 | `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. {§13.5-log-read} |
 
+**Log coordinate.** Every `LogEntry` — from `log.read` and the `log/entry` notification alike — carries `loop_seq`/`turn_seq`, the loop+turn ordinals, beside the `loop_id`/`turn_id` DB keys, so a client renders the logical coordinate (e.g. `01/02/03`) without resolving ids. {§13.5-log-coordinate}
+
 **DSL operations (client-driven, mirror grammar)**
 
 Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. {§13.5-op-mirror} Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
