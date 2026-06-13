@@ -64,7 +64,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
 | **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only (no side-effecting ops); act = full surface. |
 | **flag** | Per-loop boolean shaping the active toolset: `yolo` (auto-accept proposals), `noWeb`, `noInteraction`, `noProposals`. |
-| **proposal** | A deferred side-effecting action awaiting client accept/reject. State machine: `proposed → resolved` or `proposed → cancelled`. `yolo` short-circuits to immediate. |
+| **proposal** | A deferred side-effecting action awaiting client accept/reject (full lifecycle §6.9). State machine: `proposed → resolved` or `proposed → cancelled`. `yolo` short-circuits to immediate. |
 | **resolution** | Client's accept/reject of a proposal via `op.resolve` RPC. |
 
 ### §0.6 Packet terms
@@ -508,11 +508,33 @@ AST: `{ op: "EXEC", target (cwd), body: string | null (command), signal: string 
 
 Engine routes unconditionally to `exec` scheme (path slot is `cwd`, not a URI). The runtime slot (`signal`) selects an executor, resolved against the boot-time `ExecutorRegistry` — siblings discovered and probed at startup, availability cached, default `sh`. Unknown or unavailable runtime → 501 carrying the probe `detail`. {§6.8-registry-resolves}
 
-**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose**: the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec://sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.5). {§6.8-host-proposes}
+**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose** (lifecycle §6.9): the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec://<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec://sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive the model's view at subsequent turn boundaries (§5.5). {§6.8-host-proposes}
 
 A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run** in-process: no proposal, no human gate, no notification. The run is awaited synchronously and its channel content rides back as the EXEC result body the same turn — not streamed to the entry for a next-turn read. {§6.8-readpure-inline}
 
 `SEND[499](exec://<runtime>/<loop>/<turn>/<seq>)` cancels in-flight subprocess via subscription registry's stored AbortController (§7.5).
+
+### §6.9 The proposal lifecycle
+
+A side-effecting op does not execute on dispatch — it **proposes**. The scheme returns **202** (an EXEC `host` runtime §6.8, an EDIT to a member file §14.3); the engine writes the log row `state='proposed'`, registers a waiter keyed by `logEntryId`, and **pauses `dispatch`** awaiting a resolution. The pause is internal to dispatch — the turn has already closed, so §14.4 strike accounting sees the *resolved* status, never the 202. On accept the status becomes 200 and the scheme's effect runs. {§6.9-202-pauses}
+
+**Resolution arrives four ways, one surface to the model:**
+- **`loop.resolve`** (§13.5) — a client's accept / reject / cancel.
+- **Server-YOLO** (§14.7) — an in-tree listener resolves `accept` in-process, same tick, no wire roundtrip.
+- **noProposals** — an in-tree listener resolves `reject` (outcome `no_review_channel`).
+- **Timeout** — `PLURNK_PROPOSAL_TIMEOUT_MS` (§12) elapses with no resolution → the engine synthesizes `cancel` (outcome `timeout`), server-side, needing no client. {§6.9-timeout-cancels}
+
+**The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
+
+| decision | state | `status_rx` | default outcome | effect |
+|---|---|---|---|---|
+| accept | `resolved` | 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). {§6.9-accept-applies} A failing apply (≥400) downgrades to reject (outcome `apply_failed`). |
+| reject | `failed` | 400 | `rejected` | none — the action did not occur. {§6.9-reject-fails} |
+| cancel | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. {§6.9-cancel-aborts} |
+
+A caller-supplied `outcome` overrides the default, but `outcome` is **forensics-only** — never in the model-facing `rx`. So a YOLO accept, a human reject, and a timeout are indistinguishable to the model: the action **occurred** (200) or it **didn't** (400/499), nothing about how it was administratively resolved (§15.1).
+
+**A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from `packet.system.log`; it surfaces only after resolution, carrying its terminal status — the model sees outcomes, never pending proposals. {§6.9-proposed-hidden}
 
 ---
 

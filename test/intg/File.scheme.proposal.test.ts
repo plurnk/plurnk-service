@@ -68,7 +68,7 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     }
 };
 
-test("file.edit: writes file on accept via applyResolution", async () => {
+test("[§6.9-accept-applies] file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
