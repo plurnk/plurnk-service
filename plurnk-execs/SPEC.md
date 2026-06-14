@@ -104,7 +104,7 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
         "kind": "exec",
         "runtimes": [
             { "name": "search", "glyph": "🔎", "example": "EXEC[search]:france population:EXEC" },
-            { "name": "news",   "glyph": "📰", "example": "EXEC[news]:ecb rate decision:EXEC" }
+            { "name": "news",   "glyph": "📰" }
         ]
     }
 }
