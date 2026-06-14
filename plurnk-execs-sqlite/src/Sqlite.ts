@@ -1,8 +1,19 @@
+import { statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
+
+// Resolve the EXEC target slot (delivered as `cwd`) to a db path. The consuming
+// scheme defaults a target-less EXEC's `cwd` to the session project_root — a
+// *directory*, sensible for subprocess runtimes but not a database. A directory
+// is never a valid sqlite target, so null/empty OR a directory means "no
+// target" → ephemeral :memory:; only a file path (extant or to-be-created) is a
+// persistent db. statSync only suppresses ENOENT (a new db file) — any other
+// stat failure (e.g. EACCES) still surfaces.
+const dbTarget = (cwd: string | null): string =>
+    (cwd && !statSync(cwd, { throwIfNoEntry: false })?.isDirectory() ? cwd : MEMORY);
 
 // node:sqlite can return bigint for large integers; stringify them so the
 // JSON output is always serializable.
@@ -11,8 +22,9 @@ const jsonReplacer = (_key: string, value: unknown): unknown =>
 
 // In-process SQLite executor (a logical runtime, not subprocess). Runs one SQL
 // statement via node:sqlite against the EXEC target db — defaulting to an
-// ephemeral `:memory:` when no target is given — and writes the result to the
-// `results` channel as application/json, ready for the jsonpath body-matcher.
+// ephemeral `:memory:` when no file target is given (including the consumer's
+// project_root directory default) — and writes the result to the `results`
+// channel as application/json, ready for the jsonpath body-matcher.
 //
 //   <<EXEC[sqlite]:SELECT * FROM users:EXEC          → :memory: (ephemeral)
 //   <<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC → ./app.db (persistent)
@@ -40,7 +52,7 @@ export default class Sqlite extends BaseExecutor {
     }
 
     async run({ command, cwd, write, setState, emit }: ExecArgs): Promise<ExecResult> {
-        const path = cwd && cwd.length > 0 ? cwd : MEMORY;
+        const path = dbTarget(cwd);
         const sql = command.trim();
         const fail = (kind: string, message: string): ExecResult => {
             emit({ source: "exec:sqlite", kind, message });

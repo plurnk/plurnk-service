@@ -1,6 +1,6 @@
 import test, { afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "./Sqlite.ts";
@@ -64,6 +64,21 @@ test("SELECT against default :memory: → rows as JSON, channel closed, 200", as
     assert.deepEqual(JSON.parse(out!), [{ one: 1, two: "hi" }]);
     assert.deepEqual(states, ["closed"]);
     assert.equal(events.length, 0);
+});
+
+test("directory cwd (consumer project_root default) → :memory:, no file written", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "execs-sqlite-root-"));
+    try {
+        const { result, out, states, events } = await run("SELECT 1 AS one", dir);
+        assert.deepEqual(result, { status: 200 });
+        assert.deepEqual(JSON.parse(out!), [{ one: 1 }]);
+        assert.deepEqual(states, ["closed"]);
+        assert.equal(events.length, 0);
+        // :memory: is ephemeral — the directory must stay empty (no db file).
+        assert.deepEqual(await readdir(dir), []);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
 
 test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (rows)", async () => {
