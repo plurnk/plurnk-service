@@ -32,14 +32,10 @@ EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc
 
 The agent maintains two surfaces for budgeting working-memory tokens:
 
-- **Log** — what you did: the chronological record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN restores the complete record and spends tokens. Non-destructive — folded rows remain listed and re-OPENable.
-- **`plurnk://manifest.json`** — what's available: the complete, unranked directory of every entry (items are `{ path, channels }`). Query it to discover what exists; the system never ranks for you.
+- **Log** — the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive — folded rows remain listed and re-OPENable.
+- **`plurnk://manifest.json`** — what's available: the complete unranked directory of every entry. Query it to discover available entries.
 
-READ pulls an entry's content (full, ranged, or matcher-filtered) and appends a fresh log row. OPEN and FOLD operate on the log only; against an entry they return 501.
-
-YOU SHOULD FOLD distilled and irrelevant log rows to save tokens and optimize context relevance.
-YOU SHOULD distill durable findings into `known://` entries with EDIT.
-YOU MAY permanently destroy an entry or terminate a running `exec://` process with KILL.
+OPEN and FOLD operate on the log only.
 
 ## `<Line> / <Result>`
 
@@ -126,7 +122,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<EDIT(known://users.json)<0>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known://draft.md):known://archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
-<<KILL(known://obsolete/note.md)::KILL
+<<KILL(obsolete/file.md)::KILL
 <<KILL(exec://3/1/2)::KILL
 <<OPEN(log://**/get)<1,10>::OPEN
 <<FIND(known://**)<5>:~french revolutionary history:FIND
