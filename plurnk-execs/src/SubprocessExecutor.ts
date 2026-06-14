@@ -66,7 +66,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         return resolveRuntime(runtime, command);
     }
 
-    run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    run({ runtime, command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command);
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
@@ -86,7 +86,9 @@ export default class SubprocessExecutor extends BaseExecutor {
             // direct child orphans, leaking the process and its stdout pipe. We
             // drive cancellation manually rather than via spawn's `signal`
             // option, which only kills the direct child (plurnk-execs#4).
-            const child = spawn(cmd, args, { shell: useShell, cwd: cwd ?? undefined, detached: true });
+            // env: consumer-scoped when provided (drops plurnk's own secrets,
+            // plurnk-execs#8); host env inherited by default for back-compat.
+            const child = spawn(cmd, args, { shell: useShell, cwd: cwd ?? undefined, env: env ?? process.env, detached: true });
 
             // Filter-style runtimes feed their program/input via stdin; closing
             // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.

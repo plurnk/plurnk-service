@@ -46,6 +46,12 @@ export interface ExecArgs {
     // Working directory for subprocess runtimes; null (and ignored) for
     // logical runtimes like search.
     cwd: string | null;
+    // Environment for runtimes that spawn a child process. When set, the child
+    // gets EXACTLY this env — the consumer scopes out its own secrets (provider
+    // keys, PLURNK_*) so a model-directed `printenv` can't read them
+    // (plurnk-execs#8). When omitted, the child inherits the host process env
+    // (back-compat default). Ignored by in-process runtimes that don't spawn.
+    env?: NodeJS.ProcessEnv;
     // Cancellation. Executors must abort in-flight work when this fires.
     signal: AbortSignal;
     // Write a chunk to one of the executor's declared channels.

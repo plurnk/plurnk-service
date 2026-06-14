@@ -7,12 +7,12 @@ import type { TelemetryEvent } from "./TelemetryEvent.ts";
 
 // Drive a real subprocess and collect the sink activity. Resolves once run()
 // settles.
-const exec = async (runtime: string, command: string, opts: { signal?: AbortSignal } = {}) => {
+const exec = async (runtime: string, command: string, opts: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}) => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const states: { channel: string; state: string }[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: null,
+        runtime, command, cwd: null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => states.push({ channel, state }),
@@ -39,6 +39,26 @@ test("effect: subprocess is always host (regardless of target)", () => {
     const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/work/dir"), "host");
+});
+
+test("env: a scoped env is handed to the child verbatim (#8)", async () => {
+    const { result, out } = await exec("sh", 'echo "$FOO"', { env: { FOO: "scoped-value" } });
+    assert.equal(result.status, 200);
+    assert.equal(out.stdout.trim(), "scoped-value");
+});
+
+test("env: scoping hides host secrets; default inherits them (#8 back-compat)", async () => {
+    process.env.PLURNK_TEST_SECRET = "leak-me";
+    try {
+        // Consumer-scoped env without the secret → the child cannot read it.
+        const scoped = await exec("sh", 'echo "[${PLURNK_TEST_SECRET:-absent}]"', { env: { PATH: process.env.PATH } });
+        assert.equal(scoped.out.stdout.trim(), "[absent]");
+        // No env override → host env inherited (the pre-#8 behavior is preserved).
+        const inherited = await exec("sh", 'echo "[${PLURNK_TEST_SECRET:-absent}]"');
+        assert.equal(inherited.out.stdout.trim(), "[leak-me]");
+    } finally {
+        delete process.env.PLURNK_TEST_SECRET;
+    }
 });
 
 // A subclass that overrides spawnArgs to feed the command via stdin — the
