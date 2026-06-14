@@ -49,7 +49,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
         const teardownFns = new Map<string, () => void>([[HANDLE, () => teardownByHandle.push(HANDLE)]]);
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "fakestream", pathname: "feed/x",
+            session_id: sessionId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
@@ -88,7 +88,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
         const engine = new Engine({ db, schemes });
 
         const result = await engine.dispatch({
-            statement: sendStmt(499, urlPath("fakestream", "feed/x")),
+            statement: sendStmt(499, urlPath("fakestream", "/feed/x")),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "client",
         });
 
@@ -163,7 +163,7 @@ test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects o
     try {
         const sessionId = await insertSession(db, `cap-${crypto.randomUUID()}`);
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "known", pathname: "cap",
+            session_id: sessionId, scheme: "known", pathname: "/cap",
         });
         const entryId = entry!.id;
 
@@ -284,7 +284,7 @@ test("[§notifications-stream-event-on-channel-change] state transition fires me
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "closed", "carries the NEW state (active → closed)");
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
-            assert.equal(evt.target, "known://x", "carries the entry's target URI (#179)");
+            assert.equal(evt.target, "known:///x", "carries the entry's target URI (#179)");
             // Metadata only — never the content body.
             assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "sessionId", "state", "target"], "payload is metadata-only (ids/state/length + target URI per #179, + session scope per #191); no content field");
         } finally { ws.close(); }

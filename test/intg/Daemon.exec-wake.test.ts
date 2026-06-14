@@ -69,9 +69,9 @@ test("wake-on-completion: dormant run → daemon opens a new loop with the summa
             const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.closeStatus, 200);
-            assert.match(wake.target, /^exec:\/\//, "stream/concluded carries the exec target URI (#179)");
-            assert.match(wake.summary, /^exec:\/\/[a-z0-9]+\/\d+\/\d+\/\d+ completed \(exit 0\)/,
-                "summary references the executor-domain exec://<runtime>/<loop>/<turn>/<seq> path");
+            assert.match(wake.target, /^exec:\/\/\//, "stream/concluded carries the exec target URI (#179)");
+            assert.match(wake.summary, /^exec:\/\/\/[a-z0-9]+\/\d+\/\d+\/\d+ completed \(exit 0\)/,
+                "summary references the executor-domain exec:///<runtime>/<loop>/<turn>/<seq> path");
             assert.equal(wake.wakeAction, "opened-loop", "daemon opened a new loop because the original ended first");
             assert.ok(typeof wake.wakeLoopId === "number", "wakeLoopId is reported");
 

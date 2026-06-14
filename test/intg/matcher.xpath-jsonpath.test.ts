@@ -254,11 +254,11 @@ test("xpath on markdown content with no structural match → 204", async () => {
     } finally { await db.close(); }
 });
 
-// --- Composition with structural <L> on log:// ----------------------
+// --- Composition with structural <L> on log:/// ----------------------
 
-test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://", async () => {
+test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///", async () => {
     // End-to-end the killer composition: dispatch a jsonpath matcher READ
-    // through the engine, then <<READ(log://N/M/K)<2>::READ to pick the 2nd
+    // through the engine, then <<READ(log:///N/M/K)<2>::READ to pick the 2nd
     // match line. One match per line is what makes <L> paging work.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
@@ -269,7 +269,7 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://",
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
             '{"users":[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]}');
 
-        // Dispatch the matcher READ — lands at log://1/1/1.
+        // Dispatch the matcher READ — lands at log:///1/1/1.
         await engine.dispatch({
             statement: {
                 op: "READ", suffix: "", signal: null,
@@ -284,7 +284,7 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log://",
 
         // Structural <L><2> on the log entry — picks the 2nd match line (Bob).
         const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "1/1/1")),
+            ...readStmt(urlPath("log", "/1/1/1")),
             lineMarker: { first: 2, last: null },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId, mimetypes }));

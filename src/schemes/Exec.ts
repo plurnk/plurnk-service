@@ -18,7 +18,7 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec://<pathname> (e.g. exec://sh/1/1/2)
+    pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec:///<pathname> (e.g. exec:///sh/1/1/2)
     inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
 }
 
@@ -27,7 +27,7 @@ interface ExecAttrs {
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
 // Per plurnk.md, EXEC's target slot is `cwd`. ParsedPath there means a
-// bare local path or file:// URL — both decode to a filesystem directory.
+// bare local path or file:/// URL — both decode to a filesystem directory.
 // Anything else is rejected at proposal time.
 const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
@@ -97,7 +97,7 @@ export default class Exec {
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
-    // coordinate-stamped exec://<pathname> entry's stdout/stderr channels.
+    // coordinate-stamped exec:///<pathname> entry's stdout/stderr channels.
     // The model READs that entry on a subsequent turn to see what happened.
     async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
@@ -106,7 +106,7 @@ export default class Exec {
         }
         if (statement.target !== null) {
             if (statement.target.kind === "url" && statement.target.scheme !== null && statement.target.scheme !== "file") {
-                return { status: 400, error: `EXEC cwd must be a local path or file:// URL; got ${statement.target.scheme}://` };
+                return { status: 400, error: `EXEC cwd must be a local path or file:/// URL; got ${statement.target.scheme}://` };
             }
         }
 
@@ -208,7 +208,7 @@ export default class Exec {
 
         // read/pure (inline): await the run + return its output in the EXEC
         // result — the model gets it THIS turn, not a turn later. host streams:
-        // fire-and-forget; the model READs exec://<pathname> on a later turn.
+        // fire-and-forget; the model READs exec:///<pathname> on a later turn.
         if (attrs.inline === true) {
             const closeStatus = await tail;
             const read = await EntryCrud.readEntry(pathname, ctx, "exec");

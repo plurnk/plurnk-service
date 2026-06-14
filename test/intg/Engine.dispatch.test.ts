@@ -48,7 +48,7 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("Engine.dispatch: KILL against known:// permanently deletes the entry (200, then READ 404)", async () => {
+test("Engine.dispatch: KILL against known:/// permanently deletes the entry (200, then READ 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -94,7 +94,7 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against a non-running exec:// returns 404 (nothing to kill)", async () => {
+test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing to kill)", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
@@ -105,7 +105,7 @@ test("Engine.dispatch: KILL against a non-running exec:// returns 404 (nothing t
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against log:// returns 405 (append-only)", async () => {
+test("Engine.dispatch: KILL against log:/// returns 405 (append-only)", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
@@ -139,7 +139,7 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against known:// routes to Known.edit, returns 201, writes entry", async () => {
+test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against known:/// routes to Known.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -190,7 +190,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: READ against known:// routes to Known.read", async () => {
+test("Engine.dispatch: READ against known:/// routes to Known.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -296,7 +296,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
+test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:/// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -313,11 +313,11 @@ test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:// rejec
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT plurnk://prompt/* rejected with 403 (engine/client own prompts)", async () => {
+test("Engine.dispatch: model EDIT plurnk:///prompt/* rejected with 403 (engine/client own prompts)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("plurnk", "prompt/1"), body: "y" }),
+            statement: editStmt({ target: urlPath("plurnk", "/prompt/1"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -325,11 +325,11 @@ test("Engine.dispatch: model EDIT plurnk://prompt/* rejected with 403 (engine/cl
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT plurnk:// non-prompt path is allowed", async () => {
+test("Engine.dispatch: model EDIT plurnk:/// non-prompt path is allowed", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("plurnk", "scratch"), body: "y" }),
+            statement: editStmt({ target: urlPath("plurnk", "/scratch"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -337,7 +337,7 @@ test("Engine.dispatch: model EDIT plurnk:// non-prompt path is allowed", async (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side op)", async () => {
+test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side op)", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log scheme has no read() handler yet, so this returns 501 — proves
@@ -351,7 +351,7 @@ test("Engine.dispatch: model READ log:// is NOT gated by writableBy (read-side o
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: system EDIT log:// is allowed by writableBy", async () => {
+test("Engine.dispatch: system EDIT log:/// is allowed by writableBy", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
@@ -436,22 +436,22 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model COPY into log:// destination rejected with 403", async () => {
+test("Engine.dispatch: model COPY into log:/// destination rejected with 403", async () => {
     const { db, engine, env } = await setup();
     try {
-        // Source first: model creates an entry in known://.
+        // Source first: model creates an entry in known:///.
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/src"), body: "v" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        // Attempt copy known://src → log://dst — destination scheme rejects.
+        // Attempt copy known:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
                 op: "COPY", suffix: "", signal: null,
                 target: urlPath("known", "/src"),
                 lineMarker: null,
-                body: urlPath("log", "/dst"),
+                body: urlPath("log", "/dst").raw,
                 position: { line: 1, column: 1 },
             },
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,

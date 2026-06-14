@@ -151,7 +151,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
 test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
     // Turn-as-container model, 1-based. Turn 1 opens with sequence=1
     // reserved for the prompt (system-origin EDIT against
-    // plurnk://prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
+    // plurnk:///prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
     // continuing the turn's running counter.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
@@ -168,7 +168,7 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "EDIT" }, // the prompt (plurnk://prompt/<loop_id>)
+                { idx: 1, op: "EDIT" }, // the prompt (plurnk:///prompt/<loop_id>)
                 { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -267,11 +267,11 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
             assert.equal(t1.statuses.length, 3, "only 3 ops dispatched (cap)");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
-            // Scope to scheme='known' to exclude the engine's plurnk://prompt entry.
+            // Scope to scheme='known' to exclude the engine's plurnk:///prompt entry.
             const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
                 session_id: sessionId, scheme: "known",
             });
-            assert.equal(known?.n, 3, "3 known:// entries; overflow ops never reached schemes");
+            assert.equal(known?.n, 3, "3 known:/// entries; overflow ops never reached schemes");
 
             // Turn 2 packet should carry the max_commands_exceeded telemetry.
             const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -332,7 +332,7 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
 test("Engine.runLoop: three consecutive hard failures abandon at 499 with strike_threshold reason", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // EDIT log:// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
+        // EDIT log:/// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
             target: urlPath("log", "/x"),
@@ -355,7 +355,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 499 with strike
 test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // READ a missing unknown:// path → 404 (soft). With maxStrikes=2 and
+        // READ a missing unknown:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
         // Vary path each turn to keep rail #39 cycle detection orthogonal
         // (per rummy's same-pattern test).
@@ -692,7 +692,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as a real
-    // system-origin EDIT against plurnk://prompt/<loop_id> at
+    // system-origin EDIT against plurnk:///prompt/<loop_id> at
     // sequence=1 (1-based). When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
     // dispatch AFTER the packet builds, so they don't appear in this
@@ -711,7 +711,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         assert.equal(packet.system.log[0].op, "EDIT");
         assert.equal(packet.system.log[0].origin, "plurnk");
         assert.equal(packet.system.log[0].target?.scheme, "plurnk");
-        assert.equal(packet.system.log[0].target?.pathname, `prompt/${loopId}/1`);
+        assert.equal(packet.system.log[0].target?.pathname, `/prompt/${loopId}/1`);
     } finally { await db.close(); }
 });
 
@@ -731,7 +731,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const packet = JSON.parse(row?.packet ?? "{}") as {
             system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null }; origin: string }> };
         };
-        // Turn 2 packet sees: prompt at 1/1/1 (plurnk://) + 2 model ops at 1/1/2 + 1/1/3
+        // Turn 2 packet sees: prompt at 1/1/1 (plurnk:///) + 2 model ops at 1/1/2 + 1/1/3
         assert.equal(packet.system.log.length, 3);
         assert.equal(packet.system.log[0].coordinate, "1/1/1");
         assert.equal(packet.system.log[0].op, "EDIT");
@@ -762,7 +762,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; rx: { status?: number; entryId?: number } | string }> } };
-        // index 0 = prompt EDIT (plurnk://); index 1 = first model EDIT
+        // index 0 = prompt EDIT (plurnk:///); index 1 = first model EDIT
         const firstEdit = packet.system.log[1];
         assert.equal(firstEdit.op, "EDIT");
         const rx = firstEdit.rx as { status: number; entryId?: number };
@@ -791,7 +791,7 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
 test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next packet's telemetry.errors[]", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // Model attempts to EDIT log:// — denied 403 (Log.writableBy=['plurnk']).
+        // Model attempts to EDIT log:/// — denied 403 (Log.writableBy=['plurnk']).
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
             target: urlPath("log", "/illegal"),
@@ -844,6 +844,6 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
-        assert.deepEqual(packet.user.telemetry.errors, [], "t3 mirrors t2 only (clean); t1's failure stays in log://, off-screen");
+        assert.deepEqual(packet.user.telemetry.errors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
     } finally { await db.close(); }
 });

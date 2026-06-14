@@ -13,7 +13,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
     const runId = await insertRun(db, sessionId);
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-        session_id: sessionId, scheme: "known", pathname: "x",
+        session_id: sessionId, scheme: "known", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await (db.test_seed_channel as PrepMethod).run({

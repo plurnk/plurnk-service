@@ -79,11 +79,11 @@ test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry re
 });
 
 // --- §slice-semantics killer composition: matcher-then-<L> ----------------------------
-// Dispatch a regex matcher READ through the Engine (lands at log://1/1/1 as
+// Dispatch a regex matcher READ through the Engine (lands at log:///1/1/1 as
 // an application/json result), then structural <L><P> over that log entry
 // picks the P-th match — matcher rx is application/json, <L> selects the item.
 
-test("[§slice-semantics-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the P-th match from a prior matcher result", async () => {
+test("[§slice-semantics-compose-pattern] <<READ(log:///1/1/1)<P>::READ picks the P-th match from a prior matcher result", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, runId, 1, "compose");
@@ -95,7 +95,7 @@ test("[§slice-semantics-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the
             makeSchemeCtx({ db, sessionId, runId, mimetypes }),
         );
 
-        // Matcher READ through the engine → result lands at log://1/1/1.
+        // Matcher READ through the engine → result lands at log:///1/1/1.
         await engine.dispatch({
             statement: {
                 ...readStmt(urlPath("known", "/log.txt")),
@@ -105,14 +105,14 @@ test("[§slice-semantics-compose-pattern] <<READ(log://1/1/1)<P>::READ picks the
         });
 
         // Sanity: the full matcher result has both error matches as JSON.
-        const whole = await new Log().read(readStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
+        const whole = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(whole.status, 200);
         assert.equal(whole.mimetype, "text/markdown");
         assert.equal((whole.content ?? "").split("\n").length, 2, "two error lines matched");
 
         // Compose: structural <L><2> over the matcher result → 2nd match line only.
         const picked = await new Log().read(
-            { ...readStmt(urlPath("log", "1/1/1")), lineMarker: { first: 2, last: null } },
+            { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { first: 2, last: null } },
             makeSchemeCtx({ db, runId, mimetypes }),
         );
         assert.equal(picked.status, 200);
@@ -138,20 +138,20 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "known", pathname: "multi",
+            session_id: sessionId, scheme: "known", pathname: "/multi",
         });
         const entryId = entry!.id;
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
 
         const r = await engine.dispatch({
-            statement: sendStmt(410, urlPath("known", "multi", "summary")) as SendStatement,
+            statement: sendStmt(410, urlPath("known", "/multi", "summary")) as SendStatement,
             sessionId, runId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(r.status, 200, "410 on an existing channel succeeds");
 
         // Entry row survives.
-        const stillThere = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "multi" });
+        const stillThere = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/multi" });
         assert.ok(stillThere !== undefined, "entry row remains — fragment delete is channel-scoped");
         // Named channel is gone.
         const summary = await (db.test_get_channel as PrepMethod).get<{ name: string }>({ entry_id: entryId, name: "summary" });

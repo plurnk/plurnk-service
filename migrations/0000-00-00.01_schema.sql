@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS entry_embeddings (
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
 -- proposing schemes transition 'proposed' → resolved/failed/cancelled.
--- indexed: per-row visibility for OPEN/FOLD via the log:// scheme.
+-- indexed: per-row visibility for OPEN/FOLD via the log:/// scheme.
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),

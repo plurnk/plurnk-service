@@ -5,7 +5,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
 test("[§methods-loop-run] loop.run with mock provider runs a model turn and persists entries", async () => {
-    const dsl = "<<EDIT(known://france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
+    const dsl = "<<EDIT(known:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 142)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -23,14 +23,14 @@ test("[§methods-loop-run] loop.run with mock provider runs a model turn and per
             assert.equal(result.usage.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-            // known://france/capital + plurnk://prompt/<loop_id> + plurnk://manifest.json
+            // known:///france/capital + plurnk:///prompt/<loop_id> + plurnk:///manifest.json
             assert.equal(entryCount, 3);
         } finally { ws.close(); }
     });
 });
 
 test("loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "<<EDIT(known://x):hello:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -60,7 +60,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 });
 
 test("loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "<<EDIT(known://x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -108,7 +108,7 @@ test("loop.run requires non-empty prompt", async () => {
 });
 
 test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "<<EDIT(known://x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     const mock = new Mock({ contextSize: 8192, responses });
 

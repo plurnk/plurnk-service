@@ -1,5 +1,5 @@
 // PLURNK_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
-// doc declared via env is materialized as a plurnk://<ALIAS>.md entry by the
+// doc declared via env is materialized as a plurnk:///<ALIAS>.md entry by the
 // plurnk run (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
 // The model sees only the READ; the materializing EDIT lives in the plurnk run.
 //
@@ -32,23 +32,23 @@ test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by
                 const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
                 const { loopId } = resp.result as { loopId: number };
 
-                // The model's turn-0 log carries a READ of plurnk://AGENTS.md.
+                // The model's turn-0 log carries a READ of plurnk:///AGENTS.md.
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
                     op: string; pathname: string; scheme: string; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "AGENTS.md");
-                assert.ok(docRead !== undefined, "model turn-0 should carry a READ of plurnk://AGENTS.md");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
+                assert.ok(docRead !== undefined, "model turn-0 should carry a READ of plurnk:///AGENTS.md");
                 assert.equal(docRead!.status_rx, 200, "the doc entry was materialized by the plurnk run — the READ hits it, not a 404");
 
                 // The materializing EDIT must NOT be in the model loop's log.
-                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "AGENTS.md");
+                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
                 assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk run, not the model's log");
 
                 // The materialized entry body equals the host file content.
                 const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({
-                    pathname: "AGENTS.md", scheme: "plurnk", name: "body",
+                    pathname: "/AGENTS.md", scheme: "plurnk", name: "body",
                 });
-                assert.equal(body?.content, docBody, "plurnk://AGENTS.md body mirrors the host file");
+                assert.equal(body?.content, docBody, "plurnk:///AGENTS.md body mirrors the host file");
             } finally { ws.close(); }
         });
     } finally {

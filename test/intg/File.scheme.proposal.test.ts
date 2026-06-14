@@ -1,5 +1,5 @@
 // File scheme as the canonical proposal consumer (SPEC.md §engine-rails + §methods
-// + §membership D3 — disk co-location). EDIT against file:// returns status=202 with a udiff body
+// + §membership D3 — disk co-location). EDIT against file:/// returns status=202 with a udiff body
 // and {path, canonical, patch, patched} attrs; on accept the engine calls
 // File.applyResolution which writes patched content to disk.
 
@@ -19,17 +19,17 @@ import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "
 
 const fileEditStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: { kind: "url", raw: `file://${pathname}`, scheme: "file",
+    target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
-        pathname, params: {}, fragment: null },
+        pathname: `/${pathname}`, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
-    target: { kind: "url", raw: `file://${pathname}`, scheme: "file",
+    target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
-        pathname, params: {}, fragment: null },
+        pathname: `/${pathname}`, params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
@@ -75,7 +75,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         // File.edit gates on membership (SPEC §membership): a pre-existing file must be a
         // member (git-tracked or client-added) to be editable — register it, the same
         // way READ's gate is satisfied below. A NEW path needs no prior member.
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, target), "hello\n", "utf8");
 
@@ -91,9 +91,9 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         assert.equal(row?.state, "proposed");
         assert.equal(row?.status_rx, 202);
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string; canonical: string; patch: string; patched: string };
-        assert.equal(attrs.path, target);
+        assert.equal(attrs.path, `/${target}`);
         assert.equal(attrs.patched, "hello world\n");
-        assert.match(attrs.patch, /^Index: src\/hello\.txt/);
+        assert.match(attrs.patch, /^Index: \/src\/hello\.txt/);
         assert.match(attrs.patch, /-hello/);
         assert.match(attrs.patch, /\+hello world/);
 
@@ -109,7 +109,7 @@ test("file.edit: rejection leaves file untouched", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n");
@@ -164,10 +164,10 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: target });
+        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
-        // No file:// prefix — the form the sysprompt teaches.
+        // No file:/// prefix — the form the sysprompt teaches.
         const stmt = bareEditStmt(target, "bare-path edit\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -181,7 +181,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
         assert.equal(row?.state, "proposed");
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };
-        assert.equal(attrs.path, target);
+        assert.equal(attrs.path, `/${target}`);
 
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;
@@ -201,7 +201,7 @@ test("file.read: still works alongside the new edit path", async () => {
             db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, tokenize: (t: string) => t.length,
         };
-        await EntryCrud.writeEntry(target, { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, writeCtx, null);
+        await EntryCrud.writeEntry(`/${target}`, { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, writeCtx, null);
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({

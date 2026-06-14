@@ -30,7 +30,7 @@ test("schema: action_failure envelope (engine-emitted with log-coordinate positi
         status: 403,
         target: "log:///x",
         error: "writer 'model' denied on scheme 'log'",
-        position: { type: "log-coordinate", coordinate: "log://1/1/2", op: "EDIT" },
+        position: { type: "log-coordinate", coordinate: "log:///1/1/2", op: "EDIT" },
     }, "action_failure with log-coordinate position");
 });
 

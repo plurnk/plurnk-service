@@ -124,10 +124,10 @@ test("schemes: handler nullable", async () => {
     const db = await openMigrated();
     try {
         await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "core", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: null });
-        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "plug", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk://handlers/plug" });
+        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "plug", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk:///handlers/plug" });
         const handlers = await (db.test_schemes_list_handlers as PrepMethod).all<{ name: string; handler: string | null }>();
         assert.equal(handlers.find((s) => s.name === "core")?.handler, null);
-        assert.equal(handlers.find((s) => s.name === "plug")?.handler, "plurnk://handlers/plug");
+        assert.equal(handlers.find((s) => s.name === "plug")?.handler, "plurnk:///handlers/plug");
     } finally { await db.close(); }
 });
 

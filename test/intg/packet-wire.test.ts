@@ -16,12 +16,12 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: null, pathname: "out.txt" },
+            target: { scheme: null, pathname: "/out.txt" },
             rx: "{\"status\":200}",
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
+    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
 
 test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
@@ -34,13 +34,13 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
             origin: "model",
             op: "READ",
             status: 200,
-            target: { scheme: null, pathname: "notes.md" },
+            target: { scheme: null, pathname: "/notes.md" },
             rx: { content: "hello\nworld", mimetype: "text/markdown", startLine: 1 },
         }],
     };
     const out = PacketWire.renderSystemContent(system);
     // Line-navigable mimetype → `N:\t` prefix per line.
-    assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
+    assert.match(out, /<<:::\/notes\.md\n1:\thello\n2:\tworld\n:::\/notes\.md/);
 });
 
 test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
@@ -53,14 +53,14 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
             origin: "model",
             op: "READ",
             status: 200,
-            target: { scheme: null, pathname: "notes.md" },
+            target: { scheme: null, pathname: "/notes.md" },
             rx: { content: '[\n  {"line":1,"matched":"hello"}\n]', mimetype: "application/json" },
         }],
     };
     const out = PacketWire.renderSystemContent(system);
     // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
-    assert.match(out, /<<:::notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::notes\.md/);
-    assert.doesNotMatch(out, /<<:::notes\.md\n1:\t/);
+    assert.match(out, /<<:::\/notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::\/notes\.md/);
+    assert.doesNotMatch(out, /<<:::\/notes\.md\n1:\t/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -82,7 +82,7 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://users.json", scheme: "known", pathname: "/users.json", fragment: null },
+                target: { kind: "url", raw: "known:///users.json", scheme: "known", pathname: "/users.json", fragment: null },
                 body: '[{"name":"Eve"}]',
                 signal: null,
                 lineMarker: null,
@@ -93,7 +93,7 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
     const out = PacketWire.renderSystemContent(system);
     // Body has no leading/trailing whitespace; render is single-line — no
     // `\n` padding added on the way back. Character-perfect mirror of tx.
-    assert.match(out, /<<EDIT\(known:\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
+    assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
 });
 
 test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
@@ -110,7 +110,7 @@ test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://users.json", scheme: "known", pathname: "/users.json", fragment: null },
+                target: { kind: "url", raw: "known:///users.json", scheme: "known", pathname: "/users.json", fragment: null },
                 body: '[{"name":"Alice"}]',
                 signal: null,
                 lineMarker: null,
@@ -119,7 +119,7 @@ test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<EDIT\(known:\/\/users\.json\):\[\{"name":"Alice"\}\]:EDIT/);
+    assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Alice"\}\]:EDIT/);
 });
 
 test("log render: EDIT with multi-line body — body's own newlines decide shape (no added padding)", () => {
@@ -136,7 +136,7 @@ test("log render: EDIT with multi-line body — body's own newlines decide shape
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://plan", scheme: "known", pathname: "/plan", fragment: null },
+                target: { kind: "url", raw: "known:///plan", scheme: "known", pathname: "/plan", fragment: null },
                 // Model emitted with newlines around the body — those
                 // newlines are part of the body. Render mirrors verbatim.
                 body: "\n- [ ] step a\n- [ ] step b\n",
@@ -147,7 +147,7 @@ test("log render: EDIT with multi-line body — body's own newlines decide shape
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<EDIT\(known:\/\/plan\):\n- \[ \] step a\n- \[ \] step b\n:EDIT/);
+    assert.match(out, /<<EDIT\(known:\/\/\/plan\):\n- \[ \] step a\n- \[ \] step b\n:EDIT/);
 });
 
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
@@ -180,7 +180,7 @@ test("log render: EDIT with line marker — heredoc carries the marker", () => {
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://notes", scheme: "known", pathname: "/notes", fragment: null },
+                target: { kind: "url", raw: "known:///notes", scheme: "known", pathname: "/notes", fragment: null },
                 body: "revised",
                 signal: null,
                 lineMarker: { first: 5, last: null },
@@ -189,7 +189,7 @@ test("log render: EDIT with line marker — heredoc carries the marker", () => {
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<EDIT\(known:\/\/notes\)<5>:revised:EDIT/);
+    assert.match(out, /<<EDIT\(known:\/\/\/notes\)<5>:revised:EDIT/);
 });
 
 test("log render: EDIT with tags and range marker — heredoc carries both", () => {
@@ -204,7 +204,7 @@ test("log render: EDIT with tags and range marker — heredoc carries both", () 
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://x", scheme: "known", pathname: "/x", fragment: null },
+                target: { kind: "url", raw: "known:///x", scheme: "known", pathname: "/x", fragment: null },
                 body: "body",
                 signal: ["alpha", "beta"],
                 lineMarker: { first: 3, last: 7 },
@@ -213,7 +213,7 @@ test("log render: EDIT with tags and range marker — heredoc carries both", () 
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<EDIT\[alpha,beta\]\(known:\/\/x\)<3,7>:body:EDIT/);
+    assert.match(out, /<<EDIT\[alpha,beta\]\(known:\/\/\/x\)<3,7>:body:EDIT/);
 });
 
 test("log render: EDIT with fragment in target.raw — heredoc preserves it", () => {
@@ -228,7 +228,7 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
             tx: {
                 op: "EDIT",
                 suffix: "",
-                target: { kind: "url", raw: "known://x#preview", scheme: "known", pathname: "/x", fragment: "preview" },
+                target: { kind: "url", raw: "known:///x#preview", scheme: "known", pathname: "/x", fragment: "preview" },
                 body: "summary",
                 signal: null,
                 lineMarker: null,
@@ -237,7 +237,7 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<EDIT\(known:\/\/x#preview\):summary:EDIT/);
+    assert.match(out, /<<EDIT\(known:\/\/\/x#preview\):summary:EDIT/);
 });
 
 test("measureBudgetSections: per-section render tokens + assembled total (log only)", () => {
@@ -333,11 +333,11 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
             origin: "model",
             op: "READ",
             status: 200,
-            target: { scheme: null, pathname: "page.html" },
+            target: { scheme: null, pathname: "/page.html" },
             rx: { content: "<h1>Hi</h1>", mimetype: "text/html" },
         }],
     };
     const out = PacketWire.renderSystemContent(system);
-    assert.match(out, /<<:::page\.html\n<h1>Hi<\/h1>\n:::page\.html/);
+    assert.match(out, /<<:::\/page\.html\n<h1>Hi<\/h1>\n:::\/page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });

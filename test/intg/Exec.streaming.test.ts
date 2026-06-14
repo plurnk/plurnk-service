@@ -195,7 +195,7 @@ test("streaming exec: the session catalog picks up partial channel content betwe
 
         const execStdout = async (): Promise<Array<{ scheme: string | null; pathname: string; content: string }>> => {
             // Read the exec entry's stdout channel from the session catalog
-            // (engine_list_session_entries, the source behind plurnk://manifest.json):
+            // (engine_list_session_entries, the source behind plurnk:///manifest.json):
             // one row per (entry, channel) with the channel's LIVE content.
             // Streaming is a channel property — partial bytes must be observable
             // mid-stream regardless of how they're later rendered.

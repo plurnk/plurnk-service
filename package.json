@@ -51,7 +51,7 @@
     "@plurnk/plurnk-execs-search": "0.2.3",
     "@plurnk/plurnk-execs-sqlite": "0.1.4",
     "@plurnk/plurnk-execs-wasm": "0.1.2",
-    "@plurnk/plurnk-grammar": "0.36.0",
+    "@plurnk/plurnk-grammar": "0.41.0",
     "@plurnk/plurnk-mimetypes": "0.15.9",
     "@plurnk/plurnk-mimetypes-embeddings": "0.1.0",
     "@plurnk/plurnk-providers": "0.2.4",

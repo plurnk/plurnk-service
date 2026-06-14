@@ -1,4 +1,4 @@
-import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
+import { PlurnkParser, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
@@ -651,7 +651,7 @@ export default class Engine {
         const turnId = openRow.id;
 
         // Pre-model writes. Each turn opens with a system-origin EDIT
-        // against `plurnk://prompt/<loop_id>/<seq>` IF there's a prompt
+        // against `plurnk:///prompt/<loop_id>/<seq>` IF there's a prompt
         // for THIS turn the model hasn't seen yet:
         //   - Turn 1: loop.prompt is the initial user prompt.
         //   - Turn N>1: only if Engine.inject (or wake-on-completion via
@@ -664,15 +664,15 @@ export default class Engine {
         let nextActionIndex = 1;
         if (seq === 1) {
             // Operator doc READs (PLURNK_MD_<ALIAS>). The docs were materialized
-            // as plurnk://<entry> entries by the plurnk run (loop_run, via the
+            // as plurnk:///<entry> entries by the plurnk run (loop_run, via the
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk run's log, never the model's.
             for (const doc of Paths.docs()) {
                 const docTarget: UrlPath = {
-                    kind: "url", raw: `plurnk://${doc.entryName}`, scheme: "plurnk",
+                    kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
                     username: null, password: null, hostname: null, port: null,
-                    pathname: doc.entryName, params: {}, fragment: null,
+                    pathname: `/${doc.entryName}`, params: {}, fragment: null,
                 };
                 const docRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: docTarget,
@@ -687,10 +687,10 @@ export default class Engine {
             const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptPath: UrlPath = {
-                    kind: "url", raw: `plurnk://prompt/${loopId}/${seq}`,
+                    kind: "url", raw: `plurnk:///prompt/${loopId}/${seq}`,
                     scheme: "plurnk", username: null, password: null,
                     hostname: null, port: null,
-                    pathname: `prompt/${loopId}/${seq}`, params: {}, fragment: null,
+                    pathname: `/prompt/${loopId}/${seq}`, params: {}, fragment: null,
                 };
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
@@ -705,7 +705,7 @@ export default class Engine {
             }
         }
 
-        // plurnk://manifest.json — rewritten EVERY turn (a live view of the
+        // plurnk:///manifest.json — rewritten EVERY turn (a live view of the
         // entry set, which changes each turn). A derived view like the index,
         // NOT an action — written directly (Engine.inject's path): no log entry,
         // no sequence slot, not dispatched. The catalog body is built in the
@@ -731,7 +731,7 @@ export default class Engine {
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
         await this.#logFsFictions(sessionId, fsDivergences);
 
-        await EntryCrud.writeEntry("manifest.json", {
+        await EntryCrud.writeEntry("/manifest.json", {
             channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx), mimetype: "application/json" } },
             tags: [],
         }, systemCtx, "plurnk");
@@ -747,9 +747,9 @@ export default class Engine {
                 const manifestRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, lineMarker: null,
                     target: {
-                        kind: "url", raw: "plurnk://manifest.json", scheme: "plurnk",
+                        kind: "url", raw: "plurnk:///manifest.json", scheme: "plurnk",
                         username: null, password: null, hostname: null, port: null,
-                        pathname: "manifest.json", params: {}, fragment: null,
+                        pathname: "/manifest.json", params: {}, fragment: null,
                     },
                     body: manifestItems < 0 ? null : { dialect: "jsonpath", raw: `$[0:${manifestItems}]` } as MatcherBody,
                     position: { line: 1, column: 1 },
@@ -999,7 +999,7 @@ export default class Engine {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         const system_definition = byRole("system");
         // user.prompt sources from the loop's most recent prompt entry first
-        // (plurnk://prompt/<loop_id>/<N> for the highest N written to date).
+        // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
@@ -1210,7 +1210,7 @@ export default class Engine {
     // SPEC §packet packet.system.log — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
-    // log://<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
+    // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(runId: number): Promise<object[]> {
         // SPEC §packet-terms: runs own log entries — log is the run's history,
         // not the loop's. Span all loops in the run so the model sees
@@ -1522,7 +1522,7 @@ export default class Engine {
     }
 
     // Inject a prompt into the run's currently-executing loop. Writes a
-    // plurnk://prompt/<loop_id>/<next-turn> entry whose body becomes
+    // plurnk:///prompt/<loop_id>/<next-turn> entry whose body becomes
     // packet.user.prompt at the next turn boundary. Last-wins: if two
     // injects target the same next-turn slot, the second overwrites the
     // first.
@@ -1654,7 +1654,8 @@ export default class Engine {
         }
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            const dstScheme = this.#schemeNameOf(statement.body);
+            const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
+            const dstScheme = this.#schemeNameOf(dst);
             const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
@@ -1703,7 +1704,7 @@ export default class Engine {
         };
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.target) ?? check(statement.body);
+            return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
         }
         return check(statement.target);
     }
@@ -1711,9 +1712,12 @@ export default class Engine {
     async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "COPY") throw new Error("unreachable");
         const srcPath = statement.target;
-        const dstPath = statement.body;
+        // COPY's body is an opaque raw string (grammar §COPY: a dest path OR a run-fork
+        // prompt); parse it to the dest path. Non-path bodies (run:// fork prompts) are
+        // not yet handled and surface as a 400.
+        const dstPath = statement.body === null ? null : parsePath(statement.body);
         if (srcPath === null) return { status: 400, error: "COPY requires source path" };
-        if (dstPath === null) return { status: 400, error: "COPY requires destination path (in body slot)" };
+        if (dstPath === null) return { status: 400, error: "COPY destination must be a parseable path in the body slot" };
         return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
     }
 
@@ -1749,12 +1753,12 @@ export default class Engine {
 
     // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
     // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
-    // retired from the model's vocabulary. Process-KILL (exec://) aborts the
+    // retired from the model's vocabulary. Process-KILL (exec:///) aborts the
     // running spawn's controller (the same teardown loop.cancel rides), addressed
     // by coordinate pathname (#203). The KILL body is an opaque
     // annotation with no runtime meaning; it survives into the log row's tx for
     // free via the statement serialization. Status: 200 killed · 404 unknown ·
-    // 405 log:// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
+    // 405 log:/// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
     // MUTATING_OPS) · 200/410/304/404 exec (killed / killed-earlier / exited / unknown) · 501 no-kill/delete scheme.
     async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
@@ -1762,7 +1766,7 @@ export default class Engine {
         if (path === null) return { status: 400, error: "KILL requires a target path" };
         const schemeName = this.#schemeNameOf(path);
         if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
-        if (schemeName === "log") return { status: 405, error: "log:// is append-only; KILL must bounce" };
+        if (schemeName === "log") return { status: 405, error: "log:/// is append-only; KILL must bounce" };
         if (schemeName === "exec") {
             const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
             if (execHandler === undefined || typeof execHandler.kill !== "function") return { status: 501 };
@@ -1905,7 +1909,7 @@ export default class Engine {
 
     // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
     // "Bare paths (no scheme) default to local relative project file paths."
-    // file:// remains an optional explicit form for absolute paths.
+    // file:/// remains an optional explicit form for absolute paths.
     #schemeNameOf(path: ParsedPath | null): string | null {
         if (path === null) return null;
         // http + https are one scheme — the http sibling owns both prefixes (#195).
@@ -1934,11 +1938,11 @@ export default class Engine {
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
         // EXEC pathname is executor-domain + coordinate: the stream entry
-        // lives at exec://<runtime>/<loop_seq>/<turn_seq>/<sequence> (e.g.
-        // exec://sh/1/1/2). The runtime leads — domain-aware, the executor
+        // lives at exec:///<runtime>/<loop_seq>/<turn_seq>/<sequence> (e.g.
+        // exec:///sh/1/1/2). The runtime leads — domain-aware, the executor
         // as authority — and the coordinate that follows is already unique
         // per statement, so no slug is injected. The log row's target points
-        // at this same address; its log:// coordinate shares the trailing
+        // at this same address; its log:/// coordinate shares the trailing
         // <loop>/<turn>/<seq>, so the model correlates op to stream output.
         // Runtime comes from statement.signal (EXEC's runtime slot) so it's
         // resolvable for failed execs too; empty/absent = the default shell.
@@ -1948,7 +1952,7 @@ export default class Engine {
             });
             if (seqs === undefined) throw new Error(`Engine.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
             const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const coordPathname = `${runtime}/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
+            const coordPathname = `/${runtime}/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
             target.scheme = "exec";
             target.pathname = coordPathname;
             attrsObj.pathname = coordPathname;
@@ -1999,7 +2003,7 @@ export default class Engine {
 
     // Normalize a parsed path for storage. The `file` scheme is a routing
     // internal — never stored, never rendered to the model. Both bare paths
-    // and `file://...` inputs collapse to scheme=null at this boundary, so
+    // and `file:///...` inputs collapse to scheme=null at this boundary, so
     // entries.scheme / log_entries.scheme never carry the string "file".
     #extractTarget(path: ParsedPath | null): {
         scheme: string | null; username: string | null; password: string | null;

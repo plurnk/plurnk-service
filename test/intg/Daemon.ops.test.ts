@@ -9,14 +9,14 @@ test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin
         try {
             await rpcCall(ws, 1, "session.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                target: "known://france/capital", content: "Paris", tags: ["france", "geography"],
+                target: "known:///france/capital", content: "Paris", tags: ["france", "geography"],
             });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "france/capital", scheme: "known" });
+            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "known" });
             assert.equal(entry?.scheme, "known");
-            assert.equal(entry?.pathname, "france/capital");
-            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "france/capital" }))?.content;
+            assert.equal(entry?.pathname, "/france/capital");
+            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/france/capital" }))?.content;
             assert.equal(body, "Paris");
             const tags = await (db.test_parser_tags as PrepMethod).all<{ tag: string }>();
             assert.deepEqual(tags.map((t) => t.tag), ["france", "geography"]);
@@ -32,8 +32,8 @@ test("op.read fetches an entry's body", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "hello" });
-            const response = await rpcCall(ws, 3, "op.read", { target: "known://x" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "hello" });
+            const response = await rpcCall(ws, 3, "op.read", { target: "known:///x" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "hello");
@@ -46,7 +46,7 @@ test("op.read on nonexistent entry returns 404", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "404-test" });
-            const response = await rpcCall(ws, 2, "op.read", { target: "known://nope" });
+            const response = await rpcCall(ws, 2, "op.read", { target: "known:///nope" });
             assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
     });
@@ -62,9 +62,9 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                 suffix: "",
                 signal: null,
                 target: {
-                    kind: "url" as const, raw: "known://hello",
+                    kind: "url" as const, raw: "known:///hello",
                     scheme: "known", username: null, password: null,
-                    hostname: null, port: null, pathname: "hello",
+                    hostname: null, port: null, pathname: "/hello",
                     params: {}, fragment: null,
                 },
                 lineMarker: null,
@@ -74,7 +74,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             const response = await rpcCall(ws, 2, "op.dispatch", { statement });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "hello" }))?.content;
+            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/hello" }))?.content;
             assert.equal(body, "world");
         } finally { ws.close(); }
     });
@@ -85,8 +85,8 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "parse-test" });
-            const text = `<<EDIT(known://a):alpha:EDIT
-<<EDIT(known://b):beta:EDIT`;
+            const text = `<<EDIT(known:///a):alpha:EDIT
+<<EDIT(known:///b):beta:EDIT`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
             const result = response.result as { results: Array<{ status: number }> };
             assert.equal(result.results.length, 2);
@@ -94,7 +94,7 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
             assert.equal(result.results[1].status, 201);
 
             const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
-            assert.deepEqual(entries.map((e) => e.pathname), ["a", "b"]);
+            assert.deepEqual(entries.map((e) => e.pathname), ["/a", "/b"]);
         } finally { ws.close(); }
     });
 });
@@ -105,7 +105,7 @@ test("[§notifications-log-entry-notify] op.* fires log/entry notification with 
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "session.create", { name: "notif-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known://x", content: "test" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "test" });
             await flush();
 
             const captured = notifications();
@@ -131,7 +131,7 @@ test("log/entry notification is scoped to session", async () => {
             await flush();
             aNotifs(); bNotifs();
 
-            await rpcCall(wsA, 2, "op.edit", { target: "known://x", content: "from A" });
+            await rpcCall(wsA, 2, "op.edit", { target: "known:///x", content: "from A" });
             await flush();
 
             assert.equal(aNotifs().length, 1);
@@ -144,7 +144,7 @@ test("[§methods-auto-envelope] op.* methods require init: Auto-create kicks in"
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const response = await rpcCall(ws, 1, "op.edit", { target: "known://x", content: "auto" });
+            const response = await rpcCall(ws, 1, "op.edit", { target: "known:///x", content: "auto" });
             assert.equal((response.result as { status: number }).status, 201);
 
             const sessions = await (db.test_list_sessions as PrepMethod).all<{ name: string }>();
@@ -159,7 +159,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "find-test" });
-            const response = await rpcCall(ws, 2, "op.find", { scope: "known://" });
+            const response = await rpcCall(ws, 2, "op.find", { scope: "known:///" });
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
             assert.deepEqual(result.results, []);

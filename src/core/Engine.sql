@@ -32,7 +32,7 @@ WHERE l.id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
--- system-origin EDIT against plurnk://prompt/<loop_id>/1 (§packet), at the
+-- system-origin EDIT against plurnk:///prompt/<loop_id>/1 (§packet), at the
 -- turn's first action sequence. Prompts are first-class log entries
 -- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
@@ -57,7 +57,7 @@ FROM turns WHERE loop_id = $loop_id;
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
 -- #writeLog when an op needs to address itself or its output by log
--- coordinate (e.g. EXEC's stream entry at exec://<loop_seq>/<turn_seq>/<sequence>/EXEC).
+-- coordinate (e.g. EXEC's stream entry at exec:///<loop_seq>/<turn_seq>/<sequence>/EXEC).
 SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM loops l, turns t
 WHERE l.id = $loop_id AND t.id = $turn_id;
@@ -90,7 +90,7 @@ WHERE id = $id;
 
 -- PREP: engine_list_session_entries
 -- Every entry of a session — all schemes, all channels — the source for
--- plurnk://manifest.json, the flat catalog of everything the session holds.
+-- plurnk:///manifest.json, the flat catalog of everything the session holds.
 -- Session-scoped (persists across runs); FOLD doesn't drop from the catalog.
 -- `seconds` is the live age of an active stream: now − the open subscription's
 -- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
@@ -114,7 +114,7 @@ WHERE l.run_id = $run_id AND t.id != $turn_id;
 -- §env-delta — other actors' resolved EDITs on shared entries since this run last
 -- looked. Real edits (origin model/client) AND the plurnk run's fs-sync fictions
 -- (origin=plurnk on the reserved 'plurnk' run); excludes this run's own rows and
--- other runs' already-materialized deltas (origin=plurnk on a real run). plurnk://
+-- other runs' already-materialized deltas (origin=plurnk on a real run). plurnk:///
 -- entries (manifest/prompt/doc) never surface.
 SELECT le.run_id, le.scheme, le.pathname, le.rx, le.source
 FROM log_entries le
@@ -149,7 +149,7 @@ SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 -- SPEC §telemetry: action-bound failures from the immediately previous turn
 -- are mirrored into the next packet's telemetry.errors[]. Forces the
 -- model to confront 4xx/5xx outcomes instead of letting them rot in
--- log://. "Previous turn" = sequence one below the currently-open one
+-- log:///. "Previous turn" = sequence one below the currently-open one
 -- (turn-as-container model: the current turn exists with status=102
 -- when this query fires, so we explicitly look one back).
 SELECT
@@ -184,7 +184,7 @@ WHERE loop_id = $loop_id AND indexed = 1
 -- Render-time log assembly (SPEC §packet packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working
 -- memory carries across loops within a session's run, not just the
--- current loop. Coordinate is log://<loop_seq>/<turn_seq>/<sequence>/<op>.
+-- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `indexed = 0` rows are FOLDED — listed but collapsed to their coordinate
 -- (FOLD); the renderer elides the body. §open-fold: folded rows stay listed, re-OPENable.

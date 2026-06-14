@@ -1,4 +1,4 @@
-// The body of plurnk://manifest.json — the complete, unranked directory of
+// The body of plurnk:///manifest.json — the complete, unranked directory of
 // every entry the session holds, across all schemes. engine_list_session_entries
 // lists every entry, uniformly READable, in no relevance order. The model
 // ranks/filters it itself by querying the catalog
@@ -9,7 +9,7 @@
 // tokenizer would make the catalog lie; `lines` is the content's extent from
 // mimetypes' process() totalLines. The catalog never lists itself.
 //
-// Lives in the schemes/entry layer, not the engine: building a plurnk:// entry's
+// Lives in the schemes/entry layer, not the engine: building a plurnk:/// entry's
 // content is the schemes' job; the engine only orchestrates the per-turn write
 // (the same materialization pattern as git membership).
 
@@ -25,7 +25,7 @@ type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; 
 type CatalogEntry = { path: string; seconds?: number; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
-    static #MANIFEST_PATH = "plurnk://manifest.json";
+    static #MANIFEST_PATH = "plurnk:///manifest.json";
 
     static #toPath(scheme: string | null, pathname: string): string {
         return scheme === null ? pathname : `${scheme}://${pathname}`;

@@ -1,6 +1,6 @@
 // Engine.inject — direct surface tests. Deterministic state setup; no
 // daemon, no Mock provider timing races. Verifies the rummy-parallel
-// inject mechanics: writes plurnk://prompt/<loop>/<next-turn>, last-wins
+// inject mechanics: writes plurnk:///prompt/<loop>/<next-turn>, last-wins
 // per turn slot, returns null when no loop is currently active.
 
 import test from "node:test";
@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
-test("engine.inject: writes prompt entry at plurnk://prompt/<loop>/<next-turn>", async () => {
+test("engine.inject: writes prompt entry at plurnk:///prompt/<loop>/<next-turn>", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -31,7 +31,7 @@ test("engine.inject: writes prompt entry at plurnk://prompt/<loop>/<next-turn>",
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
             session_id: sessionId, scheme: "plurnk", pathname: `prompt/${loopId}/2`,
         });
-        assert.ok(entry, "prompt entry exists at plurnk://prompt/<loop>/2");
+        assert.ok(entry, "prompt entry exists at plurnk:///prompt/<loop>/2");
         const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });

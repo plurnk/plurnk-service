@@ -5,7 +5,7 @@ import { ReadResolve } from "../content/index.ts";
 
 type OpenFoldResult = { status: number };
 
-// log://<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
+// log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
 // parsing accepts it (or omits it) and identifies the row by coordinate.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Z]+))?$/;
@@ -51,12 +51,12 @@ export default class Log {
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
         const { db, runId } = ctx;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
-        // log:// entries have no tag concept (engine-written events).
+        // log:/// entries have no tag concept (engine-written events).
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             return { status: 404, content: null, mimetype: null };
         }
 
-        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const coord = parseCoordinate(pathname);
         if (coord === null) return { status: 400, content: null, mimetype: null };
 
@@ -75,7 +75,7 @@ export default class Log {
         // op's body is at rx.content with its own mimetype at rx.mimetype.
         // Returning rx.content directly (NOT a "EDIT target\nstatus: N\n
         // response: …" summary wrap) is what makes matcher chaining work:
-        // `<<READ(log://N/M/K):$[0].matched:READ` then sees the prior op's
+        // `<<READ(log:///N/M/K):$[0].matched:READ` then sees the prior op's
         // actual result body and can jsonpath / xpath it cleanly.
         //
         // For ops that don't produce a content body (EDIT/COPY/MOVE/SEND
@@ -118,7 +118,7 @@ export default class Log {
     async #setIndexed(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<OpenFoldResult> {
         if (statement.target === null) return { status: 400 };
         const { db, runId } = ctx;
-        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
 
         // Fast path: a single concrete coordinate with no pagination flips that row.
         const coord = parseCoordinate(pathname);
@@ -129,7 +129,7 @@ export default class Log {
             return { status: updated === undefined ? 404 : 200 };
         }
 
-        // Glob and/or paginated (e.g. FOLD(log://**/READ)<1>): resolve the matched
+        // Glob and/or paginated (e.g. FOLD(log:///**/READ)<1>): resolve the matched
         // rows, paginate over them, flip each. The model's primary curation move.
         const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob: pathname });
         if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400 } : { status: 404 };

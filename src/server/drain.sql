@@ -33,7 +33,7 @@ LIMIT 1;
 
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
--- the path of the prompt entry it should write (plurnk://prompt/<loop>/<N>).
+-- the path of the prompt entry it should write (plurnk:///prompt/<loop>/<N>).
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: drain_get_run_session
@@ -43,7 +43,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 SELECT session_id FROM runs WHERE id = $run_id;
 
 -- PREP: drain_get_latest_prompt_body_for_loop
--- Sources packet.user.prompt at packet-build time. plurnk://prompt/<loop>/<N>
+-- Sources packet.user.prompt at packet-build time. plurnk:///prompt/<loop>/<N>
 -- entries accumulate per turn; the latest one (highest entries.id) is the
 -- "current" prompt the model sees in user.prompt. Falls back to NULL when
 -- no prompt entry exists for the loop (caller substitutes runLoop's

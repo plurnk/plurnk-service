@@ -34,7 +34,9 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const canonical = join(row?.project_root ?? "", pathname);
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
-    await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+    // Entry key is namespace-absolute (`/notes.md`), mirroring production's
+    // git-membership pass — the disk path (canonical) stays workspace-relative.
+    await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
 };
 
 // Set up a session whose project_root points at a fresh temp directory,
@@ -85,7 +87,7 @@ test("File.read: read existing file inside workspace → 200 + content + text/ma
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "hello.txt"), "Paris is the capital of France.\n");
         await addMember(ctx, "hello.txt");
-        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
+        const result = await new File().read(readStmt(urlPath("file", "/hello.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris is the capital of France.\n");
         assert.equal(result.mimetype, "text/markdown");
@@ -97,7 +99,7 @@ test("File.read: nested path inside workspace works", async () => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
         await addMember(ctx, "docs/readme.md");
-        const result = await new File().read(readStmt(urlPath("file", "docs/readme.md")), ctx);
+        const result = await new File().read(readStmt(urlPath("file", "/docs/readme.md")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "# Doc\n");
     });
@@ -105,7 +107,7 @@ test("File.read: nested path inside workspace works", async () => {
 
 test("File.read: missing file → 404", async () => {
     await withSessionWorkspace(async (_root, ctx) => {
-        const result = await new File().read(readStmt(urlPath("file", "missing.txt")), ctx);
+        const result = await new File().read(readStmt(urlPath("file", "/missing.txt")), ctx);
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     });
@@ -128,7 +130,7 @@ test("File.read: symlink pointing outside workspace → 404 (never a member)", a
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
             await symlink(join(outside, "secret.txt"), join(root, "link-to-secret"));
-            const result = await new File().read(readStmt(urlPath("file", "link-to-secret")), ctx);
+            const result = await new File().read(readStmt(urlPath("file", "/link-to-secret")), ctx);
             // Containment moved to the materialize/edit disk edges: an outside-root
             // symlink is never materialized → no entry → 404 (not a read-path 403).
             assert.equal(result.status, 404, "non-member (outside-root symlink) → no entry → 404");
@@ -142,7 +144,7 @@ test("File.read: headless session (no entries) → 404", async () => {
         // Entry-backed read: a headless session materializes no file entries, so
         // any file read finds nothing → 404 (uniform with Known; the old
         // project_root precondition lived on the deleted disk-read path).
-        const result = await new File().read(readStmt(urlPath("file", "hello.txt")), ctx);
+        const result = await new File().read(readStmt(urlPath("file", "/hello.txt")), ctx);
         assert.equal(result.status, 404);
     });
 });
@@ -158,7 +160,7 @@ test("File.read: lineMarker <N> selects line N as raw content with startLine=N",
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "beta");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -169,7 +171,7 @@ test("File.read: lineMarker <N,M> selects inclusive range as raw content with st
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "b\nc");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -180,7 +182,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { lineMarker: { first: 99, last: null } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 99, last: null } }), ctx);
         assert.equal(r.status, 416);
     });
 });
@@ -190,7 +192,7 @@ test("File.read: regex body matcher returns N:\\t<value> rows", async () => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
         const r = await new File().read(
-            readStmt(urlPath("file", "f.txt"), { body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" } }),
+            readStmt(urlPath("file", "/f.txt"), { body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" } }),
             ctx,
         );
         assert.equal(r.status, 200);
@@ -204,7 +206,7 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
         await writeFile(join(root, "f.txt"), "alpha\nfoo bar foo\ngamma\n");
         await addMember(ctx, "f.txt");
         const r = await new File().read(
-            readStmt(urlPath("file", "f.txt"), {
+            readStmt(urlPath("file", "/f.txt"), {
                 lineMarker: { first: 2, last: 2 },
                 body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" },
             }),
@@ -216,13 +218,13 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
     });
 });
 
-test("File.read: non-empty tag filter on file:// returns 404 (no tag concept)", async () => {
+test("File.read: non-empty tag filter on file:/// returns 404 (no tag concept)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
         await addMember(ctx, "f.txt");
         // Entry exists, but file entries carry no tags → a tag-filtered read 404s
         // via the EntryOps tag gate, same as Known.
-        const r = await new File().read(readStmt(urlPath("file", "f.txt"), { tags: ["any"] }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
         assert.equal(r.status, 404);
     });
 });
@@ -232,7 +234,7 @@ test("File.read: long content round-trips", async () => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
         await addMember(ctx, "big.txt");
-        const result = await new File().read(readStmt(urlPath("file", "big.txt")), ctx);
+        const result = await new File().read(readStmt(urlPath("file", "/big.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content?.length, big.length);
     });

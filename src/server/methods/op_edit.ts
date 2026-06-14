@@ -21,7 +21,7 @@ export default class OpEditMethod {
             },
             description: "EDIT — write or update an entry's body.",
             params: {
-                target: "string — entry path (e.g. known://france/capital)",
+                target: "string — entry path (e.g. known:///france/capital)",
                 content: "string? — entry body (empty/omitted clears)",
                 tags: "string[]? — tag set",
                 lineRange: "LineMarker? — insertion point or replace range",

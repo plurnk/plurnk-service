@@ -47,7 +47,7 @@ export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = n
 });
 
 export const copyStmt = (src: ParsedPath, dst: ParsedPath, tags: string[] | null = null): CopyStatement => ({
-    op: "COPY", suffix: "", signal: tags, target: src, lineMarker: null, body: dst,
+    op: "COPY", suffix: "", signal: tags, target: src, lineMarker: null, body: dst.raw,
     position: { line: 1, column: 1 },
 });
 

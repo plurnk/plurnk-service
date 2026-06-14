@@ -70,8 +70,8 @@ export default class EntryOps {
 
         // Effective mimetype for this entry. Per plurnk-grammar 0.14.0:
         // "Path suffix declares mimetype; absent suffix defers to scheme default."
-        // `known://users.json` → application/json (extension wins).
-        // `known://users`      → text/markdown (scheme manifest default).
+        // `known:///users.json` → application/json (extension wins).
+        // `known:///users`      → text/markdown (scheme manifest default).
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 

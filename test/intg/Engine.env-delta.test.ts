@@ -114,7 +114,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; indexed: number }>({ run_id: runA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
-        assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
+        assert.equal(delta!.pathname, "/notes.md", "the delta names the diverged file");
         assert.equal(delta!.indexed, 0, "the fs delta lands folded");
         assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span (§edit-result-render)");
     } finally {

@@ -1,4 +1,4 @@
-// @graph over file:// — the PRIMARY case (codebase navigation). Proves the
+// @graph over file:/// — the PRIMARY case (codebase navigation). Proves the
 // symbol dialect resolves uniformly on file entries (scheme=null, bare-rendered):
 // materialize files the way git-membership does → derive at manifest-add → FIND
 // the graph dialect through File (entry-backed, identical to Known).
@@ -12,9 +12,9 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
-    kind: "url", raw: `file://${pathname}`, scheme: "file",
+    kind: "url", raw: `file:///${pathname}`, scheme: "file",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({
@@ -38,25 +38,25 @@ const seed = async () => {
     const ctx = makeSchemeCtx({ db, sessionId, runId });
     // Materialize file entries exactly as git-membership does: writeEntry(scheme=null).
     for (const [pathname, content] of FILES) {
-        await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, null);
+        await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, null);
     }
     // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
     await EntryManifest.buildManifestBody(ctx);
     return { db, sessionId, runId };
 };
 
-test("[#186-graph-file] @graph resolves over file:// entries — the primary codebase-navigation case", async () => {
+test("[#186-graph-file] @graph resolves over file:/// entries — the primary codebase-navigation case", async () => {
     const { db, sessionId, runId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 });
         const referrers = await new File().find(findStmt(fileUrl(""), graph("@<foo")), ctx);
         assert.equal(referrers.status, 200);
-        assert.deepEqual(referrers.results, ["file://src/b.ts"]);
+        assert.deepEqual(referrers.results, ["file:///src/b.ts"]);
 
         const referents = await new File().find(findStmt(fileUrl(""), graph("@>foo")), ctx);
-        assert.deepEqual(referents.results, ["file://src/c.ts"]);
+        assert.deepEqual(referents.results, ["file:///src/c.ts"]);
 
         const neighborhood = await new File().find(findStmt(fileUrl(""), graph("@foo")), ctx);
-        assert.deepEqual(neighborhood.results, ["file://src/a.ts", "file://src/b.ts", "file://src/c.ts"]);
+        assert.deepEqual(neighborhood.results, ["file:///src/a.ts", "file:///src/b.ts", "file:///src/c.ts"]);
     } finally { db.close(); }
 });

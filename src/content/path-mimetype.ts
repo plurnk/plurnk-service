@@ -4,8 +4,8 @@
 //
 // A pathname's extension drives the effective mimetype (via the sibling
 // Mimetypes detect service); the scheme manifest's channel default is the
-// fallback when no extension is present. `known://users.json` →
-// application/json; `known://notes` → scheme default.
+// fallback when no extension is present. `known:///users.json` →
+// application/json; `known:///notes` → scheme default.
 import { PathMimetype as _PathMimetype } from "@plurnk/plurnk-schemes";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 

@@ -1,5 +1,5 @@
-// log:// scheme participates in the model's curation surface via OPEN/FOLD
-// on log://N/T/S URIs. Underlying storage is the log_entries table (separate
+// log:/// scheme participates in the model's curation surface via OPEN/FOLD
+// on log:///N/T/S URIs. Underlying storage is the log_entries table (separate
 // from entries+entry_channels); the indexed column toggles visibility.
 // log entries lack channels and many other entry properties but share the
 // URI-dispatched open/fold mechanism.
@@ -27,9 +27,9 @@ const setup = async () => {
         signal: null,
         scheme: "known", username: null, password: null,
         hostname: null, port: null,
-        pathname: "x", params: null, fragment: null,
+        pathname: "/x", params: null, fragment: null,
         lineMarker: null,
-        tx: "<<EDIT(known://x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
+        tx: "<<EDIT(known:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
         status_rx: 201, tokens: 0,
         state: "resolved", outcome: null, attrs: "{}",
@@ -51,11 +51,11 @@ test("new log entry defaults to indexed=1", async () => {
     } finally { await db.close(); }
 });
 
-test("FOLD(log://1/1/1) flips indexed to 0", async () => {
+test("FOLD(log:///1/1/1) flips indexed to 0", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
-            foldStmt(urlPath("log", "1/1/1")),
+            foldStmt(urlPath("log", "/1/1/1")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
@@ -67,7 +67,7 @@ test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
-            foldStmt(urlPath("log", "1/1/1/EDIT")),
+            foldStmt(urlPath("log", "/1/1/1/EDIT")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
@@ -75,12 +75,12 @@ test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
     } finally { await db.close(); }
 });
 
-test("OPEN(log://1/1/1) flips indexed back to 1", async () => {
+test("OPEN(log:///1/1/1) flips indexed back to 1", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const log = new Log();
-        await log.fold(foldStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
-        const r = await log.open(openStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        await log.fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        const r = await log.open(openStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(await getIndexed(db, runId), 1);
     } finally { await db.close(); }
@@ -90,7 +90,7 @@ test("FOLD on nonexistent coordinate returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
-            foldStmt(urlPath("log", "9/9/9")),
+            foldStmt(urlPath("log", "/9/9/9")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 404);
@@ -101,7 +101,7 @@ test("FOLD on malformed path returns 400", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
-            foldStmt(urlPath("log", "garbage")),
+            foldStmt(urlPath("log", "/garbage")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 400);
@@ -117,8 +117,8 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
             sequence: 2, origin: "plurnk", source: "file",
             op: "EDIT", suffix: "", signal: null,
             scheme: "file", username: null, password: null, hostname: null, port: null,
-            pathname: "config.toml", params: null, fragment: null, lineMarker: null,
-            tx: "<<EDIT(file://config.toml)::EDIT", mimetype_tx: "text/vnd.plurnk",
+            pathname: "/config.toml", params: null, fragment: null, lineMarker: null,
+            tx: "<<EDIT(file:///config.toml)::EDIT", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
@@ -128,7 +128,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
     } finally { await db.close(); }
 });
 
-test("FOLD(log://**/READ)<1> folds the first matching READ row — glob + pagination", async () => {
+test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagination", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         // setup seeds 1/1/1 EDIT; add READ rows at 1/1/2 and 1/1/3.
@@ -137,8 +137,8 @@ test("FOLD(log://**/READ)<1> folds the first matching READ row — glob + pagina
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
                 scheme: "known", username: null, password: null, hostname: null, port: null,
-                pathname: "doc", params: null, fragment: null, lineMarker: null,
-                tx: "<<READ(known://doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                pathname: "/doc", params: null, fragment: null, lineMarker: null,
+                tx: "<<READ(known:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
@@ -150,7 +150,7 @@ test("FOLD(log://**/READ)<1> folds the first matching READ row — glob + pagina
                 run_id: runId, loop_seq: 1, turn_seq: 1, sequence,
             }))?.indexed ?? -1;
 
-        const stmt = { ...foldStmt(urlPath("log", "**/READ")), lineMarker: { first: 1, last: 1 } };
+        const stmt = { ...foldStmt(urlPath("log", "/**/READ")), lineMarker: { first: 1, last: 1 } };
         const r = await new Log().fold(stmt, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(await indexedAt(2), 0, "the 1st matched READ (1/1/2) is folded");

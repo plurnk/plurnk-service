@@ -1,6 +1,6 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
 //   <<EXEC[runtime](cwd):command:EXEC
-// Auto-generates an `exec://<runtime>/<loop>/<turn>/<seq>` entry; spawns the
+// Auto-generates an `exec:///<runtime>/<loop>/<turn>/<seq>` entry; spawns the
 // subprocess; streams stdout/stderr into channels; closes subscription +
 // transitions channel state at exit.
 
@@ -76,9 +76,9 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
         assert.equal(attrs.cwd, null);
         assert.equal(attrs.command, "echo hello");
         // Executor-domain + coordinate pathname: the stream entry at
-        // exec://<runtime>/<loop_seq>/<turn_seq>/<sequence> leads with the
+        // exec:///<runtime>/<loop_seq>/<turn_seq>/<sequence> leads with the
         // runtime, then the coordinate it shares with the log row.
-        assert.match(attrs.pathname, /^[a-z0-9]+\/\d+\/\d+\/\d+$/, "pathname is runtime + log coordinate");
+        assert.match(attrs.pathname, /^\/[a-z0-9]+\/\d+\/\d+\/\d+$/, "pathname is runtime + log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;
@@ -112,7 +112,7 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
         const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
             scheme: "exec", pathname,
         });
-        assert.ok(entryRow, `exec://${pathname} entry exists`);
+        assert.ok(entryRow, `exec:///${pathname} entry exists`);
         const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
             entry_id: entryRow.id, name: "stdout",
         });

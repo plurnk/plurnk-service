@@ -1,5 +1,5 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { resolve, relative, isAbsolute, matchesGlob } from "node:path";
+import { relative, isAbsolute, join, matchesGlob } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -54,10 +54,10 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // and edit()/applyResolution()'s proposal-gated write-OUT (§membership), where the
 // containment/traversal checks live.
 //
-// writeEntry() is deliberately ABSENT: a COPY/MOVE *into* file:// is a disk write
+// writeEntry() is deliberately ABSENT: a COPY/MOVE *into* file:/// is a disk write
 // and MUST flow through the §membership proposal gate (like EDIT), not an ungated
-// overwrite — the `.env`-wipe this guard prevents. So COPY/MOVE *from* file://
-// works (readEntry); *into* file:// stays 501 until the proposal-gated write-back
+// overwrite — the `.env`-wipe this guard prevents. So COPY/MOVE *from* file:///
+// works (readEntry); *into* file:/// stays 501 until the proposal-gated write-back
 // lands. The 501 is duck-typed on writeEntry's absence (Engine.#copyOrchestration).
 export default class File {
     static manifest: SchemeManifest = {
@@ -85,7 +85,7 @@ export default class File {
         return EntryFind.findSessionEntries(statement, ctx, File.manifest);
     }
 
-    // COPY/MOVE FROM file:// — read-only, gated by entry-existence (a non-member
+    // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
     // has no entry → 404). The write-back side (writeEntry) is deliberately absent;
     // see the SECURITY note above.
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
@@ -97,13 +97,15 @@ export default class File {
     // membership (existing non-member → 403, the `.env` protection), the read-only
     // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
     // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
-    // and a copy into file:// are the same disk write under the same review.
+    // and a copy into file:/// are the same disk write under the same review.
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
         if (root === null) return { ok: false, status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
 
         let canonical: string;
-        const requested = isAbsolute(pathname) ? pathname : resolve(root, pathname);
+        // pathname is namespace-absolute (`/note`); join roots it at the workspace
+        // root — the leading slash is the namespace origin, not a filesystem path.
+        const requested = join(root, pathname);
         let fileExists = true;
         try {
             canonical = await realpath(requested);
@@ -112,8 +114,9 @@ export default class File {
             canonical = requested;
             fileExists = false;
         }
-        const rel = relative(root, canonical);
-        if (rel.startsWith("..") || isAbsolute(rel)) return { ok: false, status: 403, error: "path escapes workspace root" };
+        const relBare = relative(root, canonical);
+        if (relBare.startsWith("..") || isAbsolute(relBare)) return { ok: false, status: 403, error: "path escapes workspace root" };
+        const rel = `/${relBare}`;  // namespace-absolute entry key — matches the parser + membership storage
 
         let original = "";
         if (fileExists) {
@@ -121,7 +124,7 @@ export default class File {
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
             const viewGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
-            if (viewGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" };
+            if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" };
             original = await readFile(canonical, "utf8");
         }
 
@@ -161,7 +164,7 @@ export default class File {
         return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched } };
     }
 
-    // COPY/MOVE INTO file:// — the dest write. Same §membership gate as edit, same 202
+    // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
     // proposal + applyResolution path: a copy onto disk is a disk write and earns
     // the identical human review. Engine.#copyOrchestration propagates this 202;
     // Engine.#runApplyResolution routes the accept back here via the dest scheme;
@@ -210,7 +213,7 @@ export default class File {
             };
         }
         // Register the file as an entry so it appears in the manifest
-        // under file://<relPath> and is READ-able. mimetype is best-effort
+        // under file:///<relPath> and is READ-able. mimetype is best-effort
         // by file extension; .md → text/markdown, anything else → text/plain.
         const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
         try {

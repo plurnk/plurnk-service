@@ -1,4 +1,4 @@
--- log:// scheme — read by (loop_sequence, turn_sequence, sequence)
+-- log:/// scheme — read by (loop_sequence, turn_sequence, sequence)
 -- coordinate; open/fold toggle the `indexed` flag on the addressed row.
 
 -- PREP: log_read_by_coordinate
@@ -21,10 +21,10 @@ WHERE id = (
 RETURNING id;
 
 -- PREP: log_match_coordinates
--- Resolve a log:// path-glob to the matching rows within the run, coordinate-ordered.
+-- Resolve a log:/// path-glob to the matching rows within the run, coordinate-ordered.
 -- The rendered `loop/turn/seq/op` is GLOB-matched against the target (SQLite GLOB:
 -- `*` spans any chars incl '/', so `**/READ` ≈ `*/READ`). Drives glob/paginated
--- OPEN/FOLD — the model's primary log-curation move, e.g. FOLD(log://**/READ)<1>.
+-- OPEN/FOLD — the model's primary log-curation move, e.g. FOLD(log:///**/READ)<1>.
 SELECT le.id
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id

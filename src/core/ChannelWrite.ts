@@ -34,7 +34,7 @@ export interface WakeRunPayload {
     subscriptionId: number;
     closeStatus: number;          // 200 (clean) | 500 (error) | 499 (aborted)
     scheme: string;                // the scheme that owned the subscription
-    summary: string;               // model-facing one-liner: "exec://x completed (exit 0); stdout=N bytes, stderr=M bytes"
+    summary: string;               // model-facing one-liner: "exec:///x completed (exit 0); stdout=N bytes, stderr=M bytes"
 }
 
 export type WakeRunNotify = (payload: WakeRunPayload) => void;
@@ -71,7 +71,7 @@ export default class ChannelWrite {
 
     // The entry's target URI for stream notifications (#179). A NULL scheme is
     // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
-    // file://.
+    // file:///.
     static #targetUri(scheme: string | null, pathname: string): string {
         return `${scheme === null ? "file" : scheme}://${pathname}`;
     }

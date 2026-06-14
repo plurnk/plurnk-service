@@ -237,7 +237,7 @@ test("[§json-edit-structural-json-edit] Known.edit: <-1> on `.json` path append
             editStatement({ target: urlPath("known", "/users.json"), body: '[{"name":"Alice"}]' }),
             makeSchemeCtx({ db, sessionId, runId, mimetypes }),
         );
-        // The grammar example: <<EDIT(known://users.json)<-1>:{"name":"Eve"}:EDIT
+        // The grammar example: <<EDIT(known:///users.json)<-1>:{"name":"Eve"}:EDIT
         const r = await k.edit(
             editStatement({ target: urlPath("known", "/users.json"), body: '{"name":"Eve"}', lineMarker: { first: -1, last: null } }),
             makeSchemeCtx({ db, sessionId, runId, mimetypes }),

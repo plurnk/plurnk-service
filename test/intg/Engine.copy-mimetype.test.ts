@@ -18,10 +18,10 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
-    op: "COPY", suffix: "", signal: null, target: src, lineMarker: null, body: dst, position: { line: 1, column: 1 },
+    op: "COPY", suffix: "", signal: null, target: src, lineMarker: null, body: dst.raw, position: { line: 1, column: 1 },
 });
 
-test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed known:// dst returns 415", async () => {
+test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed known:/// dst returns 415", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `copy-415-${crypto.randomUUID()}`);
@@ -29,11 +29,11 @@ test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a m
         const loopId = await insertLoop(db, runId, 1, "copy mismatch");
         const turnId = await insertTurn(db, loopId, 1, 102);
         // Non-markdown source — the seed sidesteps Known's write-time markdown lock.
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const copy = await engine.dispatch({
-            statement: copyStmt(urlPath("known", "data/blob"), urlPath("known", "data/copy")),
+            statement: copyStmt(urlPath("known", "/data/blob"), urlPath("known", "/data/copy")),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(copy.status, 415, "json body cannot be copied into a markdown-fixed known channel");

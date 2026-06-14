@@ -21,7 +21,7 @@ export default class OpFindMethod {
             },
             description: "FIND — search within a scope by tags and/or matcher.",
             params: {
-                scope: "string — path-scope (e.g. known://)",
+                scope: "string — path-scope (e.g. known:///)",
                 matcher: "string? — body matcher (glob/regex/xpath/jsonpath; dialect determined by leading chars)",
                 tags: "string[]? — tag filter",
                 lineRange: "LineMarker? — result range",

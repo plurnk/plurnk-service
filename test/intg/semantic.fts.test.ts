@@ -12,9 +12,9 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
@@ -36,8 +36,8 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
         await new Known().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
         await EntryManifest.buildManifestBody(ctx);
 
-        assert.deepEqual(await fts(db, sessionId, "processPayment"), ["pay.ts"]);
-        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["auth.ts"]);
+        assert.deepEqual(await fts(db, sessionId, "processPayment"), ["/pay.ts"]);
+        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"]);
         assert.deepEqual(await fts(db, sessionId, "nonexistent"), []);
 
         // Change pay.ts: re-index must drop the old term and add the new one;
@@ -45,8 +45,8 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
         await new Known().edit(editStmt(url("pay.ts"), "export function refund() {}\n"), ctx);
         await EntryManifest.buildManifestBody(ctx);
         assert.deepEqual(await fts(db, sessionId, "processPayment"), [], "old term gone after re-index");
-        assert.deepEqual(await fts(db, sessionId, "refund"), ["pay.ts"], "new term indexed");
-        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["auth.ts"], "unchanged entry stays indexed");
+        assert.deepEqual(await fts(db, sessionId, "refund"), ["/pay.ts"], "new term indexed");
+        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"], "unchanged entry stays indexed");
     } finally { db.close(); }
 });
 
@@ -85,7 +85,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         for (const [p, c] of ENTRIES) await new Known().edit(editStmt(url(p), c), ctx);
         await EntryManifest.buildManifestBody(ctx);  // FTS-indexes every entry
         for (const [p, , v] of ENTRIES) {
-            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
+            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
             assert.ok(e);
             await (db.embedding_set as PrepMethod).run({ entry_id: e.id, vector: blob(v), embedding_model: "test-model" });
         }
@@ -94,7 +94,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
             fts_query: "payment", session_id: sessionId, scheme: "known",
             query_vector: blob([1, 0, 0]), k: 2,
         });
-        assert.deepEqual(r.map((x) => x.pathname), ["pay1.ts", "pay2.ts"],
+        assert.deepEqual(r.map((x) => x.pathname), ["/pay1.ts", "/pay2.ts"],
             "FTS narrows to payment entries; cosine ranks them; auth (perfect cosine, no keyword) excluded by the narrow");
     } finally { db.close(); }
 });

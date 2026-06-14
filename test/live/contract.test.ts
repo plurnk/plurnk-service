@@ -109,7 +109,7 @@ test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT 
     const s = await liveSetup("read-L");
     try {
         await seedHidden(s, "lines.md", "alpha\nbeta\ngamma");
-        await runLoop(s, "What is on the second line of known://lines.md?");
+        await runLoop(s, "What is on the second line of known:///lines.md?");
         const rx = await lastRx(s, "READ");
         assert.match(rx, /beta/);
         assert.doesNotMatch(rx, /alpha|gamma/); // a <2> slice, not a whole-file read
@@ -120,7 +120,7 @@ test("live: READ regex — extract a pattern from an entry's content", { timeout
     const s = await liveSetup("read-regex");
     try {
         await seedHidden(s, "doc.md", "hello world hello again");
-        await runLoop(s, "Find every occurrence of the word `hello` in known://doc.md.");
+        await runLoop(s, "Find every occurrence of the word `hello` in known:///doc.md.");
         assert.match(await lastRx(s, "READ"), /hello/);
     } finally { await s.db.close(); }
 });
@@ -130,7 +130,7 @@ test("live: EDIT <L> — replace the second line of an entry", { timeout: TIMEOU
     try {
         await seed(s, "poem.md", "roses are red\nviolets are blue");
         // The prompt IS the test: one sentence that can only mean EDIT<2>.
-        await runLoop(s, "Replace the second line of known://poem.md with `violets are bright`.");
+        await runLoop(s, "Replace the second line of known:///poem.md with `violets are bright`.");
         assert.equal(await readBody(s, "poem.md"), "roses are red\nviolets are bright");
     } finally { await s.db.close(); }
 });
@@ -155,7 +155,7 @@ test("live: COPY <L> — copy a line range into a new entry", { timeout: TIMEOUT
     const s = await liveSetup("copy-L");
     try {
         await seed(s, "src.md", "one\ntwo\nthree\nfour");
-        await runLoop(s, "Copy the second and third lines of known://src.md into a new entry known://slice.md.");
+        await runLoop(s, "Copy the second and third lines of known:///src.md into a new entry known:///slice.md.");
         // lines 2-3 only; the trailing newline varies with the model's path
         // (a COPY slice keeps it; a READ-then-EDIT reconstruction may drop it).
         assert.match(await readBody(s, "slice.md") ?? "", /^two\nthree\n?$/);
@@ -168,7 +168,7 @@ test("live: KILL — delete an entry", { timeout: TIMEOUT }, async () => {
         await seed(s, "obsolete.md", "no longer needed");
         // KILL is the canonical delete (MOVE→/dev/null retired); the model earns
         // the op from a plain delete request — we verify the entry is gone.
-        await runLoop(s, "Delete the entry known://obsolete.md.");
+        await runLoop(s, "Delete the entry known:///obsolete.md.");
         assert.equal(await readBody(s, "obsolete.md"), undefined);
     } finally { await s.db.close(); }
 });

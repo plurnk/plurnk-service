@@ -112,7 +112,7 @@ test("[§membership-git-membership] git-tracked file (never client-added) is a w
         // issued for it. Under §membership D4 (git present → ls-files membership),
         // it MUST register as a member of the session.
         const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({
-            session_id: ctx.sessionId, scheme: null, pathname: trackedPath,
+            session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}`,
         });
         assert.notEqual(
             member, undefined,
@@ -123,7 +123,7 @@ test("[§membership-git-membership] git-tracked file (never client-added) is a w
         // not 404 it as a non-member. Production materializes members every turn
         // (indexGitMembership at runTurn); do the same before the entry-backed read.
         await GitMembership.indexGitMembership(ctx);
-        const result = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
+        const result = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(
             result.status, 200,
             "READ of a git-tracked member must succeed; 404 means git membership was not established",
@@ -141,7 +141,7 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
 
         // EDIT it (as if blindly creating a config). Forbidden BEFORE any read:
         // 403, no secret anywhere in the result, file untouched on disk.
-        const blocked = await new File().edit(editStmt(urlPath("file", ".env"), "PWNED=1\n"), ctx);
+        const blocked = await new File().edit(editStmt(urlPath("file", "/.env"), "PWNED=1\n"), ctx);
         assert.equal(blocked.status, 403, "EDIT of an existing non-member must be forbidden");
         assert.ok(!JSON.stringify(blocked).includes("sk-do-not-leak"), "the refused EDIT must not read the non-member's content into its result (no leak)");
         assert.equal(await readFile(join(root, ".env"), "utf8"), SECRET, "the non-member file must not be overwritten (no wiping a file the model can't see)");
@@ -149,9 +149,9 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
         // The gate must not break legitimate edits: a tracked member still
         // proposes (202), and a new path still proposes creation (202 — creation
         // is how the model adds to its manifest).
-        const member = await new File().edit(editStmt(urlPath("file", trackedPath), "# Tracked by git\n\nrevised.\n"), ctx);
+        const member = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nrevised.\n"), ctx);
         assert.equal(member.status, 202, "EDIT of a git-tracked member must still propose (202)");
-        const created = await new File().edit(editStmt(urlPath("file", "new-note.md"), "fresh content\n"), ctx);
+        const created = await new File().edit(editStmt(urlPath("file", "/new-note.md"), "fresh content\n"), ctx);
         assert.equal(created.status, 202, "EDIT of a new (non-existent) path must still propose creation (202)");
     });
 });
@@ -166,7 +166,7 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
 test("[§membership-overlay-hide] a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
-        const before = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+        const before = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}`});
         assert.notEqual(before, undefined, "precondition: the tracked file is a member");
 
         // Client ignores it; membership re-resolves.
@@ -174,9 +174,9 @@ test("[§membership-overlay-hide] a hide-glob drops a tracked file from membersh
         await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
 
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
-        const after = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+        const after = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}`});
         assert.equal(after, undefined, "an ignored member must be un-registered (rummy's removed-file case)");
-        const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
+        const read = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
     });
 });
@@ -187,10 +187,10 @@ test("[§membership-overlay-pick] a pick-glob admits an untracked file git misse
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "pick", glob: "*.md" });
         await GitMembership.indexGitMembership(ctx);  // resolve membership + materialize (production's per-turn pass)
-        const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "untracked.md" });
+        const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
         // And it's readable — admitted to the curated surface.
-        const read = await new File().read(readStmt(urlPath("file", "untracked.md")), ctx);
+        const read = await new File().read(readStmt(urlPath("file", "/untracked.md")), ctx);
         assert.equal(read.status, 200, "an added file is readable");
     });
 });
@@ -200,10 +200,10 @@ test("[§membership-overlay-view] a view-glob keeps a member readable but refuse
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "view", glob: trackedPath });
         await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
         // READ still works — it's a member...
-        const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
+        const read = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 200, "a read-only member stays readable");
         // ...but EDIT is refused at the membership check, before any diff.
-        const edit = await new File().edit(editStmt(urlPath("file", trackedPath), "changed\n"), ctx);
+        const edit = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "changed\n"), ctx);
         assert.equal(edit.status, 403, "a read-only member refuses edits");
     });
 });
@@ -274,8 +274,8 @@ test("[§membership-forest] membership unions a session's declared repos under a
             await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "alpha") });
             await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "beta") });
             await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
-            const a = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "alpha/a.md" });
-            const b = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "beta/b.md" });
+            const a = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/alpha/a.md" });
+            const b = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/beta/b.md" });
             assert.notEqual(a, undefined, "the first declared repo contributes its ls-files, path-prefixed");
             assert.notEqual(b, undefined, "the second declared repo contributes too — membership is their union");
         } finally { await rm(parent, { recursive: true, force: true }); }
@@ -289,7 +289,7 @@ test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-fil
         try {
             await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "lib") });
             await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
-            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "lib/x.md" });
+            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/lib/x.md" });
             assert.notEqual(member, undefined, "a repo declaration admits the repo's tracked files");
         } finally { await rm(parent, { recursive: true, force: true }); }
     } finally { await db.close(); }
@@ -313,7 +313,7 @@ test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, u
         process.env.PLURNK_GIT_ALLOWED = "0";
         try {
             await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
-            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}`});
             assert.equal(member, undefined, "ALLOWED=0 must deny git membership — no member resolves");
         } finally {
             if (prev === undefined) delete process.env.PLURNK_GIT_ALLOWED; else process.env.PLURNK_GIT_ALLOWED = prev;

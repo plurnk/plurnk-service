@@ -13,7 +13,7 @@ const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: 
         signal: JSON.stringify(["philosophy"]),
         scheme: "known", pathname: "/meaning", port: null, params: null,
         lineMarker: null,
-        tx: "<<EDIT[philosophy](known://meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
+        tx: "<<EDIT[philosophy](known:///meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         tokens: 32,
         ...overrides,
@@ -290,7 +290,7 @@ test("log_entries: indexes exist", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: query log://<L>/<T>/<A> address pattern", async () => {
+test("log_entries: query log:///<L>/<T>/<A> address pattern", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-address");

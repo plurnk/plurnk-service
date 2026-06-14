@@ -50,9 +50,9 @@ test("[§subscriptions-fold-keeps-subscription] FOLD on a streaming exec's log r
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname });
 
-        // Mid-stream: FOLD the exec's log row (log://1/1/1) — render-only curation.
+        // Mid-stream: FOLD the exec's log row (log:///1/1/1) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));
-        const fold = await new Log().fold(foldStmt(urlPath("log", "1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(fold.status, 200, "FOLD of the exec log row succeeds");
 
         // The subscription is STILL open — FOLD touched indexed, not the registry.

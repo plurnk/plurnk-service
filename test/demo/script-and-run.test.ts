@@ -3,7 +3,7 @@
 // workflow — common across real assistant interactions.
 //
 // User-facing prompt is natural: no `EDIT(...)`, no `EXEC[sh]`, no
-// mention of `exec://` or file conventions. Pure intent.
+// mention of `exec:///` or file conventions. Pure intent.
 
 import test from "node:test";
 import assert from "node:assert/strict";

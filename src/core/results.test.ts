@@ -64,13 +64,13 @@ test("schemeError carries an explicit null message through", () => {
 });
 
 test("schemeError attaches a log-coordinate position", () => {
-    const ev = Results.schemeError("known", "dispatch_failure", "boom", Results.logCoordinate("log://3/1/0", "EDIT"));
-    assert.deepEqual(ev.position, { type: "log-coordinate", coordinate: "log://3/1/0", op: "EDIT" });
+    const ev = Results.schemeError("known", "dispatch_failure", "boom", Results.logCoordinate("log:///3/1/0", "EDIT"));
+    assert.deepEqual(ev.position, { type: "log-coordinate", coordinate: "log:///3/1/0", op: "EDIT" });
 });
 
 test("logCoordinate omits op when absent", () => {
-    const pos = Results.logCoordinate("log://1/2/3");
-    assert.deepEqual(pos, { type: "log-coordinate", coordinate: "log://1/2/3" });
+    const pos = Results.logCoordinate("log:///1/2/3");
+    assert.deepEqual(pos, { type: "log-coordinate", coordinate: "log:///1/2/3" });
     assert.equal("op" in pos, false);
 });
 
@@ -80,7 +80,7 @@ test("an error result carries a TelemetryEvent error envelope", () => {
         status: 404,
         entryId: null,
         channel: "body",
-        error: Results.schemeError("known", "dispatch_failure", "entry not found", Results.logCoordinate("log://5/2/1", "READ")),
+        error: Results.schemeError("known", "dispatch_failure", "entry not found", Results.logCoordinate("log:///5/2/1", "READ")),
     };
     assert.equal(Results.isErrorStatus(result.status), true);
     assert.equal(result.error?.source, "scheme:known");

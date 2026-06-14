@@ -1,6 +1,6 @@
 // Demos that require the model to run shell commands to answer
 // correctly. Natural prompts — no syntax hints, no mention of EXEC,
-// no exec:// references. The model has to recognize from plurnk.md's
+// no exec:/// references. The model has to recognize from plurnk.md's
 // sysprompt that EXEC is the right tool.
 //
 // Each task asks for a specific factual value the model genuinely

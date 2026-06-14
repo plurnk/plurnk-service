@@ -7,9 +7,9 @@ import Known from "../../src/schemes/Known.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
 const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
@@ -47,9 +47,9 @@ test("Known.find returns all entries when scope is broad and no matcher", async 
         ]);
         const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a", "known://b", "known://c"]);
+        assert.deepEqual(r.results, ["known:///a", "known:///b", "known:///c"]);
         assert.equal(r.mimetype, "text/plain");
-        assert.equal(r.content, "known://a\nknown://b\nknown://c");
+        assert.equal(r.content, "known:///a\nknown:///b\nknown:///c");
     } finally { db.close(); }
 });
 
@@ -61,7 +61,7 @@ test("[§find-scope-prefix-filter] Known.find with scope prefix filters to that 
         ]);
         const r = await new Known().find(findStmt(url("plan/")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://plan/step1", "known://plan/step2"]);
+        assert.deepEqual(r.results, ["known:///plan/step1", "known:///plan/step2"]);
     } finally { db.close(); }
 });
 
@@ -74,7 +74,7 @@ test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CO
         ]);
         const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
+        assert.deepEqual(r.results.toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
@@ -90,7 +90,7 @@ test("[§find-tag-filter-and-semantics] Known.find with tag filter — AND seman
         // Both tags must be present
         const r = await new Known().find(findStmt(url(""), null, ["urgent", "europe"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a", "known://d"]);
+        assert.deepEqual(r.results, ["known:///a", "known:///d"]);
     } finally { db.close(); }
 });
 
@@ -105,7 +105,7 @@ test("Known.find combining glob (content) + tag filter", async () => {
         // glob matches content "plan*"; tag narrows to urgent → only s1 satisfies both.
         const r = await new Known().find(findStmt(url(""), glob("plan*"), ["urgent"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://s1"]);
+        assert.deepEqual(r.results, ["known:///s1"]);
     } finally { db.close(); }
 });
 
@@ -115,7 +115,7 @@ test("Known.find with regex matcher filters by CONTENT", async () => {
         await seedEntries(db, sessionId, runId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
         const r = await new Known().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://a", "known://c"]);
+        assert.deepEqual(r.results.toSorted(), ["known:///a", "known:///c"]);
     } finally { db.close(); }
 });
 
@@ -128,7 +128,7 @@ test("Known.find regex honors flags — case-insensitive (i) on content", async 
         const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
         const r = await new Known().find(findStmt(url(""), ci), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
+        assert.deepEqual(r.results.toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
@@ -140,7 +140,7 @@ test("Known.find regex accepts `g` flag on content (no throw)", async () => {
         const g: MatcherBody = { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" };
         const r = await new Known().find(findStmt(url(""), g), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.toSorted(), ["known://a", "known://b"]);
+        assert.deepEqual(r.results.toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
@@ -152,7 +152,7 @@ test("Known.find regex `y` (sticky) anchors at content start", async () => {
         const y: MatcherBody = { dialect: "regex", raw: "/foo/y", pattern: "foo", flags: "y" };
         const r = await new Known().find(findStmt(url(""), y), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a"]);
+        assert.deepEqual(r.results, ["known:///a"]);
     } finally { db.close(); }
 });
 
@@ -175,7 +175,7 @@ test("Known.find with <L> paginates results", async () => {
         const stmt = { ...findStmt(url(""), null), lineMarker: { first: 2, last: 3 } };
         const r = await new Known().find(stmt, makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://b", "known://c"]);
+        assert.deepEqual(r.results, ["known:///b", "known:///c"]);
     } finally { db.close(); }
 });
 
@@ -204,7 +204,7 @@ test("[§find-scoped-isolation] Known.find is scoped to the session (doesn't lea
 
         const r = await k.find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://here"], "only entries from this session");
+        assert.deepEqual(r.results, ["known:///here"], "only entries from this session");
     } finally { db.close(); }
 });
 
@@ -215,10 +215,10 @@ test("Known.find is scoped to the scheme (doesn't leak across schemes)", async (
 
         // Seed an unknown entry under the same session
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), target: { ...url("here-unknown"), scheme: "unknown", raw: "unknown://here-unknown" } }, makeSchemeCtx({ db, sessionId, runId }));
+        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), target: { ...url("here-unknown"), scheme: "unknown", raw: "unknown:///here-unknown" } }, makeSchemeCtx({ db, sessionId, runId }));
 
         const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://here-known"]);
+        assert.deepEqual(r.results, ["known:///here-known"]);
     } finally { db.close(); }
 });

@@ -41,7 +41,7 @@ const contentResponse = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-const okEdit = parseDsl("<<EDIT(known://ok):v:EDIT");
+const okEdit = parseDsl("<<EDIT(known:///ok):v:EDIT");
 const sendDone = parseDsl("<<SEND[200]:done:SEND");
 const sendGoing = parseDsl("<<SEND[102]:going:SEND");
 

@@ -154,7 +154,7 @@ export default class PacketWire {
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             // Turn = the loop_seq/turn_seq prefix of the coordinate
-            // (log://<loop_seq>/<turn_seq>/<sequence>); the sequence drops off.
+            // (log:///<loop_seq>/<turn_seq>/<sequence>); the sequence drops off.
             if (coordinate !== null) {
                 const turn = coordinate.split("/").slice(0, 2).join("/");
                 byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
@@ -324,12 +324,12 @@ export default class PacketWire {
     //   2. Every other op → re-emit tx as a heredoc in the model's native
     //      syntax. The model wrote this; mirror it back so the log is a true
     //      record of its actions instead of a row of opaque status codes.
-    // The log:// handle the model sees for an entry — its FOLD target
+    // The log:/// handle the model sees for an entry — its FOLD target
     // (§open-fold) and the label the budget's heaviest-entries readout reuses,
     // so the readout names an entry exactly as the log does.
     static #entryPath(coordinate: string | null, op: string | null): string | null {
         if (coordinate === null) return null;
-        return op !== null ? `log://${coordinate}/${op}` : `log://${coordinate}`;
+        return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
     static #renderLogEntries(entries: LogEntryView[]): string {
@@ -377,7 +377,7 @@ export default class PacketWire {
             if (op === "READ" && e.status === 200) {
                 const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
                 if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
-                    const fence = target ?? `log://${coordinate}`;
+                    const fence = target ?? `log:///${coordinate}`;
                     // Line-navigable mimetypes (text/markdown, text/plain,
                     // source code, etc.) get N:\t prefix per plurnk.md. Tree-
                     // navigable (JSON, XML, HTML) render verbatim — line
@@ -401,7 +401,7 @@ export default class PacketWire {
             if (op === "EDIT") {
                 const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as { span?: unknown } | null;
                 if (rx !== null && typeof rx === "object" && typeof rx.span === "string") {
-                    const fence = target ?? `log://${coordinate}`;
+                    const fence = target ?? `log:///${coordinate}`;
                     return rx.span.length > 0 ? `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.span)}` : metaLine;
                 }
             }

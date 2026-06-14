@@ -42,7 +42,7 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
-        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known://city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known://city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
+        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known:///city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known:///city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
 
         const sessionId = await insertSession(db, `live-loop-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
@@ -71,7 +71,7 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
 
         const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
         console.log("\n=== entries written ===");
-        for (const e of entries) console.log(`  known://${e.pathname}`);
+        for (const e of entries) console.log(`  known:///${e.pathname}`);
 
         // Outcome assertions — not just "the loop terminated cleanly,"
         // which silently passed for a loop that wrote `paris` five times
@@ -80,11 +80,11 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
         const pathnames = entries.map((e) => e.pathname);
         assert.ok(
             pathnames.some((p) => p.includes("paris")),
-            `expected a known://city/paris/* entry; got ${JSON.stringify(pathnames)}`,
+            `expected a known:///city/paris/* entry; got ${JSON.stringify(pathnames)}`,
         );
         assert.ok(
             pathnames.some((p) => p.includes("tokyo")),
-            `expected a known://city/tokyo/* entry; got ${JSON.stringify(pathnames)} — model never advanced past turn 1`,
+            `expected a known:///city/tokyo/* entry; got ${JSON.stringify(pathnames)} — model never advanced past turn 1`,
         );
         assert.ok(
             entries.length >= 2,
@@ -102,7 +102,7 @@ test("live OpenAI: runTurn single-shot smoke", async () => {
     const provider = await buildProvider();
     const db = await openMigrated();
     try {
-        const userPrompt = "What is the capital of France? Store the answer under known://france/capital and reply with a single SEND[200] message containing the answer.";
+        const userPrompt = "What is the capital of France? Store the answer under known:///france/capital and reply with a single SEND[200] message containing the answer.";
         const sessionId = await insertSession(db, `live-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, userPrompt);

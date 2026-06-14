@@ -47,7 +47,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         const userPrompt = [
             "Two-turn probe.",
             "",
-            "If you see an `exec://...` log entry with stdout containing",
+            "If you see an `exec:///...` log entry with stdout containing",
             "`plurnk-exec-live-ok`, emit:",
             "  <<SEND[200]:plurnk-exec-live-ok:SEND",
             "",
@@ -55,7 +55,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
             "log will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
             "  <<EXEC[sh]:echo plurnk-exec-live-ok:EXEC",
             "",
-            "Do not repeat the EXEC once you see the exec://... entry in the log.",
+            "Do not repeat the EXEC once you see the exec:///... entry in the log.",
         ].join("\n");
 
         const sessionId = await insertSession(db, `live-exec-${crypto.randomUUID()}`);
@@ -97,11 +97,11 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         const execEntryCount = (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
             session_id: sessionId, scheme: "exec",
         }))?.n ?? 0;
-        assert.ok(execEntryCount >= 1, "at least one exec://r-<id> entry was created");
+        assert.ok(execEntryCount >= 1, "at least one exec:///r-<id> entry was created");
 
         // Find the exec entry and verify its stdout captured the probe.
         // We don't know the auto-generated id from outside; list session
-        // entries to find any exec://r-<id>.
+        // entries to find any exec:///r-<id>.
         type EntryListRow = { scheme: string; pathname: string };
         const allEntries = await (db.test_list_entries_by_session_session_pathname as PrepMethod).all<EntryListRow>({ session_id: sessionId });
         const execEntries = allEntries.filter((e) => e.scheme === "exec");
@@ -130,7 +130,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
                 const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
                     entry_id: entryRow.id, name: "stdout",
                 });
-                console.error(`exec://${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);
+                console.error(`exec:///${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);
             }
         }
         assert.ok(foundProbe, "an exec stdout channel captured the probe string");

@@ -26,16 +26,16 @@ const dispatch = async (engine: Engine, env: { sessionId: number; runId: number;
 test("Engine.copy same-scheme (known → known)", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "france/capital"), "Paris", ["france"]), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/france/capital"), "Paris", ["france"]), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "france/capital"), urlPath("known", "europe/france")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "/france/capital"), urlPath("known", "/europe/france")));
         assert.equal(r.status, 201);
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "europe/france", scheme: "known" });
+        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/europe/france", scheme: "known" });
         assert.equal(dst?.scheme, "known");
-        const channel = await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "europe/france", name: "body" });
+        const channel = await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/europe/france", name: "body" });
         assert.equal(channel?.content, "Paris");
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "europe/france" });
+        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/europe/france" });
         assert.deepEqual(tags.map((t) => t.tag), ["france"]);
     } finally { await db.close(); }
 });
@@ -44,14 +44,14 @@ test("[§copy-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", 
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit(editStmt(urlPath("unknown", "topic"), "open question"), makeSchemeCtx({ db, sessionId, runId }));
+        await new Unknown().edit(editStmt(urlPath("unknown", "/topic"), "open question"), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("unknown", "topic"), urlPath("known", "topic")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("unknown", "/topic"), urlPath("known", "/topic")));
         assert.equal(r.status, 201);
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "topic", scheme: "known" });
+        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "/topic", scheme: "known" });
         assert.equal(dst?.scheme, "known");
-        const channel = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "topic", scheme: "known", name: "body" });
+        const channel = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "/topic", scheme: "known", name: "body" });
         assert.equal(channel?.content, "open question");
     } finally { await db.close(); }
 });
@@ -59,7 +59,7 @@ test("[§copy-cross-scheme-copy] Engine.copy cross-scheme (unknown → known)", 
 test("[§copy-missing-source-404] Engine.copy missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "nope"), urlPath("known", "elsewhere")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "/nope"), urlPath("known", "/elsewhere")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
@@ -68,12 +68,12 @@ test("[§copy-conflict-409] Engine.copy conflicting destination returns 409", as
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
-        await k.edit(editStmt(urlPath("known", "src"), "source body"), makeSchemeCtx({ db, sessionId, runId }));
-        await k.edit(editStmt(urlPath("known", "dst"), "dest body"), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(urlPath("known", "/src"), "source body"), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(urlPath("known", "/dst"), "dest body"), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "/src"), urlPath("known", "/dst")));
         assert.equal(r.status, 409);
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "dst", name: "body" }))?.content;
+        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "dest body");
     } finally { await db.close(); }
 });
@@ -82,17 +82,17 @@ test("[§copy-noop-304] Engine.copy to a destination already holding identical c
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const k = new Known();
-        await k.edit(editStmt(urlPath("known", "src"), "same body"), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(urlPath("known", "/src"), "same body"), makeSchemeCtx({ db, sessionId, runId }));
         // Three dispatches in one turn → distinct sequences (log_entries is unique on turn_id+sequence).
-        const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("known", "src"), urlPath("known", "dst")), sessionId, runId, loopId, turnId, sequence, origin: "client" });
+        const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("known", "/src"), urlPath("known", "/dst")), sessionId, runId, loopId, turnId, sequence, origin: "client" });
 
         assert.equal((await copy(1)).status, 201, "first copy creates the destination");
         assert.equal((await copy(2)).status, 304, "identical re-copy is a no-op, not a 409");
 
         // Divergent destination is still a real collision; it stays untouched.
-        await k.edit(editStmt(urlPath("known", "src"), "changed body"), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(urlPath("known", "/src"), "changed body"), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal((await copy(3)).status, 409, "divergent content is a collision");
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "dst", name: "body" }))?.content;
+        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");
     } finally { await db.close(); }
 });
@@ -100,12 +100,12 @@ test("[§copy-noop-304] Engine.copy to a destination already holding identical c
 test("[§copy-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "src"), "x", ["original", "tags"]), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/src"), "x", ["original", "tags"]), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst"), ["new", "tags"]));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "/src"), urlPath("known", "/dst"), ["new", "tags"]));
         assert.equal(r.status, 201);
 
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "dst" });
+        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/dst" });
         assert.deepEqual(tags.map((t) => t.tag), ["new", "tags"]);
     } finally { await db.close(); }
 });
@@ -113,12 +113,12 @@ test("[§copy-signal-replaces-source-tags] Engine.copy tag policy — signal pre
 test("[§copy-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "src"), "x", ["a", "b"]), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/src"), "x", ["a", "b"]), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "src"), urlPath("known", "dst"), null));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, copyStmt(urlPath("known", "/src"), urlPath("known", "/dst"), null));
         assert.equal(r.status, 201);
 
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "dst" });
+        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/dst" });
         assert.deepEqual(tags.map((t) => t.tag), ["a", "b"]);
     } finally { await db.close(); }
 });
@@ -126,15 +126,15 @@ test("[§copy-no-signal-carries-source-tags] Engine.copy tag policy — no signa
 test("[§move-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "src"), "movable"), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/src"), "movable"), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "src"), urlPath("known", "dst")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "/src"), urlPath("known", "/dst")));
         assert.equal(r.status, 201);
 
-        const src = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "src" });
+        const src = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/src" });
         assert.equal(src, undefined, "source removed");
 
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "dst", name: "body" }))?.content;
+        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "movable");
     } finally { await db.close(); }
 });
@@ -142,13 +142,13 @@ test("[§move-relocation-deletes-source] Engine.move relocates: source deleted, 
 test("[§move-null-body-400] Engine.move with no destination → 400, source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "trash-me"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/trash-me"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
 
         // MOVE relocates; it never deletes. A null destination is a 400 — use KILL.
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "trash-me"), null));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "/trash-me"), null));
         assert.equal(r.status, 400);
 
-        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "trash-me" });
+        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/trash-me" });
         assert.notEqual(remaining, undefined, "source survives — MOVE never deletes");
     } finally { await db.close(); }
 });
@@ -156,14 +156,14 @@ test("[§move-null-body-400] Engine.move with no destination → 400, source sur
 test("[§move-dev-null-not-special] Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "obsolete"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
+        await new Known().edit(editStmt(urlPath("known", "/obsolete"), "stale"), makeSchemeCtx({ db, sessionId, runId }));
 
         // /dev/null carries no special meaning now (KILL is the delete). It's a
         // plain relocation to an unwritable dest — it fails, and the source stays.
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "obsolete"), localPath("/dev/null")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "/obsolete"), localPath("/dev/null")));
         assert.notEqual(r.status, 200, "not a successful delete");
 
-        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "obsolete" });
+        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/obsolete" });
         assert.notEqual(remaining, undefined, "source survives — /dev/null no longer deletes");
     } finally { await db.close(); }
 });
@@ -171,7 +171,7 @@ test("[§move-dev-null-not-special] Engine.move to /dev/null no longer deletes �
 test("[§move-missing-source-404] Engine.move missing source returns 404", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "nope"), urlPath("known", "elsewhere")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("known", "/nope"), urlPath("known", "/elsewhere")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
@@ -180,15 +180,15 @@ test("[§move-cross-scheme-move] Engine.move cross-scheme (unknown → known) de
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit(editStmt(urlPath("unknown", "draft"), "answer"), makeSchemeCtx({ db, sessionId, runId }));
+        await new Unknown().edit(editStmt(urlPath("unknown", "/draft"), "answer"), makeSchemeCtx({ db, sessionId, runId }));
 
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("unknown", "draft"), urlPath("known", "answer")));
+        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, moveStmt(urlPath("unknown", "/draft"), urlPath("known", "/answer")));
         assert.equal(r.status, 201);
 
-        const srcRemaining = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ pathname: "draft", scheme: "unknown" });
+        const srcRemaining = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ pathname: "/draft", scheme: "unknown" });
         assert.equal(srcRemaining, undefined, "unknown source deleted");
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "answer", scheme: "known" });
+        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "/answer", scheme: "known" });
         assert.equal(dst?.scheme, "known");
     } finally { await db.close(); }
 });
@@ -196,11 +196,11 @@ test("[§move-cross-scheme-move] Engine.move cross-scheme (unknown → known) de
 test("Engine.copy with <L> source range slices content", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, sessionId, runId }));
-        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "long"), urlPath("known", "sliced")), lineMarker: { first: 2, last: 3 } };
+        await new Known().edit(editStmt(urlPath("known", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "/long"), urlPath("known", "/sliced")), lineMarker: { first: 2, last: 3 } };
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "sliced" });
+        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/sliced" });
         const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
     } finally { await db.close(); }
@@ -209,8 +209,8 @@ test("Engine.copy with <L> source range slices content", async () => {
 test("Engine.copy with <L> out of range returns 416", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "src"), "only one line"), makeSchemeCtx({ db, sessionId, runId }));
-        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "src"), urlPath("known", "dst")), lineMarker: { first: 99, last: null } };
+        await new Known().edit(editStmt(urlPath("known", "/src"), "only one line"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: CopyStatement = { ...copyStmt(urlPath("known", "/src"), urlPath("known", "/dst")), lineMarker: { first: 99, last: null } };
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
         assert.equal(r.status, 416);
     } finally { await db.close(); }
@@ -219,13 +219,13 @@ test("Engine.copy with <L> out of range returns 416", async () => {
 test("Engine.move with <L> source range slices then deletes source", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(urlPath("known", "orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, sessionId, runId }));
-        const stmt: MoveStatement = { ...moveStmt(urlPath("known", "orig"), urlPath("known", "moved")), lineMarker: { first: 1, last: 2 } };
+        await new Known().edit(editStmt(urlPath("known", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, sessionId, runId }));
+        const stmt: MoveStatement = { ...moveStmt(urlPath("known", "/orig"), urlPath("known", "/moved")), lineMarker: { first: 1, last: 2 } };
         const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
-        const srcRemaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "orig" });
+        const srcRemaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/orig" });
         assert.equal(srcRemaining, undefined);
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "moved" });
+        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/moved" });
         const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "first\nsecond\n");
     } finally { await db.close(); }

@@ -15,10 +15,10 @@ const setup = async () => {
 test("Skill.edit: writes entry with scope='session' and scheme='skill'", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        const r = await new Skill().edit(editStmt(urlPath("skill", "shell/grep"), "find text in files using grep", ["shell", "search"]), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["shell", "search"]), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(r.status, 201);
         const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: r.entryId });
-        assert.equal(entry?.pathname, "shell/grep");
+        assert.equal(entry?.pathname, "/shell/grep");
     } finally { await db.close(); }
 });
 
@@ -42,11 +42,11 @@ test("Skill.read: existing → 200 with content; missing → 404", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const s = new Skill();
-        await s.edit(editStmt(urlPath("skill", "grep"), "grep skill body"), makeSchemeCtx({ db, sessionId, runId }));
-        const found = await s.read(readStmt(urlPath("skill", "grep")), makeSchemeCtx({ db, sessionId }));
+        await s.edit(editStmt(urlPath("skill", "/grep"), "grep skill body"), makeSchemeCtx({ db, sessionId, runId }));
+        const found = await s.read(readStmt(urlPath("skill", "/grep")), makeSchemeCtx({ db, sessionId }));
         assert.equal(found.status, 200);
         assert.equal(found.content, "grep skill body");
-        const missing = await s.read(readStmt(urlPath("skill", "nope")), makeSchemeCtx({ db, sessionId }));
+        const missing = await s.read(readStmt(urlPath("skill", "/nope")), makeSchemeCtx({ db, sessionId }));
         assert.equal(missing.status, 404);
     } finally { await db.close(); }
 });
@@ -55,12 +55,12 @@ test("Skill.edit + read: idempotent on same path", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const s = new Skill();
-        const first = await s.edit(editStmt(urlPath("skill", "x"), "first"), makeSchemeCtx({ db, sessionId, runId }));
-        const second = await s.edit(editStmt(urlPath("skill", "x"), "second"), makeSchemeCtx({ db, sessionId, runId }));
+        const first = await s.edit(editStmt(urlPath("skill", "/x"), "first"), makeSchemeCtx({ db, sessionId, runId }));
+        const second = await s.edit(editStmt(urlPath("skill", "/x"), "second"), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(first.status, 201);
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId);
-        const read = await s.read(readStmt(urlPath("skill", "x")), makeSchemeCtx({ db, sessionId }));
+        const read = await s.read(readStmt(urlPath("skill", "/x")), makeSchemeCtx({ db, sessionId }));
         assert.equal(read.content, "second");
     } finally { await db.close(); }
 });

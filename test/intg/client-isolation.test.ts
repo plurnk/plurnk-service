@@ -24,7 +24,7 @@ test("a client op.* never enters the model's packet — the client writes to its
         try {
             await rpcCall(ws, 1, "session.create", { name: "client-isolation" });
             // A client op — lands in the connection's client run.
-            await rpcCall(ws, 2, "op.edit", { target: "known://secret", content: "client-only" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///secret", content: "client-only" });
             // The model runs — in its OWN run.
             const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
             const loopId = (run.result as { loopId: number }).loopId;
@@ -57,7 +57,7 @@ test("[§machine-processes-model-run-readable] a connection reads the model run 
             const created = await rpcCall(ws, 1, "session.create", { name: "model-run-readable" });
             const clientRunId = (created.result as { runId: number }).runId;
             // A client op lands in the connection's own (client) run.
-            await rpcCall(ws, 2, "op.edit", { target: "known://note", content: "client-only" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "client-only" });
             // Drive the model — its conversation lives in its OWN run, whose id loop.run returns.
             const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
             const { loopId, modelRunId } = run.result as { loopId: number; modelRunId: number };
@@ -95,7 +95,7 @@ test("[§machine-processes-run-origin] session.runs tags each run with its actor
         try {
             const created = await rpcCall(ws, 1, "session.create", { name: "run-origin" });
             const clientRunId = (created.result as { runId: number }).runId;
-            await rpcCall(ws, 2, "op.edit", { target: "known://note", content: "x" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "x" });
             const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
             const { modelRunId } = run.result as { modelRunId: number };
 

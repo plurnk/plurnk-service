@@ -34,7 +34,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         assert.equal(captured[0].payload.channel, "body");
         assert.equal(captured[0].payload.state, "active");
         assert.equal(captured[0].payload.contentLength, 42);
-        assert.match(captured[0].payload.target, /known:\/\/.*stream\.md/);
+        assert.match(captured[0].payload.target, /known:\/\/\/.*stream\.md/);
 
         // a vanished entry resolves to null → never emits (give the resolve room)
         notify.streamEvent("/missing.md", "body", "active", 1);

@@ -10,7 +10,7 @@ import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotific
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "<<EDIT(known://x):hello:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [sendOnly(dsl)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {

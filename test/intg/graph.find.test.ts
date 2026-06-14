@@ -13,9 +13,9 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
@@ -60,7 +60,7 @@ test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the def
     try {
         const r = await find(db, sessionId, runId, "@<foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://b.ts"]);
+        assert.deepEqual(r.results, ["known:///b.ts"]);
     } finally { db.close(); }
 });
 
@@ -69,7 +69,7 @@ test("[#186-graph-referents] @>foo finds entries DEFINING what foo references", 
     try {
         const r = await find(db, sessionId, runId, "@>foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://c.ts"]);
+        assert.deepEqual(r.results, ["known:///c.ts"]);
     } finally { db.close(); }
 });
 
@@ -78,7 +78,7 @@ test("[#186-graph-neighborhood] @foo = def ∪ referrers ∪ referents", async (
     try {
         const r = await find(db, sessionId, runId, "@foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a.ts", "known://b.ts", "known://c.ts"]);
+        assert.deepEqual(r.results, ["known:///a.ts", "known:///b.ts", "known:///c.ts"]);
     } finally { db.close(); }
 });
 

@@ -67,7 +67,7 @@ test("noProposals is not a dispatch gate — non-proposing schemes dispatch norm
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
         await setLoopFlags(db, loopId, { noProposals: true });
-        const stmt = editStmt(urlPath("known", "x"), "body");
+        const stmt = editStmt(urlPath("known", "/x"), "body");
         const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 201);
     } finally { await db.close(); }

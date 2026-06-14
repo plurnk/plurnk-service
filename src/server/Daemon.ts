@@ -341,7 +341,7 @@ export default class Daemon {
 
     /**
      * Inject a prompt into a run. Two paths:
-     *   - Active drain: writes a plurnk://prompt/<loop>/<next-turn> entry
+     *   - Active drain: writes a plurnk:///prompt/<loop>/<next-turn> entry
      *     via Engine.inject. Current loop sees the new prompt at its next
      *     turn. Returns immediately with {action: "injected_next_turn"}.
      *   - No active drain: enqueues a fresh loop with the prompt at

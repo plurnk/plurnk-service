@@ -4,7 +4,7 @@
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
 // `add`. This module resolves that membership and (when token accounting is
 // available) materializes active members' disk content into a body channel,
-// so they appear in the manifest catalog (plurnk://manifest.json) and are READ-able.
+// so they appear in the manifest catalog (plurnk:///manifest.json) and are READ-able.
 //
 // Decisions realized here:
 //   D1 — workspace identity lives on the session (project_root).
@@ -152,7 +152,10 @@ export default class GitMembership {
         const passesIgnore = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
         const desiredGit = tracked.filter(passesIgnore);
         const desiredAdd = added.filter((p) => !trackedSet.has(p) && passesIgnore(p));
-        const desired = [...desiredGit, ...desiredAdd];
+        // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
+        // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
+        // so they match the parser's pathname the shared read helper queries by.
+        const desired = [...desiredGit, ...desiredAdd].map((p) => `/${p}`);
         const desiredSet = new Set(desired);
 
         // Reconcile so entries == members (the constitutive invariant): register the
@@ -160,10 +163,10 @@ export default class GitMembership {
         // or 'constraint') no longer desired — untracked, unmatched, or newly ignored.
         // Model-created ('client') members are never reclaimed.
         for (const pathname of desiredGit) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname, membership_origin: "git" });
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
         }
         for (const pathname of desiredAdd) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname, membership_origin: "constraint" });
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
         for (const m of registered) {
@@ -210,7 +213,7 @@ export default class GitMembership {
         root: string,
         ctx: PlurnkSchemeContext,
     ): Promise<FsDivergence | null> {
-        const canonical = resolve(root, pathname);
+        const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) {
             // Empty body channel stamped with the real binary mimetype — a first-

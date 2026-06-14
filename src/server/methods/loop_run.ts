@@ -98,7 +98,7 @@ export default class LoopRunMethod {
                 const persona = await readFile(Paths.defaultPersona, "utf8");
 
                 // Operator reference docs (PLURNK_MD_<ALIAS>): materialize each as
-                // a plurnk://<ALIAS>.md entry via the self-hosting keystone (a
+                // a plurnk:///<ALIAS>.md entry via the self-hosting keystone (a
                 // plurnk run, §actor-boundary) so the model READs it at turn 0 (Engine.runTurn
                 // foists the READ). The materializing EDITs land in the plurnk
                 // run's log, invisible to the model. Missing files are skipped.
@@ -108,7 +108,7 @@ export default class LoopRunMethod {
                     try { content = await readFile(doc.path, "utf8"); } catch { continue; }
                     docStmts.push({
                         op: "EDIT", suffix: "", signal: null,
-                        target: { kind: "url", raw: `plurnk://${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: doc.entryName, params: {}, fragment: null },
+                        target: { kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/${doc.entryName}`, params: {}, fragment: null },
                         lineMarker: null, body: content, position: { line: 1, column: 1 },
                     });
                 }

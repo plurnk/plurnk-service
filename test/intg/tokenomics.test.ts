@@ -15,9 +15,9 @@ import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
 // the bare Engine), so the expected counts are deterministic: ceil(len/4).
 
 const urlPath = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
@@ -125,7 +125,7 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-largest-entries] budget lists the heaviest log entries by their log:// handle, heaviest first", async () => {
+test("[§tokenomics-largest-entries] budget lists the heaviest log entries by their log:/// handle, heaviest first", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-heavy-${crypto.randomUUID()}`);
@@ -139,8 +139,8 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
         assert.match(budget, /Heaviest entries:\n\| entry \| tokens \|/, "heaviest-entries table present");
-        // Every listed entry is a log:// handle, and the list is heaviest-first.
-        const rows = budget.split("\n").filter((l) => /^\| log:\/\//.test(l));
+        // Every listed entry is a log:/// handle, and the list is heaviest-first.
+        const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
         assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
         const tokens = rows.map((l) => Number(l.split("|")[2].trim()));
         for (let i = 1; i < tokens.length; i++) {

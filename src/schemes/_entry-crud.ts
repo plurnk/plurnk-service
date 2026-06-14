@@ -21,7 +21,7 @@ export interface WriteEntryResult {
     status: number;
     created: boolean;
     entryId: number | null;
-    // 202 proposal: a write INTO file:// is a disk write under §membership review —
+    // 202 proposal: a write INTO file:/// is a disk write under §membership review —
     // carries the udiff for the client + the applyResolution inputs. Absent for
     // synchronous entry schemes (known/unknown/skill write directly).
     body?: string;

@@ -6,7 +6,7 @@
 //   body    — matcher (glob/regex/jsonpath/xpath). Runs against the entry's
 //             default-channel CONTENT, NOT the pathname — the same content match
 //             READ performs (Matcher.matchAgainstContent → the mimetypes
-//             daughter). e.g. `FIND(log://**/error):/timeout/i` selects logs
+//             daughter). e.g. `FIND(log:///**/error):/timeout/i` selects logs
 //             whose content matches; `OPEN(countries/**):Paris*` selects entries
 //             whose content matches. The path-glob is the (target).
 //   signal  — tag filter: candidate entry must have ALL listed tags

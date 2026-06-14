@@ -10,12 +10,12 @@ import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
 
 // Internal-events scheme. Indexed entries the engine writes for the model
-// to see — currently just prompts at `plurnk://prompt/<loop_id>`. Future
+// to see — currently just prompts at `plurnk:///prompt/<loop_id>`. Future
 // internal model-interactions land here as their need arises.
 //
-// writableBy is open at the manifest level so future plurnk://… paths can
+// writableBy is open at the manifest level so future plurnk:///… paths can
 // accept any origin. Path-prefix restrictions live in the edit handler:
-// `plurnk://prompt/*` rejects model-origin writes (engine/client own those).
+// `plurnk:///prompt/*` rejects model-origin writes (engine/client own those).
 export default class Plurnk {
     static manifest: SchemeManifest = {
         name: "plurnk",
@@ -32,7 +32,7 @@ export default class Plurnk {
         const pathname = statement.target !== null && statement.target.kind === "url"
             ? statement.target.pathname
             : statement.target?.raw ?? "";
-        if (ctx.writer === "model" && pathname.startsWith("prompt/")) {
+        if (ctx.writer === "model" && pathname.startsWith("/prompt/")) {
             return { status: 403, entryId: null, channel: null };
         }
         return EntryOps.editSessionEntry(statement, ctx, Plurnk.manifest);

@@ -74,7 +74,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const handles = new Map<string, () => void>();
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "fakestream", pathname: "feed/x",
+            session_id: sessionId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
@@ -115,7 +115,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const engine = new Engine({ db, schemes });
 
         const result = await engine.dispatch({
-            statement: sendStmt(499, url("fakestream", "feed/x")),
+            statement: sendStmt(499, url("fakestream", "/feed/x")),
             sessionId, runId, loopId, turnId,
             sequence: 1, origin: "client",
         });
@@ -157,8 +157,8 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
 
     try {
         await rpcCall(1, "session.create", { name: "test-499" });
-        await rpcCall(2, "op.edit", { target: "known://x", content: "hi" });
-        const r = await rpcCall(3, "op.send", { status: 499, recipient: "known://x" });
+        await rpcCall(2, "op.edit", { target: "known:///x", content: "hi" });
+        const r = await rpcCall(3, "op.send", { status: 499, recipient: "known:///x" });
         assert.equal(r.result?.status, 404, "SEND[499] on entry with no subscription is 404");
     } finally {
         ws.close();

@@ -14,9 +14,9 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
@@ -45,7 +45,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         assert.equal(r.status, 200);
         // The two connection entries are returned, real-cosine-ranked; cake (no shared
         // keyword) is excluded by the FTS narrow, never reaching cosine.
-        assert.deepEqual([...r.results].sort(), ["known://db.md", "known://sql.md"]);
-        assert.ok(!r.results.includes("known://cake.md"), "the unrelated recipe never enters the ranking");
+        assert.deepEqual([...r.results].sort(), ["known:///db.md", "known:///sql.md"]);
+        assert.ok(!r.results.includes("known:///cake.md"), "the unrelated recipe never enters the ranking");
     } finally { db.close(); }
 });

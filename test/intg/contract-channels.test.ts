@@ -44,17 +44,17 @@ const seedExecEntry = async (
 test("[§channel-selection-fragment-selects-named-channel] fragment targets the named channel; fragment-less targets default", async () => {
     const { db, sessionId, runId } = await setup();
     try {
-        await seedExecEntry(db, sessionId, runId, "run/abc", "OUT-content", "ERR-content");
+        await seedExecEntry(db, sessionId, runId, "/run/abc", "OUT-content", "ERR-content");
         const exec = new Exec();
 
         // Fragment `#stderr` selects the named (non-default) channel.
-        const frag = await exec.read(readStmt(urlPath("exec", "run/abc", "stderr")), makeSchemeCtx({ db, sessionId }));
+        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, sessionId }));
         assert.equal(frag.status, 200);
         assert.equal(frag.channel, "stderr");
         assert.equal(frag.content, "ERR-content");
 
         // Fragment-less resolves to the scheme's defaultChannel (stdout).
-        const dflt = await exec.read(readStmt(urlPath("exec", "run/abc")), makeSchemeCtx({ db, sessionId }));
+        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, sessionId }));
         assert.equal(dflt.status, 200);
         assert.equal(dflt.channel, "stdout");
         assert.equal(dflt.content, "OUT-content");
@@ -69,13 +69,13 @@ test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent 
         // Explicit fragment on a path with no existing entry → 404 (the
         // fragment-targeted write requires the entry to already exist), even
         // when the fragment names the default channel.
-        const missing = await k.edit(editStmt(urlPath("known", "ghost", "body"), "x"), makeSchemeCtx({ db, sessionId, runId }));
+        const missing = await k.edit(editStmt(urlPath("known", "/ghost", "body"), "x"), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(missing.status, 404);
         assert.equal(missing.entryId, null);
         assert.equal(missing.channel, "body");
 
         // Fragment-less EDIT to the same (still absent) path creates the entry.
-        const created = await k.edit(editStmt(urlPath("known", "ghost"), "made"), makeSchemeCtx({ db, sessionId, runId }));
+        const created = await k.edit(editStmt(urlPath("known", "/ghost"), "made"), makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(created.status, 201);
         assert.equal(created.channel, "body");
         assert.notEqual(created.entryId, null);
@@ -137,20 +137,20 @@ test("[§channel-state-state-is-metadata] channel state does not gate reads — 
         // Seed an entry whose channel is in the 'errored' terminal state with
         // partial content still present.
         await seedEntryWithChannel(db, {
-            sessionId, runId, scheme: "known", pathname: "partial", channel: "body",
+            sessionId, runId, scheme: "known", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
         const k = new Known();
 
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await k.read(readStmt(urlPath("known", "partial")), makeSchemeCtx({ db, sessionId }));
+        const r = await k.read(readStmt(urlPath("known", "/partial")), makeSchemeCtx({ db, sessionId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");
 
         // Confirm the stored state really is 'errored' (the read ignored it).
-        const stored = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname: "partial" }))?.id, name: "body" });
+        const stored = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname: "/partial" }))?.id, name: "body" });
         assert.equal(stored?.state, "errored", "state persisted as errored — read succeeded anyway");
     } finally { await db.close(); }
 });

@@ -57,7 +57,7 @@ export default class Paths {
 
     // Operator reference docs auto-READ into every model run at turn 0.
     // `PLURNK_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
-    // `plurnk://<ALIAS>.md` entry the model READs — an idiomatic, userland way
+    // `plurnk:///<ALIAS>.md` entry the model READs — an idiomatic, userland way
     // to inject standing context (an ordinary entry + READ op, not a bespoke
     // packet section like persona). `~` expands to home; relative paths resolve
     // against the package root. Resolved fresh each call so it tracks the env.

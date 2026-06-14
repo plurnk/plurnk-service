@@ -11,8 +11,8 @@
 // (target) selects WHICH entries are candidates; the body matcher runs against
 // the entry CONTENT. The canonical examples are unambiguous about this:
 //   <<FIND(config/**/*.xml)://user[@role='admin']:FIND   — xpath over XML content
-//   <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND — regex over log content
-//   <<OPEN[france](known://countries/**):Paris*:OPEN      — glob over entry content
+//   <<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND — regex over log content
+//   <<OPEN[france](known:///countries/**):Paris*:OPEN      — glob over entry content
 // The path-globs live in the (target); the body is the content matcher.
 //
 // All four honor this: READ via read-resolve, FIND/OPEN/FOLD via
@@ -27,9 +27,9 @@ import Known from "../../src/schemes/Known.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,
-    pathname, params: {}, fragment: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
@@ -116,7 +116,7 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
 // is NOT the entry that matches by PATHNAME. The impl selects the content-bearing
 // entry — a pathname-matcher (the old divergence) would return the other one.
 
-// plurnk.md: <<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
+// plurnk.md: <<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND
 //   → select entries whose CONTENT matches the regex.
 test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CONTENT, not pathname", async () => {
     const { db, sessionId, runId } = await setup();
@@ -127,11 +127,11 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
         ]);
         const r = await new Known().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://alpha"]);
+        assert.deepEqual(r.results, ["known:///alpha"]);
     } finally { db.close(); }
 });
 
-// plurnk.md: <<OPEN[france](known://countries/**):Paris*:OPEN (glob body) — same
+// plurnk.md: <<OPEN[france](known:///countries/**):Paris*:OPEN (glob body) — same
 // dispatch as FIND; glob body selects entries whose CONTENT matches.
 test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONTENT, not pathname", async () => {
     const { db, sessionId, runId } = await setup();
@@ -142,7 +142,7 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
         ]);
         const r = await new Known().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://france/capital"]);
+        assert.deepEqual(r.results, ["known:///france/capital"]);
     } finally { db.close(); }
 });
 
@@ -161,7 +161,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://alice.json"]);
+        assert.deepEqual(r.results, ["known:///alice.json"]);
     } finally { db.close(); }
 });
 
@@ -175,7 +175,7 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a.xml"]);
+        assert.deepEqual(r.results, ["known:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -194,7 +194,7 @@ test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by struc
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a.json"]);
+        assert.deepEqual(r.results, ["known:///a.json"]);
     } finally { db.close(); }
 });
 
@@ -208,11 +208,11 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a.xml"]);
+        assert.deepEqual(r.results, ["known:///a.xml"]);
     } finally { db.close(); }
 });
 
-// plurnk.md (grammar 0.21.0): `<<FIND(known://**)<5>:~french revolutionary history:FIND`
+// plurnk.md (grammar 0.21.0): `<<FIND(known:///**)<5>:~french revolutionary history:FIND`
 // — RAG semantic similarity, top-K via <L>. The feature is built (embeddings on by
 // default); the full real-model pipeline is validated in test/live/semantic.test.ts.
 // This tier is model-free by design — its Mimetypes declines the embeddings daughter
@@ -227,6 +227,6 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }, { first: 5, last: null }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known://a"]);
+        assert.deepEqual(r.results, ["known:///a"]);
     } finally { db.close(); }
 });
