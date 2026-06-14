@@ -33,7 +33,7 @@
             {
                 "name": "sqlite",
                 "glyph": "🗃",
-                "example": "EXEC[sqlite]:SELECT count(*) FROM users:EXEC"
+                "example": "EXEC[sqlite](./app.db):SELECT count(*) FROM users:EXEC"
             }
         ]
     },
