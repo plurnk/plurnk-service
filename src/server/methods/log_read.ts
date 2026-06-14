@@ -7,6 +7,7 @@ import LogEntry from "../logEntry.ts";
 import type { LogEntryWire } from "../logEntry.ts";
 
 interface Params {
+    runId?: number;
     loopId?: number;
     turnId?: number;
     sinceId?: number;
@@ -36,11 +37,22 @@ export default class LogReadMethod {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("log.read requires an attached session");
                 const p = params as Params;
-                const entries = await LogReadMethod.#fetchLogEntries(ctx.db, ctx.session.runId, p);
+                // Default to the connection's own run; an explicit runId targets any
+                // run in the session — the MODEL run for a conversation client (#214) —
+                // ownership-verified so a client can't read a run outside its session.
+                let runId = ctx.session.runId;
+                if (typeof p.runId === "number" && p.runId !== runId) {
+                    const target = await (ctx.db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number }>({ id: p.runId });
+                    if (target === undefined) throw new Error(`run ${p.runId} not found`);
+                    if (target.session_id !== ctx.session.sessionId) throw new Error(`run ${p.runId} is not in this session`);
+                    runId = p.runId;
+                }
+                const entries = await LogReadMethod.#fetchLogEntries(ctx.db, runId, p);
                 return { status: 200, entries };
             },
             description: "Read recent log entries from the attached session, optionally filtered.",
             params: {
+                runId: "number? — read another run in this session (the model run for a conversation client); defaults to the connection's own run",
                 loopId: "number? — filter to one loop",
                 turnId: "number? — filter to one turn (within whatever loop)",
                 sinceId: "number? — return entries with id > sinceId (for incremental fetch)",

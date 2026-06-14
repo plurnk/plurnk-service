@@ -129,6 +129,7 @@ export default class LoopRunMethod {
                     // drain's notifications surface progress.
                     return {
                         loopId: injected.loopId,
+                        modelRunId,
                         turnSeq: injected.turnSeq,
                         action: "injected_next_turn",
                         finalStatus: 100,
@@ -148,6 +149,7 @@ export default class LoopRunMethod {
                 if (injected.firstLoopPromise === undefined) {
                     return {
                         loopId: injected.loopId,
+                        modelRunId,
                         action: "enqueued_new_loop",
                         finalStatus: 100,
                         hitMaxTurns: false,
@@ -157,6 +159,7 @@ export default class LoopRunMethod {
                 const first = await injected.firstLoopPromise;
                 return {
                     loopId: first.loopId,
+                    modelRunId,
                     turnIds: first.turnIds,
                     finalStatus: first.finalStatus,
                     hitMaxTurns: first.hitMaxTurns,
@@ -164,7 +167,7 @@ export default class LoopRunMethod {
                     action: "enqueued_new_loop",
                 };
             },
-            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Streams log/entry notifications; fires loop/terminated on completion.",
+            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
                 maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§operator-config)",
