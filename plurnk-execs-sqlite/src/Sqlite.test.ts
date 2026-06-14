@@ -37,6 +37,8 @@ test("manifest declares the sqlite runtime tag", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["sqlite"]);
+    // #7: the tag carries a one-line self-documenting example for the tools sheet.
+    assert.equal(pkg.plurnk.runtimes[0].example, "EXEC[sqlite]:SELECT count(*) FROM users:EXEC");
 });
 
 test("declares a results channel (application/json)", () => {

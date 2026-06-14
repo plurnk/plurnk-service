@@ -32,7 +32,8 @@
         "runtimes": [
             {
                 "name": "sqlite",
-                "glyph": "🗃"
+                "glyph": "🗃",
+                "example": "EXEC[sqlite]:SELECT count(*) FROM users:EXEC"
             }
         ]
     },
