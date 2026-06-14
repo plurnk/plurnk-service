@@ -2,7 +2,7 @@
 //
 // When a session's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
-// `add`. This module resolves that membership and (when token accounting is
+// `pick`. This module resolves that membership and (when token accounting is
 // available) materializes active members' disk content into a body channel,
 // so they appear in the manifest catalog (plurnk:///manifest.json) and are READ-able.
 //
@@ -12,9 +12,9 @@
 //        disk stays the truth.
 //   D4 — git present → ls-files membership. git absent → no fs-walk (this
 //        module no-ops on a non-git project_root, leaving headless / non-git
-//        sessions completely unaffected). The add/ignore/read-only constraint
+//        sessions completely unaffected). The pick/hide/view constraint
 //        overlay (session_constraints) layers on top: resolveMembership applies
-//        `(ls-files ∪ add) − ignore`; read-only is enforced at the File edit gate.
+//        `(ls-files ∪ pick) − hide`; view is enforced at the File edit gate.
 //   D5 — EMI is eager + exhaustive: every active member is re-read from disk at
 //        resolution time so a divergent member reflects current disk content.
 //
@@ -111,14 +111,14 @@ export default class GitMembership {
         return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
     }
 
-    // Resolve a session's file membership: the desired set is (git ls-files ∪ add
-    // globs) − ignore globs (SPEC §membership overlay), reconciled against the registered
+    // Resolve a session's file membership: the desired set is (git ls-files ∪ pick
+    // globs) − hide globs (SPEC §membership overlay), reconciled against the registered
     // overlay-owned members so entries == members. Channel-less rows — disk is the
     // truth (D3); the row is the membership marker File.read gates on. Returns the
     // desired pathnames so the caller can materialize them through writeEntry.
     //
-    // signal-respecting: git shell-outs + the add scan honor `signal`. Headless
-    // (no project_root) yields nothing; a non-git root with add-globs still resolves.
+    // signal-respecting: git shell-outs + the pick scan honor `signal`. Headless
+    // (no project_root) yields nothing; a non-git root with pick-globs still resolves.
     static async resolveGitMembership(
         db: Db,
         sessionId: number,
@@ -142,30 +142,30 @@ export default class GitMembership {
             ? await GitMembership.#forestTrackedFiles(root, repoDirs, signal)
             : [];
 
-        // `add` overlay — a targeted, client-dictated scan for untracked matches
+        // `pick` overlay — a targeted, client-dictated scan for untracked matches
         // (node:fs glob over the client's pattern, never a blind walk).
-        const added = pickGlobs.length === 0 ? [] : await GitMembership.#scanAddMembers(root, pickGlobs, signal);
+        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal);
 
-        // Compose: (git ∪ add) − ignore, tracking origin for reconciliation — a path
-        // in `tracked` is 'git', an add-only match is 'constraint'.
+        // Compose: (git ∪ pick) − hide, tracking origin for reconciliation — a path
+        // in `tracked` is 'git', a pick-only match is 'constraint'.
         const trackedSet = new Set(tracked);
-        const passesIgnore = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
-        const desiredGit = tracked.filter(passesIgnore);
-        const desiredAdd = added.filter((p) => !trackedSet.has(p) && passesIgnore(p));
+        const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
+        const desiredGit = tracked.filter(passesHide);
+        const desiredPick = picked.filter((p) => !trackedSet.has(p) && passesHide(p));
         // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.
-        const desired = [...desiredGit, ...desiredAdd].map((p) => `/${p}`);
+        const desired = [...desiredGit, ...desiredPick].map((p) => `/${p}`);
         const desiredSet = new Set(desired);
 
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
-        // or 'constraint') no longer desired — untracked, unmatched, or newly ignored.
+        // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
         // Model-created ('client') members are never reclaimed.
         for (const pathname of desiredGit) {
             await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
         }
-        for (const pathname of desiredAdd) {
+        for (const pathname of desiredPick) {
             await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
@@ -177,11 +177,11 @@ export default class GitMembership {
         return desired;
     }
 
-    // Targeted client-dictated scan (SPEC §membership `add`) — enumerate disk files
-    // matching the client's add-globs via node:fs glob (the pattern bounds the
+    // Targeted client-dictated scan (SPEC §membership `pick`) — enumerate disk files
+    // matching the client's pick-globs via node:fs glob (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.
-    static async #scanAddMembers(
+    static async #scanPickMembers(
         root: string,
         pickGlobs: string[],
         signal: AbortSignal | undefined,
