@@ -1104,7 +1104,7 @@ export default class Engine {
 
     // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet
     // is built, before provider.generate); fires only on actual overflow. Two
-    // passes, re-measuring between. Hides (never deletes) — the prior turn's logs,
+    // passes, re-measuring between. Folds (never deletes) — the prior turn's logs,
     // then the catalog except the manifest lifeline. The strike it raises and the
     // hard-stop it can signal are returned to runLoop, which owns abandonment.
     async #enforceBudget({ packet, provider, runId, loopId, turnId, sessionId, turnNumber, rebuild }: {

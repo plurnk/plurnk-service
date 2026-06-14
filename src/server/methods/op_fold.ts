@@ -16,7 +16,7 @@ export default class OpFoldMethod {
             handler: async (params, ctx) => {
                 const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.fold requires params.target: string");
-                const statement = Dsl.buildHide(p);
+                const statement = Dsl.buildFold(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "FOLD — collapse a log row to its path (drop its body from the render).",

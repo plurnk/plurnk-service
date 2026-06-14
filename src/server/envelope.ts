@@ -29,7 +29,7 @@ export interface RunRow {
 // Per-connection envelope. `runId` is the connection's own run — the client
 // actor's: `op.*` and `log.read` live there (§connection-lifecycle, §machine-processes). `modelRunId` is the
 // model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
-// the packet renders it, so client ops are absent from the model's view with no
+// the packet renders it, so client ops are absent from what the model sees with no
 // filter. Both `modelRunId` and `clientLoopId` are lazily allocated on first use —
 // a connection that never drives a model never spawns a model run.
 export interface ClientEnvelope {

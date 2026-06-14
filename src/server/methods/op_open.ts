@@ -16,7 +16,7 @@ export default class OpOpenMethod {
             handler: async (params, ctx) => {
                 const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.open requires params.target: string");
-                const statement = Dsl.buildShow(p);
+                const statement = Dsl.buildOpen(p);
                 return DispatchAsClient.dispatch(ctx, statement);
             },
             description: "OPEN — restore a collapsed log row's body to the rendered log.",

@@ -129,7 +129,7 @@ export default class Dsl {
         }));
     }
 
-    static buildShow(p: OpWithMatcher): PlurnkStatement {
+    static buildOpen(p: OpWithMatcher): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
             op: "OPEN", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
@@ -139,7 +139,7 @@ export default class Dsl {
         }));
     }
 
-    static buildHide(p: OpWithMatcher): PlurnkStatement {
+    static buildFold(p: OpWithMatcher): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
             op: "FOLD", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
