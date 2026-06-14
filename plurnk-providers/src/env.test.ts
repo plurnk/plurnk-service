@@ -30,10 +30,10 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
 });
 
 test("parseRequiredFlag: strict 0/1, named errors on missing or junk", () => {
-    assert.equal(parseRequiredFlag("1", "PLURNK_PROVIDERS_THINKING", "openai"), true);
+    assert.equal(parseRequiredFlag("1", "PLURNK_PROVIDERS_REASONING", "openai"), true);
     assert.equal(parseRequiredFlag("0", "PLURNK_PROVIDERS_REASONING", "openai"), false);
-    assert.throws(() => parseRequiredFlag(undefined, "PLURNK_PROVIDERS_THINKING", "openai"), /openai provider: PLURNK_PROVIDERS_THINKING must be set/);
-    assert.throws(() => parseRequiredFlag("true", "PLURNK_PROVIDERS_THINKING", "openai"), /must be "0" or "1" \(got "true"\)/);
+    assert.throws(() => parseRequiredFlag(undefined, "PLURNK_PROVIDERS_REASONING", "openai"), /openai provider: PLURNK_PROVIDERS_REASONING must be set/);
+    assert.throws(() => parseRequiredFlag("true", "PLURNK_PROVIDERS_REASONING", "openai"), /must be "0" or "1" \(got "true"\)/);
 });
 
 test("reasoningKnobsFromEnv: single required side-channel gate — no in-code default", () => {

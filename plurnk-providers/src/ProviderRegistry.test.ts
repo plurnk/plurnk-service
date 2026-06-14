@@ -75,7 +75,6 @@ test("resolveActiveAlias: matches alias case-insensitively", () => {
 const fullEnv = Object.freeze({
     PLURNK_FETCH_TIMEOUT: "600000",
     PLURNK_PROVIDERS_REASON_LEVEL: "0",
-    PLURNK_PROVIDERS_THINKING: "0",
     PLURNK_PROVIDERS_REASONING: "1",
     OPENAI_BASE_URL: "http://x",
 });
