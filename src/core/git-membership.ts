@@ -214,12 +214,30 @@ export default class GitMembership {
         ctx: PlurnkSchemeContext,
     ): Promise<FsDivergence | null> {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
+        // SPEC §membership-change-gated-sync — the cheap detect is a stat (mtime:size),
+        // never a content read: a member whose signature matches its last sync is a
+        // no-op (not re-read, re-tokenized, or rewritten). Coverage stays exhaustive
+        // (every member is stat'd); work is proportional to change.
+        let sig: string;
+        try {
+            const st = await stat(canonical);
+            sig = `${st.mtimeMs}:${st.size}`;
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+            throw err;
+        }
+        const known = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({
+            session_id: ctx.sessionId, scheme: null, pathname,
+        });
+        if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
+
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) {
             // Empty body channel stamped with the real binary mimetype — a first-
             // class entry that READ-415s through readSessionEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.
-            await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
+            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
+            if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
             return null;  // binary bodies are empty markers — no text divergence to narrate
         }
         let content: string;
@@ -236,6 +254,7 @@ export default class GitMembership {
             session_id: ctx.sessionId, scheme: null, pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+        if (result.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: result.entryId, synced_sig: sig });
         if (prior !== undefined && prior.content !== content && result.entryId !== null) {
             return { pathname, scheme: null, entryId: result.entryId, channel: "body", before: prior.content, after: content };
         }

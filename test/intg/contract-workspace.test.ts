@@ -295,7 +295,7 @@ test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-fil
     } finally { await db.close(); }
 });
 
-test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", { todo: "the per-member change-detect is unbuilt — the sync re-tokenizes every member every pass" }, async () => {
+test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;
         const counting: PlurnkSchemeContext = { ...ctx, tokenize: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };

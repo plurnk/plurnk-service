@@ -109,6 +109,11 @@ CREATE TABLE IF NOT EXISTS entries (
     -- embeddings, later) ONLY when this differs from the current body hash — an
     -- unchanged entry is skipped, never re-metadatafied every turn.
     deep_hash TEXT,
+    -- SPEC §membership-change-gated-sync — the per-member sync stat-detect:
+    -- "<mtimeMs>:<size>" of the disk file at its last materialization. The pre-turn
+    -- sync stat()s every member but re-reads/re-tokenizes/rewrites only one whose
+    -- signature changed; an unchanged member is a no-op. NULL = never synced.
+    synced_sig TEXT,
     CHECK ((scope = 'agent'   AND session_id IS NULL)
         OR (scope = 'session' AND session_id IS NOT NULL)),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE

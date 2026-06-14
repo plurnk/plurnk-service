@@ -31,6 +31,18 @@ ON CONFLICT (session_id, scheme, pathname) WHERE scope = 'session'
 DO NOTHING
 RETURNING id;
 
+-- PREP: crud_get_member_sig
+-- SPEC §membership-change-gated-sync — the member's last-synced disk signature
+-- (mtime:size), read before materializing so an unchanged file short-circuits
+-- before any content read. Null-aware scheme (file members store scheme=NULL).
+SELECT id, synced_sig FROM entries
+WHERE scope = 'session' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
+
+-- PREP: crud_set_synced_sig
+-- Stamp the disk signature after a member materializes to disk truth; the next
+-- pass compares against it to skip an unchanged member.
+UPDATE entries SET synced_sig = $synced_sig WHERE id = $entry_id;
+
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;
 
