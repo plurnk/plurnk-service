@@ -8,7 +8,6 @@ const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_FETCH_TIMEOUT: "600000",
     PLURNK_REASON: "0",
-    PLURNK_PROVIDERS_THINKING: "0",
     PLURNK_PROVIDERS_REASONING: "1",
 });
 
@@ -113,7 +112,7 @@ test("generate failure carries the provider:ollama telemetry source (SPEC §12)"
         return new Response("rate limited", { status: 429 });
     });
     const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
-    await assert.rejects(() => p.generate({ messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
         assert.equal(err.kind, "rate_limit");
         assert.equal(err.toTelemetryEvent().source, "provider:ollama");
