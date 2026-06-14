@@ -552,6 +552,8 @@ READ on a streaming scheme is a subscription, not a one-shot. Scheme opens the c
 
 Subscription registry is plurnk-service runtime state (its own SQLite table). Exists ONLY for cancellation routing. Channel state (§channel-state) + log entries (§no-chunk-rows) carry lifecycle.
 
+FOLD/OPEN toggles `log_entries.indexed` (§open-fold) — a per-run render bit, never the subscription registry. FOLDing a streaming entry's log row collapses its body out of the packet but leaves the live stream running: curation is render-only, never cancellation. {§subscriptions-fold-keeps-subscription}
+
 ### §chunk-accumulation Chunk accumulation
 
 SSE event types, WS message types, exec stdout/stderr each map to a named channel. Channel record (`ChannelContent`): `content`, `mimetype`, `tokens`. Active-connection state lives in the subscription registry, not on the channel. Chunks accumulate into the channel as they arrive — not buffered until close. {§chunk-accumulation-chunks-accumulate}
