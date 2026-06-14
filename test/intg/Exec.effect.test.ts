@@ -11,6 +11,10 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import Envelope from "../../src/server/envelope.ts";
 
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -52,6 +56,26 @@ test("[§exec-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs i
         assert.match(result.body as string, /1/, "the SELECT 1 result is in the body");
         await exec.idle();
     } finally { await db.close(); }
+});
+
+// Regression for #216 (execs-sqlite 0.1.4). In a WORKSPACE session the service
+// defaults the exec cwd to project_root, and sqlite uses cwd as its db path — a
+// DIRECTORY there used to 500 the open. The test above runs headless (cwd=null →
+// :memory:) and missed it; this exercises the project_root path that actually breaks.
+test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the db open (#216)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-sqlite-ws-"));
+    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    try {
+        await Envelope.updateSessionProjectRoot(db, sessionId, root);  // cwd now defaults to this dir
+        const result = await engine.dispatch({
+            statement: execStmt("sqlite", null, "SELECT 'Paris' AS capital;"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.notEqual(result.status, 202, "pure runtime auto-runs inline, no proposal");
+        assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
+        assert.match(result.body as string, /Paris/, "the SELECT result is in the body — a directory cwd no longer fails the open");
+        await exec.idle();
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
