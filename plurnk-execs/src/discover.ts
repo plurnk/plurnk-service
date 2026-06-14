@@ -12,9 +12,11 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 //
 // A package is recognized as an executor when its `package.json` declares
 // `plurnk.kind === "exec"` and exposes one or more runtime tags via
-// `plurnk.runtimes: { name, glyph? }[]` (SPEC §3). Each entry registers its
-// tag separately; one package can claim many tags backed by the same handler
-// (e.g. the search sibling claims `search`, `news`, `images`, …).
+// `plurnk.runtimes: { name, glyph?, example? }[]` (SPEC §3). Each entry
+// registers its tag separately; one package can claim many tags backed by the
+// same handler (e.g. the search sibling claims `search`, `news`, `images`, …).
+// `example` is a one-line self-documenting usage example surfaced in the
+// consumer's tools sheet (plurnk-execs#7).
 //
 // Tags are a flat global namespace. Unlike plurnk-mimetypes (last-loaded
 // wins), a tag collision here is a FAIL-HARD install error: two packages
@@ -104,6 +106,7 @@ async function readExecInfos(dir: string): Promise<ExecInfo[]> {
         infos.push({
             runtime: e.name,
             glyph: typeof e.glyph === "string" ? e.glyph : "",
+            example: typeof e.example === "string" ? e.example : "",
             packageName,
         });
     }

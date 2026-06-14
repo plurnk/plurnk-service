@@ -103,14 +103,16 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "search", "glyph": "🔎" },
-            { "name": "news",   "glyph": "📰" }
+            { "name": "search", "glyph": "🔎", "example": "EXEC[search]:france population:EXEC" },
+            { "name": "news",   "glyph": "📰", "example": "EXEC[news]:ecb rate decision:EXEC" }
         ]
     }
 }
 ```
 
-A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+
+Each entry's optional **`example`** is a one-line, self-documenting usage example (`EXEC[tag]:body:EXEC`), surfaced verbatim by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
 

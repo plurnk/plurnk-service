@@ -20,7 +20,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
         plurnk: {
             kind: "exec",
             runtimes: [
-                { name: "search", glyph: "🔎" },
+                { name: "search", glyph: "🔎", example: "EXEC[search]:france population:EXEC" },
                 { name: "news", glyph: "📰" },
             ],
         },
@@ -28,11 +28,13 @@ test("discover: registers each runtime tag of an exec package", async () => {
     const { registry } = await discover({ packageDirs: [dir] });
 
     assert.equal(registry.size, 2);
+    // `example` flows through verbatim when declared, and defaults to "" when not.
     assert.deepEqual(registry.get("search"), {
-        runtime: "search", glyph: "🔎", packageName: "@plurnk/plurnk-execs-search",
+        runtime: "search", glyph: "🔎", example: "EXEC[search]:france population:EXEC",
+        packageName: "@plurnk/plurnk-execs-search",
     });
     assert.deepEqual(registry.get("news"), {
-        runtime: "news", glyph: "📰", packageName: "@plurnk/plurnk-execs-search",
+        runtime: "news", glyph: "📰", example: "", packageName: "@plurnk/plurnk-execs-search",
     });
 });
 
@@ -51,7 +53,7 @@ test("discover: ignores non-exec packages and missing glyphs default to empty", 
 
     assert.equal(registry.size, 1);
     assert.deepEqual(registry.get("sh"), {
-        runtime: "sh", glyph: "", packageName: "@plurnk/plurnk-execs-sh",
+        runtime: "sh", glyph: "", example: "", packageName: "@plurnk/plurnk-execs-sh",
     });
 });
 

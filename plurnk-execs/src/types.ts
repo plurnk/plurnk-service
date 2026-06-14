@@ -87,6 +87,13 @@ export interface RuntimeAvailability {
 export interface ExecInfo {
     runtime: string;
     glyph: string;
+    // A one-line, self-documenting usage example for this tag, surfaced verbatim
+    // in the consumer's `# Plurnk System Tools` capability sheet so the model
+    // sees the syntax + what the tag does without a separate prose description
+    // (e.g. `EXEC[search]:france population:EXEC`). Empty when the manifest
+    // entry omits it. Kept to one line — the hot-path sheet is token-sensitive;
+    // the generic `(target)` slot is documented once at the op level, not here.
+    example: string;
     packageName: string;
 }
 
