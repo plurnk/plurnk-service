@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
     "keywords": [
         "plurnk",
@@ -120,9 +120,9 @@
     "devDependencies": {
         "@types/node": "^25.8.0",
         "typescript": "^6.0.3",
-        "@plurnk/plurnk-execs": "0.4.1"
+        "@plurnk/plurnk-execs": "^0.4.5"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.1"
+        "@plurnk/plurnk-execs": "^0.4.5"
     }
 }
