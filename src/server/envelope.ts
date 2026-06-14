@@ -23,6 +23,7 @@ export interface RunRow {
     name: string;
     created_at: string;
     cost_pico: number;
+    origin: "model" | "client" | "plurnk";
 }
 
 // Per-connection envelope. `runId` is the connection's own run — the client
@@ -78,7 +79,7 @@ export default class Envelope {
         // null (headless) or not a git working tree.
         await GitMembership.resolveGitMembership(db, session.id, undefined);
         const runName = Envelope.generateRunName();
-        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: session.id, name: runName, persona: null });
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: session.id, name: runName, persona: null, origin: "client" });
         if (run === undefined) throw new Error("createClientEnvelope: run insert returned no row");
         return {
             sessionId: session.id, sessionName: session.name,
@@ -113,11 +114,11 @@ export default class Envelope {
             }
             const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName });
             if (existing !== undefined) return existing;
-            const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName, persona: opts.persona ?? null });
+            const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: opts.runName, persona: opts.persona ?? null, origin: "client" });
             if (created === undefined) throw new Error("resolveRun: run insert returned no row");
             return created;
         }
-        const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: Envelope.generateRunName(), persona: opts.persona ?? null });
+        const created = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string; persona: string | null }>({ session_id: sessionId, name: Envelope.generateRunName(), persona: opts.persona ?? null, origin: "client" });
         if (created === undefined) throw new Error("resolveRun: run insert returned no row");
         return created;
     }
@@ -149,7 +150,7 @@ export default class Envelope {
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
     static async ensureModelRun(db: Db, sessionId: number): Promise<number> {
-        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: Envelope.#tsName("model"), persona: null });
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: Envelope.#tsName("model"), persona: null, origin: "model" });
         if (run === undefined) throw new Error("ensureModelRun: run insert returned no row");
         return run.id;
     }
@@ -161,7 +162,7 @@ export default class Envelope {
     static async ensurePlurnkRun(db: Db, sessionId: number): Promise<number> {
         const existing = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" });
         if (existing !== undefined) return existing.id;
-        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null });
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null, origin: "plurnk" });
         if (run === undefined) throw new Error("ensurePlurnkRun: run insert returned no row");
         return run.id;
     }

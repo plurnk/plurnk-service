@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS runs (
     parent_run_id INTEGER          CHECK (parent_run_id IS NULL OR parent_run_id != id),
     cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     persona       TEXT,
+    origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     FOREIGN KEY (session_id)    REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_run_id) REFERENCES runs(id)     ON DELETE CASCADE
 ) STRICT;

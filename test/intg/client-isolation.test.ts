@@ -87,3 +87,25 @@ test("[§machine-processes-model-run-readable] a connection reads the model run 
         } finally { ws.close(); }
     });
 });
+
+test("[§machine-processes-run-origin] session.runs tags each run with its actor — the model run is found by origin, not name", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "session.create", { name: "run-origin" });
+            const clientRunId = (created.result as { runId: number }).runId;
+            await rpcCall(ws, 2, "op.edit", { target: "known://note", content: "x" });
+            const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
+            const { modelRunId } = run.result as { modelRunId: number };
+
+            const listed = (await rpcCall(ws, 4, "session.runs")).result as { runs: Array<{ id: number; origin: string }> };
+            const model = listed.runs.find((r) => r.id === modelRunId);
+            const client = listed.runs.find((r) => r.id === clientRunId);
+            assert.equal(model?.origin, "model", "the model run is tagged origin=model");
+            assert.equal(client?.origin, "client", "the connection's own run is tagged origin=client");
+            // The conversation client picks the model run by actor — no name parsing.
+            assert.deepEqual(listed.runs.filter((r) => r.origin === "model").map((r) => r.id), [modelRunId], "exactly one model run, found by origin");
+        } finally { ws.close(); }
+    });
+});

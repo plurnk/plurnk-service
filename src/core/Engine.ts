@@ -1291,7 +1291,7 @@ export default class Engine {
     async #logFsFictions(sessionId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const run = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" })
-            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null });
+            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null, origin: "plurnk" });
         if (run === undefined) throw new Error("logFsFictions: plurnk run resolution returned no row");
         const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");

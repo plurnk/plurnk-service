@@ -20,9 +20,11 @@ UPDATE sessions SET persona = $persona WHERE id = $id
 RETURNING id, name, project_root, persona;
 
 -- PREP: envelope_insert_run
-INSERT INTO runs (session_id, name, persona)
-VALUES ($session_id, $name, $persona)
-RETURNING id, name, persona;
+-- origin is the run's actor (§machine-processes): 'model' (the conversation),
+-- 'client' (a connection's own run), or 'plurnk' (the runtime self-hosting run).
+INSERT INTO runs (session_id, name, persona, origin)
+VALUES ($session_id, $name, $persona, $origin)
+RETURNING id, name, persona, origin;
 
 -- PREP: envelope_get_run_by_id
 SELECT id, name, session_id FROM runs WHERE id = $id;
@@ -31,7 +33,7 @@ SELECT id, name, session_id FROM runs WHERE id = $id;
 SELECT id, name FROM runs WHERE session_id = $session_id AND name = $name;
 
 -- PREP: envelope_list_runs_for_session
-SELECT id, name, created_at, cost_pico
+SELECT id, name, created_at, cost_pico, origin
 FROM runs
 WHERE session_id = $session_id
 ORDER BY created_at DESC;
