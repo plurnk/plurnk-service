@@ -194,10 +194,11 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-Three generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship in the package for llama.cpp constrained sampling, most→least permissive. All dictate the canonical statement form (digit suffixes, comma line markers, three-digit SEND signals); free text can never contain a complete `<<OP` opener — emitting one commits the sampler into statement mode, so operations stay fully enforced everywhere.
+Four generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship in the package for llama.cpp constrained sampling. All dictate the canonical statement form (digit suffixes, comma line markers, three-digit SEND signals); operations are fully enforced everywhere.
 
-- **`plurnk.gbnf` (default, open)** — free reasoning text and statements interleave; EOS is admissible at any boundary, so termination is the model's own choice. The grammar filter sits below the reasoning/content split on llama.cpp; the open root lets reasoning-tuned models think — including reasoning *about* concluding without being forced to conclude.
-- **`plurnk-closed.gbnf`** — text allowed, but the turn must close with a final pathless `SEND[102]`/`SEND[200]` status update, after which nothing is admissible (forced EOS). For models that ramble past optional stopping points.
+- **`plurnk.gbnf` (default)** — free reasoning text and statements interleave, EOS at any boundary, **but `<<` is a hard commit**: prose may contain a lone `<` and never `<<`, so the only way to produce `<<` is to begin a real operation. Operation-lookalike garbage (`<<RANDOM`) can't exist even as text — at `<<` the sampler is forced into a valid op. Leanest text automaton (2 states). Tradeoff: a fumbled verb is coerced toward a real op, and `<<` is unwritable in prose.
+- **`plurnk-free.gbnf`** — free text and statements interleave with `<<` escapable to text: an opener-lookalike that never completes a real keyword stays inert text. The permissive fallback if the hard commit bites.
+- **`plurnk-closed.gbnf`** — free-style text, but the turn must close with a final pathless `SEND[102]`/`SEND[200]` (forced EOS). For models that ramble past optional stopping points.
 - **`plurnk-strict.gbnf`** — ops only, bounded newline separators. The tightest rail, for models that don't reason.
 
 The parser remains the permissive contract — everything any of the three can generate, the parser accepts (interstatement text surfaces as `kind: "text"` items).

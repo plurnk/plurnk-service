@@ -375,6 +375,32 @@ test("GBNF: 100 seeded random open turns parse cleanly", () => {
     }
 });
 
+test("GBNF: commit root (default) — `<<` is a hard commit, no opener-lookalike garbage", () => {
+    // Reasoning text + real ops, EOS at any boundary — same freedoms as open.
+    assert.equal(derives("root-commit", "just musing, no operations yet"), true);
+    assert.equal(derives("root-commit", "think first\n<<READ(known://a.md)::READ\nstill thinking"), true);
+    assert.equal(derives("root-commit", "<<EDIT(known://a.md):x:EDIT"), true);
+    assert.equal(derives("root-commit", "if x < 5 then act\n<<READ(known://a.md)::READ"), true); // lone `<` is fine
+    // The whole point: `<<` cannot exist in prose, so opener-lookalike garbage is underivable.
+    assert.equal(derives("root-commit", "<<RANDOM:pointless:RANDOM"), false);
+    assert.equal(derives("root-commit", "discussing << operators\n<<READ(a.md)::READ"), false); // `<<` in prose
+    assert.equal(derives("root-commit", "mentioning <<READ in prose"), false); // `<<READ` coerces to a real op, not text
+    // Contrast: root-open (plurnk-free.gbnf) tolerates all three as inert text.
+    assert.equal(derives("root-open", "<<RANDOM:pointless:RANDOM"), true);
+    assert.equal(derives("root-open", "discussing << operators here"), true);
+});
+
+test("GBNF: 100 seeded random commit turns parse cleanly", () => {
+    const rng = mulberry32(29);
+    for (let i = 0; i < 100; i++) {
+        const turn = sample("root-commit", rng);
+        const result = PlurnkParser.parse(turn);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 0, `commit turn ${i} produced parse errors\nturn: ${JSON.stringify(turn)}`);
+        assert.equal(result.unparsedTail, undefined, `commit turn ${i} left an unparsed tail\nturn: ${JSON.stringify(turn)}`);
+    }
+});
+
 test("GBNF: decimal line markers derive — insert-between, threshold, mixed", () => {
     assert.equal(derives("statement", "<<EDIT(known://plan)<2.5>:x:EDIT"), true);
     assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
