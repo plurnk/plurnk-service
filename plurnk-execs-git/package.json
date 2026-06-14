@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
     "keywords": [
         "plurnk",
@@ -33,11 +33,13 @@
         "runtimes": [
             {
                 "name": "git",
-                "glyph": "🔀"
+                "glyph": "🔀",
+                "example": "EXEC[git]:log --oneline -10:EXEC"
             },
             {
                 "name": "gh",
-                "glyph": "🐙"
+                "glyph": "🐙",
+                "example": "EXEC[gh]:pr list --state open:EXEC"
             }
         ]
     },
