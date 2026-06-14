@@ -1,6 +1,6 @@
 Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
-YOU MUST NOT use EXEC for actions that can be performed with the other Extended HEREDOC Plurnk Operations.
+YOU MUST NOT use shell commands for actions that can be performed with Extended HEREDOC Plurnk Operations.
 YOU MUST ONLY communicate with SEND, not with free text between operations.
 YOU MUST document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown entries.
 YOU MUST ONLY populate known entries with source entry information, never with model training.
