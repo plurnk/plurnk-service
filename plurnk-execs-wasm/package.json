@@ -40,7 +40,7 @@
             {
                 "name": "wasm",
                 "glyph": "🧩",
-                "example": "EXEC[wasm]:AGFzbQEAAAA…:EXEC"
+                "example": "EXEC[wasm](module.wasm):main:EXEC"
             }
         ]
     },
