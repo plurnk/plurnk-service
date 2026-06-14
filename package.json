@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-service",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
   "type": "module",
   "license": "MIT",
