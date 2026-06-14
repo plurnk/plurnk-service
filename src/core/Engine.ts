@@ -1025,7 +1025,11 @@ export default class Engine {
     // placeholder here — buildSystem substitutes it after measuring the packet.
     #renderBudget(
         sections: {
-            log: { entries: number; tokens: number; byScheme: Array<{ scheme: string; entries: number; tokens: number }> };
+            log: {
+                entries: number; tokens: number;
+                byTurn: Array<{ turn: string; tokens: number }>;
+                largest: Array<{ path: string; tokens: number }>;
+            };
         },
         ceiling: number | null,
     ): string {
@@ -1033,9 +1037,17 @@ export default class Engine {
         if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · free ${TOKENS_FREE_PLACEHOLDER}`);
         if (sections.log.entries > 0) {
             lines.push(`Log entries: ${sections.log.entries} entries, ${sections.log.tokens} tokens`);
-            if (sections.log.byScheme.length > 0) {
-                lines.push("| scheme | entries | tokens |", "|---|--:|--:|");
-                for (const s of sections.log.byScheme) lines.push(`| ${s.scheme} | ${s.entries} | ${s.tokens} |`);
+            // Per-turn weight — the grinder's rollback unit, oldest first: the
+            // model sees what's first to go (§tokenomics {§tokenomics-turn-totals}).
+            if (sections.log.byTurn.length > 0) {
+                lines.push("Turns:", "| turn | tokens |", "|---|--:|");
+                for (const t of sections.log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
+            }
+            // The heaviest individual entries — the FOLD targets behind the
+            // weight (§tokenomics {§tokenomics-largest-entries}).
+            if (sections.log.largest.length > 0) {
+                lines.push("Heaviest entries:", "| entry | tokens |", "|---|--:|");
+                for (const e of sections.log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
             }
         }
         return lines.join("\n");

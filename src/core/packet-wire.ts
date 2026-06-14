@@ -125,31 +125,49 @@ export default class PacketWire {
     // with a `{{tokensFree}}` placeholder, measures, then substitutes (the
     // placeholder/number length delta is negligible).
     static measureBudgetSections(packet: Packet, countTokens: CountTokens): {
-        log: { entries: number; tokens: number; byScheme: Array<{ scheme: string; entries: number; tokens: number }> };
+        log: {
+            entries: number; tokens: number;
+            byTurn: Array<{ turn: string; tokens: number }>;
+            largest: Array<{ path: string; tokens: number }>;
+        };
         total: number;
     } {
         const system: SystemSection = packet.system;
         const user: UserSection = packet.user;
         const logEntries: LogEntryView[] = Array.isArray(system.log) ? system.log : [];
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
-        // Per-scheme log breakdown (§tokenomics {§tokenomics-per-scheme-balance}): each entry's
-        // render-weight grouped by the scheme it acted on, heaviest first — the
-        // model's "what's eating my window" signal and its FOLD target. Render-
-        // weight (not stored depth), consistent with the headline; tokenizing per
-        // entry is free.
-        const byScheme = new Map<string, { scheme: string; entries: number; tokens: number }>();
+        // One pass: each entry's render-weight feeds the per-turn rollup (the
+        // grinder's rollback unit, oldest-first) and the heaviest-entries list
+        // (the FOLD unit) — the two budget levers the model can actually pull
+        // (§tokenomics {§tokenomics-turn-totals}, {§tokenomics-largest-entries}).
+        const HEAVIEST_COUNT = 10;
+        const byTurn = new Map<string, number>();
+        const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
-            const scheme = e.target?.scheme ?? "—";
-            const acc = byScheme.get(scheme) ?? { scheme, entries: 0, tokens: 0 };
-            acc.entries += 1;
-            acc.tokens += countTokens(PacketWire.#renderLogEntries([e]));
-            byScheme.set(scheme, acc);
+            const weight = countTokens(PacketWire.#renderLogEntries([e]));
+            const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
+            const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
+            // Turn = the loop_seq/turn_seq prefix of the coordinate
+            // (log://<loop_seq>/<turn_seq>/<sequence>); the sequence drops off.
+            if (coordinate !== null) {
+                const turn = coordinate.split("/").slice(0, 2).join("/");
+                byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
+            }
+            const path = PacketWire.#entryPath(coordinate, op);
+            if (path !== null) perEntry.push({ path, tokens: weight });
         }
         return {
             log: {
                 entries: logEntries.length,
                 tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
-                byScheme: [...byScheme.values()].toSorted((a, b) => b.tokens - a.tokens),
+                byTurn: [...byTurn.entries()]
+                    .map(([turn, tokens]) => ({ turn, tokens }))
+                    .toSorted((a, b) => {
+                        const [al, at] = a.turn.split("/").map(Number);
+                        const [bl, bt] = b.turn.split("/").map(Number);
+                        return al - bl || at - bt;
+                    }),
+                largest: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, HEAVIEST_COUNT),
             },
             total: countTokens(PacketWire.renderSystemContent(system)) + countTokens(PacketWire.renderUserContent(user)),
         };
@@ -300,13 +318,21 @@ export default class PacketWire {
     //   2. Every other op → re-emit tx as a heredoc in the model's native
     //      syntax. The model wrote this; mirror it back so the log is a true
     //      record of its actions instead of a row of opaque status codes.
+    // The log:// handle the model sees for an entry — its FOLD target
+    // (§open-fold) and the label the budget's heaviest-entries readout reuses,
+    // so the readout names an entry exactly as the log does.
+    static #entryPath(coordinate: string | null, op: string | null): string | null {
+        if (coordinate === null) return null;
+        return op !== null ? `log://${coordinate}/${op}` : `log://${coordinate}`;
+    }
+
     static #renderLogEntries(entries: LogEntryView[]): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            if (coordinate !== null && op !== null) meta.path = `log://${coordinate}/${op}`;
-            else if (coordinate !== null) meta.path = `log://${coordinate}`;
+            const path = PacketWire.#entryPath(coordinate, op);
+            if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
             // §env-delta: the environment-delta cause (a sibling run or a scheme),
             // rendered when present; absent ⇒ the owning run itself (self).

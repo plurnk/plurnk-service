@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, UrlPath, PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
@@ -105,27 +105,48 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-per-scheme-balance] budget breaks the log down by scheme, render-weight", async () => {
+test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest first", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `tok-scheme-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, `tok-turn-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // Turn 1: act on two schemes → two log entries (known, unknown). Turn 2's
-        // budget reflects the run's log, so the per-scheme table carries both.
-        const t1 = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [
-            anyEdit(anyUrl("known", "a"), "alpha beta gamma delta epsilon zeta"),
-            anyEdit(anyUrl("unknown", "b"), "x"),
-            sendStmt(200),
-        ] } }] });
-        await engine.runTurn({ provider: t1, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const t2prov = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const t2 = await engine.runTurn({ provider: t2prov, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
+        assert.match(budget, /\| 1\/1 \|/, "turn 1/1 row present");
+        assert.match(budget, /\| 1\/2 \|/, "turn 1/2 row present");
+        assert.ok(budget.indexOf("| 1/1 |") < budget.indexOf("| 1/2 |"), "oldest turn first — the grinder's rollback order");
+    } finally { await db.close(); }
+});
+
+test("[§tokenomics-largest-entries] budget lists the heaviest log entries by their log:// handle, heaviest first", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `tok-heavy-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
+        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(2);
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
-        assert.match(budget, /\| scheme \| entries \| tokens \|/, "per-scheme log table present");
-        assert.match(budget, /\| known \|/, "groups the known-scheme log entries");
-        assert.match(budget, /\| unknown \|/, "groups the unknown-scheme log entries");
+        assert.match(budget, /Heaviest entries:\n\| entry \| tokens \|/, "heaviest-entries table present");
+        // Every listed entry is a log:// handle, and the list is heaviest-first.
+        const rows = budget.split("\n").filter((l) => /^\| log:\/\//.test(l));
+        assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
+        const tokens = rows.map((l) => Number(l.split("|")[2].trim()));
+        for (let i = 1; i < tokens.length; i++) {
+            assert.ok(tokens[i - 1] >= tokens[i], `heaviest first — non-increasing: ${tokens.join(", ")}`);
+        }
+        assert.ok(tokens[0] > tokens[tokens.length - 1], "the heavy edit genuinely outweighs the tiny ones");
     } finally { await db.close(); }
 });
 

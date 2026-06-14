@@ -961,7 +961,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildRequestPacket`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
 
-### §tokenomics Tokenomics: real provider tokens, render-weight budget, per-scheme balance
+### §tokenomics Tokenomics: real provider tokens, render-weight budget, turn and entry weights
 
 **Question.** How does plurnk track token costs accurately enough to ground the model's OPEN/FOLD/compose decisions? Accuracy is the whole game — a budget that smells wrong is one the model stops trusting and curating against.
 
@@ -974,7 +974,8 @@ Each entry: question, answer, rationale, migration path.
 
 - **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Engine.#writeLog`) are populated at write as a write-time snapshot. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§tokenomics-tokens-stored-at-write}
 - **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price the rendered packet; render-weight is the accurate measure. {§tokenomics-render-weight-budget}
-- **Per-scheme balance.** A markdown table groups the model's context by scheme — render-weight `tokens` per scheme — anchored `repo, known, unknown, log`, tail sorted by tokens. The model sees at a glance what's eating its window. {§tokenomics-per-scheme-balance}
+- **Per-turn weight.** A markdown table groups render-weight by turn — the `loop/turn` coordinate prefix — oldest first, the grinder's rollback unit. The model sees which turns are fat and what the rail folds first, and can FOLD ahead of it. {§tokenomics-turn-totals}
+- **Heaviest entries.** A second table lists the ten heaviest log entries by render-weight, each by its `log://<coord>/<op>` handle — the FOLD targets behind the turn weight. The handle carries the turn, so the two tables interlock. {§tokenomics-largest-entries}
 - **Context-window percent.** The headline carries usage as a percent of the ceiling — `usage Y (P%)` — a fullness gauge beside the absolutes. Reads the ceiling already in hand; no extra provider call. {§tokenomics-context-percent}
 - **Depth re-counted at render.** The manifest re-tokenizes each entry's `tokens` through the live provider at build — never the write-time snapshot — so a model change between loops can't stale the catalog. Every token figure in the packet is render-fresh, manifest and budget alike; nothing trusts a cross-loop cached total.
 - **Over-budget is honest.** When usage exceeds the ceiling, `free` floors at 0 and the percent passes 100 — the readout shows the overshoot rather than a negative free, so the model knows it's over and curates down. {§tokenomics-over-budget-floor}
@@ -1021,7 +1022,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Strike coupling.** A grinder fire bumps the engine's `turnErrors` — the same internal counter cycle detection feeds — so an overflow counts toward the strike streak that ends a runaway loop at 499. This is the pressure that keeps self-curation the path of least resistance. {§grinder-strike-coupling} **Turn 0/1 is exempt:** the first turn's overflow precedes any model action — it's the environment, not the model — so it never strikes. {§grinder-soft-turn-0-1}
 
-**What the model sees.** A `budget_overflow` telemetry event (§telemetry), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the per-scheme budget table (§tokenomics) is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§grinder-event-model-terms} Per the gamification policy (§telemetry), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
+**What the model sees.** A `budget_overflow` telemetry event (§telemetry), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the budget readout (§tokenomics) — its turn and entry weights — is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§grinder-event-model-terms} Per the gamification policy (§telemetry), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
 
 **Rationale.** The model owns curation (§tokenomics); the grinder is the exceptional backstop. It only *hides* — reversibly — the prior turn's render; nothing is deleted, so the model can OPEN it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead hid the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
 
@@ -1112,7 +1113,7 @@ Slot for telemetry the model MUST react to immediately. Rendered at the bottom o
 
 **Plurnk-service rendering:**
 
-- `budget` per §tokenomics: per-scheme breakdown table with `tokenCeiling`/`tokenUsage`/`tokensFree`.
+- `budget` per §tokenomics: turn-weight and heaviest-entries tables with `tokenCeiling`/`tokenUsage`/`tokensFree`.
 - `errors[]` from previous turn's dispatch. Required: `kind` discriminator. Additional kind-specific fields are flat on the element — NO nested `detail`. Canonical-JSON serialization sorts keys for prefix-cache friendliness.
 - Wire: one `* {canonical-JSON}` line per error under `# Plurnk System Errors`, push order. Buffer drains on read. {§telemetry-drain-on-read}
 - **No prose `message` field.** Errors carry structured facts. The `kind` is the alert; the named fields are the data. Guidance, advice, hints, and exhortation MUST NOT appear in telemetry. Letting the model infer what to do from facts (and the log) beats handing it instructions it will second-guess.
