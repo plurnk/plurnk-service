@@ -35,8 +35,7 @@
         "runtimes": [
             {
                 "name": "sh",
-                "glyph": "🐚",
-                "example": "EXEC[sh]:ls -la:EXEC"
+                "glyph": "🐚"
             },
             {
                 "name": "bash",
@@ -45,8 +44,7 @@
             },
             {
                 "name": "node",
-                "glyph": "⬢",
-                "example": "EXEC[node]:console.log(process.version):EXEC"
+                "glyph": "⬢"
             },
             {
                 "name": "python",
@@ -55,8 +53,7 @@
             },
             {
                 "name": "python3",
-                "glyph": "🐍",
-                "example": "EXEC[python3]:print(sum(range(101))):EXEC"
+                "glyph": "🐍"
             },
             {
                 "name": "perl",
