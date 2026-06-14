@@ -54,7 +54,7 @@ try {
     }
 
     await writeFile(join(tempDir, "consume.js"), `
-import { PlurnkParser, Validator, PlurnkParseError } from "@plurnk/plurnk-grammar";
+import { PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
 
 // 1. Parse a simple plurnk statement.
 const result = PlurnkParser.parse("<<EDIT(known://foo):body content:EDIT");
@@ -70,7 +70,11 @@ if (!posResult.valid) throw new Error("position validation failed: " + JSON.stri
 // 3. Confirm an error class is importable as a value.
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
-console.log("OK: parser, validator, and error class all consumable from npm-installed package.");
+// 4. Confirm the parsePath helper is a callable top-level export (COPY-dest recipe).
+const dest = parsePath("known://archive/draft");
+if (dest?.kind !== "url" || dest.scheme !== "known") throw new Error("parsePath export not working: " + JSON.stringify(dest));
+
+console.log("OK: parser, validator, error class, and parsePath all consumable from npm-installed package.");
 `);
 
     process.stdout.write(`[smoke] running consume.js...\n`);

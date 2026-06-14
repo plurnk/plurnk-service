@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, PlurnkParseError } from "../../src/index.ts";
+import { PlurnkParser, PlurnkParseError, parsePath } from "../../src/index.ts";
 
 const statementsOf = (input: string) =>
     PlurnkParser.parse(input).items.filter((i) => i.kind === "statement");
@@ -829,6 +829,19 @@ test("COPY body carries a run-fork prompt verbatim", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     assert.equal(item.statement.body, "Re-derive the capital from a primary source.");
+});
+
+test("parsePath export resolves a COPY destination into the same ParsedPath as a (target) slot", () => {
+    const result = PlurnkParser.parse("<<COPY(known://draft):known://archive/draft:COPY");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
+    const dest = parsePath(item.statement.body!);
+    assert.ok(dest);
+    if (dest.kind !== "url") return;
+    assert.equal(dest.scheme, "known");
+    assert.equal(dest.pathname, "archive/draft");
+    // A bare/local destination stays local, never throws.
+    assert.deepEqual(parsePath("archive/2026/draft"), { kind: "local", raw: "archive/2026/draft" });
 });
 
 test("MOVE body is a ParsedPath", () => {

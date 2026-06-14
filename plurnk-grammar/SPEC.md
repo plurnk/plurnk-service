@@ -457,10 +457,19 @@ not source-shaped. To leave a self-documenting breadcrumb, use
 
 ## 12. Public API
 
-This package exports a single entry point `parse(input: string): ParseResult` and the AST type union. The full surface area:
+The entry point is `PlurnkParser.parse(input: string): ParseResult`, alongside the AST type union and a top-level `parsePath` helper. The full surface area:
 
 ```typescript
-parse(input: string): ParseResult
+PlurnkParser.parse(input: string): ParseResult
+
+// Parse a path/URI string into a ParsedPath — the exact decomposition the parser
+// applies to every (target) slot. The top-level helper to reach for (no need to
+// touch AstBuilder). Primary use: resolving a COPY destination. COPY's body is an
+// opaque string — a destination URI for an entry copy, a prompt for a run fork
+// (run://) — so the scheme handler interprets it, then calls this for the
+// destination case. MOVE destinations arrive pre-parsed (body is always a path);
+// COPY's do not, because its body is polymorphic.
+parsePath(raw: string): ParsedPath | null
 
 type ParseResult = {
     items: ParseItem[];
@@ -480,7 +489,8 @@ type PlurnkStatement =
     | FindStatement | ReadStatement | EditStatement
     | CopyStatement | MoveStatement
     | OpenStatement | FoldStatement
-    | SendStatement | ExecStatement;
+    | SendStatement | ExecStatement
+    | KillStatement | PlanStatement;
 
 interface StatementBase<S> {
     suffix: string;          // empty string if no suffix

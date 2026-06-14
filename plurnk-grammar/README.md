@@ -21,6 +21,8 @@ const result = PlurnkParser.parse(input);
 
 Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL PLAN`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
+`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's body is an opaque string — a destination URI for an entry copy, a prompt for a run fork (`run://`) — so the consumer interprets it by scheme and calls `parsePath` for the destination case. (MOVE destinations arrive pre-parsed; COPY's don't, because its body is polymorphic.)
+
 ## cli
 
 ```
