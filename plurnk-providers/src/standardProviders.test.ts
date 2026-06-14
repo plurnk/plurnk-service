@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
-const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_REASON: "0", PLURNK_PROVIDERS_THINKING: "0", PLURNK_PROVIDERS_REASONING: "1" });
+const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_REASON: "0", PLURNK_PROVIDERS_REASONING: "0" });
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
@@ -172,24 +172,32 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
 
-test("openai: llama-server fingerprint upgrades 'think' to 'template' — budget 0 reaches the wire as enable_thinking:false", async () => {
-    const bodies: string[] = [];
-    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
-        if (String(url).endsWith("/models")) {
-            return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 49152 } }] }), { status: 200 });
-        }
-        if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
-        bodies.push(String(init?.body));
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
-        return new Response(body, { status: 200 });
-    });
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(bodies[0]).chat_template_kwargs, { enable_thinking: false });
-    assert.equal("think" in JSON.parse(bodies[0]), false);
+test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirrors PLURNK_PROVIDERS_REASONING", async () => {
+    const mk = (reasoning: string) => {
+        const bodies: string[] = [];
+        mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+            if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 49152 } }] }), { status: 200 });
+            if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+            bodies.push(String(init?.body));
+            const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+            return new Response(body, { status: 200 });
+        });
+        return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_REASONING: reasoning, OPENAI_BASE_URL: "http://local" } };
+    };
+    const off = mk("0");
+    const pOff = await standardProviderFromEnv("openai", off.env, "m");
+    await pOff!.generate({ runId: "r", messages: [] });
+    assert.deepEqual(JSON.parse(off.bodies[0]).chat_template_kwargs, { enable_thinking: false });
+    assert.equal("think" in JSON.parse(off.bodies[0]), false); // think→template, never raw think
+
+    mock.restoreAll();
+    const on = mk("1");
+    const pOn = await standardProviderFromEnv("openai", on.env, "m");
+    await pOn!.generate({ runId: "r", messages: [] });
+    assert.deepEqual(JSON.parse(on.bodies[0]).chat_template_kwargs, { enable_thinking: true });
 });
 
-test("openai: non-llama-server endpoint keeps the 'think' style (no template kwargs at budget 0)", async () => {
+test("openai: non-llama-server endpoint keeps the 'think' style (no template kwargs)", async () => {
     const bodies: string[] = [];
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         if (String(url).endsWith("/models")) {

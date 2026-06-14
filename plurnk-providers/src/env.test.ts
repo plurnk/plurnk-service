@@ -36,13 +36,10 @@ test("parseRequiredFlag: strict 0/1, named errors on missing or junk", () => {
     assert.throws(() => parseRequiredFlag("true", "PLURNK_PROVIDERS_THINKING", "openai"), /must be "0" or "1" \(got "true"\)/);
 });
 
-test("reasoningKnobsFromEnv: requires both gates — no in-code defaults", () => {
-    assert.deepEqual(
-        reasoningKnobsFromEnv({ PLURNK_PROVIDERS_THINKING: "0", PLURNK_PROVIDERS_REASONING: "1" }, "openai"),
-        { nativeThinking: false, reasoningEnabled: true },
-    );
-    assert.throws(() => reasoningKnobsFromEnv({ PLURNK_PROVIDERS_REASONING: "1" }, "openai"), /PLURNK_PROVIDERS_THINKING must be set/);
-    assert.throws(() => reasoningKnobsFromEnv({ PLURNK_PROVIDERS_THINKING: "0" }, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
+test("reasoningKnobsFromEnv: single required side-channel gate — no in-code default", () => {
+    assert.deepEqual(reasoningKnobsFromEnv({ PLURNK_PROVIDERS_REASONING: "1" }, "openai"), { reasoningEnabled: true });
+    assert.deepEqual(reasoningKnobsFromEnv({ PLURNK_PROVIDERS_REASONING: "0" }, "openai"), { reasoningEnabled: false });
+    assert.throws(() => reasoningKnobsFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
 });
 
 test("requireEnv: returns the value or throws a named error", () => {

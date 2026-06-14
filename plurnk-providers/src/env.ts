@@ -27,10 +27,13 @@ export const parseRequiredFlag = (raw: string | undefined, name: string, label: 
     return raw === "1";
 };
 
-// The two universal reasoning gates (SPEC §4). REQUIRED — no in-code defaults;
-// the operator's env (declared in the consumer's .env.example) is the single
-// source of configuration truth.
-export const reasoningKnobsFromEnv = (env: NodeJS.ProcessEnv, label: string): { nativeThinking: boolean; reasoningEnabled: boolean } => ({
-    nativeThinking: parseRequiredFlag(env.PLURNK_PROVIDERS_THINKING, "PLURNK_PROVIDERS_THINKING", label),
+// The single side-channel reasoning gate (SPEC §4): does the model reason in a
+// side channel at all? The provider picks the wire MECHANISM per backend —
+// llama-server's `enable_thinking`, cloud `reasoning_effort`, relay
+// `include_reasoning` — so the consumer states intent, never mechanism.
+// REQUIRED — no in-code default; the operator's env is the single source of
+// configuration truth. (In-DSL PLAN reasoning is a prompt/grammar concern, not
+// a provider knob — it has no env var here.)
+export const reasoningKnobsFromEnv = (env: NodeJS.ProcessEnv, label: string): { reasoningEnabled: boolean } => ({
     reasoningEnabled: parseRequiredFlag(env.PLURNK_PROVIDERS_REASONING, "PLURNK_PROVIDERS_REASONING", label),
 });

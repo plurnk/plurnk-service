@@ -13,18 +13,17 @@ import { chatCompletionStream } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError } from "./telemetry.ts";
 
-// How the reasoning knobs translate to the wire (SPEC §4). Two gates:
-// `nativeThinking` (PLURNK_PROVIDERS_THINKING) drives the model's native think
-// channel; `reasoningEnabled` (PLURNK_PROVIDERS_REASONING) drives cloud/relay
-// reasoning requests, tiered by the PLURNK_REASON budget.
+// How the single reasoning gate (`reasoningEnabled`, PLURNK_PROVIDERS_REASONING)
+// translates to each backend's wire mechanism (SPEC §4). One consumer intent —
+// "side-channel reasoning on/off" — many backend dialects:
 //  - "template":          llama-server (jinja) → `chat_template_kwargs.enable_thinking`,
 //                         ALWAYS emitted — the explicit false is the only working
 //                         off-switch (llama-server ignores `think` and per-request
 //                         budgets; its --reasoning-budget default otherwise keeps
 //                         the channel live — fatal under an active grammar, §13).
-//  - "think":             Ollama OpenAI-compat → `think: true` when nativeThinking
-//  - "include_reasoning": OpenRouter relay passthrough toggle
-//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier
+//  - "think":             Ollama OpenAI-compat → `think: true` when enabled
+//  - "include_reasoning": OpenRouter relay passthrough toggle (gated by PLURNK_REASON > 0)
+//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier (gated by PLURNK_REASON > 0)
 //  - "none":              provider has no reasoning toggle (e.g. Cloudflare)
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template";
 
@@ -43,10 +42,11 @@ export type OpenAICompatConfig = {
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
-    // The two reasoning gates — REQUIRED, no in-code defaults: configuration
-    // lives in the operator's env (SPEC §4), read via reasoningKnobsFromEnv.
-    nativeThinking: boolean;                   // PLURNK_PROVIDERS_THINKING — native think channel
-    reasoningEnabled: boolean;                 // PLURNK_PROVIDERS_REASONING — cloud/relay reasoning requests
+    // The side-channel reasoning gate — REQUIRED, no in-code default:
+    // configuration lives in the operator's env (SPEC §4), read via
+    // reasoningKnobsFromEnv. The provider maps it to the backend's mechanism
+    // via reasoningStyle.
+    reasoningEnabled: boolean;                 // PLURNK_PROVIDERS_REASONING
 };
 
 // Sampling guard under an active grammar (SPEC §13): greedy decoding under
@@ -85,7 +85,6 @@ export default class OpenAICompatProvider implements Provider {
     #supportsGrammar: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
-    #nativeThinking: boolean;
     #reasoningEnabled: boolean;
 
     constructor(config: OpenAICompatConfig) {
@@ -102,7 +101,6 @@ export default class OpenAICompatProvider implements Provider {
         this.#supportsGrammar = config.supportsGrammar ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
-        this.#nativeThinking = config.nativeThinking;
         this.#reasoningEnabled = config.reasoningEnabled;
     }
 
@@ -114,12 +112,12 @@ export default class OpenAICompatProvider implements Provider {
 
     #reasoningBody(): Record<string, unknown> {
         switch (this.#reasoningStyle) {
-            // Native-channel styles gate on nativeThinking. "template" always
-            // emits — the explicit enable_thinking:false is the only working
-            // off-switch on llama-server (§13).
-            case "template": return { chat_template_kwargs: { enable_thinking: this.#nativeThinking } };
-            case "think": return this.#nativeThinking ? { think: true } : {};
-            // Cloud/relay styles gate on reasoningEnabled, tiered by budget.
+            // Native-channel styles. "template" ALWAYS emits — the explicit
+            // enable_thinking:false is the only working off-switch on
+            // llama-server (§13).
+            case "template": return { chat_template_kwargs: { enable_thinking: this.#reasoningEnabled } };
+            case "think": return this.#reasoningEnabled ? { think: true } : {};
+            // Cloud/relay styles also gate on the budget magnitude (PLURNK_REASON).
             case "include_reasoning": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { include_reasoning: true } : {};
             case "effort": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { reasoning_effort: effortFromBudget(this.#reasonBudget) } : {};
             case "none": return {};
