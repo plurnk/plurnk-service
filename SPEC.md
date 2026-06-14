@@ -706,6 +706,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MD_<ALIAS>`                  | (unset)            | enforced   | Operator reference doc: materializes `<path>` as `plurnk://<ALIAS>.md`, auto-READ into every model run's turn 0 (§actor-boundary). `~` expands to home. |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_PROVIDERS_REASON_LEVEL`                      | `0`                | enforced   | Reasoning **magnitude** sent to the providers: `0` = none, positive = effort/budget the provider module translates to wire format (o-series tiers, Anthropic `budget_tokens`). The on/off is the `PLURNK_PROVIDERS_REASONING` gate. |
+| `PLURNK_PLAN`                        | `0`                | enforced   | Enable the grammar's `<<PLAN` op — advertised in the `# Plurnk System Tools` packet section (§tools). `1` on, `0` off. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
@@ -1135,6 +1136,12 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 **Client surface: `telemetry/event` notification.** Every event the engine pushes to the loop's telemetry buffer also broadcasts live via the `telemetry/event` WS notification. Same envelope on both sides — `{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema. The model sees the event on the NEXT packet's `telemetry.errors[]` (drains on read); the client sees it the moment it lands. Client uses cases: render parse errors in a debug panel (the `snippet` field is content the model emitted), surface strike/sudden_death as "loop is degrading" toasts, log everything to a session timeline. Scoped to the loop's session. {§telemetry-telemetry-event-notify}
 
 **Content-offset snippet rendering.** When telemetry carries `position: { type: "content-offset", line, column }`, plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct (canonical case: the edit-todo demo where a READ body starting with `//` got xpath-dispatched). The snippet field is stripped from the meta JSON so it appears once, in the body block. {§telemetry-content-offset-snippet}
+
+### §tools user.tools — the capability sheet
+
+A `# Plurnk System Tools` section renders **above** `# Plurnk System Requirements` — a hook-populated list of the capabilities enabled this session, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `Engine.#collectTools`; the whole section is omitted when nothing is enabled. {§tools-capability-sheet}
+
+**First contributor: planning.** When `PLURNK_PLAN=1`, the grammar's `<<PLAN:...:PLAN` op is advertised here — in-band reasoning before acting. {§tools-plan-gated} The same hook is where each wired executor tag will later inject a line describing its tag and functionality (the boot `ExecutorRegistry` probes availability per tag), retiring the model's blind `<<EXEC[sh]…`.
 
 ### §requirements user.system_requirements — static per-turn rules
 

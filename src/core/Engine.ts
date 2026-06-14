@@ -999,7 +999,7 @@ export default class Engine {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
             system: { system_definition, persona, log },
-            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, system_requirements: requirementsText },
+            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, tools: this.#collectTools(), system_requirements: requirementsText },
         };
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
@@ -1013,7 +1013,7 @@ export default class Engine {
                 .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, persona, log };
-        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, system_requirements: requirementsText };
+        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, tools: scratch.user.tools, system_requirements: requirementsText };
         system.tokens = countTokens(PacketWire.renderSystemContent(system));
         user.tokens = countTokens(PacketWire.renderUserContent(user));
         return { system, user };
@@ -1051,6 +1051,19 @@ export default class Engine {
             }
         }
         return lines.join("\n");
+    }
+
+    // The # Plurnk System Tools capability sheet (SPEC §tools). A hook: each
+    // enabled capability contributes one line, rendered above Requirements so
+    // the model sees what it can do before the rules. PLAN is the first
+    // contributor (gated by PLURNK_PLAN); wired executor tags inject their own
+    // lines here later (the ExecutorRegistry surface), retiring the blind EXEC.
+    #collectTools(): string[] {
+        const tools: string[] = [];
+        if (process.env.PLURNK_PLAN === "1") {
+            tools.push("- `<<PLAN:...:PLAN` — think or plan in-band before acting; the body is your reasoning, not an op.");
+        }
+        return tools;
     }
 
     // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet

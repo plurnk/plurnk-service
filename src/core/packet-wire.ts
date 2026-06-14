@@ -53,6 +53,7 @@ interface SystemSection {
 interface UserSection {
     prompt?: unknown;
     telemetry?: { budget?: unknown; errors?: unknown; git?: unknown };
+    tools?: unknown;
     system_requirements?: unknown;
     tokens?: number;
 }
@@ -101,6 +102,11 @@ export default class PacketWire {
         }
         if (tele.length > 0) {
             parts.push(`# Plurnk System Telemetry\n\n${tele.join("\n\n")}`);
+        }
+        // Capability sheet — enabled tools (PLAN, wired executor tags), injected
+        // above Requirements so the model sees what it can do before the rules.
+        if (Array.isArray(user.tools) && user.tools.length > 0) {
+            parts.push(`# Plurnk System Tools\n\n${(user.tools as string[]).join("\n")}`);
         }
         if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
             parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
