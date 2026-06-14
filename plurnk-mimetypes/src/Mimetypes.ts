@@ -21,9 +21,9 @@ import type {
 // the universal projection surface (#11); callers that want less say less.
 // "embedding" is NEVER in the default set: it is a model inference (orders
 // of magnitude costlier than parsing) and must be requested explicitly.
-export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "embedding";
+export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 
-const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references"];
+const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
 
 // The embedder package (issue #24). Opt-in artifact dependency, resolved
 // lazily through the same loader handler packages use — per-grammar-package
@@ -124,6 +124,13 @@ export interface ProcessResult {
     // material. [] until the per-language extraction engine lands (#19); the
     // field ships now so consumers build against the final shape.
     references?: MimeRef[];
+    // Model-facing readable text — the markup-free projection for READ and
+    // the embed-source (the content channel). Present only when the readable
+    // form differs from the raw body: text/html projects Readability+turndown
+    // markdown; directly-readable formats (code/markdown/json) leave it
+    // absent (the body IS the content); binary uses toText as its body, not
+    // this channel. HTML-only for now.
+    content?: string;
     // Embedding vector (issue #24): native-endian raw Float32 bytes,
     // length = 4 × dimension, scalar per entry. plurnk-service stores the
     // bytes verbatim as a sqlite BLOB and cosine-ranks over a Float32Array
@@ -304,13 +311,15 @@ export default class Mimetypes {
         let symbols: MimeSymbol[] | undefined;
         let deepJsonValue: unknown;
         let references: MimeRef[] | undefined;
+        let contentValue: string | undefined;
         let extentValue: number;
         let deepXml: string | undefined;
         try {
-            [symbols, deepJsonValue, references, extentValue] = await Promise.all([
+            [symbols, deepJsonValue, references, contentValue, extentValue] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
                 needsDeepJson ? handler.deepJson(content) : undefined,
                 channels.has("references") ? handler.references(content) : undefined,
+                channels.has("content") ? handler.content(content) : undefined,
                 handler.extent(content),
             ]);
             if (channels.has("deepXml")) {
@@ -345,15 +354,17 @@ export default class Mimetypes {
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
             ...(channels.has("references") && { references }),
+            ...(channels.has("content") && contentValue !== undefined && { content: contentValue }),
             ...embeddingPart,
         };
     }
 
-    // Embedding channel (issue #24). Embeds the entry's text projection:
-    // string content verbatim; binary content via the handler's toText()
-    // (PDF page text), empty bytes when no projection exists. Missing
-    // embedder package degrades with an install hint (#14 precedent) or
-    // throws under strict.
+    // Embedding channel (issue #24). Embeds the entry's READABLE projection,
+    // not its raw bytes — the content channel where present (HTML → markdown),
+    // else toText (binary → page text; text → passthrough body). So HTML
+    // embeddings carry the article, not `<div class>` noise. Empty bytes when
+    // no projection exists; missing embedder package degrades with an install
+    // hint (#14 precedent) or throws under strict.
     async #embedFor(
         content: string | Uint8Array,
         handler: BaseHandler | null,
@@ -369,21 +380,25 @@ export default class Mimetypes {
             }
             return { embedding: new Uint8Array(0), embeddingMissing: EMBEDDINGS_PACKAGE };
         }
-        let text: string;
-        if (typeof content === "string") {
-            text = content;
-        } else if (handler !== null) {
-            try {
-                text = await (handler as unknown as { toText(c: Uint8Array): string | Promise<string> }).toText(content);
-            } catch {
-                // No text projection for this binary mimetype — nothing to
-                // embed; empty bytes are the honest channel.
-                return { embedding: new Uint8Array(0) };
+        let text: string | undefined;
+        try {
+            if (handler !== null) {
+                // content() is the model-readable projection (HTML markdown);
+                // undefined for handlers whose body is already readable, where
+                // toText supplies the passthrough/page-text body.
+                const readable = await handler.content(content);
+                text = typeof readable === "string"
+                    ? readable
+                    : await (handler as unknown as { toText(c: string | Uint8Array): string | Promise<string> }).toText(content);
+            } else if (typeof content === "string") {
+                text = content;
             }
-        } else {
+        } catch {
+            // No text projection (binary without toText override) — nothing to
+            // embed; empty bytes are the honest channel.
             return { embedding: new Uint8Array(0) };
         }
-        if (text.length === 0) return { embedding: new Uint8Array(0) };
+        if (text === undefined || text.length === 0) return { embedding: new Uint8Array(0) };
         return {
             embedding: await embedder.embed(text),
             ...(typeof embedder.model === "string" && { embeddingModel: embedder.model }),

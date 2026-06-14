@@ -26,6 +26,10 @@ interface Handler {
     deepJson(content: HandlerContent): unknown | Promise<unknown>;
     deepXml(content: HandlerContent): Promise<string>;
     references(content: HandlerContent): MimeRef[] | Promise<MimeRef[]>;
+    // Model-facing readable text (§18). Default undefined; only handlers that
+    // transform an already-textual-but-noisy body override it (text/html →
+    // markdown).
+    content(content: HandlerContent): string | undefined | Promise<string | undefined>;
     // Navigation bound (§12.5) — line count for text, item count for structured.
     extent(content: HandlerContent): number | Promise<number>;
     // Body-matcher dispatch (§11). Default implementation on BaseHandler.
@@ -614,3 +618,17 @@ The `embedding` channel is the per-entry vector supply for plurnk-service's `~se
 - **Missing package degrades per #14**: requested embedding with the package absent → `embedding: new Uint8Array(0)` + `embeddingMissing` install hint, `ok` stays true; `strict: true` throws.
 - **Grammar-degrade still embeds**: a grammar-missing entry is still semantically searchable text; `grammarMissing` and a real vector coexist.
 - The dimension is **fixed per deployment** — changing the model/dimension invalidates the service's stored vectors; that is a consumer-side migration, not a framework concern. The embedder declares its identity (`model`, e.g. `"Xenova/all-MiniLM-L6-v2@751bff37"`), surfaced as `ProcessResult.embeddingModel` — store it alongside each BLOB; it is the staleness detector that makes the migration detectable.
+
+## 18. Content channel (framework v0.15.x)
+
+The `content` channel is the **model-facing readable text** of an entry — the markup-free projection a model reads for information (what plurnk-service's READ returns) and the **embed-source** (the embedding channel embeds `content` over the raw bytes). `ProcessResult.content?: string`.
+
+**Present iff the readable form differs from the raw body.** Sort every mimetype by one question — *is the readable text the same as the bytes?*
+
+- **Directly-readable formats** (code, markdown, JSON, plain text): `content` is **absent**. The raw body already is the readable text; the model reads the bytes directly; a `content` channel would just duplicate the body.
+- **Binary** (PDF, …): the readable text is the handler's `toText` (page text) — its *only* readable form and its de-facto body. It is surfaced as the body, **not** via this channel. `content` stays absent for binary.
+- **text/html**: `content` = **Readability + turndown markdown** — main-content extraction (strips nav/ads/chrome) into clean markdown. This is the *only* case transforming an already-textual-but-noisy body into a cleaner read, and **HTML is the only mimetype that populates `content`, for now**. (Email/EPUB are HTML-shaped and would reuse the pattern when they land — built then, not speculatively.)
+
+**Always-on and source-agnostic.** `content` is in the default channel set (it's cheap — pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file → the document as markdown; the bytes a browser scheme rendered and serialized → the live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split — rendering is the http scheme's job; `content` projects whatever it's handed).
+
+**Relationship to `toText`.** A handler that overrides `content` typically routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: HTML markdown, else binary page-text, else the passthrough body.

@@ -71,6 +71,17 @@ export default class BaseHandler {
         return projectJsonToXml(tree);
     }
 
+    // Model-facing readable text — the content channel. Default: undefined
+    // (absent), which is correct for every handler whose raw body is already
+    // what the model should read (code, markdown, json, plain text) and for
+    // binary handlers whose readable body is toText(). Only handlers that
+    // transform an already-textual-but-noisy body override this — text/html
+    // returns Readability+turndown markdown. When present it is also the
+    // embed-source (the framework embeds content() over the raw bytes).
+    content(_content: HandlerContent): string | undefined | Promise<string | undefined> {
+        return undefined;
+    }
+
     // Addressable extent of the content in the unit the model navigates by
     // (issue #9). For text content the default is line count; binary content
     // returns 0 (the handler should override with a meaningful unit like
