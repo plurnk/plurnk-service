@@ -12,15 +12,15 @@ test("session.constrain / .constraints / .unconstrain round-trip over RPC (SPEC 
         try {
             await rpcCall(ws, 1, "session.create", { name: "constraint-rpc-test" });
 
-            const added = await rpcCall(ws, 2, "session.constrain", { effect: "ignore", glob: "secret/**" });
-            assert.deepEqual(added.result, { effect: "ignore", glob: "secret/**" }, "constrain echoes the constraint");
+            const added = await rpcCall(ws, 2, "session.constrain", { effect: "hide", glob: "secret/**" });
+            assert.deepEqual(added.result, { effect: "hide", glob: "secret/**" }, "constrain echoes the constraint");
 
             const listed = await rpcCall(ws, 3, "session.constraints", {});
-            assert.deepEqual((listed.result as { constraints: unknown[] }).constraints, [{ effect: "ignore", glob: "secret/**" }], "constraints lists what was set");
+            assert.deepEqual((listed.result as { constraints: unknown[] }).constraints, [{ effect: "hide", glob: "secret/**" }], "constraints lists what was set");
 
-            await rpcCall(ws, 4, "session.unconstrain", { effect: "ignore", glob: "secret/**" });
+            await rpcCall(ws, 4, "session.unconstrain", { effect: "hide", glob: "secret/**" });
             const after = await rpcCall(ws, 5, "session.constraints", {});
-            assert.deepEqual((after.result as { constraints: unknown[] }).constraints, [], "unconstrain (the `remove` verb) deletes the row");
+            assert.deepEqual((after.result as { constraints: unknown[] }).constraints, [], "unconstrain (the `drop` verb) deletes the row");
 
             const bad = await rpcCall(ws, 6, "session.constrain", { effect: "bogus", glob: "x" });
             assert.ok(bad.error, "an invalid effect must surface as a JSON-RPC error, not a silent accept");

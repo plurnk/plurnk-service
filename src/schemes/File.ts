@@ -119,9 +119,9 @@ export default class File {
         if (fileExists) {
             const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
-            const readonlyGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
-                .filter((c) => c.effect === "read-only").map((c) => c.glob);
-            if (readonlyGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" };
+            const viewGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
+                .filter((c) => c.effect === "view").map((c) => c.glob);
+            if (viewGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" };
             original = await readFile(canonical, "utf8");
         }
 

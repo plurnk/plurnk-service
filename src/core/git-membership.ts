@@ -102,8 +102,8 @@ export default class GitMembership {
         if (root === null) return [];   // headless — no disk surface to resolve
 
         const constraints = await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
-        const ignoreGlobs = constraints.filter((c) => c.effect === "ignore").map((c) => c.glob);
-        const addGlobs = constraints.filter((c) => c.effect === "add").map((c) => c.glob);
+        const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
+        const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
 
         // git substrate — empty when root isn't a git worktree, so `add` is then the
         // SOLE membership source (SPEC §membership). No early-return on non-git.
@@ -113,12 +113,12 @@ export default class GitMembership {
 
         // `add` overlay — a targeted, client-dictated scan for untracked matches
         // (node:fs glob over the client's pattern, never a blind walk).
-        const added = addGlobs.length === 0 ? [] : await GitMembership.#scanAddMembers(root, addGlobs, signal);
+        const added = pickGlobs.length === 0 ? [] : await GitMembership.#scanAddMembers(root, pickGlobs, signal);
 
         // Compose: (git ∪ add) − ignore, tracking origin for reconciliation — a path
         // in `tracked` is 'git', an add-only match is 'constraint'.
         const trackedSet = new Set(tracked);
-        const passesIgnore = (p: string): boolean => ignoreGlobs.length === 0 || !ignoreGlobs.some((g) => matchesGlob(p, g));
+        const passesIgnore = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
         const desiredGit = tracked.filter(passesIgnore);
         const desiredAdd = added.filter((p) => !trackedSet.has(p) && passesIgnore(p));
         const desired = [...desiredGit, ...desiredAdd];
@@ -149,11 +149,11 @@ export default class GitMembership {
     // Workspace-relative paths, the same shape as git ls-files.
     static async #scanAddMembers(
         root: string,
-        addGlobs: string[],
+        pickGlobs: string[],
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
         const matches = new Set<string>();
-        for (const pattern of addGlobs) {
+        for (const pattern of pickGlobs) {
             for await (const rel of glob(pattern, { cwd: root })) {
                 if (signal?.aborted) return [...matches];
                 try {

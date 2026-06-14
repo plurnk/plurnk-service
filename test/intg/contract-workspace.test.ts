@@ -1,16 +1,16 @@
 // SPEC §decisions architectural-decision contract tests.
 //
-//   ALL of §membership is BUILT — the tests below pass: git-substrate membership
-//   (§membership-git-membership), the membership-bound edit (§membership-edit-membership-gate),
-//   the full constraint overlay (§membership-constraint-ignore / -readonly / -add), and
-//   the out-of-band divergence signal (§membership-emi-divergence-signal). No §membership
-//   deferrals remain.
+//   The built core passes: git-substrate membership (§membership-git-membership), the
+//   membership-bound edit (§membership-edit-membership-gate), the pick/hide/view overlay
+//   (§membership-overlay-pick / -hide / -view), and the divergence signal
+//   (§membership-emi-divergence-signal). The forest, the repo verb, change-gated sync,
+//   and the git flags are the deferral ledger at the foot of this section.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
@@ -163,14 +163,14 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
 // false green; it FLIPS to a flagged passing-todo the day the feature lands. That
 // keeps CI a live gate instead of red-forever noise. Don't weaken to a real pass.
 
-test("[§membership-constraint-ignore] an ignore-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
+test("[§membership-overlay-hide] a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
         const before = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
         assert.notEqual(before, undefined, "precondition: the tracked file is a member");
 
         // Client ignores it; membership re-resolves.
-        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "ignore", glob: trackedPath });
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "hide", glob: trackedPath });
         await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
 
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
@@ -181,11 +181,11 @@ test("[§membership-constraint-ignore] an ignore-glob drops a tracked file from 
     });
 });
 
-test("[§membership-constraint-add] an add-glob admits an untracked file git misses", async () => {
+test("[§membership-overlay-pick] a pick-glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
-        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "add", glob: "*.md" });
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "pick", glob: "*.md" });
         await GitMembership.indexGitMembership(ctx);  // resolve membership + materialize (production's per-turn pass)
         const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
@@ -195,9 +195,9 @@ test("[§membership-constraint-add] an add-glob admits an untracked file git mis
     });
 });
 
-test("[§membership-constraint-readonly] a read-only-glob keeps a member readable but refuses edits", async () => {
+test("[§membership-overlay-view] a view-glob keeps a member readable but refuses edits", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "read-only", glob: trackedPath });
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "view", glob: trackedPath });
         await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
         // READ still works — it's a member...
         const read = await new File().read(readStmt(urlPath("file", trackedPath)), ctx);
@@ -230,5 +230,93 @@ test("[§membership-emi-divergence-signal] out-of-band change to a member surfac
         const packet = JSON.parse(row.packet) as { system: { log: Array<{ origin?: string }> } };
         const signalled = packet.system.log.some((r) => r.origin === "plurnk" && JSON.stringify(r).includes(trackedPath));
         assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
+    });
+});
+
+// ─────────────── §membership deferral ledger (the new contract) ───────────────
+//
+// Each asserts a promised-but-unbuilt behavior and is EXPECTED TO FAIL until the
+// feature lands — `{ todo }`, so the assertion RUNS (the coverage) and reports a
+// known not-yet-passing, never a false green. Don't weaken to a real pass.
+
+// A session rooted at a NON-git parent holding `repos` (each {dir, file} a committed
+// one-file git repo). Mirrors withGitWorkspace's session wiring.
+const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): Promise<{ parent: string; ctx: PlurnkSchemeContext }> => {
+    const parent = await mkdtemp(join(tmpdir(), "plurnk-forest-"));
+    for (const { dir, file } of repos) {
+        const r = join(parent, dir);
+        await mkdir(r, { recursive: true });
+        await execFileP("git", ["init", "-q"], { cwd: r });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: r });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: r });
+        await writeFile(join(r, file), "# member\n");
+        await execFileP("git", ["add", file], { cwd: r });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: r });
+    }
+    const sessionId = await insertSession(db, `forest-${crypto.randomUUID()}`);
+    await Envelope.updateSessionProjectRoot(db, sessionId, parent);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1);
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    const ctx: PlurnkSchemeContext = {
+        db, sessionId, runId, loopId, turnId,
+        writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+        tokenize: (t: string) => Math.ceil(t.length / 4),
+    };
+    return { parent, ctx };
+};
+
+test("[§membership-forest] membership unions a session's declared repos under a non-git root", { todo: "forest resolution unbuilt — a non-git root yields zero members; declared repos are not unioned" }, async () => {
+    const db = await openMigrated();
+    try {
+        const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
+        try {
+            await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "alpha") });
+            await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "beta") });
+            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+            const a = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "alpha/a.md" });
+            const b = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "beta/b.md" });
+            assert.notEqual(a, undefined, "the first declared repo contributes its ls-files, path-prefixed");
+            assert.notEqual(b, undefined, "the second declared repo contributes too — membership is their union");
+        } finally { await rm(parent, { recursive: true, force: true }); }
+    } finally { await db.close(); }
+});
+
+test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-files as members", { todo: "the repo effect is unresolved — declaring a repo adds none of its tracked files" }, async () => {
+    const db = await openMigrated();
+    try {
+        const { parent, ctx } = await seedForest(db, [{ dir: "lib", file: "x.md" }]);
+        try {
+            await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: join(parent, "lib") });
+            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "lib/x.md" });
+            assert.notEqual(member, undefined, "a repo declaration admits the repo's tracked files");
+        } finally { await rm(parent, { recursive: true, force: true }); }
+    } finally { await db.close(); }
+});
+
+test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", { todo: "the per-member change-detect is unbuilt — the sync re-tokenizes every member every pass" }, async () => {
+    await withGitWorkspace(async (_root, ctx) => {
+        let calls = 0;
+        const counting: PlurnkSchemeContext = { ...ctx, tokenize: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };
+        await GitMembership.indexGitMembership(counting);
+        const afterFirst = calls;
+        assert.ok(afterFirst > 0, "precondition: the first sync tokenizes the member");
+        await GitMembership.indexGitMembership(counting);
+        assert.equal(calls, afterFirst, "an unchanged member must not be re-tokenized on the second pass — work is proportional to change");
+    });
+});
+
+test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, un-re-enableable", { todo: "PLURNK_GIT_ALLOWED/AUTO unbuilt — the flag is not consulted; members resolve regardless" }, async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        const prev = process.env.PLURNK_GIT_ALLOWED;
+        process.env.PLURNK_GIT_ALLOWED = "0";
+        try {
+            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: trackedPath });
+            assert.equal(member, undefined, "ALLOWED=0 must deny git membership — no member resolves");
+        } finally {
+            if (prev === undefined) delete process.env.PLURNK_GIT_ALLOWED; else process.env.PLURNK_GIT_ALLOWED = prev;
+        }
     });
 });

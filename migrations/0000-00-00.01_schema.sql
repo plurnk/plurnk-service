@@ -389,13 +389,14 @@ CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
 -- INIT: session_constraints
 -- SPEC §membership constraint overlay — the client's supersede over git membership.
--- Per (session, effect, glob): `add` (members git misses, resolved by a targeted
--- client-dictated scan), `ignore` (drop git-tracked matches), `read-only` (member
--- for read; File.edit rejects the write). git-absent, `add` rows are the sole
--- membership source. Composed at membership resolution; node:path.matchesGlob.
+-- Per (session, effect, glob/target): `pick` (members git misses, resolved by a
+-- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member
+-- for read; File.edit rejects the write), `repo` (declare a git repo whose ls-files
+-- join membership, path-prefixed). git-absent, `pick` rows are the sole substrate
+-- source. Composed at membership resolution; node:path.matchesGlob.
 CREATE TABLE IF NOT EXISTS session_constraints (
     session_id INTEGER NOT NULL,
-    effect     TEXT    NOT NULL CHECK (effect IN ('add', 'ignore', 'read-only')),
+    effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view', 'repo')),
     glob       TEXT    NOT NULL,
     PRIMARY KEY (session_id, effect, glob),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
