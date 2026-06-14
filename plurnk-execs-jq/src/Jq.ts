@@ -36,7 +36,7 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    async run({ command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const program = command.trim() || ".";
         const path = cwd && cwd.length > 0 ? cwd : null;
         // Target present → jq reads the file; absent → -n, the program stands alone.
@@ -51,7 +51,9 @@ export default class Jq extends BaseExecutor {
                 resolve(result);
             };
             let err = "";
-            const child = spawn("jq", args, { signal });
+            // jq can read the environment (`env`, `$ENV`), so honor the
+            // consumer's scoped env when provided (plurnk-execs#8).
+            const child = spawn("jq", args, { signal, env: env ?? process.env });
             child.stdout?.on("data", (c: Buffer) => write("results", c.toString("utf8")));
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });
             child.on("error", (e) => {

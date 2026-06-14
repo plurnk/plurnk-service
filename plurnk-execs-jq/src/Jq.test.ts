@@ -11,12 +11,12 @@ const HAS_JQ = spawnSync("jq", ["--version"]).status === 0;
 
 interface Capture { result: ExecResult; out: string | undefined; states: string[]; events: TelemetryEvent[]; }
 
-const run = async (command: string, cwd: string | null = null): Promise<Capture> => {
+const run = async (command: string, cwd: string | null = null, env?: NodeJS.ProcessEnv): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime: "jq", command, cwd,
+        runtime: "jq", command, cwd, env,
         signal: new AbortController().signal,
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
@@ -72,6 +72,16 @@ test("empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async 
     const { result, out } = await run("", p);
     assert.equal(result.status, 200);
     assert.deepEqual(JSON.parse(out!), { a: 1 });
+});
+
+test("env: honors a scoped env; vars the consumer dropped read as null (#8)", { skip: !HAS_JQ }, async () => {
+    // PATH is needed for spawn to locate jq; FOO is the only data var exposed.
+    const seen = await run("env.FOO", null, { PATH: process.env.PATH, FOO: "bar" });
+    assert.equal(seen.result.status, 200);
+    assert.equal(JSON.parse(seen.out!), "bar");
+    // A var absent from the scoped env is invisible to the jq program.
+    const dropped = await run("env.PLURNK_SECRET", null, { PATH: process.env.PATH });
+    assert.equal(JSON.parse(dropped.out!), null);
 });
 
 test("a jq program error → jq_error telemetry, errored channel, 500", { skip: !HAS_JQ }, async () => {
