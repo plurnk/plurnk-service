@@ -39,8 +39,7 @@
             },
             {
                 "name": "bash",
-                "glyph": "🐚",
-                "example": "EXEC[bash]:for f in *.log; do wc -l \"$f\"; done:EXEC"
+                "glyph": "🐚"
             },
             {
                 "name": "node",
@@ -50,10 +49,6 @@
                 "name": "python",
                 "glyph": "🐍",
                 "example": "EXEC[python]:print(sum(range(101))):EXEC"
-            },
-            {
-                "name": "python3",
-                "glyph": "🐍"
             },
             {
                 "name": "perl",

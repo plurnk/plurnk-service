@@ -27,7 +27,7 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
     const manifest = pkg.plurnk.runtimes.map((r: { name: string }) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
-        "sh", "bash", "node", "python", "python3",
+        "sh", "bash", "node", "python",
         "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
 });

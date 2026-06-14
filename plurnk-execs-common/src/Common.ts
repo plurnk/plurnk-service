@@ -22,8 +22,9 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
     sh: { bin: "sh", arg: (c) => ["-c", c] },
     bash: { bin: "bash", arg: (c) => ["-c", c] },
     node: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
+    // `python` IS python3 — the only Python we offer. No `python` (2.x) bin and
+    // no `python3` alias: the model gets no path to an obsolete interpreter.
     python: { bin: "python3", arg: (c) => ["-c", c] },
-    python3: { bin: "python3", arg: (c) => ["-c", c] },
     // Detected host interpreters.
     perl: { bin: "perl", arg: (c) => ["-e", c] },
     ruby: { bin: "ruby", arg: (c) => ["-e", c] },
