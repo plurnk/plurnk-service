@@ -86,7 +86,7 @@ Default export MUST have a static `fromEnv(env, model)` factory:
 class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
-        // plus universal operator knobs (PLURNK_REASON, PLURNK_FETCH_TIMEOUT,
+        // plus universal operator knobs (PLURNK_PROVIDERS_REASON_LEVEL, PLURNK_FETCH_TIMEOUT,
         // PLURNK_PROVIDER_CONTEXT_SIZE).
         return new OpenAI({ /* ... */ });
     }
@@ -105,7 +105,7 @@ The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model)` 
 Each provider's `fromEnv` reads these:
 
 - **`PLURNK_PROVIDERS_REASONING`** — REQUIRED `0|1`. The **single** gate on side-channel reasoning: *should the model reason in a side channel at all?* The provider maps this one intent to whatever mechanism the active backend speaks — llama-server `chat_template_kwargs: { enable_thinking }` (always emitted; the explicit FALSE is the only working off-switch — llama-server ignores `think` and per-request budgets, and its `--reasoning-budget` default otherwise keeps the channel live, fatal under an active grammar, §13), Ollama `think`, cloud `reasoning_effort`, relay `include_reasoning`. Consumers state intent, never mechanism. (There is deliberately **no** knob for in-DSL `<<PLAN>>` reasoning — PLAN is a grammar op surfaced by prompting, a consumer/prompt concern with no provider footprint.)
-- **`PLURNK_REASON`** — engine-level reasoning-token budget. Non-negative integer. The **magnitude** for backends that take a tier: when `REASONING=1` and `PLURNK_REASON > 0`, cloud styles emit `reasoning_effort: low|medium|high`; Anthropic emits `thinking: { type: "adaptive" }` / budget. The binary on/off is the gate above, not this budget.
+- **`PLURNK_PROVIDERS_REASON_LEVEL`** — engine-level reasoning-token budget. Non-negative integer. The **magnitude** for backends that take a tier: when `REASONING=1` and `PLURNK_PROVIDERS_REASON_LEVEL > 0`, cloud styles emit `reasoning_effort: low|medium|high`; Anthropic emits `thinking: { type: "adaptive" }` / budget. The binary on/off is the gate above, not this budget.
 
 Both are read via `reasoningKnobsFromEnv` / `parseRequiredInt` and **fail hard when unset** — configuration lives in the operator's env (the consumer's `.env.example` declares every var); the framework never defaults a knob in code.
 - **`PLURNK_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request. Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
@@ -236,7 +236,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`tokenizerFor(family)` / `tokenizerByPublisher(model, table, index)` / `parseTokenizerFamily(...)`** — synchronous tokenizer strategies (`heuristic` | `cl100k` | `llama`) and per-publisher dispatch for relay providers.
-- **`effortFromBudget(budget)`** — the shared `PLURNK_REASON` → `low|medium|high` breakpoints.
+- **`effortFromBudget(budget)`** — the shared `PLURNK_PROVIDERS_REASON_LEVEL` → `low|medium|high` breakpoints.
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base URL, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest.
 

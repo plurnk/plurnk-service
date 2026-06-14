@@ -22,8 +22,8 @@ import { toProviderError } from "./telemetry.ts";
 //                         budgets; its --reasoning-budget default otherwise keeps
 //                         the channel live — fatal under an active grammar, §13).
 //  - "think":             Ollama OpenAI-compat → `think: true` when enabled
-//  - "include_reasoning": OpenRouter relay passthrough toggle (gated by PLURNK_REASON > 0)
-//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier (gated by PLURNK_REASON > 0)
+//  - "include_reasoning": OpenRouter relay passthrough toggle (gated by PLURNK_PROVIDERS_REASON_LEVEL > 0)
+//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier (gated by PLURNK_PROVIDERS_REASON_LEVEL > 0)
 //  - "none":              provider has no reasoning toggle (e.g. Cloudflare)
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template";
 
@@ -33,7 +33,7 @@ export type OpenAICompatConfig = {
     fetchTimeoutMs: number;
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     contextSize?: number | null;              // default null
-    reasonBudget?: number;                    // PLURNK_REASON; default 0 (disabled)
+    reasonBudget?: number;                    // PLURNK_PROVIDERS_REASON_LEVEL; default 0 (disabled)
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/4 heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
@@ -117,7 +117,7 @@ export default class OpenAICompatProvider implements Provider {
             // llama-server (§13).
             case "template": return { chat_template_kwargs: { enable_thinking: this.#reasoningEnabled } };
             case "think": return this.#reasoningEnabled ? { think: true } : {};
-            // Cloud/relay styles also gate on the budget magnitude (PLURNK_REASON).
+            // Cloud/relay styles also gate on the budget magnitude (PLURNK_PROVIDERS_REASON_LEVEL).
             case "include_reasoning": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { include_reasoning: true } : {};
             case "effort": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { reasoning_effort: effortFromBudget(this.#reasonBudget) } : {};
             case "none": return {};

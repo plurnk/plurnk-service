@@ -179,7 +179,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         headers,
         contextSize,
         fetchTimeoutMs,
-        reasonBudget: parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON", name),
+        reasonBudget: parseRequiredInt(env.PLURNK_PROVIDERS_REASON_LEVEL, "PLURNK_PROVIDERS_REASON_LEVEL", name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),
