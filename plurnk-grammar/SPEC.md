@@ -116,7 +116,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
 | READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI       | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:// (opaque; scheme interprets) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
@@ -544,9 +544,11 @@ interface FoldStatement extends StatementBase<string[]> { op: "FOLD"; body: Matc
 // EDIT — body is arbitrary content (markdown, code, prose). Raw.
 interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: string | null; }
 
-// COPY/MOVE — body is the destination URI, parsed identically to the path slot.
-interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: ParsedPath | null; }
+// MOVE — body is the destination URI, parsed identically to the path slot.
 interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
+// COPY — body is an opaque raw string: a destination URI for entry copies, a
+// prompt for run forks. The scheme handler interprets it; the parser does not.
+interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: string | null; }
 
 // SEND — body is raw + best-effort JSON.
 interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBody | null; }

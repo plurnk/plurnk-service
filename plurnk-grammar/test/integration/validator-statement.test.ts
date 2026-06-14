@@ -41,8 +41,13 @@ test("PlurnkStatement: EDIT with raw markdown body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: COPY with path body", () => {
+test("PlurnkStatement: COPY with raw string body (destination)", () => {
     const r = validateRoundTrip("<<COPY[archive](known://draft):known://archive/draft:COPY");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
+test("PlurnkStatement: COPY with raw string body (run-fork prompt)", () => {
+    const r = validateRoundTrip("<<COPY(run://.):Re-derive the capital from a primary source.:COPY");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -181,14 +186,14 @@ test("PlurnkStatement: FIND accepts lineMarker", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("PlurnkStatement: COPY body must be ParsedPath shape", () => {
-    const stmt = { ...baseFields("COPY"), body: { wrong: "shape" } };
+test("PlurnkStatement: COPY body is a raw string, not a ParsedPath", () => {
+    const stmt = { ...baseFields("COPY"), body: { kind: "local", raw: "destination/path" } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: COPY body accepts valid local path", () => {
-    const stmt = { ...baseFields("COPY"), body: { kind: "local", raw: "destination/path" } };
+test("PlurnkStatement: COPY body accepts a raw string (destination or prompt)", () => {
+    const stmt = { ...baseFields("COPY"), body: "known://archive/draft" };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });

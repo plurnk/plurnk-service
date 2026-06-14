@@ -50,7 +50,7 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | FIND | tag filter       | matcher               | result-set range   |
 | READ | tag filter       | matcher               | per-entry lines    |
 | EDIT | tags             | content (empty=clear) | entry lines        |
-| COPY | tags-to-apply    | destination URI       | entry lines        |
+| COPY | tags-to-apply    | destination URI / fork prompt | entry lines        |
 | MOVE | tags-to-apply    | destination URI       | entry lines        |
 | OPEN | tag filter       | matcher               | result-set range   |
 | FOLD | tag filter       | matcher               | result-set range   |

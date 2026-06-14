@@ -817,16 +817,18 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("COPY body is a ParsedPath", () => {
+test("COPY body is an opaque raw string (scheme interprets — dest or fork prompt)", () => {
     const result = PlurnkParser.parse("<<COPY(known://draft):known://archive/2026-05-14/draft:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
-    const b = item.statement.body;
-    assert.ok(b);
-    if (b.kind !== "url") return;
-    assert.equal(b.scheme, "known");
-    assert.equal(b.hostname, null);
-    assert.equal(b.pathname, "archive/2026-05-14/draft");
+    assert.equal(item.statement.body, "known://archive/2026-05-14/draft");
+});
+
+test("COPY body carries a run-fork prompt verbatim", () => {
+    const result = PlurnkParser.parse("<<COPY(run://.):Re-derive the capital from a primary source.:COPY");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "COPY") return;
+    assert.equal(item.statement.body, "Re-derive the capital from a primary source.");
 });
 
 test("MOVE body is a ParsedPath", () => {

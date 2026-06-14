@@ -153,12 +153,14 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        // COPY's body is opaque: a destination path for entry copies, a prompt for
+        // run forks. The scheme handler interprets it — the parser stays out of it
+        // (unlike MOVE, whose body is always a genuine destination path).
         return {
             op: "COPY",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
             ...slots,
-            body: raw !== null ? AstBuilder.parsePath(raw, position) : null,
+            body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
     }
