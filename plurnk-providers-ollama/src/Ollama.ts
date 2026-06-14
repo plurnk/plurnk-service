@@ -30,7 +30,7 @@ export default class Ollama {
     static async fromEnv(env: NodeJS.ProcessEnv, model: string): Promise<Provider> {
         const base = requireEnv(env.OLLAMA_BASE_URL, "OLLAMA_BASE_URL", "ollama");
         const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", "ollama");
-        const reasonBudget = parseRequiredInt(env.PLURNK_REASON, "PLURNK_REASON", "ollama");
+        const reasonBudget = parseRequiredInt(env.PLURNK_PROVIDERS_REASON_LEVEL, "PLURNK_PROVIDERS_REASON_LEVEL", "ollama");
         const normalizedBase = base.replace(/\/$/, "");
 
         const { contextSize, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
