@@ -14,11 +14,12 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 // Exported for tests that build PlurnkSchemeContext directly (File.read,
 // SEND, Engine tests) instead of going through `makeSchemeCtx`.
 //
-// One deliberate divergence from production: the loader DECLINES the embeddings
-// daughter, so a requested `embedding` channel degrades to empty bytes rather
-// than loading the 16 MB all-MiniLM model. The fast tiers stay model-free by
-// capability — no env flag. The real-model path is covered in
-// test/live/semantic.test.ts, which builds an embeddings-enabled Mimetypes.
+// One deliberate divergence from production: this DEFAULT loader DECLINES the
+// embeddings daughter, so tests that don't touch semantics don't load the 16 MB
+// all-MiniLM model (a requested `embedding` channel degrades to empty bytes). A
+// per-default convenience, NOT a carve-out that excludes semantics from intg:
+// ~query has full integration coverage in test/intg/semantic.test.ts, which builds
+// its OWN embeddings-enabled Mimetypes (the model load is ~200ms — a non-issue).
 const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
 export const DEFAULT_MIMETYPES = new Mimetypes({
     loader: (pkg) => pkg === EMBEDDINGS_PACKAGE

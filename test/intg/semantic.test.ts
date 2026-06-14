@@ -1,8 +1,9 @@
-// ~semantic end-to-end with the REAL embedding model (all-MiniLM-L6-v2 via
-// @plurnk/plurnk-mimetypes-embeddings). Lives in test:live — the between-intg-and-
-// demo tier (--test-concurrency=1) where loading the 16 MB model is expected. The
-// fast tiers stay model-free (intg's DEFAULT_MIMETYPES declines the embeddings
-// daughter); this test builds its own embeddings-enabled Mimetypes and injects it.
+// ~query semantic search end-to-end with the REAL embedding model
+// (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings). Runs in test:intg —
+// semantics is NORMAL integration coverage, not a special live-only track; the
+// model load is an accepted cost. The test builds its OWN embeddings-enabled
+// Mimetypes, so DEFAULT_MIMETYPES's decline only affects tests that don't need
+// the embedder.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,7 @@ import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known://${pathname}`, scheme: "known",
