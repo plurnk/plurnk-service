@@ -38,48 +38,39 @@
             },
             {
                 "name": "images",
-                "glyph": "🖼",
-                "example": "EXEC[images]:red panda:EXEC"
+                "glyph": "🖼"
             },
             {
                 "name": "videos",
-                "glyph": "🎬",
-                "example": "EXEC[videos]:how to tie a bowline:EXEC"
+                "glyph": "🎬"
             },
             {
                 "name": "news",
-                "glyph": "📰",
-                "example": "EXEC[news]:ecb rate decision:EXEC"
+                "glyph": "📰"
             },
             {
                 "name": "map",
-                "glyph": "🗺",
-                "example": "EXEC[map]:eiffel tower:EXEC"
+                "glyph": "🗺"
             },
             {
                 "name": "music",
-                "glyph": "🎵",
-                "example": "EXEC[music]:miles davis so what:EXEC"
+                "glyph": "🎵"
             },
             {
                 "name": "it",
-                "glyph": "💻",
-                "example": "EXEC[it]:rust borrow checker:EXEC"
+                "glyph": "💻"
             },
             {
                 "name": "science",
-                "glyph": "🔬",
-                "example": "EXEC[science]:crispr off-target effects:EXEC"
+                "glyph": "🔬"
             },
             {
                 "name": "social",
-                "glyph": "💬",
-                "example": "EXEC[social]:fediverse migration:EXEC"
+                "glyph": "💬"
             },
             {
                 "name": "downloadable",
-                "glyph": "📥",
-                "example": "EXEC[downloadable]:debian netinst iso:EXEC"
+                "glyph": "📥"
             }
         ]
     },
