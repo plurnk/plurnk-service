@@ -13,6 +13,7 @@ import { parse } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
 import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
+import { htmlToMarkdown } from "./htmlToMarkdown.ts";
 
 // text/html + application/xhtml+xml handler. Parses with parse5 and emits
 // structural symbols.
@@ -91,6 +92,35 @@ export default class TextHtml extends BaseHandler {
             children: collectChildren(doc),
         };
         return root;
+    }
+
+    // Content channel (SPEC §18) — the model-facing readable markdown. HTML
+    // is the only mimetype that populates this channel: an already-textual but
+    // markup-noisy body projected to clean reading markdown via Readability
+    // (main-content extraction, strips nav/ads/chrome) + turndown. Absent
+    // (undefined) for empty/whitespace input so the channel stays absent when
+    // there is no readable content. Also the embed-source — the framework
+    // embeds content() over the raw bytes, so HTML embeddings carry the
+    // article, not the chrome. Binary content is decoded utf-8 first, mirroring
+    // extractRaw/deepJson.
+    override content(content: HandlerContent): string | undefined {
+        const html = typeof content === "string"
+            ? content
+            : new TextDecoder("utf-8").decode(content);
+        return htmlToMarkdown(html);
+    }
+
+    // Route the regex/glob query surface (and, transitively, the framework's
+    // content()??toText() embed-source) through the SAME markdown projection,
+    // so body matchers scan the readable text, not raw `<div class>` markup.
+    // xpath is unaffected — query() overrides it to hit the real DOM. When the
+    // page has no readable content, fall back to the raw body so regex/glob
+    // still have something to match rather than throwing.
+    protected override toText(content: HandlerContent): string {
+        const html = typeof content === "string"
+            ? content
+            : new TextDecoder("utf-8").decode(content);
+        return htmlToMarkdown(html) ?? html;
     }
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
