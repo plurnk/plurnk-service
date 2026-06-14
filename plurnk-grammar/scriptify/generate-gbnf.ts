@@ -232,7 +232,10 @@ export const buildModel = (): GModel => {
     model.set("tag-rest", [[lit(","), ref("tag")]]);
     model.set("target", [[lit("("), ref("path"), lit(")")]]);
     model.set("path", [[ref("uri")], [ref("bare")]]);
-    model.set("uri", [[ref("scheme"), lit("://"), plus(HOST_CHAR), opt(ref("uri-rest"))]]);
+    // Empty authority allowed generically: `scheme:///path` (host parses empty)
+    // is the canonical form for authority-less schemes. Scheme-agnostic — the
+    // grammar never knows which schemes carry a domain; that's runtime's call.
+    model.set("uri", [[ref("scheme"), lit("://"), star(HOST_CHAR), opt(ref("uri-rest"))]]);
     model.set("scheme", [[SCHEME_HEAD, star(SCHEME_TAIL)]]);
     model.set("uri-rest", [[URI_REST_HEAD, star(URI_CHAR)]]);
     model.set("bare", [[plus(BARE_CHAR)]]);

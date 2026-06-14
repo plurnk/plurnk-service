@@ -4,8 +4,9 @@ import { AstBuilder, PlurnkParseError } from "../../src/index.ts";
 
 // AstBuilder.parsePath was promoted from private to public in 0.3.2 (issue #7)
 // so consumer RPC layers can decompose path strings without round-tripping
-// through a fake HEREDOC. These tests cover the public surface directly,
-// confirming the same per-scheme authority cleavage as in-HEREDOC parsing.
+// through a fake HEREDOC. As of the uniform-authority change, parsing is plain
+// WHATWG with no per-scheme allowlist: `://` introduces an authority for every
+// scheme; authority-less references use the empty-authority form `scheme:///path`.
 
 test("parsePath: empty string returns null", () => {
     assert.equal(AstBuilder.parsePath(""), null);
@@ -38,33 +39,40 @@ test("parsePath: HTTPS retains full authority decomposition", () => {
     assert.equal(p.fragment, "frag");
 });
 
-test("parsePath: opaque scheme — hostname null, pathname is full segment", () => {
-    const p = AstBuilder.parsePath("known://philosophy/existentialism/meaning");
+test("parsePath: authority-less scheme uses three slashes — empty authority, leading-slash path", () => {
+    const p = AstBuilder.parsePath("known:///philosophy/existentialism/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "known");
     assert.equal(p.hostname, null);
-    assert.equal(p.pathname, "philosophy/existentialism/meaning");
+    assert.equal(p.pathname, "/philosophy/existentialism/meaning");
     assert.equal(p.port, null);
     assert.equal(p.username, null);
     assert.equal(p.password, null);
 });
 
-test("parsePath: opaque scheme preserves params and fragment", () => {
-    const p = AstBuilder.parsePath("wiki://Paris?lang=fr#History");
+test("parsePath: two-slash now parses the first segment as host (uniform WHATWG, no allowlist)", () => {
+    const p = AstBuilder.parsePath("known://philosophy/meaning");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.hostname, "philosophy");
+    assert.equal(p.pathname, "/meaning");
+});
+
+test("parsePath: empty-authority scheme preserves params and fragment", () => {
+    const p = AstBuilder.parsePath("wiki:///Paris?lang=fr#History");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "wiki");
     assert.equal(p.hostname, null);
-    assert.equal(p.pathname, "Paris");
+    assert.equal(p.pathname, "/Paris");
     assert.deepEqual(p.params, { lang: "fr" });
     assert.equal(p.fragment, "History");
 });
 
-test("parsePath: log:// nested addressing stays whole in pathname", () => {
-    const p = AstBuilder.parsePath("log://1/turn/2/action/3/get");
+test("parsePath: nested addressing stays whole in pathname", () => {
+    const p = AstBuilder.parsePath("log:///1/turn/2/action/3/get");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "log");
     assert.equal(p.hostname, null);
-    assert.equal(p.pathname, "1/turn/2/action/3/get");
+    assert.equal(p.pathname, "/1/turn/2/action/3/get");
 });
 
 test("parsePath: file:// stays authority-bearing", () => {

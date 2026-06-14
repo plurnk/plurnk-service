@@ -71,8 +71,8 @@ if (!posResult.valid) throw new Error("position validation failed: " + JSON.stri
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
 // 4. Confirm the parsePath helper is a callable top-level export (COPY-dest recipe).
-const dest = parsePath("known://archive/draft");
-if (dest?.kind !== "url" || dest.scheme !== "known") throw new Error("parsePath export not working: " + JSON.stringify(dest));
+const dest = parsePath("known:///archive/draft");
+if (dest?.kind !== "url" || dest.scheme !== "known" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 
 console.log("OK: parser, validator, error class, and parsePath all consumable from npm-installed package.");
 `);

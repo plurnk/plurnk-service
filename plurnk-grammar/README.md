@@ -21,7 +21,7 @@ const result = PlurnkParser.parse(input);
 
 Discriminate on `item.kind`. For `statement` items, narrow on `statement.op` (one of `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC KILL PLAN`) to access per-OP typed fields. Full API: [SPEC.md §12](SPEC.md#12-public-api).
 
-`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's body is an opaque string — a destination URI for an entry copy, a prompt for a run fork (`run://`) — so the consumer interprets it by scheme and calls `parsePath` for the destination case. (MOVE destinations arrive pre-parsed; COPY's don't, because its body is polymorphic.)
+`parsePath(raw)` is a top-level helper that decomposes a path/URI string into a `ParsedPath` (the same decomposition applied to `(target)` slots). Reach for it to resolve a **COPY destination**: COPY's body is an opaque string — a destination URI for an entry copy, a prompt for a run fork (`run:///`) — so the consumer interprets it by scheme and calls `parsePath` for the destination case. (MOVE destinations arrive pre-parsed; COPY's don't, because its body is polymorphic.)
 
 ## cli
 
@@ -76,7 +76,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<READ(lang/??.json):$.greeting:READ
 
 3. Write a known entry
-	<<EDIT[philosophy,existentialism](known://philosophy/existentialism/meaning):The meaning of life is 42:EDIT
+	<<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 
 4. Read an entry in full
 	<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)::READ
@@ -85,41 +85,41 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<READ(https://en.wikipedia.org/wiki/Donald_Rumsfeld)<426-465>::READ
 
 6. Create an unknown entry with tags
-	<<EDIT[france,geography](unknown://countries/france/capital):What is the capital of France?:EDIT
+	<<EDIT[france,geography](unknown:///countries/france/capital):What is the capital of France?:EDIT
 
 7. Create a multi-line plan
-	<<EDIT[plan,france,task](known://plan):
+	<<EDIT[plan,france,task](known:///plan):
 	- [ ] Decompose prompt into unknowns
 	- [ ] Discover capital of France
 	- [ ] Deliver
 	:EDIT
 
 8. Mark a plan step complete (single-line replace)
-	<<EDIT(known://plan)<2>:- [x] Discover capital of France:EDIT
+	<<EDIT(known:///plan)<2>:- [x] Discover capital of France:EDIT
 
 9. Replace a range of lines
-	<<EDIT(known://countries/france/capital)<4-5>:
+	<<EDIT(known:///countries/france/capital)<4-5>:
 	The capital of France is Paris, on the river Seine.
 	Paris has been the continuous capital of France since 987 CE.
 	:EDIT
 
 10. Append content to an existing entry
-	<<EDIT(known://countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+	<<EDIT(known:///countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 
 11. Prepend content to an existing entry
-	<<EDIT(known://countries/france/capital)<0>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+	<<EDIT(known:///countries/france/capital)<0>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 
 12. Clear entry contents (empty body between two colons)
-	<<EDIT(known://countries/france/capital)::EDIT
+	<<EDIT(known:///countries/france/capital)::EDIT
 
 13. Collapse every distilled fetch-log row
-	<<FOLD(log://1/*/*/get)::FOLD
+	<<FOLD(log:///1/*/*/get)::FOLD
 
 14. Restore collapsed log rows by tag filter
-	<<OPEN[france](log://**)::OPEN
+	<<OPEN[france](log:///**)::OPEN
 
 15. Rename a draft entry
-	<<MOVE(known://draft):known://final/answer:MOVE
+	<<MOVE(known:///draft):known:///final/answer:MOVE
 
 16. Run a shell command in the project root
 	<<EXEC(./):node --test:EXEC
@@ -131,19 +131,19 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[200]:Paris:SEND
 
 19. Search logs for timeout errors (case-insensitive regex body)
-	<<FIND(log://**/error):/timeout|deadline exceeded/i:FIND
+	<<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND
 
 20. Find entries whose content begins with "Paris" (glob body)
-	<<FIND(known://countries/**):Paris*:FIND
+	<<FIND(known:///countries/**):Paris*:FIND
 
 21. List the first 20 entries under a broad path (result-set pagination)
-	<<FIND(known://**)<1-20>::FIND
+	<<FIND(known:///**)<1-20>::FIND
 
 22. Read the first five lines of a local file (bare path → file://)
 	<<READ(./README.md)<1-5>::READ
 
 23. Copy a draft entry to a dated archive location
-	<<COPY(known://draft):known://archive/2026-05-14/draft:COPY
+	<<COPY(known:///draft):known:///archive/2026-05-14/draft:COPY
 
 24. Run an inline node script
 	<<EXEC[node](./):
@@ -152,10 +152,10 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	:EXEC
 
 25. Restore log rows tagged france whose content matches (combined filters)
-	<<OPEN[france](log://**):Paris*:OPEN
+	<<OPEN[france](log:///**):Paris*:OPEN
 
 26. Collapse the second hundred of stale fetch-log rows (pagination)
-	<<FOLD(log://**/get)<101-200>::FOLD
+	<<FOLD(log:///**/get)<101-200>::FOLD
 
 27. Deliver a structured answer (JSON body)
 	<<SEND[200]:{"answer":"Paris","confidence":0.95}:SEND
@@ -164,30 +164,30 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[400]:{"reason":"unrecognized OP","got":"FOOBAR","expected":["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC","KILL","PLAN"]}:SEND
 
 29. Report a server error with explicit recipient
-	<<SEND[503](log://errors):{"reason":"git unavailable","command":"git status"}:SEND
+	<<SEND[503](log:///errors):{"reason":"git unavailable","command":"git status"}:SEND
 
 30. Direct an informational message at a named agent
 	<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND
 
 31. Kill a runaway process
-	<<KILL(exec://3/1/2)::KILL
+	<<KILL(exec:///3/1/2)::KILL
 
 32. Permanently delete an entry
-	<<KILL(known://obsolete/note)::KILL
+	<<KILL(known:///obsolete/note)::KILL
 
 33. Think aloud — reasoning recorded to the log
 	<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN
 
 34. Insert a line between lines 2 and 3 (decimal = between; replaces nothing)
-	<<EDIT(known://plan)<2.5>:- [ ] Verify against a second source:EDIT
+	<<EDIT(known:///plan)<2.5>:- [ ] Verify against a second source:EDIT
 
 35. Semantic search with a similarity threshold (decimal = minimum score)
-	<<FIND(known://**)<0.7>:~territorial concessions:FIND
+	<<FIND(known:///**)<0.7>:~territorial concessions:FIND
 
 36. Quote a plurnk operation inside another (nesting via suffix discipline)
-	<<EDITouter(known://demo):
+	<<EDITouter(known:///demo):
 	The following is a quoted plurnk operation, preserved verbatim:
-	<<EDIT(known://inner):hello world:EDIT
+	<<EDIT(known:///inner):hello world:EDIT
 	:EDITouter
 
 ## error format

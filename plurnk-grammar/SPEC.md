@@ -55,7 +55,7 @@ that needs interpretation belongs in the runtime resolver.
 
 **Concretely out of domain — runtime:**
 
-- URI resolution: what `known://`, `unknown://`, `file://` actually point at; what bare paths resolve to.
+- URI resolution: what `known:///`, `unknown:///`, `file://` actually point at; what bare paths resolve to.
 - Tag-matching combination (AND/OR), tag-set semantics.
 - Line-marker arithmetic, out-of-range handling, result-set ordering for pagination.
 - Status code *meanings*: any digit string is grammatically valid in `[signal]`; whether `[410]` means "Gone" or any code carries privileged semantics on any OP is runtime convention.
@@ -116,7 +116,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
 | READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:// (opaque; scheme interprets) | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:/// (opaque; scheme interprets) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
@@ -180,7 +180,7 @@ Lexer-enforced shape:
 Runtime-enforced semantics:
 
 - Bare paths (no scheme) resolve as `file://` at runtime.
-- Conventional schemes include `known://`, `unknown://`, `log://`,
+- Conventional schemes include `known:///`, `unknown:///`, `log:///`,
   `file://`, `http://`, `https://`. Any scheme matching the lexer
   shape is grammatically valid; resolution is a runtime concern.
 - Percent-encoding, authority structure, port range, and other RFC
@@ -347,9 +347,9 @@ Suffix rules:
 Example — nested EDIT inside an outer EDITa:
 
 ```
-<<EDITa(known://demo):
+<<EDITa(known:///demo):
 The following is a quoted plurnk operation, preserved verbatim:
-<<EDIT(known://inner):hello world:EDIT
+<<EDIT(known:///inner):hello world:EDIT
 :EDITa
 ```
 
@@ -452,7 +452,7 @@ forgiveness is safe, strict where laxity would corrupt content.
 
 Comments: plurnk has no comment syntax. The protocol is wire-shaped,
 not source-shaped. To leave a self-documenting breadcrumb, use
-`<<EDIT(known://notes/…):…:EDIT` (model-visible) or
+`<<EDIT(known:///notes/…):…:EDIT` (model-visible) or
 `<<SEND[1xx](…):…:SEND` (orchestrator-visible).
 
 ## 12. Public API
@@ -466,7 +466,7 @@ PlurnkParser.parse(input: string): ParseResult
 // applies to every (target) slot. The top-level helper to reach for (no need to
 // touch AstBuilder). Primary use: resolving a COPY destination. COPY's body is an
 // opaque string — a destination URI for an entry copy, a prompt for a run fork
-// (run://) — so the scheme handler interprets it, then calls this for the
+// (run:///) — so the scheme handler interprets it, then calls this for the
 // destination case. MOVE destinations arrive pre-parsed (body is always a path);
 // COPY's do not, because its body is polymorphic.
 parsePath(raw: string): ParsedPath | null
@@ -520,7 +520,7 @@ interface UrlPath {
     username: string | null;
     password: string | null;
     hostname: string | null; // first authority segment; for custom schemes like
-                             // `known://entries/foo`, hostname = "entries"
+                             // `known:///entries/foo`, hostname = "entries"
     port: number | null;
     pathname: string;        // path component, may be empty
     search: Record<string, string | string[]>;
