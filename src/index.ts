@@ -40,3 +40,9 @@ export type {
 // grammar's plurnk.md, default persona/requirements). Resolution lives in the
 // Paths class so this entry stays a pure re-export barrel.
 export { default as Paths } from "./Paths.ts";
+
+// CLI-flag derivation from .env.example (PLURNK_X → --x, the comment above
+// becomes help text, flags top the cascade) — the shared lib both the service
+// CLI and the client TUI consume, so a flag set stays single-sourced.
+export { default as EnvFlags } from "./core/EnvFlags.ts";
+export type { FlagDescriptor } from "./core/EnvFlags.ts";
