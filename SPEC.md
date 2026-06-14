@@ -146,6 +146,8 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **The keystone's first use: operator reference docs.** `PLURNK_MD_<ALIAS>=<path>` (§operator-config) materializes `<path>` as a `plurnk://<ALIAS>.md` entry — a `dispatchAsPlurnk` EDIT in the plurnk run, **not** the model's — and the model's turn-0 foists a READ of it. The model reads the doc inline while the materializing EDIT stays out of its log: idiomatic context injection, an ordinary entry + READ rather than a bespoke packet section. The same `PLURNK_MD_*` convention cascades to clients. {§actor-boundary-doc-injection}
 
+**Manifest preview.** `PLURNK_MANIFEST_ITEMS` foists a turn-0 READ of `plurnk://manifest.json` into the model's first turn — the same plurnk-origin foist as the docs — so a run opens with the session catalog instead of blank. `-1` reads the full manifest; a positive `N` slices to the first N items (jsonpath `$[0:N]` — the catalog is JSON); unset / `0` foists nothing. The READ is sequenced *after* the per-turn manifest write, so it hits the catalog rather than 404ing. {§actor-boundary-manifest-preview}
+
 ### §machine-processes The machine and its processes: session, run, fork
 
 **Question.** §actor-boundary isolates runs and lets the runtime self-host, but it stands on an ownership model it never states: what does a *session* own versus a *run*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which run `log.read` reads, what a fork copies, where a per-client view of the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
@@ -704,6 +706,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§engine-rails).            |
 | `PLURNK_PERSONA`                     | `persona.md`       | enforced   | Path to the default persona file. Tail of the persona cascade: loops.persona > runs.persona > sessions.persona > this file. |
 | `PLURNK_MD_<ALIAS>`                  | (unset)            | enforced   | Operator reference doc: materializes `<path>` as `plurnk://<ALIAS>.md`, auto-READ into every model run's turn 0 (§actor-boundary). `~` expands to home. |
+| `PLURNK_MANIFEST_ITEMS`              | `0`                | enforced   | Turn-0 manifest preview foisted into the model's first turn. `-1` = full `plurnk://manifest.json`; positive `N` = the first N items (jsonpath slice); `0` / unset = off (§actor-boundary-manifest-preview). |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_PROVIDERS_REASON_LEVEL`                      | `0`                | enforced   | Reasoning **magnitude** sent to the providers: `0` = none, positive = effort/budget the provider module translates to wire format (o-series tiers, Anthropic `budget_tokens`). The on/off is the `PLURNK_PROVIDERS_REASONING` gate. |
 | `PLURNK_PLAN`                        | `0`                | enforced   | Enable the grammar's `<<PLAN` op — advertised in the `# Plurnk System Tools` packet section (§tools). `1` on, `0` off. |

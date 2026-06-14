@@ -1,5 +1,5 @@
 import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
@@ -65,6 +65,16 @@ const readMaxCommands = (): number => {
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n < 1) return DEFAULT_MAX_COMMANDS;
     return n;
+};
+
+// PLURNK_MANIFEST_ITEMS — the turn-0 manifest preview. null = off (no foist);
+// -1 = the full manifest; positive N = the first N items. 0 / unset = off.
+const readManifestItems = (): number | null => {
+    const raw = process.env.PLURNK_MANIFEST_ITEMS;
+    if (raw === undefined || raw.length === 0) return null;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n === 0) return null;
+    return n < 0 ? -1 : n;
 };
 
 type Origin = "model" | "client" | "plurnk" | "plugin";
@@ -725,6 +735,32 @@ export default class Engine {
             channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx), mimetype: "application/json" } },
             tags: [],
         }, systemCtx, "plurnk");
+
+        // Manifest preview (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview):
+        // a turn-0 foisted READ of the just-built catalog so a run opens with what's
+        // available, not blank. -1 → full; N → the first N items (jsonpath slice — the
+        // manifest is JSON); off by default. AFTER the manifest write so the READ hits
+        // it, not a 404; same plurnk-origin foist as the operator docs.
+        if (seq === 1) {
+            const manifestItems = readManifestItems();
+            if (manifestItems !== null) {
+                const manifestRead: ReadStatement = {
+                    op: "READ", suffix: "", signal: null, lineMarker: null,
+                    target: {
+                        kind: "url", raw: "plurnk://manifest.json", scheme: "plurnk",
+                        username: null, password: null, hostname: null, port: null,
+                        pathname: "manifest.json", params: {}, fragment: null,
+                    },
+                    body: manifestItems < 0 ? null : { dialect: "jsonpath", raw: `$[0:${manifestItems}]` } as MatcherBody,
+                    position: { line: 1, column: 1 },
+                };
+                await this.dispatch({
+                    statement: manifestRead, sessionId, runId, loopId, turnId,
+                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                });
+                nextActionIndex++;
+            }
+        }
 
         // §env-delta — pre-seed environment deltas (changes since this run last
         // reconciled) as system EDIT rows, before the packet composes; advance
