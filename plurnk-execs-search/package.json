@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
     "keywords": [
         "plurnk",
@@ -33,43 +33,53 @@
         "runtimes": [
             {
                 "name": "search",
-                "glyph": "🔎"
+                "glyph": "🔎",
+                "example": "EXEC[search]:france population:EXEC"
             },
             {
                 "name": "images",
-                "glyph": "🖼"
+                "glyph": "🖼",
+                "example": "EXEC[images]:red panda:EXEC"
             },
             {
                 "name": "videos",
-                "glyph": "🎬"
+                "glyph": "🎬",
+                "example": "EXEC[videos]:how to tie a bowline:EXEC"
             },
             {
                 "name": "news",
-                "glyph": "📰"
+                "glyph": "📰",
+                "example": "EXEC[news]:ecb rate decision:EXEC"
             },
             {
                 "name": "map",
-                "glyph": "🗺"
+                "glyph": "🗺",
+                "example": "EXEC[map]:eiffel tower:EXEC"
             },
             {
                 "name": "music",
-                "glyph": "🎵"
+                "glyph": "🎵",
+                "example": "EXEC[music]:miles davis so what:EXEC"
             },
             {
                 "name": "it",
-                "glyph": "💻"
+                "glyph": "💻",
+                "example": "EXEC[it]:rust borrow checker:EXEC"
             },
             {
                 "name": "science",
-                "glyph": "🔬"
+                "glyph": "🔬",
+                "example": "EXEC[science]:crispr off-target effects:EXEC"
             },
             {
                 "name": "social",
-                "glyph": "💬"
+                "glyph": "💬",
+                "example": "EXEC[social]:fediverse migration:EXEC"
             },
             {
                 "name": "downloadable",
-                "glyph": "📥"
+                "glyph": "📥",
+                "example": "EXEC[downloadable]:debian netinst iso:EXEC"
             }
         ]
     },
