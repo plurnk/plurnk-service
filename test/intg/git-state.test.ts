@@ -1,6 +1,6 @@
 // SPEC §telemetry — git working-tree state in the telemetry section. GitState shells
 // `git status` (service-side, the same surface membership uses), gated by
-// PLURNK_GIT_ENABLED (the hard service ceiling) + a git worktree.
+// PLURNK_GIT_ALLOWED (the hard service ceiling) + a git worktree.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,10 +15,10 @@ import { openMigrated, insertSession } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
-test("GitState.status reads the working tree, gated by PLURNK_GIT_ENABLED (§telemetry git telemetry)", async () => {
+test("GitState.status reads the working tree, gated by PLURNK_GIT_ALLOWED (§telemetry git telemetry)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
-    const orig = process.env.PLURNK_GIT_ENABLED;
+    const orig = process.env.PLURNK_GIT_ALLOWED;
     try {
         await execFileP("git", ["init", "-q"], { cwd: root });
         await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
@@ -32,7 +32,7 @@ test("GitState.status reads the working tree, gated by PLURNK_GIT_ENABLED (§tel
         const sessionId = await insertSession(db, `gitstate-${crypto.randomUUID()}`);
         await Envelope.updateSessionProjectRoot(db, sessionId, root);
 
-        process.env.PLURNK_GIT_ENABLED = "1";
+        process.env.PLURNK_GIT_ALLOWED = "1";
         const status = await GitState.status(db, sessionId, undefined);
         assert.notEqual(status, null, "a worktree yields git state");
         assert.equal(status!.untracked, 1, "the loose file is counted untracked");
@@ -41,11 +41,11 @@ test("GitState.status reads the working tree, gated by PLURNK_GIT_ENABLED (§tel
         assert.ok(status!.branch.length > 0, "a branch name is reported");
 
         // The hard ceiling flatly disables it.
-        process.env.PLURNK_GIT_ENABLED = "0";
-        assert.equal(await GitState.status(db, sessionId, undefined), null, "PLURNK_GIT_ENABLED=0 disables git telemetry");
+        process.env.PLURNK_GIT_ALLOWED = "0";
+        assert.equal(await GitState.status(db, sessionId, undefined), null, "PLURNK_GIT_ALLOWED=0 disables git telemetry");
     } finally {
-        if (orig === undefined) delete process.env.PLURNK_GIT_ENABLED;
-        else process.env.PLURNK_GIT_ENABLED = orig;
+        if (orig === undefined) delete process.env.PLURNK_GIT_ALLOWED;
+        else process.env.PLURNK_GIT_ALLOWED = orig;
         await db.close();
         await rm(root, { recursive: true, force: true });
     }

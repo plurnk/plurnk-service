@@ -266,7 +266,7 @@ const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): 
     return { parent, ctx };
 };
 
-test("[§membership-forest] membership unions a session's declared repos under a non-git root", { todo: "forest resolution unbuilt — a non-git root yields zero members; declared repos are not unioned" }, async () => {
+test("[§membership-forest] membership unions a session's declared repos under a non-git root", async () => {
     const db = await openMigrated();
     try {
         const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
@@ -282,7 +282,7 @@ test("[§membership-forest] membership unions a session's declared repos under a
     } finally { await db.close(); }
 });
 
-test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-files as members", { todo: "the repo effect is unresolved — declaring a repo adds none of its tracked files" }, async () => {
+test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-files as members", async () => {
     const db = await openMigrated();
     try {
         const { parent, ctx } = await seedForest(db, [{ dir: "lib", file: "x.md" }]);
@@ -307,7 +307,7 @@ test("[§membership-change-gated-sync] a member unchanged on disk is not re-toke
     });
 });
 
-test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, un-re-enableable", { todo: "PLURNK_GIT_ALLOWED/AUTO unbuilt — the flag is not consulted; members resolve regardless" }, async () => {
+test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_GIT_ALLOWED;
         process.env.PLURNK_GIT_ALLOWED = "0";

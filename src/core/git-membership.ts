@@ -24,7 +24,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
-import { resolve, matchesGlob } from "node:path";
+import { resolve, relative, join, matchesGlob } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
@@ -53,24 +53,50 @@ export default class GitMembership {
         return row?.project_root ?? null;
     }
 
-    // Is `root` the top of a git working tree? `git rev-parse --is-inside-work-tree`
-    // exits non-zero (throws here) when `root` is not under git — the gate that
-    // keeps non-git / headless sessions out of any git path (D4: "git absent → no
-    // fs-walk"). Conservative: any git failure means "not a git workspace."
-    static async #isGitWorkTree(root: string, signal: AbortSignal | undefined): Promise<boolean> {
+    // Tracked files of one repo, workspace-relative, via `git ls-files --stage -z`.
+    // NUL-delimited so paths with spaces/newlines survive; gitlinks filtered. Empty → [].
+    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
+        // --stage exposes the mode so submodule gitlinks (mode 160000 — a commit
+        // pointer, a directory on disk, not a file) are filtered: a submodule is a
+        // separate declared repo, never a member of its superproject.
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024 });
+        const files: string[] = [];
+        for (const entry of stdout.split("\0")) {
+            if (entry.length === 0) continue;
+            const tab = entry.indexOf("\t");
+            if (tab === -1) continue;
+            if (entry.slice(0, entry.indexOf(" ")) === "160000") continue;  // gitlink — a submodule boundary
+            files.push(entry.slice(tab + 1));
+        }
+        return files;
+    }
+
+    // Resolve a declared repo folder to its git toplevel (the repo root containing
+    // it), or null if it isn't inside a git tree. `rev-parse --show-toplevel` handles
+    // plain repos, linked worktrees (`.git` is a gitdir: file), and submodules alike.
+    static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
         try {
-            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, signal });
-            return stdout.trim() === "true";
+            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal });
+            return stdout.trim();
         } catch {
-            return false;
+            return null;  // not a git tree (or the dir is gone) — contributes nothing
         }
     }
 
-    // Tracked files, workspace-relative, via `git ls-files -z`. NUL-delimited so
-    // paths with spaces/newlines survive. Empty repo → [].
-    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024 });
-        return stdout.split("\0").filter((p) => p.length > 0);
+    // The forest (SPEC §membership): union every declared repo's tracked files,
+    // each path-prefixed by the repo's location relative to the session root (empty
+    // prefix when the repo IS the root). Repos that don't resolve are skipped.
+    static async #forestTrackedFiles(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
+        const members = new Set<string>();
+        for (const dir of repoDirs) {
+            const repoRoot = await GitMembership.#repoToplevel(dir, signal);
+            if (repoRoot === null) continue;
+            const prefix = relative(root, repoRoot);
+            for (const f of await GitMembership.#gitTrackedFiles(repoRoot, signal)) {
+                members.add(prefix === "" ? f : join(prefix, f));
+            }
+        }
+        return [...members];
     }
 
     // Detect a tracked file's mimetype (mirrors File.detectFileMimetype): route
@@ -105,10 +131,15 @@ export default class GitMembership {
         const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
         const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
 
-        // git substrate — empty when root isn't a git worktree, so `add` is then the
-        // SOLE membership source (SPEC §membership). No early-return on non-git.
-        const tracked = await GitMembership.#isGitWorkTree(root, signal)
-            ? await GitMembership.#gitTrackedFiles(root, signal)
+        // git substrate — the union of the session's DECLARED repos' tracked files
+        // (SPEC §membership forest). PLURNK_GIT_ALLOWED=0 is the hard ceiling (deny all
+        // git membership); PLURNK_GIT_AUTO=1 declares project_root as an implicit repo.
+        // Empty when git is denied or no declared repo resolves, so `pick` is then the
+        // sole source. No early-return on non-git.
+        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob);
+        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root);
+        const tracked = process.env.PLURNK_GIT_ALLOWED === "1"
+            ? await GitMembership.#forestTrackedFiles(root, repoDirs, signal)
             : [];
 
         // `add` overlay — a targeted, client-dictated scan for untracked matches

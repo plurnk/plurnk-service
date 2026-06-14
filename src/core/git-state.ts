@@ -14,7 +14,7 @@ export interface GitStatus {
 // SPEC §telemetry — git working-tree state for the telemetry section: the model's
 // ambient "where am I, what have I touched" without running a command. A
 // service-side shell-out (git is local + cheap, the same surface git membership
-// uses), gated by `PLURNK_GIT_ENABLED` (the hard service ceiling) + a git
+// uses), gated by `PLURNK_GIT_ALLOWED` (the hard service ceiling) + a git
 // worktree. Returns null when git is disabled, headless, or non-git — the
 // telemetry block is then omitted entirely. This is the *state* read; the
 // model's arbitrary git *operations* go through the (daughter) EXEC[git].
@@ -24,7 +24,7 @@ export default class GitState {
     static enabled(): boolean {
         // Feature-flag convention: `=== "1"` exactly. `.env.example` seeds it to 1
         // (default-on); a higher cascade level (shell/params) sets 0 to disable.
-        return process.env.PLURNK_GIT_ENABLED === "1";
+        return process.env.PLURNK_GIT_ALLOWED === "1";
     }
 
     static async status(db: Db, sessionId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
