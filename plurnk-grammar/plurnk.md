@@ -83,6 +83,7 @@ Internal schemes:
 - `exec://` — actions.
 - `log://` — record of operations performed.
 - `plurnk://` — internal agent entries.
+- `run://` — agent runs; `run://.` is the current run.
 - `error://` — rendered telemetry locator, not addressable.
 
 ## Suffix
@@ -125,6 +126,8 @@ Body content is character-perfect, exactly matching whitespace.
 <<MOVE[final](known://draft/answer.md):known://final/answer.md:MOVE
 <<KILL(obsolete/file.md)::KILL
 <<KILL(exec://3/1/2)::KILL
+<<EDIT(run://capital-check):Find the capital of France and report.:EDIT
+<<COPY(run://.):run://alt-approach:COPY
 <<OPEN(log://**/get)<1,10>::OPEN
 <<FIND(known://**)<5>:~french revolutionary history:FIND
 <<FIND(known://**)<0.7>:~french territorial concessions:FIND
