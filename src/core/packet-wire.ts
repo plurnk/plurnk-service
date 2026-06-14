@@ -77,9 +77,8 @@ export default class PacketWire {
 
     // Render packet.user → user message content (markdown string).
     //   # Plurnk System User Prompt
-    //   # Plurnk System Budget         (token budget table — only when present)
-    //   # Plurnk System Errors         (telemetry errors — only when present)
-    //   # Plurnk System Requirements   (static per-turn rules — only when present)
+    //   # Plurnk System Telemetry      (## Budget / ## Errors / ## Git Status — when present)
+    //   # Plurnk System Requirements   (static per-turn rules)
     // Requirements renders LAST so the contract the model has to honor is the
     // most recent thing in the user message — closest to the assistant turn.
     static renderUserContent(user: UserSection): string {
@@ -87,15 +86,21 @@ export default class PacketWire {
         if (typeof user.prompt === "string" && user.prompt.length > 0) {
             parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
         }
+        // Telemetry groups Budget / Errors / Git Status as ## subsections under one
+        // # Plurnk System Telemetry header, rendered only when something is present.
         const telemetry = user.telemetry ?? { budget: "", errors: [], git: undefined };
+        const tele: string[] = [];
         if (typeof telemetry.budget === "string" && telemetry.budget.length > 0) {
-            parts.push(`# Plurnk System Budget\n\n${telemetry.budget}`);
+            tele.push(`## Budget\n\n${telemetry.budget}`);
         }
         if (Array.isArray(telemetry.errors) && telemetry.errors.length > 0) {
-            parts.push(`# Plurnk System Errors\n\n${PacketWire.#renderTelemetryErrors(telemetry.errors)}`);
+            tele.push(`## Errors\n\n${PacketWire.#renderTelemetryErrors(telemetry.errors)}`);
         }
         if (telemetry.git !== undefined && telemetry.git !== null) {
-            parts.push(`# Plurnk Git State\n\n${PacketWire.#renderGitState(telemetry.git as GitStatus)}`);
+            tele.push(`## Git Status\n\n${PacketWire.#renderGitState(telemetry.git as GitStatus)}`);
+        }
+        if (tele.length > 0) {
+            parts.push(`# Plurnk System Telemetry\n\n${tele.join("\n\n")}`);
         }
         if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
             parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);

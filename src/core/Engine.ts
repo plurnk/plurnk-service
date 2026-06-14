@@ -945,8 +945,8 @@ export default class Engine {
         // Caller sources this from Paths.defaultPersona (PLURNK_PERSONA env
         // override → persona.md package default).
         persona: string;
-        // Static per-turn requirements block. Caller sources from
-        // Paths.defaultRequirements. No DB cascade — same string every turn.
+        // Optional requirements override. Empty in practice — callers don't thread it;
+        // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
         requirements: string;
         gitStatus: GitStatus | null;
         runId: number; loopId: number;
@@ -975,6 +975,11 @@ export default class Engine {
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
+        // Requirements is engine-sourced, NOT threaded from callers — that threading is
+        // exactly how it went missing (loop_run/Daemon read sysprompt + persona but never
+        // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
+        // requirements.md) fresh each build so edits take effect; a non-empty param wins.
+        const requirementsText = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
@@ -993,7 +998,7 @@ export default class Engine {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
             system: { system_definition, persona, log },
-            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, system_requirements: requirements },
+            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, system_requirements: requirementsText },
         };
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
@@ -1007,7 +1012,7 @@ export default class Engine {
                 .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, persona, log };
-        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, system_requirements: requirements };
+        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, system_requirements: requirementsText };
         system.tokens = countTokens(PacketWire.renderSystemContent(system));
         user.tokens = countTokens(PacketWire.renderUserContent(user));
         return { system, user };

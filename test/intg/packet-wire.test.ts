@@ -310,8 +310,10 @@ test("[§requirements-requirements-render-last] system_requirements renders LAST
         "requirements renders LAST under its own header, nothing after it");
     const reqIdx = out.indexOf("# Plurnk System Requirements");
     assert.ok(reqIdx > out.indexOf("# Plurnk System User Prompt"), "requirements follows the prompt");
-    assert.ok(reqIdx > out.indexOf("# Plurnk System Budget"), "requirements follows the budget");
-    assert.ok(reqIdx > out.indexOf("# Plurnk System Errors"), "requirements follows the errors");
+    const teleIdx = out.indexOf("# Plurnk System Telemetry");
+    assert.ok(teleIdx > 0 && reqIdx > teleIdx, "requirements follows the telemetry block");
+    assert.ok(reqIdx > out.indexOf("## Budget"), "requirements follows the budget subsection");
+    assert.ok(reqIdx > out.indexOf("## Errors"), "requirements follows the errors subsection");
 });
 
 test("[§requirements-requirements-omitted-when-empty] empty system_requirements emits no header", () => {
