@@ -103,16 +103,44 @@ LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
 
--- PREP: engine_get_watermark
--- §env-delta — the content this run last reconciled for (entry, channel). No row = first sight.
-SELECT content FROM run_watermarks
-WHERE run_id = $run_id AND entry_id = $entry_id AND channel = $channel;
+-- PREP: engine_run_prior_turn_time
+-- §env-delta — timestamp of this run's most recent turn BEFORE the current one
+-- (the "since I last looked" boundary). NULL on the run's first turn → no deltas.
+SELECT MAX(t.timestamp) AS since
+FROM turns t JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id AND t.id != $turn_id;
 
--- PREP: engine_set_watermark
--- §env-delta — set / advance the reconciled content for (run, entry, channel).
-INSERT INTO run_watermarks (run_id, entry_id, channel, content)
-VALUES ($run_id, $entry_id, $channel, $content)
-ON CONFLICT (run_id, entry_id, channel) DO UPDATE SET content = excluded.content;
+-- PREP: engine_pull_env_deltas
+-- §env-delta — other actors' resolved EDITs on shared entries since this run last
+-- looked. Real edits (origin model/client) AND the plurnk run's fs-sync fictions
+-- (origin=plurnk on the reserved 'plurnk' run); excludes this run's own rows and
+-- other runs' already-materialized deltas (origin=plurnk on a real run). plurnk://
+-- entries (manifest/prompt/doc) never surface.
+SELECT le.run_id, le.scheme, le.pathname, le.rx, le.source
+FROM log_entries le
+JOIN runs r ON r.id = le.run_id
+WHERE r.session_id = $session_id
+  AND le.op = 'EDIT'
+  AND le.state = 'resolved'
+  AND le.status_rx IN (200, 201)
+  AND (le.scheme IS NULL OR le.scheme != 'plurnk')
+  AND le.run_id != $run_id
+  AND le.at > $since
+  AND (le.origin != 'plurnk'
+       OR le.run_id = (SELECT id FROM runs WHERE session_id = $session_id AND name = 'plurnk'))
+ORDER BY le.at;
+
+-- PREP: engine_insert_env_delta
+-- §env-delta — materialize a pulled cross-actor edit as a FOLDED delta (indexed=0)
+-- in this run's log. origin=plurnk; source carries the cause (sibling run id or
+-- 'file'); rx reuses the originating row's result span (§edit-result-render).
+INSERT INTO log_entries (
+    run_id, loop_id, turn_id, sequence, origin, source,
+    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, indexed
+) VALUES (
+    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
+    'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
+);
 
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;

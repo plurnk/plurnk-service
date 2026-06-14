@@ -11,7 +11,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
-import GitMembership from "./git-membership.ts";
+import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -718,7 +718,8 @@ export default class Engine {
         // (disk → body channel) so they appear in the manifest below. No-ops
         // on headless / non-git sessions. Runs BEFORE the manifest write so
         // this turn's packet reflects them.
-        await GitMembership.indexGitMembership(systemCtx);
+        const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
+        await this.#logFsFictions(sessionId, fsDivergences);
 
         await EntryCrud.writeEntry("manifest.json", {
             channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx), mimetype: "application/json" } },
@@ -1191,48 +1192,64 @@ export default class Engine {
         }));
     }
 
-    // §env-delta — at pre-turn build, reconcile each session entry against this run's
-    // watermark. First sight sets it silently; a content change materializes a
-    // delta-EDIT (origin=plurnk, the §edit-result-render result span) at the next sequence and
-    // advances the mark. Excludes plurnk:// (manifest/prompt) and bare/file
-    // entries (scheme NULL — the EMI's territory). Returns the count so the
-    // caller advances nextActionIndex past the pre-seeded deltas.
+    // §env-delta — at pre-turn build, surface what changed in the shared world since this
+    // run last looked. No per-run snapshot (§machine-processes "a run is its log"): every
+    // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
+    // entries since this run's prior turn — real cross-run edits and the plurnk run's
+    // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
+    // cause. Returns the count so the caller advances nextActionIndex past the deltas.
     async #materializeEnvironmentDeltas(args: {
         sessionId: number; runId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
         const { sessionId, runId, loopId, turnId, fromSequence } = args;
-        const rows = await (this.#db.engine_list_session_entries as PrepMethod).all<{
-            entry_id: number; scheme: string | null; pathname: string; channel: string; content: string;
-        }>({ session_id: sessionId });
+        const boundary = await (this.#db.engine_run_prior_turn_time as PrepMethod).get<{ since: string | null }>({ run_id: runId, turn_id: turnId });
+        const since = boundary?.since ?? null;
+        if (since === null) return 0;  // first turn — nothing prior; the model reads current state fresh
+        const rows = await (this.#db.engine_pull_env_deltas as PrepMethod).all<{
+            run_id: number; scheme: string | null; pathname: string; rx: string; source: string | null;
+        }>({ session_id: sessionId, run_id: runId, since });
         let written = 0;
         for (const r of rows) {
-            // plurnk:// is engine-derived (manifest/prompt) — skip. File entries
-            // (scheme=null) ARE included: an out-of-band disk divergence, re-read by
-            // git membership, surfaces here as the §membership EMI signal (source="file").
-            if (r.scheme === "plurnk") continue;
-            const wm = await (this.#db.engine_get_watermark as PrepMethod).get<{ content: string }>({
-                run_id: runId, entry_id: r.entry_id, channel: r.channel,
+            // source: the originating run (a real cross-run edit) or 'file' (an fs fiction);
+            // rx reuses the originating row's result span — the edit as it looked then.
+            await (this.#db.engine_insert_env_delta as PrepMethod).run({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                source: r.source ?? String(r.run_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx,
             });
-            if (wm === undefined) {
-                await (this.#db.engine_set_watermark as PrepMethod).run({ run_id: runId, entry_id: r.entry_id, channel: r.channel, content: r.content });
-                continue;  // first sight — reconcile silently, no delta
-            }
-            if (wm.content === r.content) continue;  // unchanged
-            const span = editedSpan(wm.content, r.content);
-            await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                run_id: runId, loop_id: loopId, turn_id: turnId,
-                sequence: fromSequence + written, origin: "plurnk", source: r.scheme === null ? "file" : null,
-                op: "EDIT", suffix: "", signal: null,
-                scheme: r.scheme, username: null, password: null, hostname: null, port: null,
-                pathname: r.pathname, params: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: 200, entryId: r.entry_id, channel: r.channel, span }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
-            });
-            await (this.#db.engine_set_watermark as PrepMethod).run({ run_id: runId, entry_id: r.entry_id, channel: r.channel, content: r.content });
             written++;
         }
         return written;
+    }
+
+    // §env-delta — the filesystem as an actor. Ambient disk divergences detected at
+    // pre-turn (git membership re-read) are logged as the plurnk run's source=file EDIT
+    // "fictions": no op happened, but EDIT is the only grammar the model has for "your
+    // world changed," so the fiction keeps its perspective aligned with what its tooling
+    // would show. The fiction lives in the plurnk run's log; every other run pulls it
+    // through the one delta path, exactly like a sibling's real edit.
+    async #logFsFictions(sessionId: number, divergences: FsDivergence[]): Promise<void> {
+        if (divergences.length === 0) return;
+        const run = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" })
+            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null });
+        if (run === undefined) throw new Error("logFsFictions: plurnk run resolution returned no row");
+        const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
+        if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
+        const seq = await (this.#db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
+        const turn = await (this.#db.client_turn_insert as PrepMethod).get<{ id: number }>({ loop_id: loop.id, sequence: seq?.next ?? 1, packet: "{}" });
+        if (turn === undefined) throw new Error("logFsFictions: turn insert returned no row");
+        let sequence = 1;
+        for (const d of divergences) {
+            const span = editedSpan(d.before, d.after);
+            await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                run_id: run.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
+                origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
+                scheme: d.scheme, username: null, password: null, hostname: null, port: null,
+                pathname: d.pathname, params: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain",
+                rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",
+                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            });
+        }
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {

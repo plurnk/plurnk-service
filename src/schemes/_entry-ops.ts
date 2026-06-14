@@ -151,13 +151,6 @@ export default class EntryOps {
         // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).
 
-        // §env-delta — reconcile this run's watermark to the just-written content, so the
-        // build-time delta detector doesn't re-report the model's own edit (it's
-        // already on the log via §edit-result-render's EDIT row).
-        if (ctx.runId !== undefined) {
-            await (db.engine_set_watermark as PrepMethod).run({ run_id: ctx.runId, entry_id: entryId, channel: targetChannel, content: newContent });
-        }
-
         if (Array.isArray(statement.signal)) {
             for (const tag of statement.signal) {
                 await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });

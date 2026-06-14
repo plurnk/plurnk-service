@@ -384,20 +384,7 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
--- INIT: run_watermarks
--- §env-delta environment-delta detection. Per (run, entry, channel): the content this
--- run last reconciled. First sight sets it silently (no delta); a later content
--- change materializes a delta-EDIT (the diff span, §edit-result-render) and advances the mark.
--- plurnk:// derived entries (manifest/prompt) are excluded at the query, not here.
-CREATE TABLE IF NOT EXISTS run_watermarks (
-    run_id   INTEGER NOT NULL,
-    entry_id INTEGER NOT NULL,
-    channel  TEXT    NOT NULL,
-    content  TEXT    NOT NULL,
-    PRIMARY KEY (run_id, entry_id, channel),
-    FOREIGN KEY (run_id)   REFERENCES runs(id)    ON DELETE CASCADE,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
-) STRICT, WITHOUT ROWID;
+-- (run_watermarks removed — §env-delta is now pull-from-log, no per-run snapshot.)
 
 -- INIT: session_constraints
 -- SPEC §membership constraint overlay — the client's supersede over git membership.

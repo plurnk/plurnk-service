@@ -31,6 +31,18 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 
+// §env-delta — an ambient disk divergence captured at pre-turn: the entry's content
+// before the git-membership re-read vs the disk content after. The plurnk run narrates
+// it as a source=file EDIT so every run pulls it through the one delta path.
+export interface FsDivergence {
+    pathname: string;
+    scheme: string | null;
+    entryId: number;
+    channel: string;
+    before: string;
+    after: string;
+}
+
 export default class GitMembership {
     static #execFileP = promisify(execFile);
 
@@ -166,7 +178,7 @@ export default class GitMembership {
         pathname: string,
         root: string,
         ctx: PlurnkSchemeContext,
-    ): Promise<void> {
+    ): Promise<FsDivergence | null> {
         const canonical = resolve(root, pathname);
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) {
@@ -174,31 +186,41 @@ export default class GitMembership {
             // class entry that READ-415s through readSessionEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.
             await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
-            return;
+            return null;  // binary bodies are empty markers — no text divergence to narrate
         }
         let content: string;
         try {
             content = await readFile(canonical, "utf8");
         } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
-        // writeEntry finds the registered member (scheme=null) and refreshes its
-        // body channel each turn, so a member edited out-of-band reflects current
-        // disk content (D5) — tokenization flows through the paradigm.
-        await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+        // §env-delta — capture an out-of-band disk change BEFORE the refresh overwrites
+        // the entry: an existing body channel whose content differs from disk is an
+        // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
+        const prior = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({
+            session_id: ctx.sessionId, scheme: null, pathname, channel: "body",
+        });
+        const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+        if (prior !== undefined && prior.content !== content && result.entryId !== null) {
+            return { pathname, scheme: null, entryId: result.entryId, channel: "body", before: prior.content, after: content };
+        }
+        return null;
     }
 
     // Full membership + materialization pass for a run. Registers git members,
     // then materializes each active (on-disk, non-binary) member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git sessions.
-    static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<void> {
+    static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
         const root = await GitMembership.#loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) return;
+        if (root === null) return [];
         const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.sessionId, ctx.signal);
+        const divergences: FsDivergence[] = [];
         for (const pathname of tracked) {
-            await GitMembership.#materializeMember(pathname, root, ctx);
+            const divergence = await GitMembership.#materializeMember(pathname, root, ctx);
+            if (divergence !== null) divergences.push(divergence);
         }
+        return divergences;
     }
 }

@@ -3,9 +3,10 @@
 // These prove the ownership line through BEHAVIOR on the real op surface — never
 // by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
 // around SqlRite and tests shape instead of conduct). One invariant is true today
-// and asserted for real; the rest are deferred-red conformance targets for the
-// epic this section defines — and {§machine-processes-run-is-its-log} is red precisely because
-// a per-run shadow snapshot (run_watermarks) still sits beside the log, which the model forbids.
+// and asserted for real; the rest are deferred-red conformance targets for the epic
+// this section defines. {§machine-processes-run-is-its-log} is now GREEN — run_watermarks is
+// gone, and the proof (a run learns a sibling's edit purely through its pulled log, no
+// shadow) lives in Engine.env-delta.test.ts where the runTurn harness exercises the pull.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -52,9 +53,6 @@ test("[§machine-processes-one-filesystem] the entries are the session's — a s
 
 test("[§machine-processes-one-overlay] membership is the session's — one overlay, identical for every run",
     { todo: "membership is session-level; the cross-run-identical proof is a focused test (two runs, one resolved member set) — deferred pending it" }, () => {});
-
-test("[§machine-processes-run-is-its-log] a run's only memory is its log — no per-run shadow beside it",
-    { todo: "VIOLATED today: a per-run shadow snapshot (run_watermarks) still sits beside the log; red until it is struck and drift is broadcast + build-time disk-vs-entry, both landing as log entries" }, () => {});
 
 test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
     const db = await openMigrated();

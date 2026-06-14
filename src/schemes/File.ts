@@ -221,13 +221,6 @@ export default class File {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
             }, ctx, null);
-            // §membership/§env-delta — advance this run's watermark to the just-written content,
-            // so the model's own accepted edit isn't re-reported next turn as an
-            // external disk divergence (the EMI signal is for OUT-of-band changes
-            // only). Mirrors editSessionEntry's reconcile.
-            if (ctx.runId !== undefined) {
-                await (ctx.db.engine_set_watermark as PrepMethod).run({ run_id: ctx.runId, entry_id: entryId, channel: "body", content: patched });
-            }
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
             // the write as 200 (file is on disk) but log the failure —
