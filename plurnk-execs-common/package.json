@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
     "keywords": [
         "plurnk",
@@ -35,59 +35,73 @@
         "runtimes": [
             {
                 "name": "sh",
-                "glyph": "🐚"
+                "glyph": "🐚",
+                "example": "EXEC[sh]:ls -la:EXEC"
             },
             {
                 "name": "bash",
-                "glyph": "🐚"
+                "glyph": "🐚",
+                "example": "EXEC[bash]:for f in *.log; do wc -l \"$f\"; done:EXEC"
             },
             {
                 "name": "node",
-                "glyph": "⬢"
+                "glyph": "⬢",
+                "example": "EXEC[node]:console.log(process.version):EXEC"
             },
             {
                 "name": "python",
-                "glyph": "🐍"
+                "glyph": "🐍",
+                "example": "EXEC[python]:print(sum(range(101))):EXEC"
             },
             {
                 "name": "python3",
-                "glyph": "🐍"
+                "glyph": "🐍",
+                "example": "EXEC[python3]:print(sum(range(101))):EXEC"
             },
             {
                 "name": "perl",
-                "glyph": "🐪"
+                "glyph": "🐪",
+                "example": "EXEC[perl]:print join(',', 1..5):EXEC"
             },
             {
                 "name": "ruby",
-                "glyph": "💎"
+                "glyph": "💎",
+                "example": "EXEC[ruby]:puts (1..5).sum:EXEC"
             },
             {
                 "name": "php",
-                "glyph": "🐘"
+                "glyph": "🐘",
+                "example": "EXEC[php]:echo array_sum([1,2,3]);:EXEC"
             },
             {
                 "name": "lua",
-                "glyph": "🌙"
+                "glyph": "🌙",
+                "example": "EXEC[lua]:print(('hi'):upper()):EXEC"
             },
             {
                 "name": "deno",
-                "glyph": "🦕"
+                "glyph": "🦕",
+                "example": "EXEC[deno]:console.log(Deno.version.deno):EXEC"
             },
             {
                 "name": "bun",
-                "glyph": "🥟"
+                "glyph": "🥟",
+                "example": "EXEC[bun]:console.log(Bun.version):EXEC"
             },
             {
                 "name": "tcl",
-                "glyph": "🪶"
+                "glyph": "🪶",
+                "example": "EXEC[tcl]:puts [expr {2**10}]:EXEC"
             },
             {
                 "name": "bc",
-                "glyph": "🧮"
+                "glyph": "🧮",
+                "example": "EXEC[bc]:scale=4; 22/7:EXEC"
             },
             {
                 "name": "awk",
-                "glyph": "🪄"
+                "glyph": "🪄",
+                "example": "EXEC[awk]:BEGIN { print 6 * 7 }:EXEC"
             }
         ]
     },
