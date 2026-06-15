@@ -122,7 +122,18 @@ export interface SubscriptionCaps {
     // FUSED append-and-notify: write the chunk to the named channel AND fire
     // stream/event in one call. Kept composite by contract — a streaming
     // sibling must never have to remember "append, then separately notify."
-    notifyChunk(channel: string, chunk: string): Promise<void>;
+    //
+    // Optional `mimetype` retypes the channel to the content's actual per-call
+    // type. A streaming body's type is often known only at stream time (an http
+    // body is JSON / PNG / HTML by response Content-Type); the manifest's
+    // channel mimetype is just the pre-fetch seed default. Pass it STATELESSLY
+    // on every chunk — the impl writes only when it differs from the stored
+    // label, so steady-state is a no-op, and the type lands welded to the first
+    // content byte (correct before any mid-stream read). Omit it and the channel
+    // keeps its seeded type (exec and non-typing schemes never pass it). Welding
+    // the label to the chunk is deliberate: there is no separate set-type call to
+    // forget or mis-order. (plurnk-service#226.)
+    notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: set channel state (closed/errored), close the
     // registry row, and fire the run wake ("stream concluded" + summary).

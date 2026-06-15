@@ -31,7 +31,7 @@ import type { ProposalResult, SchemeResult } from "./results.ts";
 const makeCtx = () => {
     const store = new Map<string, EntryData>();
     const events: string[] = [];
-    const chunks: Array<{ channel: string; chunk: string }> = [];
+    const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let woken = 0;
     let closed: { reason: string; outcome?: string } | null = null;
 
@@ -88,9 +88,10 @@ const makeCtx = () => {
         async open(_pathname, _handle: SubscriptionHandle) {
             return new AbortController().signal;
         },
-        async notifyChunk(channel, chunk) {
+        async notifyChunk(channel, chunk, mimetype) {
             // The contract: this is FUSED — append AND emit an event together.
-            chunks.push({ channel, chunk });
+            // Optional mimetype retypes the channel to the per-call content type.
+            chunks.push({ channel, chunk, mimetype });
             notify.streamEvent("sub", channel, "active", chunk.length);
         },
         // close composites the run wake — there is no separate notify.wakeRun;
@@ -155,6 +156,15 @@ test("ctx: notifyChunk is fused — one call appends AND emits an event", async 
     // The fusion contract: each notifyChunk produced exactly one stream event.
     assert.equal(events.length, 2);
     assert.match(events[0], /stdout:active:6/);
+});
+
+test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
+    const { ctx, inspect } = makeCtx();
+    await ctx.subscriptions.notifyChunk("body", "<html>hi</html>", "text/html");
+    await ctx.subscriptions.notifyChunk("body", "more"); // omitted → channel keeps its type
+    const { chunks } = inspect();
+    assert.equal(chunks[0].mimetype, "text/html");
+    assert.equal(chunks[1].mimetype, undefined);
 });
 
 test("ctx: subscriptions.close composites state + wake (stream concluded)", async () => {
