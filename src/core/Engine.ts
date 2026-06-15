@@ -1142,7 +1142,7 @@ export default class Engine {
     #collectTools(): string[] {
         const tools: string[] = [];
         if (process.env.PLURNK_PLAN === "1") {
-            tools.push("* Begin every response with <<PLAN:{planning and reasoning}:PLAN");
+            tools.push("* Begin every response with <<PLAN:...:PLAN");
         }
         // Each available runtime tag contributes its self-documenting example —
         // the example carries syntax + purpose, so there's no prose line. Tags
