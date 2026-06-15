@@ -39,6 +39,22 @@ test("ExecutorRegistry probes per-tag — divergent availability within one pack
     assert.equal(registry.entry("beta")?.example, "", "a tag with no example defaults to empty");
 });
 
+test("build() notes untrusted packages that discover() skipped (#229)", async () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string): void => { warnings.push(String(msg)); };
+    try {
+        await ExecutorRegistry.build({
+            discoverFn: async () => ({ registry: new Map(), skipped: ["@acme/acme-execs-cobol"] }),
+            load: loadFake,
+        });
+    } finally {
+        console.warn = origWarn;
+    }
+    assert.equal(warnings.length, 1, "one note per skipped package");
+    assert.match(warnings[0], /@acme\/acme-execs-cobol.*untrusted.*not registered/, "the note names the package + why");
+});
+
 test("ExecutorRegistry: an unavailable configured default fails the boot (#185)", async () => {
     await assert.rejects(
         () => ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake, defaultRuntime: "beta" }),

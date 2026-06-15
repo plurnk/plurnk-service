@@ -41,10 +41,17 @@ export default class ExecutorRegistry {
     static async build({ defaultRuntime = null, probeTimeoutMs = 3000, discoverFn = discover, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
-        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; packageName: string }> }>;
+        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; packageName: string }>; skipped?: string[] }>;
         load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
-        const { registry: discovered } = await discoverFn();
+        const { registry: discovered, skipped = [] } = await discoverFn();
+
+        // #229 trust gate: discover() skips untrusted third-party packages
+        // (PLURNK_PLUGINS_TRUSTED_ONLY) and reports them here — note each, mirror
+        // of SchemeRegistry's untrusted-scheme warning. Discovered, not loaded.
+        for (const name of skipped) {
+            console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+        }
 
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so
