@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dimension, embed, model } from "./index.js";
+import { countTokens, dimension, embed, maxTokens, model } from "./index.js";
 
 function toVector(bytes) {
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -55,6 +55,25 @@ describe("embedder duck surface", () => {
     it("truncates input beyond the model window instead of throwing", async () => {
         const bytes = await embed("database connection retry backoff ".repeat(2000));
         assert.equal(bytes.length, 1536);
+    });
+
+    it("maxTokens is the model window (512)", () => {
+        assert.equal(maxTokens, 512);
+    });
+
+    it("countTokens counts in the model tokenizer, including special tokens", async () => {
+        // CLS + SEP bracket every input → empty string is 2 tokens.
+        assert.equal(await countTokens(""), 2);
+        // A short phrase is more than empty but well under the window.
+        const five = await countTokens("the quick brown fox jumps");
+        assert.ok(five > 2 && five < maxTokens, `expected 2 < ${five} < ${maxTokens}`);
+    });
+
+    it("countTokens is untruncated — reports overflow past the window", async () => {
+        // The losslessness guarantee: a body that overflows must report its
+        // TRUE count, not a clamp at maxTokens, or the chunker can't tile it.
+        const n = await countTokens("database connection retry ".repeat(400));
+        assert.ok(n > maxTokens, `expected overflow count > ${maxTokens}, got ${n}`);
     });
 
     it("cosine sanity — semantic neighbors beat unrelated text", async () => {

@@ -10,13 +10,19 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { env, pipeline } from "@huggingface/transformers";
+import { env, pipeline, AutoTokenizer } from "@huggingface/transformers";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 env.localModelPath = here;
 env.allowRemoteModels = false;
 
 export const dimension = 384;
+
+// The model's token window — the point past which embed() silently truncates.
+// A pure model fact (all-MiniLM-L6-v2 = 512). plurnk-service's lossless
+// chunker uses it as the per-chunk budget (plurnk-mimetypes-embeddings#1); the
+// tokenizer_config sentinel is unreliable, so this is stated, not derived.
+export const maxTokens = 512;
 
 // The two facts that fully determine the output vectors: the HF revision
 // (single source of truth = .model-pin, the same file fetch-model.mjs pins
@@ -50,4 +56,19 @@ export async function embed(text) {
         throw new Error(`embed: expected Float32Array[${dimension}], got ${data?.constructor?.name}[${data?.length}]`);
     }
     return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+}
+
+let tokenizerPromise = null;
+
+// Token count in the MODEL'S OWN tokenizer, including the special tokens
+// (CLS/SEP) embed() adds — so "count <= maxTokens" is exactly the condition
+// under which embed() does NOT truncate. The losslessness primitive for
+// plurnk-service's chunker (#1): a char/word proxy can't make that guarantee.
+// NOT truncated here — a 2000-token input honestly returns 2000, which is the
+// whole point (the chunker needs to know it overflows the window).
+export async function countTokens(text) {
+    tokenizerPromise ??= AutoTokenizer.from_pretrained("model");
+    const tokenizer = await tokenizerPromise;
+    const { input_ids } = await tokenizer(text);
+    return input_ids.dims.at(-1);
 }

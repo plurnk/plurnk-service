@@ -32,11 +32,19 @@ const result = await mimetypes.process(
 Direct surface, if you want it without the framework:
 
 ```js
-import { embed, dimension } from "@plurnk/plurnk-mimetypes-embeddings";
+import { embed, dimension, model, maxTokens, countTokens } from "@plurnk/plurnk-mimetypes-embeddings";
 const bytes = await embed("database connection error"); // Uint8Array(4 × dimension)
 ```
 
-Input beyond the model's 512-token window is truncated by the tokenizer.
+## Exports
+
+- `embed(text) → Promise<Uint8Array>` — the 1536-byte vector (above).
+- `dimension` — `384`.
+- `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
+- `maxTokens` — `512`, the model's token window.
+- `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= maxTokens`. A char/word proxy can't make that guarantee.
+
+Input beyond the 512-token window is truncated by `embed()`; `maxTokens` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
 
 ## Scripts
 
