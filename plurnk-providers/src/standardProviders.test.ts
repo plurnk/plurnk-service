@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
-const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0" });
+const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PLAN: "0" });
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.

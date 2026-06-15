@@ -10,7 +10,7 @@
 
 import type { Provider } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv, planFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
 
@@ -180,6 +180,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         reasoningBudget: reasoningBudgetFromEnv(env, name),
+        plan: planFromEnv(env, name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),

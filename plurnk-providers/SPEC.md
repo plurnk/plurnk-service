@@ -106,7 +106,9 @@ Each provider's `fromEnv` reads these:
 
 - **`PLURNK_PROVIDERS_REASONING_BUDGET`** — REQUIRED integer `>= -1`. One knob carries the whole side-channel-reasoning space: **`0`** off, **`-1`** on/adaptive (no cap — model/backend decides depth), **`N>0`** on/capped at `N`. The provider maps this single intent to the active backend's mechanism — llama-server `chat_template_kwargs: { enable_thinking }` (always emitted; the explicit FALSE is the only working off-switch — llama-server ignores `think` and per-request budgets, and its `--reasoning-budget` default otherwise keeps the channel live, fatal under an active grammar, §13), Ollama `think`, relay `include_reasoning`, cloud `reasoning_effort` (tier from `N`; adaptive `-1` omits the field, letting the API pick its depth), Anthropic `thinking: { type: "adaptive" }` (`-1`) / `budget_tokens` (`N`). For native backends the magnitude is irrelevant — only zero vs non-zero matters. Consumers state intent, never mechanism. (There is deliberately **no** knob for in-DSL `<<PLAN>>` reasoning — PLAN is a grammar op surfaced by prompting + an assistant prefill, a consumer concern with no provider footprint.)
 
-Read via `reasoningBudgetFromEnv` and **fail hard when unset** — configuration lives in the operator's env (the consumer's `.env.example` declares every var); the framework never defaults a knob in code.
+- **`PLURNK_PLAN`** — REQUIRED `0|1`. When `1`, the provider prefills the assistant turn with the plurnk **`<<PLAN:`** op, forcing the model to reason *in-DSL* before acting. This is the reasoning path that coexists with a strict grammar (native side-channel thinking does not — §13): the model reasons inside a grammar-legal `PLAN` op, keeping the structural guarantee, and the reasoning is an auditable logged op rather than a hidden channel. The un-prefilled op fires unreliably (live: 0/3 unprompted vs 3/3 prefilled), so this is a *forcing function*. Delivery is backend-aware and provider-owned: continuation on llama-server, harmlessly ignored by OpenAI, stripped by Anthropic (which 400s on assistant prefill — the Anthropic sibling's job). **This module is `@plurnk/plurnk-providers` — it knows the plurnk PLAN op and owns the prefill.** That does not conflict with the §2/§8 ban, which forbids *parsing model output* into `PlurnkStatement[]`, not knowing plurnk for *request* construction.
+
+Read via `reasoningBudgetFromEnv` / `planFromEnv` and **fail hard when unset** — configuration lives in the operator's env (the consumer's `.env.example` declares every var); the framework never defaults a knob in code.
 - **`PLURNK_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request. Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
 - **`PLURNK_PROVIDER_CONTEXT_SIZE`** — optional positive-integer override for the model's reported context window. Resolution: this env var → provider probe/config/table → `null`.
 
@@ -139,7 +141,7 @@ The daughters are **this framework's own dependencies** (exact-pinned), so the d
 
 ## §6 Engine → provider guarantees (consumer side)
 
-- `messages` is a complete prompt. Consumer has pre-assembled all sections. Provider does not add or reorder.
+- `messages` is a complete prompt. Consumer has pre-assembled all sections. Provider does not add or reorder — **except** the sanctioned PLAN prefill: when `PLURNK_PLAN=1` the provider appends an assistant-turn `<<PLAN:` continuation to force in-DSL reasoning (§4). This is a deliberate, plurnk-specific provider mechanism, not the provider mutating consumer content.
 - Every `generate` carries `runId` — the run's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
 - `signal` is wired to the run's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
