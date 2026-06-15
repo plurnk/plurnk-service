@@ -37,6 +37,9 @@ export default class EntryManifest {
         if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
         const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
         const byEntry = new Map<string, CatalogEntry>();
+        // The embedding config signature is identical for every entry this build —
+        // compute it once and fold it into each deep_hash (re-derive on model/knob change).
+        const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         for (const r of rows) {
             const path = EntryManifest.#toPath(r.scheme, r.pathname);
             if (path === EntryManifest.#MANIFEST_PATH) continue;
@@ -56,7 +59,7 @@ export default class EntryManifest {
             const isBody = r.channel === "body";
             let result: ProcessResult;
             if (isBody) {
-                const hash = createHash("sha256").update(r.content).update("\0").update(EntrySemantic.deepConfigSignature(mimetypes)).digest("hex");
+                const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
                 if (hash === r.deep_hash) {
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                 } else {

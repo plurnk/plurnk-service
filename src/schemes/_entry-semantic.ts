@@ -58,7 +58,7 @@ export default class EntrySemantic {
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
-        const info = EntrySemantic.#embedderInfo(mimetypes);
+        const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
             const totalLines = content.length === 0 ? 0 : content.split("\n").length;
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
@@ -74,7 +74,7 @@ export default class EntrySemantic {
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
         const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
         let model: string | undefined;
-        for (const spec of EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
+        for (const spec of await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
             const e = await mimetypes.process({ content: spec.text, hint: mimetype }, { channels: ["embedding"] });
             if (e.embedding !== undefined && e.embedding.byteLength > 0) {
                 chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector: e.embedding });
@@ -103,16 +103,16 @@ export default class EntrySemantic {
 
     // The embedder capability surface (daughter window + tokenizer), probed through
     // the Mimetypes handle. null until plurnk-mimetypes-embeddings#1 lands.
-    static #embedderInfo(mimetypes: Mimetypes): { maxTokens: number; countTokens: (text: string) => number } | null {
-        return (mimetypes as { embedderInfo?: () => { maxTokens: number; countTokens: (text: string) => number } | null }).embedderInfo?.() ?? null;
+    static async #embedderInfo(mimetypes: Mimetypes): Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number> } | null> {
+        return (await (mimetypes as { embedderInfo?: () => Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number> } | null> }).embedderInfo?.()) ?? null;
     }
 
     // Folded into the entry's deep_hash so a derivation re-runs when the EMBEDDING
     // inputs change, not just content: installing/swapping the embedder (the window
     // flips none→N, activating tiling) or sweeping the chunk knobs. Config is excluded
     // while dormant — it can't affect a single whole-entry chunk.
-    static deepConfigSignature(mimetypes: Mimetypes): string {
-        const info = EntrySemantic.#embedderInfo(mimetypes);
+    static async deepConfigSignature(mimetypes: Mimetypes): Promise<string> {
+        const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) return "embed:none";
         return `embed:${info.maxTokens}:${EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
     }

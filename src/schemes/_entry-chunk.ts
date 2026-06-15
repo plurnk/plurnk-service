@@ -18,13 +18,13 @@ export interface ChunkSpec {
 }
 
 export default class EntryChunk {
-    static tile(
+    static async tile(
         content: string,
         boundaries: ReadonlySet<number>,
         budget: number,
         overlap: number,
-        countTokens: (text: string) => number,
-    ): ChunkSpec[] {
+        countTokens: (text: string) => Promise<number>,
+    ): Promise<ChunkSpec[]> {
         if (!(budget >= 1)) throw new Error(`EntryChunk.tile: budget must be >= 1, got ${budget}`);
         if (!(overlap >= 0 && overlap < 1)) throw new Error(`EntryChunk.tile: overlap must be in [0,1), got ${overlap}`);
         if (content.length === 0) return [];
@@ -35,7 +35,7 @@ export default class EntryChunk {
         // merges only ever shrink the true token count, so the sum is a safe upper
         // bound: a chunk that passes the sum check is guaranteed <= budget in the
         // real tokenizer. Lossless, and only O(n) countTokens calls.
-        const lineTokens = lines.map(countTokens);
+        const lineTokens = await Promise.all(lines.map(countTokens));
 
         const chunks: ChunkSpec[] = [];
         let start = 0;
@@ -44,7 +44,7 @@ export default class EntryChunk {
             // it (the one place we ever cut mid-line). This is what makes "no
             // truncation, ever" hold even for a minified blob or a giant literal.
             if (lineTokens[start] > budget) {
-                for (const piece of EntryChunk.#splitLine(lines[start], budget, countTokens)) {
+                for (const piece of await EntryChunk.#splitLine(lines[start], budget, countTokens)) {
                     chunks.push({ seq: chunks.length, lineStart: start + 1, lineEnd: start + 1, text: piece });
                 }
                 start += 1;
@@ -88,14 +88,14 @@ export default class EntryChunk {
 
     // Split one over-budget line into contiguous <= budget pieces. Binary-search
     // the longest prefix that fits, repeat. Pieces concatenate back to the line.
-    static #splitLine(line: string, budget: number, countTokens: (t: string) => number): string[] {
+    static async #splitLine(line: string, budget: number, countTokens: (t: string) => Promise<number>): Promise<string[]> {
         const pieces: string[] = [];
         let i = 0;
         while (i < line.length) {
             let lo = i + 1, hi = line.length, best = i + 1;
             while (lo <= hi) {
                 const mid = (lo + hi) >> 1;
-                if (countTokens(line.slice(i, mid)) <= budget) { best = mid; lo = mid + 1; }
+                if (await countTokens(line.slice(i, mid)) <= budget) { best = mid; lo = mid + 1; }
                 else hi = mid - 1;
             }
             pieces.push(line.slice(i, best));
