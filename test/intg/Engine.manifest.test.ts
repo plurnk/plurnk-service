@@ -60,6 +60,37 @@ test("[§packet-manifest-catalog] manifest.json is the complete, unranked direct
     } finally { await db.close(); }
 });
 
+test("manifest build survives a malformed application/json entry — degrades to a line count, never crashes the turn (-32603)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `manifest-badjson-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "what's available?");
+
+        // A valid JSON entry plus one whose body is malformed — the kind of imperfect
+        // JSON a small model writes. buildManifestBody calls mimetypes.process() per
+        // entry for its line count, and process() validates application/json and THROWS
+        // SyntaxError on a parse error. Uncaught, that crashed the whole manifest build
+        // (and the turn → daemon -32603). One bad entry must not take down everything.
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/good.json", channel: "body", content: '{"ok":true}', mimetype: "application/json" });
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/bad.json", channel: "body", content: '{\n  "a": 1\n  "b": 2\n}', mimetype: "application/json" });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" }))?.id;
+        assert.notEqual(entryId, undefined, "the manifest materialized despite the malformed entry");
+        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
+        const catalog = JSON.parse(body?.content ?? "[]") as CatalogItem[];
+        const paths = catalog.map((e) => e.path);
+        assert.ok(paths.includes("known:///good.json"), `valid entry listed; got ${JSON.stringify(paths)}`);
+        assert.ok(paths.includes("known:///bad.json"), "malformed entry still listed (degraded, not crashed)");
+        const bad = catalog.find((e) => e.path === "known:///bad.json");
+        assert.ok(bad !== undefined && bad.channels.body.lines >= 1, "malformed entry degraded to a line count");
+    } finally { await db.close(); }
+});
+
 test("[#21] manifest stamps live seconds= on an active stream, absent for static entries", async () => {
     const db = await openMigrated();
     try {

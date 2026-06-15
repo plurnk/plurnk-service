@@ -57,39 +57,55 @@ export default class EntryManifest {
             // symbol/FTS/embedding rows persist. A handler predating the references
             // channel throws → fall back to metadata-only and clear the graph rows.
             const isBody = r.channel === "body";
+            // Per-entry isolation: a malformed/unprocessable entry (e.g. invalid JSON the
+            // model wrote) makes mimetypes.process() throw — and uncaught, that crashed the
+            // whole manifest build and the turn (the daemon's -32603). Contain it here:
+            // degrade the offender to a bare line count with its deep channels cleared, and
+            // keep building the rest of the catalog. The hash is stamped so it doesn't
+            // re-attempt every turn; a content change re-hashes and re-derives.
             let result: ProcessResult;
-            if (isBody) {
-                const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
-                if (hash === r.deep_hash) {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                } else {
-                    const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
-                    if (wantGraph) {
-                        try {
-                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
-                            await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
-                        } catch {
+            try {
+                if (isBody) {
+                    const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
+                    if (hash === r.deep_hash) {
+                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                    } else {
+                        const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+                        if (wantGraph) {
+                            try {
+                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
+                                await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                            } catch {
+                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                            }
+                        } else {
                             result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                             await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                         }
-                    } else {
-                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                        await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                        // The other two deep channels: re-index the body into entry_fts
+                        // (~semantic's keyword half) and store the embedding vector(s) + model
+                        // (the vector half). Empty/binary/degraded → cleared, not stored.
+                        await EntrySemantic.indexFts(db, r.entry_id, r.content);
+                        // Project Semantics: derive the entry's chunk embeddings. Gated on
+                        // the embedder reporting its tokenizer — absent → one whole-entry
+                        // chunk (today's behavior), present → lossless tiling. result.embedding
+                        // is the fallback whole-entry vector for the dormant path.
+                        const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, r.mimetype, result.symbols ?? [], result.embedding, result.embeddingModel);
+                        await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
+                        await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                     }
-                    // The other two deep channels: re-index the body into entry_fts
-                    // (~semantic's keyword half) and store the embedding vector(s) + model
-                    // (the vector half). Empty/binary/degraded → cleared, not stored.
-                    await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                    // Project Semantics: derive the entry's chunk embeddings. Gated on
-                    // the embedder reporting its tokenizer — absent → one whole-entry
-                    // chunk (today's behavior), present → lossless tiling. result.embedding
-                    // is the fallback whole-entry vector for the dormant path.
-                    const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, r.mimetype, result.symbols ?? [], result.embedding, result.embeddingModel);
-                    await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-                    await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+                } else {
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                 }
-            } else {
-                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+            } catch {
+                result = { totalLines: r.content.length === 0 ? 0 : r.content.split("\n").length } as ProcessResult;
+                if (isBody) {
+                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                    await EntrySemantic.indexFts(db, r.entry_id, "");
+                    await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
+                    await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex") });
+                }
             }
             entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
