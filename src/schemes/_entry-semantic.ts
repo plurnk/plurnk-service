@@ -6,6 +6,7 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import EntryChunk from "./_entry-chunk.ts";
 
 export default class EntrySemantic {
     // Replace an entry's FTS row with its current body content (rowid = entryId).
@@ -42,6 +43,58 @@ export default class EntrySemantic {
                 vector: c.vector, embedding_model: model,
             });
         }
+    }
+
+    // Project Semantics — derive an entry's chunk embeddings. Probes the embedder
+    // capability (the daughter's window + tokenizer, surfaced via the Mimetypes
+    // handle): ABSENT → one whole-entry chunk from the fallback vector (today's
+    // behavior, no extra embed call); PRESENT → lossless tile, embed each chunk.
+    // Returns the chunk list + model for indexEmbedding; never touches the DB.
+    static async deriveEmbeddings(
+        mimetypes: Mimetypes,
+        content: string,
+        mimetype: string,
+        symbols: readonly { line?: number; endLine?: number }[],
+        fallbackEmbedding: Uint8Array | undefined,
+        fallbackModel: string | undefined,
+    ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
+        const info = (mimetypes as { embedderInfo?: () => { maxTokens: number; countTokens: (t: string) => number } | null }).embedderInfo?.() ?? null;
+        if (info === null) {
+            const totalLines = content.length === 0 ? 0 : content.split("\n").length;
+            if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
+            return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
+        }
+        // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
+        // tiler's preferred cut points; it still tiles every line if there are none.
+        const boundaries = new Set<number>();
+        for (const s of symbols) {
+            if (typeof s.endLine === "number") boundaries.add(s.endLine);
+            if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
+        }
+        const budget = Math.min(EntrySemantic.#chunkTokens(), info.maxTokens);
+        const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
+        let model: string | undefined;
+        for (const spec of EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
+            const e = await mimetypes.process({ content: spec.text, hint: mimetype }, { channels: ["embedding"] });
+            if (e.embedding !== undefined && e.embedding.byteLength > 0) {
+                chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector: e.embedding });
+                model = e.embeddingModel;
+            }
+        }
+        return { chunks, model };
+    }
+
+    // Chunk budget + overlap — `.env.example` is the law, no code fallback.
+    static #chunkTokens(): number {
+        const v = Number(process.env.PLURNK_SEMANTIC_CHUNK_TOKENS);
+        if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SEMANTIC_CHUNK_TOKENS must be a positive integer, got ${JSON.stringify(process.env.PLURNK_SEMANTIC_CHUNK_TOKENS)}`);
+        return v;
+    }
+
+    static #chunkOverlap(): number {
+        const v = Number(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP);
+        if (!(v >= 0 && v < 1)) throw new Error(`PLURNK_SEMANTIC_CHUNK_OVERLAP must be in [0,1), got ${JSON.stringify(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP)}`);
+        return v;
     }
 
     // Build the FTS5 narrow from a ~query: OR the alphanumeric terms (a broad cut —

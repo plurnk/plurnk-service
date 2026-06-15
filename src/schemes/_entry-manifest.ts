@@ -77,15 +77,12 @@ export default class EntryManifest {
                     // (~semantic's keyword half) and store the embedding vector(s) + model
                     // (the vector half). Empty/binary/degraded → cleared, not stored.
                     await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                    // Project Semantics substrate: store the whole-body embedding as a
-                    // SINGLE chunk spanning line 1..totalLines (today's behavior, now in
-                    // the chunked schema). The capability-gated tiler replaces this one
-                    // chunk with N once the embedder reports its tokenizer — no schema change.
-                    const totalLines = r.content.length === 0 ? 0 : r.content.split("\n").length;
-                    const embChunks = result.embedding !== undefined && result.embedding.byteLength > 0 && totalLines > 0
-                        ? [{ lineStart: 1, lineEnd: totalLines, vector: result.embedding }]
-                        : [];
-                    await EntrySemantic.indexEmbedding(db, r.entry_id, embChunks, result.embeddingModel);
+                    // Project Semantics: derive the entry's chunk embeddings. Gated on
+                    // the embedder reporting its tokenizer — absent → one whole-entry
+                    // chunk (today's behavior), present → lossless tiling. result.embedding
+                    // is the fallback whole-entry vector for the dormant path.
+                    const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, r.mimetype, result.symbols ?? [], result.embedding, result.embeddingModel);
+                    await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {
