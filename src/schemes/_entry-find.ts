@@ -37,6 +37,9 @@ export default class EntryFind {
     static #paginate<T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } {
         const total = items.length;
         const { first, last } = marker;
+        // #209 — a fractional marker is a semantic similarity threshold; on a
+        // non-semantic (paginated) result it's nonsense → 416, never floored.
+        if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) return { status: 416 };
         if (last === null) {
             if (first === 0 || first === -1) return { status: 200, items: [] };
             if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
@@ -75,7 +78,7 @@ export default class EntryFind {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, pathnames: [] };
             if (statement.lineMarker === null) return { status: 400, pathnames: [] };  // ~query needs a top-K, e.g. ~query<10>
-            return EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, statement.lineMarker.first);
+            return EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, statement.lineMarker);
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);

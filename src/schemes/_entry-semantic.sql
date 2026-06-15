@@ -31,3 +31,18 @@ WHERE f.content MATCH $fts_query
   AND e.scheme IS $scheme
 ORDER BY cosine(em.vector, $query_vector) DESC
 LIMIT $k;
+
+-- PREP: semantic_rank_threshold
+-- #209 — the <0.x> similarity-threshold form: same FTS+cosine fusion, but a cosine
+-- floor ($threshold, in (0,1)) replaces top-K, and $cap (-1 = unbounded) is the
+-- optional <0.x,N> result cap.
+SELECT e.pathname
+FROM entry_fts f
+JOIN entries e ON e.id = f.rowid
+JOIN entry_embeddings em ON em.entry_id = e.id
+WHERE f.content MATCH $fts_query
+  AND e.session_id = $session_id
+  AND e.scheme IS $scheme
+  AND cosine(em.vector, $query_vector) >= $threshold
+ORDER BY cosine(em.vector, $query_vector) DESC
+LIMIT $cap;
