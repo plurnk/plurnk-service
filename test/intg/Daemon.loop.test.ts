@@ -62,6 +62,29 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
     });
 });
 
+test("run.fork branches the model run into a new -fork run; errors with no run (#228)", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "fork-test" });
+
+            // No model run yet → nothing to fork.
+            const noRun = await rpcCall(ws, 2, "run.fork", {});
+            assert.ok(noRun.error, "fork with no model run errors");
+            assert.match(noRun.error!.message, /no model run/);
+
+            // A loop builds the model run + its log; forking branches it.
+            await rpcCall(ws, 3, "loop.run", { prompt: "do a thing" });
+            const fork = await rpcCall(ws, 4, "run.fork", {});
+            const r = fork.result as { runId: number; runName: string | null; parentRunId: number };
+            assert.ok(typeof r.runId === "number" && typeof r.parentRunId === "number", "returns new + parent run ids");
+            assert.notEqual(r.runId, r.parentRunId, "the fork is a distinct run");
+            assert.match(r.runName ?? "", /-fork$/, "the fork is named <parent>-fork");
+        } finally { ws.close(); }
+    });
+});
+
 test("loop.run streams log/entry notifications during execution", async () => {
     const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });
