@@ -408,6 +408,29 @@ test("GBNF: decimal line markers derive — insert-between, threshold, mixed", (
     assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
 });
 
+test("GBNF: strict/plan separator is any whitespace, including none (glued)", () => {
+    // glued — zero separator between ops
+    assert.equal(derives("root-strict", "<<READ(known:///x)::READ<<SEND[200]:done:SEND"), true);
+    // mixed whitespace separator
+    assert.equal(derives("root-strict", "<<READ(known:///x)::READ \t\n  <<SEND[200]:done:SEND"), true);
+    // leading + trailing whitespace
+    assert.equal(derives("root-strict", "  \n<<SEND[200]:done:SEND\n  "), true);
+    // glued under the plan root too
+    assert.equal(derives("root-plan", "<<PLAN:think:PLAN<<SEND[200]:done:SEND"), true);
+    // still no non-whitespace text between ops
+    assert.equal(derives("root-strict", "<<READ(known:///x)::READ prose <<SEND[200]:done:SEND"), false);
+});
+
+test("GBNF: glued strict output round-trips through the parser (subset invariant)", () => {
+    const turn = "<<READ(known:///x)::READ<<EDIT(known:///y):z:EDIT<<SEND[200]:done:SEND";
+    const result = PlurnkParser.parse(turn);
+    const errors = result.items.filter((item) => item.kind === "error");
+    const statements = result.items.filter((item) => item.kind === "statement");
+    assert.equal(errors.length, 0, `glued turn produced parse errors: ${JSON.stringify(turn)}`);
+    assert.equal(statements.length, 3, "expected 3 glued statements");
+    assert.equal(result.unparsedTail, undefined);
+});
+
 test("GBNF: plan root — strict, but the turn must open with a PLAN", () => {
     // PLAN-led, ops in the middle, closed by the status SEND.
     assert.equal(derives("root-plan", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);

@@ -33,6 +33,7 @@ const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EX
 const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 const DIGIT = cls([R("0", "9")]);
+const WS = cls(C(" \t\r\n")); // one whitespace char; `star(WS)` is the strict/plan inter-op separator
 const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
 // The lexer's executor IDENT requires a letter/underscore head; canon dictates lowercase.
 const EXEC_HEAD = cls([R("a", "z")]);
@@ -189,8 +190,8 @@ export const buildModel = (): GModel => {
     // with the final pathless SEND[102]/[200] — structural termination for
     // models that ramble past optional EOS.
     //
-    // root-strict (plurnk-strict.gbnf): ops only, bounded 1-2 newline
-    // separators. For models that don't reason and benefit from the tightest rail.
+    // root-strict (plurnk-strict.gbnf): ops only, separated by any whitespace
+    // including none. For models that don't reason and benefit from the tightest rail.
     // Text directly after a close tag must be newline-led: the lexer's close-tag
     // predicate requires a non-ident follow char, so `:KILL4` + text "9..." would
     // glue into the close tag and the body would never end. Leading text and
@@ -211,14 +212,17 @@ export const buildModel = (): GModel => {
     model.set("closed-step", [[ref("mid-statement"), opt(ref("text-after"))]]);
     model.set("text-after", [[lit("\n"), ref("text")]]);
     textRules(model);
-    model.set("root-strict", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
-    model.set("batch-step", [[ref("mid-statement"), lit("\n"), opt(lit("\n"))]]);
+    // Strict/plan separator is any whitespace, including none (`star(WS)`): ops
+    // may be glued or split by arbitrary spaces/tabs/newlines — the grammar
+    // doesn't dictate the separator, only that no non-whitespace text intrudes.
+    model.set("root-strict", [[star(WS), star(ref("batch-step")), ref("send-final-any"), star(WS)]]);
+    model.set("batch-step", [[ref("mid-statement"), star(WS)]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
     // root-plan (plurnk-plan.gbnf): exactly root-strict, but the turn MUST open
     // with a PLAN op — force a reasoning step before any action, then proceed
-    // strict (ops only, newline-separated, closed by the final status SEND).
-    model.set("root-plan", [[opt(lit("\n")), ref("plan-batch-step"), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
-    model.set("plan-batch-step", [[ref("plan-statement"), lit("\n"), opt(lit("\n"))]]);
+    // strict (ops only, whitespace-separated, closed by the final status SEND).
+    model.set("root-plan", [[star(WS), ref("plan-batch-step"), star(ref("batch-step")), ref("send-final-any"), star(WS)]]);
+    model.set("plan-batch-step", [[ref("plan-statement"), star(WS)]]);
     model.set("plan-statement", planAlts);
     model.set("op-statement", opAlts);
     model.set("send-mid-any", sendMidAlts);
