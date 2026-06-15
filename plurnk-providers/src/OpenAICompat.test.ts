@@ -34,7 +34,7 @@ test("effortFromBudget: maps budget to tiers", () => {
 });
 
 test("identity getters and defaults", () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, reasoningBudget: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextSize, null); // default
     assert.equal(p.countTokens(""), 0);
@@ -44,7 +44,7 @@ test("identity getters and defaults", () => {
 
 test("injected countTokens and costFor are used", () => {
     const p = new OpenAICompatProvider({
-        model: "m", url: "http://x", fetchTimeoutMs: 1000, reasoningEnabled: true,
+        model: "m", url: "http://x", fetchTimeoutMs: 1000, reasoningBudget: 0,
         countTokens: (t) => t.length,
         costFor: (u) => u.total * 2,
     });
@@ -53,7 +53,7 @@ test("injected countTokens and costFor are used", () => {
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
-    const p = new OpenAICompatProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     installFetch([
         { model: "wire-model", choices: [{ delta: { content: "hel" } }] },
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
@@ -69,67 +69,67 @@ test("generate maps a streamed response into ProviderResponse", async () => {
 });
 
 test("generate normalizes an out-of-set finish_reason to null", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [] });
     assert.equal(assistant.finishReason, null);
 });
 
 test("generate aggregates reasoning deltas under multiple field names", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
 });
 
-test("reasoningStyle 'think' gates on the single reasoning gate (budget irrelevant)", async () => {
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, reasoningStyle: "think", reasonBudget: 0 });
+test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for native)", async () => {
+    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).think, true);
 
     mock.restoreAll();
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: false, reasoningStyle: "think", reasonBudget: 4096 });
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, reasoningStyle: "think" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ runId: "r", messages: [] });
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, reasoningStyle: "effort", reasonBudget: 5000 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 5000, reasoningStyle: "effort" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
-test("reasoningStyle 'template' always emits enable_thinking mirroring the reasoning gate — explicit false, never omitted", async () => {
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, reasoningStyle: "template" });
+test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
+    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: true });
 
     mock.restoreAll();
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: false, reasoningStyle: "template" });
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: false });
 });
 
-test("reasoningEnabled:false (PLURNK_PROVIDERS_REASONING=0) suppresses effort and include_reasoning", async () => {
-    const effort = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: false, reasoningStyle: "effort", reasonBudget: 5000 });
+test("budget 0 suppresses effort and include_reasoning", async () => {
+    const effort = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, reasoningStyle: "effort" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await effort.generate({ runId: "r", messages: [] });
     assert.equal("reasoning_effort" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const relay = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: false, reasoningStyle: "include_reasoning", reasonBudget: 1 });
+    const relay = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, reasoningStyle: "include_reasoning" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await relay.generate({ runId: "r", messages: [] });
     assert.equal("include_reasoning" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, reasoningStyle: "include_reasoning", reasonBudget: 1 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, reasoningStyle: "include_reasoning" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
@@ -138,7 +138,7 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
 // — grammar-constrained sampling (SPEC §13, issues #8/#9) —
 
 test("grammar transport: attaches the GBNF verbatim plus the repeat-penalty floor", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, supportsGrammar: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, supportsGrammar: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
@@ -147,7 +147,7 @@ test("grammar transport: attaches the GBNF verbatim plus the repeat-penalty floo
 });
 
 test("grammar transport: unsupported backend ignores the grammar (no wire fields)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true }); // default: no support
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 }); // default: no support
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
@@ -156,7 +156,7 @@ test("grammar transport: unsupported backend ignores the grammar (no wire fields
 });
 
 test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, supportsGrammar: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, supportsGrammar: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
@@ -165,7 +165,7 @@ test("grammar transport: capable backend with no grammar passed sends neither fi
 });
 
 test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], maxTokens: 2048 });
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
@@ -177,7 +177,7 @@ test("maxTokens transports as max_tokens; absent → no wire field (server defau
 });
 
 test("slot affinity is internal: sticky per runId, distinct runs spread across slots (#11)", async () => {
-    const pinning = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, supportsSlotPinning: true, slotCount: 2 });
+    const pinning = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await pinning.generate({ runId: "run-A", messages: [] });
     await pinning.generate({ runId: "run-B", messages: [] });
@@ -188,20 +188,20 @@ test("slot affinity is internal: sticky per runId, distinct runs spread across s
 });
 
 test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever", async () => {
-    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true }); // default: no pinning
+    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 }); // default: no pinning
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ runId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const noCount = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, supportsSlotPinning: true }); // slotCount null
+    const noCount = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, supportsSlotPinning: true }); // slotCount null
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await noCount.generate({ runId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("generate fail-hards on a missing or empty runId", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(() => p.generate({ runId: "", messages: [] }), /runId is required/);
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /runId is required/);
@@ -209,7 +209,7 @@ test("generate fail-hards on a missing or empty runId", async () => {
 
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
     const { ProviderError } = await import("./telemetry.ts");
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true, source: "provider:test" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
@@ -221,7 +221,7 @@ test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEven
 });
 
 test("generate rejects on a pre-aborted external signal", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningEnabled: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const signal = AbortSignal.abort(new Error("nope"));
     await assert.rejects(() => p.generate({ runId: "r", messages: [], signal }));
@@ -229,7 +229,7 @@ test("generate rejects on a pre-aborted external signal", async () => {
 
 test("configured headers and url are sent verbatim", async () => {
     const p = new OpenAICompatProvider({
-        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, reasoningEnabled: true,
+        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, reasoningBudget: 0,
         headers: { Authorization: "Bearer secret", "X-Title": "plurnk" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

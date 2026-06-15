@@ -1,21 +1,21 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFlag, requireEnv, reasoningKnobsFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_FETCH_TIMEOUT", "openai"), 600000);
-    assert.equal(parseRequiredInt("0", "PLURNK_PROVIDERS_REASON_LEVEL", "openai"), 0);
+    assert.equal(parseRequiredInt("0", "PLURNK_FETCH_TIMEOUT", "openai"), 0);
 });
 
 test("parseRequiredInt: missing value names the env var and provider", () => {
-    assert.throws(() => parseRequiredInt(undefined, "PLURNK_PROVIDERS_REASON_LEVEL", "groq"), /groq provider: PLURNK_PROVIDERS_REASON_LEVEL must be set/);
-    assert.throws(() => parseRequiredInt("", "PLURNK_PROVIDERS_REASON_LEVEL", "groq"), /must be set/);
+    assert.throws(() => parseRequiredInt(undefined, "PLURNK_FETCH_TIMEOUT", "groq"), /groq provider: PLURNK_FETCH_TIMEOUT must be set/);
+    assert.throws(() => parseRequiredInt("", "PLURNK_FETCH_TIMEOUT", "groq"), /must be set/);
 });
 
 test("parseRequiredInt: rejects non-numeric, fractional, and negative values", () => {
-    assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_REASON_LEVEL", "openai"), /must be a non-negative integer \(got "abc"\)/);
-    assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_REASON_LEVEL", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
-    assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_REASON_LEVEL", "openai"), /must be a non-negative integer \(got "-1"\)/);
+    assert.throws(() => parseRequiredInt("abc", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
+    assert.throws(() => parseRequiredInt("1.5", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
+    assert.throws(() => parseRequiredInt("-1", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
 });
 
 test("parseOptionalInt: absent → null, present → integer", () => {
@@ -29,17 +29,13 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
 });
 
-test("parseRequiredFlag: strict 0/1, named errors on missing or junk", () => {
-    assert.equal(parseRequiredFlag("1", "PLURNK_PROVIDERS_REASONING", "openai"), true);
-    assert.equal(parseRequiredFlag("0", "PLURNK_PROVIDERS_REASONING", "openai"), false);
-    assert.throws(() => parseRequiredFlag(undefined, "PLURNK_PROVIDERS_REASONING", "openai"), /openai provider: PLURNK_PROVIDERS_REASONING must be set/);
-    assert.throws(() => parseRequiredFlag("true", "PLURNK_PROVIDERS_REASONING", "openai"), /must be "0" or "1" \(got "true"\)/);
-});
-
-test("reasoningKnobsFromEnv: single required side-channel gate — no in-code default", () => {
-    assert.deepEqual(reasoningKnobsFromEnv({ PLURNK_PROVIDERS_REASONING: "1" }, "openai"), { reasoningEnabled: true });
-    assert.deepEqual(reasoningKnobsFromEnv({ PLURNK_PROVIDERS_REASONING: "0" }, "openai"), { reasoningEnabled: false });
-    assert.throws(() => reasoningKnobsFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
+test("reasoningBudgetFromEnv: 0 off, -1 adaptive, N capped; required; rejects < -1 and non-int", () => {
+    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), 0);
+    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "-1" }, "openai"), -1);
+    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "4096" }, "openai"), 4096);
+    assert.throws(() => reasoningBudgetFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING_BUDGET must be set/);
+    assert.throws(() => reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "-2" }, "openai"), /integer >= -1/);
+    assert.throws(() => reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /integer >= -1/);
 });
 
 test("requireEnv: returns the value or throws a named error", () => {

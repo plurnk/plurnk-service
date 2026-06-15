@@ -21,19 +21,20 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
-export const parseRequiredFlag = (raw: string | undefined, name: string, label: string): boolean => {
+// The single side-channel reasoning knob (SPEC §4): one integer carries the
+// whole {off, adaptive, capped} space, so no separate on/off gate is needed.
+//   0   → native side-channel reasoning OFF.
+//   -1  → ON, adaptive (no cap — the model/backend decides depth).
+//   N>0 → ON, capped at N (→ effort tier for cloud, budget_tokens for Anthropic).
+// The provider maps this one intent to the backend's mechanism (llama-server
+// `enable_thinking`, cloud `reasoning_effort`, relay `include_reasoning`) — the
+// consumer states intent, never mechanism. REQUIRED, no in-code default. (In-DSL
+// PLAN reasoning is a prompt/grammar concern, not a provider knob.)
+export const reasoningBudgetFromEnv = (env: NodeJS.ProcessEnv, label: string): number => {
+    const name = "PLURNK_PROVIDERS_REASONING_BUDGET";
+    const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
-    if (raw !== "0" && raw !== "1") throw new Error(`${label} provider: ${name} must be "0" or "1" (got "${raw}")`);
-    return raw === "1";
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < -1) throw new Error(`${label} provider: ${name} must be an integer >= -1 (0 off, -1 adaptive, N capped) (got "${raw}")`);
+    return n;
 };
-
-// The single side-channel reasoning gate (SPEC §4): does the model reason in a
-// side channel at all? The provider picks the wire MECHANISM per backend —
-// llama-server's `enable_thinking`, cloud `reasoning_effort`, relay
-// `include_reasoning` — so the consumer states intent, never mechanism.
-// REQUIRED — no in-code default; the operator's env is the single source of
-// configuration truth. (In-DSL PLAN reasoning is a prompt/grammar concern, not
-// a provider knob — it has no env var here.)
-export const reasoningKnobsFromEnv = (env: NodeJS.ProcessEnv, label: string): { reasoningEnabled: boolean } => ({
-    reasoningEnabled: parseRequiredFlag(env.PLURNK_PROVIDERS_REASONING, "PLURNK_PROVIDERS_REASONING", label),
-});

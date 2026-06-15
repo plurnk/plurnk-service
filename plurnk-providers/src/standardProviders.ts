@@ -10,7 +10,7 @@
 
 import type { Provider } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningKnobsFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
 
@@ -179,7 +179,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         headers,
         contextSize,
         fetchTimeoutMs,
-        reasonBudget: parseRequiredInt(env.PLURNK_PROVIDERS_REASON_LEVEL, "PLURNK_PROVIDERS_REASON_LEVEL", name),
+        reasoningBudget: reasoningBudgetFromEnv(env, name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),
@@ -187,6 +187,5 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         // The same fingerprint backs both llama-server dialect extensions.
         supportsSlotPinning: supportsGrammar,
         slotCount,
-        ...reasoningKnobsFromEnv(env, name),
     });
 };

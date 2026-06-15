@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
-const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASON_LEVEL: "0", PLURNK_PROVIDERS_REASONING: "0" });
+const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0" });
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
@@ -172,7 +172,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
 
-test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirrors PLURNK_PROVIDERS_REASONING", async () => {
+test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirrors PLURNK_PROVIDERS_REASONING_BUDGET != 0", async () => {
     const mk = (reasoning: string) => {
         const bodies: string[] = [];
         mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
@@ -182,7 +182,7 @@ test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirror
             const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
             return new Response(body, { status: 200 });
         });
-        return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_REASONING: reasoning, OPENAI_BASE_URL: "http://local" } };
+        return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_REASONING_BUDGET: reasoning, OPENAI_BASE_URL: "http://local" } };
     };
     const off = mk("0");
     const pOff = await standardProviderFromEnv("openai", off.env, "m");
@@ -191,7 +191,7 @@ test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirror
     assert.equal("think" in JSON.parse(off.bodies[0]), false); // think→template, never raw think
 
     mock.restoreAll();
-    const on = mk("1");
+    const on = mk("-1");
     const pOn = await standardProviderFromEnv("openai", on.env, "m");
     await pOn!.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(on.bodies[0]).chat_template_kwargs, { enable_thinking: true });

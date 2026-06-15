@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "description": "Framework + contract for the @plurnk/plurnk-providers-* LLM transport family.",
     "keywords": [
         "plurnk",
@@ -50,11 +50,11 @@
         "typescript": "^6.0.3"
     },
     "dependencies": {
-        "@plurnk/plurnk-providers-cloudflare": "0.3.1",
-        "@plurnk/plurnk-providers-google": "0.3.1",
-        "@plurnk/plurnk-providers-ollama": "0.3.1",
-        "@plurnk/plurnk-providers-openrouter": "0.3.1",
-        "@plurnk/plurnk-providers-xai": "0.3.1",
+        "@plurnk/plurnk-providers-cloudflare": "0.3.2",
+        "@plurnk/plurnk-providers-google": "0.3.2",
+        "@plurnk/plurnk-providers-ollama": "0.3.2",
+        "@plurnk/plurnk-providers-openrouter": "0.3.2",
+        "@plurnk/plurnk-providers-xai": "0.3.2",
         "gpt-tokenizer": "^3.4.0",
         "llama-tokenizer-js": "^1.2.2"
     }

@@ -13,17 +13,17 @@ import { chatCompletionStream } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError } from "./telemetry.ts";
 
-// How the single reasoning gate (`reasoningEnabled`, PLURNK_PROVIDERS_REASONING)
-// translates to each backend's wire mechanism (SPEC §4). One consumer intent —
-// "side-channel reasoning on/off" — many backend dialects:
+// How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
+// -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4):
 //  - "template":          llama-server (jinja) → `chat_template_kwargs.enable_thinking`,
 //                         ALWAYS emitted — the explicit false is the only working
 //                         off-switch (llama-server ignores `think` and per-request
 //                         budgets; its --reasoning-budget default otherwise keeps
 //                         the channel live — fatal under an active grammar, §13).
-//  - "think":             Ollama OpenAI-compat → `think: true` when enabled
-//  - "include_reasoning": OpenRouter relay passthrough toggle (gated by PLURNK_PROVIDERS_REASON_LEVEL > 0)
-//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier (gated by PLURNK_PROVIDERS_REASON_LEVEL > 0)
+//  - "think":             Ollama OpenAI-compat → `think: true` when on (budget != 0)
+//  - "include_reasoning": OpenRouter relay passthrough toggle when on
+//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier from a
+//                         capped budget (N>0); adaptive (-1) omits the field (API default)
 //  - "none":              provider has no reasoning toggle (e.g. Cloudflare)
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template";
 
@@ -33,7 +33,6 @@ export type OpenAICompatConfig = {
     fetchTimeoutMs: number;
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     contextSize?: number | null;              // default null
-    reasonBudget?: number;                    // PLURNK_PROVIDERS_REASON_LEVEL; default 0 (disabled)
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/4 heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
@@ -42,11 +41,11 @@ export type OpenAICompatConfig = {
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
-    // The side-channel reasoning gate — REQUIRED, no in-code default:
-    // configuration lives in the operator's env (SPEC §4), read via
-    // reasoningKnobsFromEnv. The provider maps it to the backend's mechanism
-    // via reasoningStyle.
-    reasoningEnabled: boolean;                 // PLURNK_PROVIDERS_REASONING
+    // The side-channel reasoning budget — REQUIRED, no in-code default
+    // (PLURNK_PROVIDERS_REASONING_BUDGET, read via reasoningBudgetFromEnv):
+    // 0 off, -1 adaptive, N capped. The provider maps it to the backend's
+    // mechanism via reasoningStyle.
+    reasoningBudget: number;
 };
 
 // Sampling guard under an active grammar (SPEC §13): greedy decoding under
@@ -77,7 +76,7 @@ export default class OpenAICompatProvider implements Provider {
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
     #contextSize: number | null;
-    #reasonBudget: number;
+    #reasoningBudget: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
@@ -85,7 +84,6 @@ export default class OpenAICompatProvider implements Provider {
     #supportsGrammar: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
-    #reasoningEnabled: boolean;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -93,7 +91,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#headers = config.headers ?? {};
         this.#contextSize = config.contextSize ?? null;
-        this.#reasonBudget = config.reasonBudget ?? 0;
+        this.#reasoningBudget = config.reasoningBudget;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#costFor = config.costFor ?? (() => 0);
@@ -101,7 +99,6 @@ export default class OpenAICompatProvider implements Provider {
         this.#supportsGrammar = config.supportsGrammar ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
-        this.#reasoningEnabled = config.reasoningEnabled;
     }
 
     get contextSize(): number | null { return this.#contextSize; }
@@ -111,15 +108,18 @@ export default class OpenAICompatProvider implements Provider {
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
     #reasoningBody(): Record<string, unknown> {
+        const b = this.#reasoningBudget;   // 0 off, -1 adaptive, N>0 capped
+        const on = b !== 0;
         switch (this.#reasoningStyle) {
             // Native-channel styles. "template" ALWAYS emits — the explicit
             // enable_thinking:false is the only working off-switch on
-            // llama-server (§13).
-            case "template": return { chat_template_kwargs: { enable_thinking: this.#reasoningEnabled } };
-            case "think": return this.#reasoningEnabled ? { think: true } : {};
-            // Cloud/relay styles also gate on the budget magnitude (PLURNK_PROVIDERS_REASON_LEVEL).
-            case "include_reasoning": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { include_reasoning: true } : {};
-            case "effort": return this.#reasoningEnabled && this.#reasonBudget > 0 ? { reasoning_effort: effortFromBudget(this.#reasonBudget) } : {};
+            // llama-server (§13). The magnitude is irrelevant for native (on/off only).
+            case "template": return { chat_template_kwargs: { enable_thinking: on } };
+            case "think": return on ? { think: true } : {};
+            case "include_reasoning": return on ? { include_reasoning: true } : {};
+            // effort tiers from a capped budget; adaptive (-1) omits the field
+            // (lets the API pick its default depth); off (0) omits.
+            case "effort": return b > 0 ? { reasoning_effort: effortFromBudget(b) } : {};
             case "none": return {};
         }
     }
