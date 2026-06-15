@@ -84,4 +84,17 @@ describe("embeddings#1 — embedderInfo()", () => {
         assert.equal(info.maxTokens, 512);
         assert.equal(await info.countTokens("hello"), 5, "delegates to the embedder's counter");
     });
+
+    it("E4: surfaces the model id when the embedder declares it (#31)", async () => {
+        const info = await mk(fullEmbedder).embedderInfo();
+        assert.equal(info?.model, "fake@1", "model rides for deep_hash re-derivation");
+    });
+
+    it("E5: omits model when the embedder doesn't export one", async () => {
+        // A full chunking surface (maxTokens + countTokens) but no model id.
+        const { model: _drop, ...noModel } = fullEmbedder;
+        const info = await mk(noModel).embedderInfo();
+        assert.ok(info, "still non-null — model is independent of the chunking facts");
+        assert.equal("model" in info, false, "absent, not undefined");
+    });
 });

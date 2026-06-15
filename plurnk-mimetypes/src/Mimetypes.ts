@@ -52,6 +52,13 @@ interface Embedder {
 export interface EmbedderInfo {
     maxTokens: number;
     countTokens(text: string): Promise<number>;
+    // The embedder's model identity (#31) — the same string surfaced on
+    // ProcessResult.embeddingModel. The host folds it into each entry's
+    // deep_hash so a model-id change (a re-quantization like +q8, or a swap
+    // keeping the same window) re-derives existing embeddings instead of
+    // silently excluding them from ~query. Omitted if the embedder predates
+    // exporting it (host treats absence as "no re-derivation signal").
+    model?: string;
 }
 
 // Loader hook: how to resolve a handler package to its default-exported class.
@@ -447,8 +454,12 @@ export default class Mimetypes {
         if (!embedder || typeof embedder.maxTokens !== "number" || typeof embedder.countTokens !== "function") {
             return null;
         }
-        const { maxTokens, countTokens } = embedder;
-        return { maxTokens, countTokens: (text) => countTokens.call(embedder, text) };
+        const { maxTokens, countTokens, model } = embedder;
+        return {
+            maxTokens,
+            countTokens: (text) => countTokens.call(embedder, text),
+            ...(typeof model === "string" && { model }),
+        };
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
