@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) — hermetic, no runtime network.",
     "type": "module",
     "license": "MIT",

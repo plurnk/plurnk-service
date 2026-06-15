@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { dimension, embed } from "./index.js";
+import { readFileSync } from "node:fs";
+import { dimension, embed, model } from "./index.js";
 
 function toVector(bytes) {
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -18,6 +19,13 @@ function cosine(a, b) {
 describe("embedder duck surface", () => {
     it("dimension is 384", () => {
         assert.equal(dimension, 384);
+    });
+
+    it("model identity is derived from .model-pin and carries the quantization", () => {
+        // Guards against the hardcoded-literal regression: the identity MUST
+        // track the pinned revision and dtype, not a hand-synced string.
+        const pin = readFileSync(new URL(".model-pin", import.meta.url), "utf-8").trim();
+        assert.equal(model, `Xenova/all-MiniLM-L6-v2@${pin.slice(0, 8)}+q8`);
     });
 
     it("embed('hello') returns exactly 4 × dimension bytes owning its buffer", async () => {
