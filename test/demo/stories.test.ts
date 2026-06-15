@@ -86,6 +86,9 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     Yolo.attachYolo(engine, db);
     const sessionId = await insertSession(db, `demo-${opts.label}-${crypto.randomUUID()}`);
     await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: fixture.workspace });
+    // Register the seeded files as session members — File.read is membership-gated, so
+    // without this the model cannot read the very files each prompt asks about.
+    await fixture.addToCatalog(db, sessionId);
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, opts.prompt);
     await (db.engine_set_loop_flags as PrepMethod).run({

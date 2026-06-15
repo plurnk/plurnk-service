@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "0.27.0",
+    "version": "0.28.0",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
     "type": "module",
     "license": "MIT",
@@ -47,8 +47,8 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.6",
         "@plurnk/plurnk-execs-all": "0.1.5",
-        "@plurnk/plurnk-grammar": "0.41.0",
-        "@plurnk/plurnk-mimetypes": "0.15.14",
+        "@plurnk/plurnk-grammar": "0.44.0",
+        "@plurnk/plurnk-mimetypes": "0.15.15",
         "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@plurnk/plurnk-providers": "0.3.0",
         "@plurnk/plurnk-providers-all": "0.1.0",
@@ -76,7 +76,7 @@
         "@plurnk/plurnk-mimetypes-text-sparql": "0.2.2",
         "@plurnk/plurnk-mimetypes-text-sqlite": "0.3.3",
         "@plurnk/plurnk-mimetypes-text-swift": "0.1.2",
-        "@plurnk/plurnk-mimetypes-text-terraform": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-terraform": "1.0.4",
         "@plurnk/plurnk-mimetypes-text-tsql": "0.2.3",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
         "@tree-sitter-grammars/tree-sitter-lua": "^0.4.1",
