@@ -29,3 +29,35 @@ test("session.constrain / .constraints / .unconstrain round-trip over RPC (SPEC 
         }
     });
 });
+
+test("session.create({constraints}) seeds the overlay atomically — listed with no follow-up RPC (#200)", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", {
+                name: "constraint-seed-test",
+                constraints: [{ effect: "pick", glob: "docs/**" }, { effect: "view", glob: "vendor/**" }],
+            });
+            // Present from the start — no session.constrain round-trip needed.
+            const listed = await rpcCall(ws, 2, "session.constraints", {});
+            const got = (listed.result as { constraints: Array<{ effect: string; glob: string }> }).constraints;
+            assert.equal(got.length, 2, "both seeded constraints are present");
+            assert.deepEqual(
+                got.toSorted((a, b) => a.glob.localeCompare(b.glob)),
+                [{ effect: "pick", glob: "docs/**" }, { effect: "view", glob: "vendor/**" }],
+                "session.create's constraints land atomically with the session",
+            );
+        } finally { ws.close(); }
+    });
+});
+
+test("session.create rejects a malformed seeded constraint (#200)", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const bad = await rpcCall(ws, 1, "session.create", { name: "bad-seed", constraints: [{ effect: "bogus", glob: "x" }] });
+            assert.ok(bad.error, "an invalid seeded constraint surfaces as a JSON-RPC error, not a silent accept");
+            assert.match(bad.error!.message, /pick \| hide \| view/);
+        } finally { ws.close(); }
+    });
+});
