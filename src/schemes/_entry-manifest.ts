@@ -56,7 +56,7 @@ export default class EntryManifest {
             const isBody = r.channel === "body";
             let result: ProcessResult;
             if (isBody) {
-                const hash = createHash("sha256").update(r.content).digest("hex");
+                const hash = createHash("sha256").update(r.content).update("\0").update(EntrySemantic.deepConfigSignature(mimetypes)).digest("hex");
                 if (hash === r.deep_hash) {
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
                 } else {

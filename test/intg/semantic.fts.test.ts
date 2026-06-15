@@ -102,3 +102,37 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
     } finally { db.close(); }
 });
 
+test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a non-first chunk clears the floor", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `maxpool-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
+        // Both FTS-match "payment". doc.ts gets two chunks — first orthogonal to the
+        // query, second a PERFECT match (the passage truncation would hide). other.ts
+        // gets only an orthogonal chunk.
+        await new Known().edit(editStmt(url("doc.ts"), "alpha payment beta\nmore text here\nthe needle payment"), ctx);
+        await new Known().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
+        await EntryManifest.buildManifestBody(ctx);
+        const idOf = async (p: string): Promise<number> => {
+            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
+            assert.ok(e, `entry ${p} found`);
+            return e.id;
+        };
+        const doc = await idOf("/doc.ts");
+        const other = await idOf("/other.ts");
+        for (const id of [doc, other]) await (db.embedding_delete as PrepMethod).run({ entry_id: id });
+        await (db.embedding_set as PrepMethod).run({ entry_id: doc, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
+        await (db.embedding_set as PrepMethod).run({ entry_id: doc, chunk_seq: 1, line_start: 3, line_end: 3, vector: blob([1, 0, 0]), embedding_model: "m" });
+        await (db.embedding_set as PrepMethod).run({ entry_id: other, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
+
+        const r = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
+            fts_query: "payment", session_id: sessionId, scheme: "known",
+            query_vector: blob([1, 0, 0]), embedding_model: "m", threshold: 0.9, cap: -1,
+        });
+        assert.deepEqual(r.map((x) => x.pathname), ["/doc.ts"],
+            "doc clears the 0.9 floor via its second chunk (cosine 1) — its first chunk (0) alone would not; other (low-only) excluded");
+    } finally { db.close(); }
+});
+

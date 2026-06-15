@@ -58,7 +58,7 @@ export default class EntrySemantic {
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
-        const info = (mimetypes as { embedderInfo?: () => { maxTokens: number; countTokens: (t: string) => number } | null }).embedderInfo?.() ?? null;
+        const info = EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
             const totalLines = content.length === 0 ? 0 : content.split("\n").length;
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
@@ -95,6 +95,22 @@ export default class EntrySemantic {
         const v = Number(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP);
         if (!(v >= 0 && v < 1)) throw new Error(`PLURNK_SEMANTIC_CHUNK_OVERLAP must be in [0,1), got ${JSON.stringify(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP)}`);
         return v;
+    }
+
+    // The embedder capability surface (daughter window + tokenizer), probed through
+    // the Mimetypes handle. null until plurnk-mimetypes-embeddings#1 lands.
+    static #embedderInfo(mimetypes: Mimetypes): { maxTokens: number; countTokens: (text: string) => number } | null {
+        return (mimetypes as { embedderInfo?: () => { maxTokens: number; countTokens: (text: string) => number } | null }).embedderInfo?.() ?? null;
+    }
+
+    // Folded into the entry's deep_hash so a derivation re-runs when the EMBEDDING
+    // inputs change, not just content: installing/swapping the embedder (the window
+    // flips none→N, activating tiling) or sweeping the chunk knobs. Config is excluded
+    // while dormant — it can't affect a single whole-entry chunk.
+    static deepConfigSignature(mimetypes: Mimetypes): string {
+        const info = EntrySemantic.#embedderInfo(mimetypes);
+        if (info === null) return "embed:none";
+        return `embed:${info.maxTokens}:${EntrySemantic.#chunkTokens()}:${EntrySemantic.#chunkOverlap()}`;
     }
 
     // Build the FTS5 narrow from a ~query: OR the alphanumeric terms (a broad cut —
