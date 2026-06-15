@@ -7,8 +7,7 @@ import Ollama from "./Ollama.ts";
 const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_FETCH_TIMEOUT: "600000",
-    PLURNK_PROVIDERS_REASON_LEVEL: "0",
-    PLURNK_PROVIDERS_REASONING: "1",
+    PLURNK_PROVIDERS_REASONING_BUDGET: "0",
 });
 
 // Mock the /api/show probe. `payload` becomes the JSON body it returns.
@@ -30,7 +29,7 @@ test("fromEnv: throws when OLLAMA_BASE_URL is unset", async () => {
 
 test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASON_LEVEL: "0" }, "m"),
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "m"),
         /PLURNK_FETCH_TIMEOUT must be set/,
     );
 });
@@ -42,9 +41,9 @@ test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is non-numeric", async () => {
     );
 });
 
-test("fromEnv: throws when PLURNK_PROVIDERS_REASON_LEVEL is non-numeric", async () => {
+test("fromEnv: throws when PLURNK_PROVIDERS_REASONING_BUDGET is non-numeric", async () => {
     mockShow({ model_info: { "qwen35.context_length": 262144 } });
-    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_REASON_LEVEL: "lots" }, "m"), /PLURNK_PROVIDERS_REASON_LEVEL must be a non-negative integer/);
+    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_REASONING_BUDGET: "lots" }, "m"), /PLURNK_PROVIDERS_REASONING_BUDGET must be an integer >= -1/);
 });
 
 // — /api/show probe —
