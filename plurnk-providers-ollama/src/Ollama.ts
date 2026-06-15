@@ -7,7 +7,6 @@ import {
     OpenAICompatProvider,
     parseRequiredInt,
     reasoningBudgetFromEnv,
-    planFromEnv,
     providerSource,
     requireEnv,
     tokenizerFor,
@@ -45,7 +44,6 @@ export default class Ollama {
             reasoningStyle: "think",
             countTokens: tokenizerFor(tokenizerFamilyFor(family)),
             source: providerSource("ollama"),
-            plan: planFromEnv(env, "ollama"),
         });
     }
 }
