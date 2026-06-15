@@ -171,3 +171,13 @@ These migrate when the v1 namespaced ctx API lands (entries / channels / visibil
 | Spawning subprocesses (unless the scheme is specifically a subprocess scheme) |
 | Opening network connections (unless specifically a network scheme) |
 | Caching across op invocations (state in instance fields beyond config) |
+
+## §6 Discovery & registration (third-party)
+
+A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
+
+- **Declare** `plurnk.kind: "scheme"` and `plurnk.name: "<scheme>"` in `package.json`, and `export default` the handler class.
+- **Service scans scope-agnostically.** `SchemeRegistry.discoverExternal` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — registering every package with `plurnk.kind === "scheme"` by its declared `plurnk.name`. A third party publishes under their own scope and is found by the same scan; there is no first-party allow-list (plurnk-service#227). A name collision with an in-tree scheme fail-hards.
+- **The framework stays contract-only.** `@plurnk/plurnk-schemes` never depends on a scheme package — that would nest daughters under it and the top-level scan would miss them. Daughters peer-pin the framework (exact); it arrives transitively and is itself ignored by the scan (no `plurnk.kind`).
+- **`@plurnk/plurnk-schemes-all`** is the first-party convenience bundle: it deps the first-party siblings flat so one install surfaces them all. It is never a gate — operators install individual packages or third-party ones identically.
+- **Trust.** An operator can require host-level trust before a discovered plugin registers (`PLURNK_PLUGINS_TRUSTED_ONLY`, plurnk-service#229) — the scope-agnostic scan widens reach, the trust gate bounds it.
