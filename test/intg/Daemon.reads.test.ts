@@ -60,6 +60,41 @@ test("[§methods-entry-read] entry.read returns full entry shape (channels + tag
     });
 });
 
+test("entry.read channel+offset returns the incremental slice + full contentLength (#192)", async () => {
+    await withDaemon(async (_db, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "entry-read-offset" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///doc", content: "Hello, World", tags: [] });
+
+            // Full read now reports contentLength on every channel (the unit offset uses).
+            const full = await rpcCall(ws, 3, "entry.read", { target: "known:///doc" });
+            const fullCh = (full.result as { entry: { channels: Record<string, { content: string; contentLength: number }> } }).entry.channels.body;
+            assert.equal(fullCh.content, "Hello, World");
+            assert.equal(fullCh.contentLength, 12);
+
+            // Delta read: only the channel, content from the offset, full length back.
+            const delta = await rpcCall(ws, 4, "entry.read", { target: "known:///doc", channel: "body", offset: 7 });
+            const deltaResult = delta.result as { status: number; entry: { channels: Record<string, { content: string; contentLength: number }> } };
+            assert.equal(deltaResult.status, 200);
+            assert.equal(deltaResult.entry.channels.body.content, "World", "content is the slice from the offset");
+            assert.equal(deltaResult.entry.channels.body.contentLength, 12, "contentLength is the full length — the next poll reads from here");
+            assert.deepEqual(Object.keys(deltaResult.entry.channels), ["body"], "channel scopes the read to just that channel");
+
+            // offset 0 → whole channel; offset past the end → caught up (empty).
+            const whole = await rpcCall(ws, 5, "entry.read", { target: "known:///doc", channel: "body", offset: 0 });
+            assert.equal((whole.result as { entry: { channels: Record<string, { content: string }> } }).entry.channels.body.content, "Hello, World");
+            const past = await rpcCall(ws, 6, "entry.read", { target: "known:///doc", channel: "body", offset: 100 });
+            assert.equal((past.result as { entry: { channels: Record<string, { content: string }> } }).entry.channels.body.content, "");
+
+            // offset without channel is a contract violation (which channel to slice?).
+            const bad = await rpcCall(ws, 7, "entry.read", { target: "known:///doc", offset: 3 });
+            assert.ok(bad.error !== undefined, "offset without channel errors");
+            assert.match(bad.error!.message, /offset requires channel/);
+        } finally { ws.close(); }
+    });
+});
+
 test("entry.read returns 404 for missing entry", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
