@@ -46,11 +46,7 @@
   },
   "dependencies": {
     "@plurnk/plurnk-execs": "0.4.5",
-    "@plurnk/plurnk-execs-common": "0.2.1",
-    "@plurnk/plurnk-execs-git": "0.1.1",
-    "@plurnk/plurnk-execs-search": "0.2.3",
-    "@plurnk/plurnk-execs-sqlite": "0.1.4",
-    "@plurnk/plurnk-execs-wasm": "0.1.2",
+    "@plurnk/plurnk-execs-all": "0.1.5",
     "@plurnk/plurnk-grammar": "0.41.0",
     "@plurnk/plurnk-mimetypes": "0.15.9",
     "@plurnk/plurnk-mimetypes-embeddings": "0.1.0",
