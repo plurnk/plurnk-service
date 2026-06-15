@@ -292,3 +292,62 @@ describe("discover", () => {
         }
     });
 });
+
+describe("discover — scope-agnostic scan (issue #28)", () => {
+    it("finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-scan-"));
+        try {
+            const nm = path.join(root, "node_modules");
+            await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {
+                name: "@plurnk/plurnk-mimetypes-text-plain",
+                plurnk: { kind: "mimetype", handlers: [{ name: "text/plain", extensions: [".txt"] }] },
+            });
+            await makePackage(nm, "@acme/acme-mime-cobol", {
+                name: "@acme/acme-mime-cobol",
+                plurnk: { kind: "mimetype", handlers: [{ name: "text/x-cobol", extensions: [".cob"] }] },
+            });
+            await makePackage(nm, "mime-fortran", {
+                name: "mime-fortran",
+                plurnk: { kind: "mimetype", handlers: [{ name: "text/x-fortran", extensions: [".f90"] }] },
+            });
+            // Non-mimetype packages must be ignored.
+            await makePackage(nm, "@plurnk/plurnk-providers-openai", {
+                name: "@plurnk/plurnk-providers-openai", plurnk: { kind: "provider", name: "openai" },
+            });
+            await makePackage(nm, "left-pad", { name: "left-pad" });
+
+            const result = await discover({ cwd: root, includeTreeSitter: false });
+            assert.deepEqual(
+                [...result.handlers.keys()].sort(),
+                ["text/plain", "text/x-cobol", "text/x-fortran"],
+            );
+            assert.equal(result.handlers.get("text/x-cobol")?.packageName, "@acme/acme-mime-cobol");
+            assert.equal(result.handlers.get("text/x-fortran")?.packageName, "mime-fortran");
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("@plurnk wins a mimetype collision (a third party can't silently shadow the floor)", async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-prec-"));
+        try {
+            const nm = path.join(root, "node_modules");
+            await makePackage(nm, "@acme/acme-mime-html", {
+                name: "@acme/acme-mime-html",
+                plurnk: { kind: "mimetype", handlers: [{ name: "text/html", extensions: [".html"] }] },
+            });
+            await makePackage(nm, "@plurnk/plurnk-mimetypes-text-html", {
+                name: "@plurnk/plurnk-mimetypes-text-html",
+                plurnk: { kind: "mimetype", handlers: [{ name: "text/html", extensions: [".html"] }] },
+            });
+            const result = await discover({ cwd: root, includeTreeSitter: false });
+            assert.equal(
+                result.handlers.get("text/html")?.packageName,
+                "@plurnk/plurnk-mimetypes-text-html",
+                "first-party floor handler wins the collision",
+            );
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+});

@@ -11,8 +11,16 @@ import type {
 // Scan installed handler packages and build the registry that detect() consumes
 // and the orchestrator uses to instantiate handlers.
 //
-// Default scan target: `<cwd>/node_modules/@plurnk/`. Tests and unusual layouts
-// can pass `packageDirs` explicitly to skip the scan.
+// Scope-agnostic scan of `<cwd>/node_modules` (issue #28): every installed
+// package — unscoped (`name`) and under every scope (`@scope/name`) — keyed on
+// `plurnk.kind === "mimetype"`, NOT the `@plurnk` scope. This is the
+// third-party enabler: `@acme/acme-mime-foo` is discovered exactly like a
+// first-party handler, with zero involvement from us — matching the executor
+// discovery (`@plurnk/plurnk-execs`) the ecosystem standardized on. Trust is
+// not decided here: discover() is a dumb scanner that returns everything
+// installed; the host (plurnk-service) applies any trust policy to these
+// results (service#229). Tests and unusual layouts pass `packageDirs`
+// explicitly to skip the scan.
 //
 // A package is recognized as a handler when its `package.json` declares
 // `plurnk.kind === "mimetype"` and exposes one or more handler entries via
@@ -22,8 +30,9 @@ import type {
 // matched mimetype is what flows through to `ProcessResult.mimetype`.
 //
 // Conflicts (two packages claiming the same mimetype name or extension):
-// last-loaded wins. Plurnk's "one package = one coherent group of mimetypes"
-// discipline means conflicts indicate a real installation problem.
+// last-loaded wins, and `@plurnk` is scanned LAST so a first-party (floor)
+// handler wins a collision — a third party can ADD a new mimetype but cannot
+// silently shadow a floor handler by claiming its name.
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
 
@@ -85,17 +94,43 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     return { registry, handlers };
 }
 
+// Enumerate every installed package directory under `<cwd>/node_modules` —
+// unscoped (`name`) and scoped (`@scope/name`) alike. `@plurnk` packages are
+// returned LAST so first-party handlers win last-loaded collisions (see the
+// conflict note on discover()). Non-package entries (`.bin`, `.cache`,
+// dotfiles) are skipped. Failures (no node_modules) yield [].
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    const scope = path.join(cwd, "node_modules", "@plurnk");
-    let entries: { name: string; isDirectory(): boolean }[];
+    const nodeModules = path.join(cwd, "node_modules");
+    let top: { name: string; isDirectory(): boolean }[];
     try {
-        entries = await fs.readdir(scope, { withFileTypes: true });
+        top = await fs.readdir(nodeModules, { withFileTypes: true });
     } catch {
         return [];
     }
-    return entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => path.join(scope, entry.name));
+
+    const thirdParty: string[] = [];
+    const plurnk: string[] = [];
+    for (const entry of top) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        if (entry.name.startsWith("@")) {
+            const scopeDir = path.join(nodeModules, entry.name);
+            let scoped: { name: string; isDirectory(): boolean }[];
+            try {
+                scoped = await fs.readdir(scopeDir, { withFileTypes: true });
+            } catch {
+                continue;
+            }
+            const target = entry.name === "@plurnk" ? plurnk : thirdParty;
+            for (const s of scoped) {
+                if (s.isDirectory()) target.push(path.join(scopeDir, s.name));
+            }
+        } else {
+            thirdParty.push(path.join(nodeModules, entry.name));
+        }
+    }
+    thirdParty.sort();
+    plurnk.sort();
+    return [...thirdParty, ...plurnk];
 }
 
 // Produce one HandlerInfo per declared handler entry. Returns [] for
