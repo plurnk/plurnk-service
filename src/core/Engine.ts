@@ -20,6 +20,7 @@ import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./C
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import Paths from "../Paths.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
@@ -553,6 +554,16 @@ export default class Engine {
                 await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
                 cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
+            }
+
+            // PLURNK_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
+            // is still in flight, give it a tunable beat to land in THIS turn's packet
+            // before we assemble it. A fixed grace beat, never a wait-for-completion;
+            // 0/unset = off. Abortable with the loop signal.
+            const execWaitMs = Number(process.env.PLURNK_EXEC_WAIT_MS ?? "0");
+            if (execWaitMs > 0) {
+                const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+                if (execHandler?.hasActiveSpawns?.(runId) === true) await delay(execWaitMs, undefined, { signal });
             }
 
             const turn = await this.runTurn({
