@@ -207,22 +207,13 @@ test("generate fail-hards on a missing or empty runId", async () => {
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /runId is required/);
 });
 
-test("PLAN prefill (PLURNK_PLAN): seeds a <<PLAN: assistant turn when on, omits otherwise", async () => {
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, plan: true });
-    let calls = installFetch([{ choices: [{ delta: { content: "1. plan:PLAN" } }] }]);
-    const res = await on.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
-    const sent = JSON.parse(calls[0].init.body as string).messages;
-    assert.deepEqual(sent.at(-1), { role: "assistant", content: "<<PLAN:\n" });
-    // Streaming carries only generated tokens, so the prefill is absent from the
-    // assembled deltas; the provider reassembles its half into whole content.
-    assert.equal(res.assistant.content, "<<PLAN:\n1. plan:PLAN");
-
-    mock.restoreAll();
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 }); // plan default false
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    const offRes = await off.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
-    assert.equal(JSON.parse(calls[0].init.body as string).messages.length, 1); // no prefill appended
-    assert.equal(offRes.assistant.content, "x"); // content untouched when plan is off
+test("messages pass through verbatim — the provider injects no turn (PLAN prefill removed, #16)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
+    const input = [{ role: "user" as const, content: "hi" }];
+    const res = await p.generate({ runId: "r", messages: input });
+    assert.deepEqual(JSON.parse(calls[0].init.body as string).messages, input); // no extra assistant turn
+    assert.equal(res.assistant.content, "out"); // content returned verbatim
 });
 
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {

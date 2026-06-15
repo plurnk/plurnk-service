@@ -38,18 +38,3 @@ export const reasoningBudgetFromEnv = (env: NodeJS.ProcessEnv, label: string): n
     if (!Number.isInteger(n) || n < -1) throw new Error(`${label} provider: ${name} must be an integer >= -1 (0 off, -1 adaptive, N capped) (got "${raw}")`);
     return n;
 };
-
-// The PLAN forcing function (PLURNK_PLAN, REQUIRED 0/1). When on, the provider
-// prefills the assistant turn with the plurnk `<<PLAN:` op so the model reasons
-// in-DSL before acting — reliable in-band reasoning that coexists with a strict
-// grammar (the un-prefilled op fires inconsistently: live 0/3 unprompted, 3/3
-// prefilled). This IS plurnk's provider family, so it owns the plurnk-specific
-// prefill string AND its backend-aware delivery (continuation on llama-server,
-// ignored by OpenAI, stripped by Anthropic which 400s on it).
-export const planFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
-    const name = "PLURNK_PLAN";
-    const raw = env[name];
-    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
-    if (raw !== "0" && raw !== "1") throw new Error(`${label} provider: ${name} must be "0" or "1" (got "${raw}")`);
-    return raw === "1";
-};

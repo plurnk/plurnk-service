@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv, planFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_FETCH_TIMEOUT", "openai"), 600000);
@@ -27,13 +27,6 @@ test("parseOptionalInt: absent → null, present → integer", () => {
 test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
-});
-
-test("planFromEnv: required 0/1 flag for the PLAN prefill", () => {
-    assert.equal(planFromEnv({ PLURNK_PLAN: "1" }, "openai"), true);
-    assert.equal(planFromEnv({ PLURNK_PLAN: "0" }, "openai"), false);
-    assert.throws(() => planFromEnv({}, "openai"), /PLURNK_PLAN must be set/);
-    assert.throws(() => planFromEnv({ PLURNK_PLAN: "yes" }, "openai"), /must be "0" or "1"/);
 });
 
 test("reasoningBudgetFromEnv: 0 off, -1 adaptive, N capped; required; rejects < -1 and non-int", () => {

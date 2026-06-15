@@ -46,13 +46,7 @@ export type OpenAICompatConfig = {
     // 0 off, -1 adaptive, N capped. The provider maps it to the backend's
     // mechanism via reasoningStyle.
     reasoningBudget: number;
-    plan?: boolean;                            // PLURNK_PLAN — prefill the <<PLAN: op (in-DSL reasoning); default false
 };
-
-// The plurnk PLAN forcing prefill. This is @plurnk/plurnk-providers — it knows
-// the plurnk DSL op that induces in-band reasoning. (The SPEC §2 ban is on
-// PARSING model output, not on knowing plurnk for request construction.)
-const PLAN_PREFILL = "<<PLAN:\n";
 
 // Sampling guard under an active grammar (SPEC §13): greedy decoding under
 // hard constraint masks degenerates into repetition loops at the server
@@ -90,7 +84,6 @@ export default class OpenAICompatProvider implements Provider {
     #supportsGrammar: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
-    #plan: boolean;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -106,7 +99,6 @@ export default class OpenAICompatProvider implements Provider {
         this.#supportsGrammar = config.supportsGrammar ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
-        this.#plan = config.plan ?? false;
     }
 
     get contextSize(): number | null { return this.#contextSize; }
@@ -171,18 +163,9 @@ export default class OpenAICompatProvider implements Provider {
         const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
         const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
-        // PLAN forcing (PLURNK_PLAN): seed the assistant turn with the plurnk
-        // <<PLAN: op so the model reasons in-DSL before acting. llama-server
-        // continues from a trailing assistant turn; OpenAI ignores it. (A
-        // backend that 400s on assistant prefill — modern Anthropic — needs a
-        // provider that strips it; that's the Anthropic sibling's job, not here.)
-        const wireMessages = this.#plan
-            ? [...messages, { role: "assistant" as const, content: PLAN_PREFILL }]
-            : messages;
-
         const body: Record<string, unknown> = {
             model: this.#model,
-            messages: wireMessages,
+            messages,
             ...this.#reasoningBody(),
             ...this.#grammarBody(grammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
@@ -200,14 +183,9 @@ export default class OpenAICompatProvider implements Provider {
             throw toProviderError(err, this.#source);
         }
 
-        // We prefilled the assistant turn with PLAN_PREFILL to steer the model.
-        // The response is streamed, and SSE deltas carry only generated tokens —
-        // the prefill is prompt, never streamed back — so reassemble our half.
-        const content = this.#plan ? PLAN_PREFILL + raw.content : raw.content;
-
         return {
             assistant: {
-                content,
+                content: raw.content,
                 reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
                 usage: normalizeUsage(raw.usage),
                 finishReason: normalizeFinishReason(raw.finish_reason),

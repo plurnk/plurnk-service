@@ -28,7 +28,7 @@ export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompa
 export type { OpenAICompatConfig, ReasoningStyle } from "./OpenAICompat.ts";
 export { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse } from "./openaiStream.ts";
-export { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv, planFromEnv } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 export { tokenizerFor, tokenizerByPublisher, parseTokenizerFamily } from "./tokenizers.ts";
 export type { TokenizerFamily, CountTokens } from "./tokenizers.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
