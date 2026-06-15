@@ -12,6 +12,9 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
@@ -21,6 +24,7 @@ interface ExecAttrs {
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec:///<pathname> (e.g. exec:///sh/1/1/2)
     inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
+    schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -37,6 +41,15 @@ const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
         return target.pathname;
     }
     return null;
+};
+
+// #201 — a plurnk-scheme target (known/exec/log/…), distinct from file/local
+// (which cwdFromTarget handles as a path). Its content is resolved at apply-time;
+// executors stay scheme-blind (SPEC §5), so the scheme — not the executor — reads it.
+const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; pathname: string; fragment: string | null } | null => {
+    if (target === null || target.kind !== "url") return null;
+    if (target.scheme === null || target.scheme === "file") return null;
+    return { scheme: target.scheme, pathname: target.pathname, fragment: target.fragment };
 };
 
 // EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
@@ -116,13 +129,11 @@ export default class Exec {
     // The model READs that entry on a subsequent turn to see what happened.
     async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
-        if (command.length === 0) {
-            return { status: 400, error: "EXEC requires a command body" };
-        }
-        if (statement.target !== null) {
-            if (statement.target.kind === "url" && statement.target.scheme !== null && statement.target.scheme !== "file") {
-                return { status: 400, error: `EXEC cwd must be a local path or file:/// URL; got ${statement.target.scheme}://` };
-            }
+        // #201 — a plurnk-scheme target carries content the scheme resolves at
+        // apply-time; an empty body is then legal (the target IS the script).
+        const schemeTarget = schemeTargetOf(statement.target);
+        if (command.length === 0 && schemeTarget === null) {
+            return { status: 400, error: "EXEC requires a command body (or a scheme target to run)" };
         }
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
@@ -154,7 +165,7 @@ export default class Exec {
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.
-        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "", inline: policy === "auto" };
+        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "", inline: policy === "auto", ...(schemeTarget !== null ? { schemeTarget } : {}) };
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
@@ -166,15 +177,37 @@ export default class Exec {
         ctx: PlurnkSchemeContext,
     ): Promise<{ status: number; outcome?: string; body?: string }> {
         const attrs = args.attrs as Partial<ExecAttrs>;
-        const command = attrs.command;
+        let command = typeof attrs.command === "string" ? attrs.command : "";
         const pathname = attrs.pathname;
         const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
-        const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
-        if (typeof command !== "string" || command.length === 0) {
-            return { status: 500, outcome: "missing_command" };
-        }
+        let cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         if (typeof pathname !== "string" || pathname.length === 0) {
             return { status: 500, outcome: "missing_pathname" };
+        }
+
+        // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
+        // Empty body → the resolved content IS the command (run a stored script).
+        // Non-empty body → materialize the content to a temp file whose path becomes
+        // the runtime-interpreted cwd (the data source for filters/sqlite/wasm).
+        let tempPath: string | null = null;
+        if (attrs.schemeTarget !== undefined) {
+            const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
+            const read = await EntryCrud.readEntry(tPath, ctx, scheme);
+            if (read.entry === null) return { status: 404, outcome: "scheme_target_not_found" };
+            const channels = read.entry.channels;
+            const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
+            const content = channelName === undefined ? undefined : channels[channelName]?.content;
+            if (content === undefined) return { status: 404, outcome: "scheme_target_channel_not_found" };
+            if (command.length === 0) {
+                command = content;
+            } else {
+                tempPath = join(tmpdir(), `plurnk-exec-${ctx.sessionId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
+                await writeFile(tempPath, content, "utf8");
+                cwd = tempPath;
+            }
+        }
+        if (command.length === 0) {
+            return { status: 500, outcome: "missing_command" };
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
@@ -218,7 +251,7 @@ export default class Exec {
             executor: resolved.executor,
             runtime, command, cwd, ctx, pathname,
             entryId, subscriptionId, signal: controller.signal,
-            inline: attrs.inline === true,
+            inline: attrs.inline === true, tempPath,
         });
 
         // read/pure (inline): await the run + return its output in the EXEC
@@ -250,9 +283,9 @@ export default class Exec {
         executor: Executor;
         runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
-        inline: boolean;
+        inline: boolean; tempPath: string | null;
     }): Promise<number> {
-        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, inline } = opts;
+        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, inline, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
         let queue: Promise<void> = Promise.resolve();
@@ -293,6 +326,9 @@ export default class Exec {
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
+            // #201 — a materialized data-source temp file outlives the spawn it fed;
+            // unlink it once the run settles (open-unlink is safe on Linux).
+            if (tempPath !== null) await unlink(tempPath).catch(() => {});
             this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);

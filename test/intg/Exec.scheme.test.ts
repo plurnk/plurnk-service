@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, seedEntryWithChannel } from "./_helpers.ts";
 
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -55,6 +55,38 @@ test("EXEC: empty body → 400 (no command)", async () => {
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
+    });
+});
+
+test("EXEC[sh](known:///script) empty body → resolves the scheme content as the command (#201)", async () => {
+    await withSession(async (ctx) => {
+        // A stored script lives at known:///script; running it runs its content.
+        await seedEntryWithChannel(ctx.db, { sessionId: ctx.sessionId, scheme: "known", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
+
+        const statement: ExecStatement = {
+            op: "EXEC", suffix: "", signal: "sh",
+            target: { kind: "url", raw: "known:///script", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/script", params: {}, fragment: null },
+            lineMarker: null, body: "", position: { line: 1, column: 1 },
+        };
+
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200, "empty body + scheme target is accepted, not 400");
+        await ctx.exec.idle();
+
+        const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname });
+        assert.ok(entryRow, "exec entry exists");
+        const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
+        assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script's content was resolved into the command and run");
     });
 });
 
