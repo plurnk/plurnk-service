@@ -76,3 +76,23 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
         assert.equal(exec.hasActiveSpawns(runId), false, "the killed spawn must be drained");
     } finally { await db.close(); }
 });
+
+test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)", async () => {
+    const db = await openMigrated();
+    try {
+        const registry = new SchemeRegistry();
+        const engine = new Engine({ db, schemes: registry });
+        engine.setExecutors(await testExecutors());
+        const sessionId = await insertSession(db, `exec-kill-404-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "kill 404 test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        // No spawn was ever stamped at this coordinate — exec is model-writable
+        // (no 403 confound), so kill() resolves the closed-subscription lookup to 404.
+        const r = await engine.dispatch({
+            statement: killExec("/sh/9/9/9"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(r.status, 404, "KILL on a coordinate that was never spawned is 404");
+    } finally { await db.close(); }
+});
