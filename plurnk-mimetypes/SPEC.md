@@ -610,6 +610,11 @@ Query conventions:
 
 A language participates in the service's graph only when its conformance suite is green.
 
+**Tier 2 authoring (out-of-registry tree-sitter handlers, issue #26).** A handler package that brings its own WASM grammar implements `references()` through the same engine via two `TreeSitterExtractor` affordances, so it never reimplements the priming dance:
+- `loadParser()` calls `this.setQueryContext(language, QueryCtor)` after `Language.load()` — it owns the WASM path, so it is the only place holding the `Language` and the web-tree-sitter `Query` constructor.
+- `references()` is one call to `this.collectRefs(content, querySource, extractDefs, wrap?)`, which owns parse → compile-and-cache query → run `collectReferences` against `extractDefs`'s symbols → cleanup, plus the shared error policy (`GrammarNotInstalledError` propagates for the #14 degrade; parse/query failures → empty channel). The in-registry `TreeSitterLanguageHandler` uses the identical helper — one priming implementation.
+- A language needing **match-level composition** the engine's flat `captures()` can't express (HCL names defs `TYPE.NAME`) passes `wrap` to adapt the raw compiled query, and composes the qualified name into a `RefsCaptureNode` (`{text, startPosition, endPosition}` — the exact, blessed surface the engine reads off a capture, so no cast through `TreeSitterNode`).
+
 ## 17. Embedding channel (framework v0.15.x, issue #24)
 
 The `embedding` channel is the per-entry vector supply for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension), **scalar per entry**. The service stores the bytes verbatim as a sqlite BLOB and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: an entry's body and a `~query`'s query text ride the identical path.
