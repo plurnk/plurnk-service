@@ -99,6 +99,8 @@ Multi-handler example (one package serving variants of the same content type):
 
 `discover()` scans **all of `node_modules`** — unscoped packages and every `@scope/*` — for `plurnk.kind === "mimetype"` (issue #28), so a third-party handler (`@acme/acme-mime-foo`) is discovered exactly like a first-party one, matching the executor discovery the ecosystem standardized on. `discover()` is a trust-agnostic scanner; the host (plurnk-service) applies any trust policy to its results. Last-loaded wins on mimetype/extension conflicts, and `@plurnk` is scanned last so a first-party (floor) handler wins a collision — a third party can add a new mimetype but cannot silently shadow the floor.
 
+**Trust gate (issue #29 / plurnk-service#229).** `discover()` reads `PLURNK_PLUGINS_TRUSTED_ONLY` — the ecosystem-wide host plugin posture, the same env var all four discovery surfaces honor. unset / empty / `0` → off (every discovered handler registers; default, no regression). A value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`"@acme/acme-mime-foo, mime-bar"`); setting it to `1` (no real package) means "on with zero third-party." An untrusted package is discovered-but-not-registered — skipped, never a crash.
+
 ### 2.1 Mimetype naming convention
 
 The family follows a single resolution order. Authors of new handlers MUST consult these sources in order:

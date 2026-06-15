@@ -351,3 +351,74 @@ describe("discover — scope-agnostic scan (issue #28)", () => {
         }
     });
 });
+
+describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY (issue #29)", () => {
+    async function buildNm(root: string) {
+        const nm = path.join(root, "node_modules");
+        await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {
+            name: "@plurnk/plurnk-mimetypes-text-plain",
+            plurnk: { kind: "mimetype", handlers: [{ name: "text/plain", extensions: [".txt"] }] },
+        });
+        await makePackage(nm, "@acme/acme-mime-cobol", {
+            name: "@acme/acme-mime-cobol",
+            plurnk: { kind: "mimetype", handlers: [{ name: "text/x-cobol", extensions: [".cob"] }] },
+        });
+        await makePackage(nm, "mime-fortran", {
+            name: "mime-fortran",
+            plurnk: { kind: "mimetype", handlers: [{ name: "text/x-fortran", extensions: [".f90"] }] },
+        });
+        return root;
+    }
+
+    it("gate OFF (unset/empty/0) registers every discovered handler", async () => {
+        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-off-")));
+        try {
+            for (const env of [{}, { PLURNK_PLUGINS_TRUSTED_ONLY: "" }, { PLURNK_PLUGINS_TRUSTED_ONLY: "0" }]) {
+                const r = await discover({ cwd: root, includeTreeSitter: false, env });
+                assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol", "text/x-fortran"]);
+            }
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("gate ON keeps @plurnk + allowlisted, skips the rest", async () => {
+        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-on-")));
+        try {
+            const r = await discover({
+                cwd: root, includeTreeSitter: false,
+                env: { PLURNK_PLUGINS_TRUSTED_ONLY: "@acme/acme-mime-cobol" },
+            });
+            // @plurnk always trusted; @acme listed; mime-fortran skipped.
+            assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol"]);
+            assert.equal(r.handlers.has("text/x-fortran"), false, "unlisted third-party skipped");
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("gate ON with a non-package value (\"1\") = @plurnk only, zero third-party", async () => {
+        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-1-")));
+        try {
+            const r = await discover({
+                cwd: root, includeTreeSitter: false,
+                env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
+            });
+            assert.deepEqual([...r.handlers.keys()], ["text/plain"]);
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("does not crash on an untrusted package — it is silently unregistered", async () => {
+        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-nocrash-")));
+        try {
+            await assert.doesNotReject(discover({
+                cwd: root, includeTreeSitter: false,
+                env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
+            }));
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
+});

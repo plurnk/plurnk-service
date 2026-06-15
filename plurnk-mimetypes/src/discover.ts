@@ -35,6 +35,7 @@ import type {
 // silently shadow a floor handler by claiming its name.
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
+    const isTrusted = trustPredicate(options.env ?? process.env);
 
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
@@ -43,6 +44,11 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     for (const dir of dirs) {
         const infos = await readHandlerInfos(dir);
         for (const info of infos) {
+            // Plugin trust gate (#29): an untrusted package is
+            // discovered-but-not-registered. Skip silently — surfacing the
+            // skip (telemetry) is the host's concern; discover() must never
+            // crash on an untrusted package.
+            if (!isTrusted(info.packageName)) continue;
             handlers.set(info.mimetype, info);
             for (const entry of info.extensions) {
                 if (entry.startsWith(".")) {
@@ -99,6 +105,22 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
 // returned LAST so first-party handlers win last-loaded collisions (see the
 // conflict note on discover()). Non-package entries (`.bin`, `.cache`,
 // dotfiles) are skipped. Failures (no node_modules) yield [].
+// Plugin trust gate (issue #29 / plurnk-service#229). Reads
+// PLURNK_PLUGINS_TRUSTED_ONLY into a per-package trust predicate, shared
+// semantics across all four discovery surfaces:
+//   unset / "" / "0"  → gate OFF — everything installed is trusted.
+//   any other value   → gate ON — `@plurnk/*` always trusted, plus a
+//                        comma-separated allowlist of additionally-trusted
+//                        package names. (Setting it to "1", which names no
+//                        real package, is "on with zero third-party".)
+function trustPredicate(env: Record<string, string | undefined>): (packageName: string) => boolean {
+    const raw = env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    const value = raw?.trim() ?? "";
+    if (value === "" || value === "0") return () => true;
+    const allow = new Set(value.split(",").map((s) => s.trim()).filter((s) => s.length > 0));
+    return (packageName) => packageName.startsWith("@plurnk/") || allow.has(packageName);
+}
+
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
     const nodeModules = path.join(cwd, "node_modules");
     let top: { name: string; isDirectory(): boolean }[];

@@ -121,6 +121,12 @@ export interface DiscoverOptions {
     // (only @plurnk handler discovery, no tree-sitter defaults) pass
     // false. Production code should leave it default.
     includeTreeSitter?: boolean;
+    // Environment for the plugin trust gate (issue #29 / plurnk-service#229).
+    // Defaults to process.env. discover() reads PLURNK_PLUGINS_TRUSTED_ONLY:
+    // unset/empty/"0" → gate off (every discovered handler registers);
+    // a value → gate on, @plurnk/* always trusted plus a comma-separated
+    // allowlist of additionally-trusted package names. Injectable for tests.
+    env?: Record<string, string | undefined>;
 }
 
 // Body matcher dialects, dispatched by leading-prefix from plurnk-grammar's
