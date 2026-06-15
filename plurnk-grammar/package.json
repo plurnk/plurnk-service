@@ -19,7 +19,8 @@
     "./plurnk.gbnf": "./dist/plurnk.gbnf",
     "./plurnk-strict.gbnf": "./dist/plurnk-strict.gbnf",
     "./plurnk-closed.gbnf": "./dist/plurnk-closed.gbnf",
-    "./plurnk-free.gbnf": "./dist/plurnk-free.gbnf"
+    "./plurnk-free.gbnf": "./dist/plurnk-free.gbnf",
+    "./plurnk-plan.gbnf": "./dist/plurnk-plan.gbnf"
   },
   "bin": {
     "plurnk": "./bin/plurnk.js"

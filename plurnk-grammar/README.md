@@ -202,6 +202,7 @@ Four generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars
 - **`plurnk-free.gbnf`** — free text and statements interleave with `<<` escapable to text: an opener-lookalike that never completes a real keyword stays inert text. The permissive fallback if the hard commit bites.
 - **`plurnk-closed.gbnf`** — free-style text, but the turn must close with a final pathless `SEND[102]`/`SEND[200]` (forced EOS). For models that ramble past optional stopping points.
 - **`plurnk-strict.gbnf`** — ops only, bounded newline separators. The tightest rail, for models that don't reason.
+- **`plurnk-plan.gbnf`** — exactly `plurnk-strict`, but the turn must open with a `<<PLAN:` op: forces a reasoning step before any action.
 
 The parser remains the permissive contract — everything any of the three can generate, the parser accepts (interstatement text surfaces as `kind: "text"` items).
 

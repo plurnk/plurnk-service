@@ -126,6 +126,7 @@ export const buildModel = (): GModel => {
     const opAlts: GRule = [];
     const sendMidAlts: GRule = [];
     const sendFinalAlts: GRule = [];
+    const planAlts: GRule = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -159,6 +160,7 @@ export const buildModel = (): GModel => {
                 model.set(name, [[lit(open), opt(ref("tags")), ref("target"), opt(ref("line")), ...body]]);
             }
             if (op !== "SEND") opAlts.push([ref(name)]);
+            if (op === "PLAN") planAlts.push([ref(name)]);
         }
     }
 
@@ -212,6 +214,12 @@ export const buildModel = (): GModel => {
     model.set("root-strict", [[opt(lit("\n")), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
     model.set("batch-step", [[ref("mid-statement"), lit("\n"), opt(lit("\n"))]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
+    // root-plan (plurnk-plan.gbnf): exactly root-strict, but the turn MUST open
+    // with a PLAN op — force a reasoning step before any action, then proceed
+    // strict (ops only, newline-separated, closed by the final status SEND).
+    model.set("root-plan", [[opt(lit("\n")), ref("plan-batch-step"), star(ref("batch-step")), ref("send-final-any"), opt(lit("\n"))]]);
+    model.set("plan-batch-step", [[ref("plan-statement"), lit("\n"), opt(lit("\n"))]]);
+    model.set("plan-statement", planAlts);
     model.set("op-statement", opAlts);
     model.set("send-mid-any", sendMidAlts);
     model.set("send-final-any", sendFinalAlts);
@@ -331,5 +339,6 @@ if (import.meta.main) {
     await writeFile("dist/plurnk-free.gbnf", serializeGbnf(model, "root-open"));
     await writeFile("dist/plurnk-closed.gbnf", serializeGbnf(model, "root-closed"));
     await writeFile("dist/plurnk-strict.gbnf", serializeGbnf(model, "root-strict"));
-    process.stderr.write("Generated dist/plurnk.gbnf (commit) + plurnk-free.gbnf + plurnk-closed.gbnf + plurnk-strict.gbnf\n");
+    await writeFile("dist/plurnk-plan.gbnf", serializeGbnf(model, "root-plan"));
+    process.stderr.write("Generated dist/plurnk.gbnf (commit) + plurnk-free.gbnf + plurnk-closed.gbnf + plurnk-strict.gbnf + plurnk-plan.gbnf\n");
 }

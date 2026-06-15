@@ -408,6 +408,21 @@ test("GBNF: decimal line markers derive — insert-between, threshold, mixed", (
     assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
 });
 
+test("GBNF: plan root — strict, but the turn must open with a PLAN", () => {
+    // PLAN-led, ops in the middle, closed by the status SEND.
+    assert.equal(derives("root-plan", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
+    // Bare minimum: PLAN then the closing SEND.
+    assert.equal(derives("root-plan", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), true);
+    // Must start with PLAN — an op-first turn is rejected.
+    assert.equal(derives("root-plan", "<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), false);
+    // Must start with PLAN — a SEND-only turn is rejected.
+    assert.equal(derives("root-plan", "<<SEND[200]:done:SEND"), false);
+    // Still strict: no free text between ops.
+    assert.equal(derives("root-plan", "<<PLAN:think:PLAN\nstray prose\n<<SEND[200]:x:SEND"), false);
+    // Still SEND-closed: PLAN alone is not a turn.
+    assert.equal(derives("root-plan", "<<PLAN:think:PLAN"), false);
+});
+
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
     const text = serializeGbnf(model, "root-open");
     assert.match(text, /^root ::= root-open$/m);
