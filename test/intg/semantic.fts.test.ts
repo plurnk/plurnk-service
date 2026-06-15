@@ -9,6 +9,8 @@ import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -133,6 +135,37 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/doc.ts"],
             "doc clears the 0.9 floor via its second chunk (cosine 1) — its first chunk (0) alone would not; other (low-only) excluded");
+    } finally { db.close(); }
+});
+
+test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store → max-pool rank finds an entry via a deep chunk", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `e2e-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        // Controlled embedder: a small window + word tokenizer to force tiling, and a
+        // deterministic vector "near" the query ONLY for the chunk holding the concept.
+        // (The fast tier declines the real model; real-model ~query is covered in
+        // semantic.test.ts — this asserts the chunked CHAIN: derive → store → rank.)
+        const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
+        const vec = (t: string) => new Uint8Array(new Float32Array(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]).buffer);
+        const embedder = {
+            process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
+            embedderInfo: () => ({ maxTokens: 30, countTokens: wc }),
+        } as unknown as Mimetypes;
+        // Filler, then a distinctive late line → the concept lands in a NON-first chunk.
+        const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
+            "\nchloroplasts drive photosynthesis in green plants";
+        await new Known().edit(editStmt(url("bio.md"), content), ctx);
+        const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: "/bio.md" });
+        assert.ok(e);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(embedder, content, "text/markdown", [], undefined, undefined);
+        assert.ok(chunks.length > 1, `the body tiled into multiple chunks (got ${chunks.length})`);
+        await EntrySemantic.indexFts(db, e.id, content);
+        await EntrySemantic.indexEmbedding(db, e.id, chunks, model);
+        const r = await EntrySemantic.rankSemantic(db, sessionId, "known", embedder, "photosynthesis chloroplasts", { first: 5, last: null });
+        assert.ok(r.pathnames.includes("/bio.md"), "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
     } finally { db.close(); }
 });
 
