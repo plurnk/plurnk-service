@@ -64,6 +64,7 @@ test("wake-on-completion: dormant run → daemon opens a new loop with the summa
             const concluded = concludedEvents() as Array<{
                 scheme: string; target: string; closeStatus: number; summary: string;
                 wakeAction: string; wakeLoopId?: number;
+                loop_seq?: number; turn_seq?: number; sequence?: number;
             }>;
             assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
             const wake = concluded.find((c) => c.scheme === "exec");
@@ -74,6 +75,13 @@ test("wake-on-completion: dormant run → daemon opens a new loop with the summa
                 "summary references the executor-domain exec:///<runtime>/<loop>/<turn>/<seq> path");
             assert.equal(wake.wakeAction, "opened-loop", "daemon opened a new loop because the original ended first");
             assert.ok(typeof wake.wakeLoopId === "number", "wakeLoopId is reported");
+
+            // #224 — the coordinate the waterfall TUI used to parse out of the
+            // exec URI is now explicit fields; assert they agree with the URI.
+            const seg = wake.target.replace(/^exec:\/\/\//, "").split("/");  // [runtime, loop, turn, seq]
+            assert.equal(wake.loop_seq, Number(seg[1]), "stream/concluded carries loop_seq as a field matching the URI (#224)");
+            assert.equal(wake.turn_seq, Number(seg[2]), "carries turn_seq");
+            assert.equal(wake.sequence, Number(seg[3]), "carries sequence");
 
             // Wake-opened loop terminated too (mock's second response was SEND[200]).
             const terminated = terminatedEvents() as Array<{ loopId: number; finalStatus: number }>;

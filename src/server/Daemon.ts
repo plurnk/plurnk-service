@@ -295,6 +295,9 @@ export default class Daemon {
                 channel: "string — the channel name",
                 state: "string — current state (static, active, closed, errored)",
                 contentLength: "number — current length of the channel's content",
+                loop_seq: "number? — the entry's loop coordinate (#224); present for coordinate-bearing streams (exec), so clients read it instead of parsing the URI",
+                turn_seq: "number? — the entry's turn coordinate",
+                sequence: "number? — the entry's sequence coordinate",
             },
         });
         this.#registry.registerNotification("telemetry/event", {
@@ -315,6 +318,9 @@ export default class Daemon {
                 summary: "string — one-liner the model gets as a wake prompt",
                 wakeAction: "string — 'no-op-active-loop' | 'opened-loop' | 'skipped-aborted' | 'skipped-no-provider'",
                 wakeLoopId: "number? — the loop that was opened (only when wakeAction='opened-loop')",
+                loop_seq: "number? — the entry's loop coordinate (#224); present for coordinate-bearing streams (exec), so clients read it instead of parsing the URI",
+                turn_seq: "number? — the entry's turn coordinate",
+                sequence: "number? — the entry's sequence coordinate",
             },
         });
     }

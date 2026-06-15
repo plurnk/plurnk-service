@@ -114,3 +114,30 @@ test("stream/event is session-scoped — other sessions don't see it", async () 
         } finally { wsA.close(); wsB.close(); }
     });
 });
+
+test("appendToChannel + setChannelState forward the entry coordinate onto stream/event (#224)", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "coord-test" });
+            const sessionId = (sessionResp.result as { id: number }).id;
+            const captured = subscribeNotifications(ws, "stream/event");
+            const entryId = await seedEntryWithChannel(db, { sessionId, content: "hi", state: "active" });
+
+            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+                daemon.notifyStreamEvent(sid, ev);
+            const coordinate = { loop_seq: 1, turn_seq: 2, sequence: 3 };
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify, coordinate });
+            await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify, coordinate });
+            await flush();
+
+            const events = captured() as Array<{ loop_seq?: number; turn_seq?: number; sequence?: number }>;
+            assert.equal(events.length, 2);
+            for (const ev of events) {
+                assert.equal(ev.loop_seq, 1, "stream/event carries the coordinate as fields, not buried in the URI (#224)");
+                assert.equal(ev.turn_seq, 2);
+                assert.equal(ev.sequence, 3);
+            }
+        } finally { ws.close(); }
+    });
+});

@@ -10,7 +10,7 @@ import EntryFind from "./_entry-find.ts";
 import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import ChannelWrite from "../core/ChannelWrite.ts";
+import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
@@ -37,6 +37,20 @@ const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
         return target.pathname;
     }
     return null;
+};
+
+// EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
+// Engine.#writeLog). Exec owns this convention, so it — not the client — turns
+// the pathname into the entry's coordinate, mirrored onto stream payloads so
+// waterfall clients read fields instead of parsing the URI (#224). The
+// coordinate is the trailing three segments (runtime-agnostic); a pathname that
+// isn't a numeric triple yields undefined (no coordinate on the wire).
+const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined => {
+    const seg = pathname.split("/").filter(Boolean);
+    if (seg.length < 3) return undefined;
+    const [loop_seq, turn_seq, sequence] = seg.slice(-3).map(Number);
+    if (![loop_seq, turn_seq, sequence].every(Number.isInteger)) return undefined;
+    return { loop_seq, turn_seq, sequence };
 };
 
 export default class Exec {
@@ -240,6 +254,7 @@ export default class Exec {
     }): Promise<number> {
         const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, inline } = opts;
         const db = ctx.db;
+        const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
         let queue: Promise<void> = Promise.resolve();
         const enqueue = (op: () => Promise<void>): void => {
             queue = queue.then(op, op);
@@ -253,10 +268,10 @@ export default class Exec {
                 runtime, command, cwd, signal,
                 env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
                 write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
-                    entryId, channel, chunk, notify: ctx.streamEventNotify,
+                    entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,
                 })),
                 setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
-                    entryId, channel, state, notify: ctx.streamEventNotify,
+                    entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                 })),
                 emit: (event) => {
                     ctx.pushTelemetry?.(event);
@@ -290,6 +305,7 @@ export default class Exec {
                     entryId, target: `exec://${pathname}`, subscriptionId, closeStatus,
                     scheme: "exec",
                     summary: `exec://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
+                    ...coordinate,
                 });
             }
         }

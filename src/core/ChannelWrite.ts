@@ -10,12 +10,25 @@ import type { Db, PrepMethod } from "./Db.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
+// The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
+// so clients read it as fields instead of re-parsing the exec URI's trailing
+// segments (#224). The owning scheme supplies it — it owns its pathname shape;
+// absent on streams that carry no coordinate.
+export interface StreamCoordinate {
+    loop_seq: number;
+    turn_seq: number;
+    sequence: number;
+}
+
 export interface StreamEventPayload {
     entryId: number;
     target: string;                // the entry's URI (`scheme://pathname`) — so clients route without an entryId→URI lookup (#179)
     channel: string;
     state: ChannelState;
     contentLength: number;
+    loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
+    turn_seq?: number;
+    sequence?: number;
 }
 
 export type StreamEventNotify = (sessionId: number, event: StreamEventPayload) => void;
@@ -35,6 +48,9 @@ export interface WakeRunPayload {
     closeStatus: number;          // 200 (clean) | 500 (error) | 499 (aborted)
     scheme: string;                // the scheme that owned the subscription
     summary: string;               // model-facing one-liner: "exec:///x completed (exit 0); stdout=N bytes, stderr=M bytes"
+    loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
+    turn_seq?: number;
+    sequence?: number;
 }
 
 export type WakeRunNotify = (payload: WakeRunPayload) => void;
@@ -78,26 +94,26 @@ export default class ChannelWrite {
 
     static async appendToChannel(
         db: Db,
-        { entryId, channel, chunk, notify }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify },
+        { entryId, channel, chunk, notify, coordinate }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
     ): Promise<void> {
         const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
         if (result.changes === 0) return;
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, ...coordinate });
     }
 
     static async setChannelState(
         db: Db,
-        { entryId, channel, state, notify }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify },
+        { entryId, channel, state, notify, coordinate }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
     ): Promise<void> {
         const result = await ChannelWrite.#stateStmt(db).run({ state, entry_id: entryId, channel });
         if (result.changes === 0) return;
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, ...coordinate });
     }
 
     static async openSubscription(
