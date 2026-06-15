@@ -8,24 +8,14 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
-// Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*`
-// siblings and registers their handlers — same lookup the runtime uses
-// in production. Tests exercise the same dispatch surface real callers do.
-// Exported for tests that build PlurnkSchemeContext directly (File.read,
-// SEND, Engine tests) instead of going through `makeSchemeCtx`.
-//
-// One deliberate divergence from production: this DEFAULT loader DECLINES the
-// embeddings daughter, so tests that don't touch semantics don't load the 16 MB
-// all-MiniLM model (a requested `embedding` channel degrades to empty bytes). A
-// per-default convenience, NOT a carve-out that excludes semantics from intg:
-// ~query has full integration coverage in test/intg/semantic.test.ts, which builds
-// its OWN embeddings-enabled Mimetypes (the model load is ~200ms — a non-issue).
-const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
-export const DEFAULT_MIMETYPES = new Mimetypes({
-    loader: (pkg) => pkg === EMBEDDINGS_PACKAGE
-        ? Promise.reject(new Error(`${EMBEDDINGS_PACKAGE} declined in the fast test tier`))
-        : import(pkg),
-});
+// Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
+// and registers their handlers — the SAME lookup the runtime uses in production,
+// INCLUDING the embeddings daughter. So intg exercises the real semantic path —
+// deriveEmbeddings tiling + the embedding channel — on every manifest build, not a
+// degraded stand-in. The harness must not diverge from production by omitting a
+// feature: that omission is exactly what hid the chunk-mimetype crash. Exported for
+// tests that build PlurnkSchemeContext directly (File.read, SEND, Engine tests).
+export const DEFAULT_MIMETYPES = new Mimetypes();
 
 // Test helper: build a PlurnkSchemeContext with sensible defaults. Override
 // any field via the argument. Tests that don't exercise db ops can omit it

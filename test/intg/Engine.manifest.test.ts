@@ -91,6 +91,34 @@ test("manifest build survives a malformed application/json entry — degrades to
     } finally { await db.close(); }
 });
 
+test("a JSON entry large enough to tile builds through the live embedder — the every-run crash, end-to-end", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `manifest-jsontile-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "what's available?");
+
+        // A VALID JSON document large enough to exceed the embedder window, so it tiles —
+        // and each tile is an invalid JSON fragment. With the embedder live in
+        // DEFAULT_MIMETYPES, the manifest build's deriveEmbeddings runs the tile+embed path:
+        // the exact code that crashed every run, exercised end-to-end against the real model.
+        const big = JSON.stringify(Object.fromEntries(
+            Array.from({ length: 80 }, (_, i) => [`key_${i}`, `value number ${i} with several descriptive words here`]),
+        ), null, 2);
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/big.json", channel: "body", content: big, mimetype: "application/json" });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" }))?.id;
+        assert.notEqual(entryId, undefined, "the manifest materialized — the tiled JSON entry did not crash the turn");
+        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
+        const catalog = JSON.parse(body?.content ?? "[]") as CatalogItem[];
+        assert.ok(catalog.some((e) => e.path === "known:///big.json"), "the large JSON entry is listed in the catalog");
+    } finally { await db.close(); }
+});
+
 test("[#21] manifest stamps live seconds= on an active stream, absent for static entries", async () => {
     const db = await openMigrated();
     try {
