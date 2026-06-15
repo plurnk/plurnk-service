@@ -1849,6 +1849,7 @@ export default class Engine {
         return { status: 200 };
     }
 
+    // Same- and cross-scheme COPY share one orchestrator — §copy-cross-scheme-copy §move-cross-scheme-move
     async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
         statement: PlurnkStatement;
         srcPath: ParsedPath;

@@ -85,7 +85,7 @@ export default class Matcher {
                     ({ deepXml } = await mimetypes.process({ content, hint: mimetype }, { channels: ["deepXml"] }));
                 }
             } catch (err) {
-                // The SOURCE couldn't be parsed for its mimetype → 203 soft fallback:
+                // The SOURCE couldn't be parsed for its mimetype (§matcher-dispatch-203-soft-fallback) → 203 soft fallback:
                 // hand back the raw bytes as text so the model can regex/visual-parse.
                 return {
                     status: 203,

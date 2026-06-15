@@ -7,6 +7,7 @@ import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
+// §channels-channels-append-only: channels are content stores keyed by (entry_id, name)
 export interface EntryData {
     channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
     tags: string[];

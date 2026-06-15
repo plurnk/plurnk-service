@@ -100,7 +100,7 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
-WHERE e.scope = 'session' AND e.session_id = $session_id
+WHERE e.scope = 'session' AND e.session_id = $session_id -- §machine-processes-one-filesystem: entries are session-scoped, shared across runs
 ORDER BY e.scheme, e.pathname, ec.name;
 
 -- PREP: engine_run_prior_turn_time
@@ -203,7 +203,7 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
-WHERE le.run_id = $run_id
+WHERE le.run_id = $run_id -- §actor-boundary-isolation §machine-processes-run-is-its-log: the packet renders exactly one run's log
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
 ORDER BY l.sequence, t.sequence, le.sequence;
 
