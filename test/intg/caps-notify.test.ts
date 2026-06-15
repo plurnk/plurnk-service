@@ -14,6 +14,13 @@ import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertSession, makeSchemeCtx } from "./_helpers.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
+// Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
+// SqlRite worker, which serializes every test's queries under load, so the wait must be
+// measured in real time, not in event-loop turns (a turn count exhausts while queued).
+const waitUntil = async (cond: () => boolean, timeoutMs = 10000): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (!cond() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 5));
+};
 
 test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no notifier → no event", async () => {
     const db = await openMigrated();
@@ -26,9 +33,9 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
 
         await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } }, tags: [] });
 
-        // positive — poll until the best-effort async emit lands
+        // positive — wait (wall-clock) until the best-effort async emit lands
         notify.streamEvent("/stream.md", "body", "active", 42);
-        for (let i = 0; i < 500 && captured.length < 1; i++) await tick();
+        await waitUntil(() => captured.length >= 1);
         assert.equal(captured.length, 1);
         assert.equal(captured[0].sid, sessionId);
         assert.equal(captured[0].payload.channel, "body");

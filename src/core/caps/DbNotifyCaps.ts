@@ -25,7 +25,10 @@ export default class DbNotifyCaps implements NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void {
         const notify = this.#ctx.streamEventNotify;
         if (notify === undefined) return;
-        void this.#emit(notify, pathname, channel, state, contentLength);
+        // Advisory best-effort emit (sync contract, async entryId lookup): a resolve/notify
+        // failure — e.g. the db closing under a late emit — is silently no-event per the cap
+        // contract, never an unhandled rejection on the fire-and-forget.
+        this.#emit(notify, pathname, channel, state, contentLength).catch(() => {});
     }
 
     async #emit(notify: StreamEventNotify, pathname: string, channel: string, state: ChannelState, contentLength: number): Promise<void> {
