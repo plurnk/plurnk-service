@@ -78,8 +78,6 @@ const readManifestItems = (): number | null => {
     return n < 0 ? -1 : n;
 };
 
-type Origin = "model" | "client" | "plurnk" | "plugin";
-
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
@@ -134,7 +132,7 @@ type DispatchContext = {
     loopId: number;
     turnId: number;
     sequence: number;
-    origin: Origin;
+    origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
 };
 
@@ -505,7 +503,7 @@ export default class Engine {
         maxStrikes?: number;
         minCycles?: number;
         maxCyclePeriod?: number;
-        origin?: Origin;
+        origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "external" | null }> {
@@ -634,7 +632,7 @@ export default class Engine {
         persona?: string;
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
-        origin?: Origin;
+        origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         // Position in the surrounding loop. Used to build per-turn LLM
@@ -1341,7 +1339,7 @@ export default class Engine {
         const schemeCtx: PlurnkSchemeContext = {
             db: this.#db,
             sessionId, runId, loopId, turnId,
-            writer: origin as WriterTier,
+            writer: origin,
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
@@ -1666,7 +1664,7 @@ export default class Engine {
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
     // - Schemes without a manifest are not gated (legacy / future allowance).
-    #checkWritable(statement: PlurnkStatement, origin: Origin): DispatchResult | null {
+    #checkWritable(statement: PlurnkStatement, origin: WriterTier): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
 
@@ -1695,13 +1693,13 @@ export default class Engine {
         return this.#denyIfDisallowed(target, origin);
     }
 
-    #denyIfDisallowed(schemeName: string | null, origin: Origin): DispatchResult | null {
+    #denyIfDisallowed(schemeName: string | null, origin: WriterTier): DispatchResult | null {
         if (schemeName === null) return null;
         const handler = this.#schemes.get(schemeName);
         if (handler === undefined) return null;
         const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
         if (manifest === undefined) return null;
-        if (manifest.writableBy.includes(origin as WriterTier)) return null;
+        if (manifest.writableBy.includes(origin)) return null;
         return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` };
     }
 
@@ -1944,7 +1942,7 @@ export default class Engine {
         statement, result, runId, loopId, turnId, sequence, origin,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        runId: number; loopId: number; turnId: number; sequence: number; origin: Origin;
+        runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
     }): Promise<number> {
         const target = this.#extractTarget(statement.target);
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
