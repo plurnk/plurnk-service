@@ -139,7 +139,7 @@ export default class Exec {
         const requested = typeof statement.signal === "string" ? statement.signal : "";
         const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
-        const resolved = ctx.executors.entry(runtime);
+        const resolved = ctx.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
         if (resolved === undefined) {
             return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${ctx.executors.availableRuntimes().join(", ")}` };
         }
@@ -150,7 +150,7 @@ export default class Exec {
         const cwdFromOp = cwdFromTarget(statement.target);
         // Effect on the RAW target (pre-cwd-default) decides the lifecycle:
         // host → propose, read/pure → auto-run inline (plurnk-service#182).
-        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));
+        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));  // pure/read auto-run inline — §exec-readpure-inline
         // Default cwd to the session's project_root so EXEC runs in the
         // same directory File scheme writes to. Without this default, the
         // model creates a file via EDIT (lands in project_root) and then
@@ -169,7 +169,7 @@ export default class Exec {
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
-        return { status: 202, body: preview, attrs };
+        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — §exec-host-proposes
     }
 
     async applyResolution(

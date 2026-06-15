@@ -88,7 +88,7 @@ export default class EntryOps {
             return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
         }
 
-        const body = statement.body ?? "";
+        const body = statement.body ?? "";  // null clears — §edit-null-clears
 
         // Read current content unconditionally for diff generation (M.12 —
         // surface diff in EDIT response so wrong-marker mistakes are visible).
@@ -130,7 +130,7 @@ export default class EntryOps {
                 );
                 addsTag = signalTags.some((t) => !have.has(t));
             }
-            if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };
+            if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };  // §edit-noop-304
         }
 
         let entryId: number;
@@ -157,7 +157,7 @@ export default class EntryOps {
             }
         }
 
-        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };
+        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };  // §edit-status-201-200
     }
 
     static async readSessionEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {
@@ -177,7 +177,7 @@ export default class EntryOps {
         const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
             session_id: sessionId, scheme, pathname, channel: targetChannel,
         });
-        if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
+        if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };  // §read-read-404
 
         if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
             return { status: 415, content: null, mimetype: row.mimetype, channel: targetChannel };

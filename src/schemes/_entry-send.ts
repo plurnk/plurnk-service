@@ -65,6 +65,6 @@ export default class EntrySend {
             return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
         }
 
-        return { status: 501, error: `entry scheme does not interpret SEND status ${status}` };
+        return { status: 501, error: `entry scheme does not interpret SEND status ${status}` }; // §send-dispatch-entry-schemes-501-on-non-410
     }
 }

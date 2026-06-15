@@ -885,7 +885,7 @@ export default class Engine {
             usage_prompt: usage.prompt,
             usage_completion: usage.completion,
             usage_cached: usage.cached,
-            usage_cost_pico: provider.costFor(usage),
+            usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
             finish_reason: finishReason,
             model,
         });
@@ -1068,7 +1068,7 @@ export default class Engine {
         // form — wire-payload tokens may differ slightly because chat-
         // template scaffolding adds bytes, but the subtotal tracks "what
         // the model has to process" closely enough for budget diagnostics.
-        const countTokens = (t: string): number => provider.countTokens(t);
+        const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
         // Budget readout (SPEC.md §tokenomics). Two-pass: measure the wire-rendered
         // index/log sections (budget-independent), install the readout with a
         // tokensFree placeholder, measure the assembled total, resolve free,
@@ -1865,7 +1865,7 @@ export default class Engine {
         const dstPathname = pathnameFromPath(dstPath);
 
         const srcResult = await srcHandler.readEntry(srcPathname, ctx);
-        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };
+        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404
         const entry = srcResult.entry;
 
         // Destination read — the conflict/no-op verdict is deferred until the
@@ -1920,8 +1920,8 @@ export default class Engine {
             const sameContent = writeNames.length === dstNames.length
                 && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
             const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
-            if (sameContent && sameTags) return { status: 304 };
-            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };
+            if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
+            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };  // §copy-conflict-409
         }
 
         const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);

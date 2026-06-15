@@ -73,7 +73,7 @@ export default class EntryManifest {
                         const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
                         if (wantGraph) {
                             try {
-                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] });
+                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] }); // §mimetype-methods-process-entry-point
                                 await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                             } catch {
                                 result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
