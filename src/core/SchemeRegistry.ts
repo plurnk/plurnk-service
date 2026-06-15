@@ -6,6 +6,7 @@ import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
+import PluginTrust from "./plugin-trust.ts";
 import type { LoopFlags } from "./types.ts";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -55,6 +56,12 @@ export default class SchemeRegistry {
             const plurnk = pkg.plurnk;
             if (plurnk?.kind !== "scheme" || typeof plurnk.name !== "string" || plurnk.name === "") continue;
             if (typeof pkg.name !== "string") continue;
+            // #229 — trust gate: an untrusted third-party scheme is discovered but
+            // NOT registered (skipped with a note, never crashed).
+            if (!PluginTrust.isTrusted(pkg.name)) {
+                console.warn(`scheme discovery: '${pkg.name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+                continue;
+            }
             // Idempotent + in-tree precedence: a name already registered (a
             // built-in, or a re-scan) is left as-is rather than fail-harding on
             // re-register. Discovery must be safe to call again.
