@@ -112,3 +112,46 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
     assert.deepEqual([...registry.keys()].sort(), ["cobol", "fortran", "sh"]);
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
 });
+
+// --- PLURNK_PLUGINS_TRUSTED_ONLY host trust gate (plurnk-service#229) ---
+
+// Run fn with the gate env set to `value` (undefined = unset), restoring after
+// so tests don't leak the gate into one another.
+const withGate = async (value: string | undefined, fn: () => Promise<void>): Promise<void> => {
+    const prev = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    if (value === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = value;
+    try { await fn(); } finally {
+        if (prev === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = prev;
+    }
+};
+
+test("trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
+    const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [{ name: "sh" }] } });
+    const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
+    await withGate("1", async () => {
+        const { registry, skipped } = await discover({ packageDirs: [plurnk, acme] });
+        assert.deepEqual([...registry.keys()], ["sh"], "@plurnk registers; the untrusted third-party does not");
+        assert.deepEqual(skipped, ["@acme/acme-execs-cobol"], "the untrusted package is reported as skipped");
+    });
+});
+
+test("trust gate ON with an allowlist: a named third-party package is trusted", async () => {
+    const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
+    const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
+    await withGate("@acme/acme-execs-cobol", async () => {
+        const { registry, skipped } = await discover({ packageDirs: [cobol, fortran] });
+        assert.deepEqual([...registry.keys()], ["cobol"], "the allowlisted package registers");
+        assert.deepEqual(skipped, ["execs-fortran"], "the non-allowlisted third-party is skipped");
+    });
+});
+
+test('trust gate OFF ("0"): every installed package loads, nothing skipped', async () => {
+    const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
+    await withGate("0", async () => {
+        const { registry, skipped } = await discover({ packageDirs: [acme] });
+        assert.deepEqual([...registry.keys()], ["cobol"], "gate off → third-party loads (no regression)");
+        assert.deepEqual(skipped, [], "nothing skipped when the gate is off");
+    });
+});

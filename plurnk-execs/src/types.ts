@@ -109,6 +109,11 @@ export type ExecRegistry = ReadonlyMap<string, ExecInfo>;
 
 export interface Discovery {
     registry: ExecRegistry;
+    // Installed exec packages skipped by the PLURNK_PLUGINS_TRUSTED_ONLY trust
+    // gate (untrusted third-party): discovered but NOT registered. discover()
+    // never crashes on an untrusted package — it returns them here so the
+    // consumer can emit a telemetry note (discover() has no sink of its own).
+    skipped: string[];
 }
 
 export interface DiscoverOptions {

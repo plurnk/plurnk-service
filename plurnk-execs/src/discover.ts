@@ -10,6 +10,11 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
 // explicitly to skip the scan.
 //
+// The PLURNK_PLUGINS_TRUSTED_ONLY gate (plurnk-service#229; see `isTrusted`)
+// filters the scope-agnostic scan: when on, an untrusted third-party package is
+// discovered but not registered, returned in `Discovery.skipped` for the
+// consumer to note. Off by default — no regression.
+//
 // A package is recognized as an executor when its `package.json` declares
 // `plurnk.kind === "exec"` and exposes one or more runtime tags via
 // `plurnk.runtimes: { name, glyph?, example? }[]` (SPEC §3). Each entry
@@ -26,8 +31,16 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
 
     const registry = new Map<string, ExecInfo>();
+    const skipped = new Set<string>();
     for (const dir of dirs) {
         for (const info of await readExecInfos(dir)) {
+            // Host plugin-trust gate (plurnk-service#229): an untrusted
+            // third-party package is discovered but not registered — recorded
+            // for the consumer's telemetry note, never crashed on.
+            if (!isTrusted(info.packageName)) {
+                skipped.add(info.packageName);
+                continue;
+            }
             const existing = registry.get(info.runtime);
             if (existing !== undefined) {
                 throw new Error(
@@ -39,7 +52,23 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         }
     }
 
-    return { registry };
+    return { registry, skipped: [...skipped].sort() };
+}
+
+// Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME env
+// var plurnk-service decides once and every scope-agnostic discovery surface
+// enforces (plurnk-service#229). Mirrors plurnk-service's PluginTrust.isTrusted
+// (we can't import across the package boundary, so the ~5-line policy is
+// duplicated, not shared):
+//   unset / "" / "0" → OFF: every installed package trusted (no regression).
+//   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
+//                           allowlist of additionally-trusted package names;
+//                           "1" (naming no real package) = on, zero third-party.
+function isTrusted(packageName: string): boolean {
+    const gate = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    if (gate === undefined || gate === "" || gate === "0") return true;
+    if (packageName.startsWith("@plurnk/")) return true;
+    return gate.split(",").map((s) => s.trim()).includes(packageName);
 }
 
 // Enumerate every installed package directory — scoped (`@scope/name`) and
