@@ -74,10 +74,18 @@ export default class EntryManifest {
                         await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                     }
                     // The other two deep channels: re-index the body into entry_fts
-                    // (~semantic's keyword half) and store the embedding vector + model
+                    // (~semantic's keyword half) and store the embedding vector(s) + model
                     // (the vector half). Empty/binary/degraded → cleared, not stored.
                     await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                    await EntrySemantic.indexEmbedding(db, r.entry_id, result.embedding, result.embeddingModel);
+                    // Project Semantics substrate: store the whole-body embedding as a
+                    // SINGLE chunk spanning line 1..totalLines (today's behavior, now in
+                    // the chunked schema). The capability-gated tiler replaces this one
+                    // chunk with N once the embedder reports its tokenizer — no schema change.
+                    const totalLines = r.content.length === 0 ? 0 : r.content.split("\n").length;
+                    const embChunks = result.embedding !== undefined && result.embedding.byteLength > 0 && totalLines > 0
+                        ? [{ lineStart: 1, lineEnd: totalLines, vector: result.embedding }]
+                        : [];
+                    await EntrySemantic.indexEmbedding(db, r.entry_id, embChunks, result.embeddingModel);
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 }
             } else {

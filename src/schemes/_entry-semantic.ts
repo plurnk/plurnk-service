@@ -31,11 +31,16 @@ export default class EntrySemantic {
     // Store an entry's embedding vector + the model that produced it, or clear the
     // row (binary/empty entry, or a degraded `embeddingMissing` projection). Called
     // from the gated manifest-add hook beside indexFts / the symbol index.
-    static async indexEmbedding(db: Db, entryId: number, embedding: Uint8Array | undefined, model: string | undefined): Promise<void> {
-        if (embedding !== undefined && model !== undefined) {
-            await (db.embedding_set as PrepMethod).run({ entry_id: entryId, vector: embedding, embedding_model: model });
-        } else {
-            await (db.embedding_delete as PrepMethod).run({ entry_id: entryId });
+    static async indexEmbedding(db: Db, entryId: number, chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[], model: string | undefined): Promise<void> {
+        // Re-derivation = clear all of the entry's chunk rows, then insert each in seq
+        // order. No model (no embedder installed) or no chunks → just cleared.
+        await (db.embedding_delete as PrepMethod).run({ entry_id: entryId });
+        if (model === undefined) return;
+        for (const [seq, c] of chunks.entries()) {
+            await (db.embedding_set as PrepMethod).run({
+                entry_id: entryId, chunk_seq: seq, line_start: c.lineStart, line_end: c.lineEnd,
+                vector: c.vector, embedding_model: model,
+            });
         }
     }
 
@@ -54,7 +59,7 @@ export default class EntrySemantic {
         const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
         // No embedder installed → the channel degrades to empty bytes (not undefined);
         // an empty query vector can't rank, so surface 501 rather than a false 200.
-        if (r.embedding === undefined || r.embedding.byteLength === 0) return { status: 501, pathnames: [] };
+        if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) return { status: 501, pathnames: [] };
         const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
         if (ftsQuery.length === 0) return { status: 200, pathnames: [] };
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
@@ -64,14 +69,14 @@ export default class EntrySemantic {
         const { first, last } = marker;
         if (Number.isInteger(first)) {
             const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
-                fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, k: first,
+                fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
             });
             return { status: 200, pathnames: rows.map((x) => x.pathname) };
         }
         if (first <= 0 || first >= 1) return { status: 416, pathnames: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
         const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
-            fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, threshold: first, cap,
+            fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
         });
         return { status: 200, pathnames: rows.map((x) => x.pathname) };
     }

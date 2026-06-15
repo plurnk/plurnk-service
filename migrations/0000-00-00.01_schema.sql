@@ -190,18 +190,25 @@ CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_
 -- hook alongside symbol_defs/refs: re-indexed only when body content changes.
 CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 
--- INIT: entry_embeddings (~semantic vector half — plurnk-service#186)
--- One Float32 vector per entry (scalar-shaped), stored as a BLOB the cosine()
--- SqlRite function reads. Supplied by the mimetypes `embedding` projection at the
--- gated manifest-add hook (mimetypes#23); the fusion (semantic_rank) cosine-ranks
--- the FTS-narrowed candidates over these. CASCADE-deleted with the entry.
+-- INIT: entry_embeddings (~semantic vector half — plurnk-service#186; Project
+-- Semantics chunking). One Float32 vector per CHUNK: an entry tiles into N chunks,
+-- each addressed by its <L> line range (line_start..line_end) and embedded
+-- separately, so a large body is fully searchable instead of truncated at the
+-- embedder's window. line_start/line_end are stored for Project Findings to expose;
+-- the rank currently max-pools an entry's chunks to its pathname. Supplied at the
+-- gated manifest-add hook; the fusion (semantic_rank) FTS-narrows then cosine-ranks
+-- these. CASCADE-deleted with the entry.
 CREATE TABLE IF NOT EXISTS entry_embeddings (
-    entry_id        INTEGER NOT NULL PRIMARY KEY,
+    entry_id        INTEGER NOT NULL,
+    chunk_seq       INTEGER NOT NULL,
+    line_start      INTEGER NOT NULL,
+    line_end        INTEGER NOT NULL,
     vector          BLOB    NOT NULL,
-    -- The model id that produced this vector (mimetypes' `embeddingModel`, e.g.
-    -- "Xenova/all-MiniLM-L6-v2@751bff37"). Stored per row as the staleness detector:
-    -- a future model swap re-embeds rows whose model differs from the current one.
+    -- The model id that produced this vector (mimetypes' `embeddingModel`). Stored
+    -- per row as the dimension/staleness guard: rank filters by the current model so
+    -- a swap never cosine-compares mismatched dimensions.
     embedding_model TEXT    NOT NULL,
+    PRIMARY KEY (entry_id, chunk_seq),
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 

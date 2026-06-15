@@ -9,12 +9,14 @@ DELETE FROM entry_fts WHERE rowid = $entry_id;
 INSERT INTO entry_fts (rowid, content) VALUES ($entry_id, $content);
 
 -- PREP: embedding_set
--- Upsert an entry's embedding vector + the model that produced it (one per entry),
--- supplied by the mimetypes `embedding` projection at the gated manifest-add hook.
-INSERT INTO entry_embeddings (entry_id, vector, embedding_model) VALUES ($entry_id, $vector, $embedding_model)
-ON CONFLICT(entry_id) DO UPDATE SET vector = excluded.vector, embedding_model = excluded.embedding_model;
+-- Insert ONE chunk's vector + its <L> extent + the model. The caller clears the
+-- entry's rows (embedding_delete) first and inserts each chunk in seq order, so no
+-- upsert is needed — a re-derivation is delete-all then insert-each.
+INSERT INTO entry_embeddings (entry_id, chunk_seq, line_start, line_end, vector, embedding_model)
+VALUES ($entry_id, $chunk_seq, $line_start, $line_end, $vector, $embedding_model);
 
 -- PREP: embedding_delete
+-- Clears ALL of an entry's chunk rows (the re-derivation reset).
 DELETE FROM entry_embeddings WHERE entry_id = $entry_id;
 
 -- PREP: semantic_rank
@@ -22,14 +24,17 @@ DELETE FROM entry_embeddings WHERE entry_id = $entry_id;
 -- narrowed candidates over the query embedding ($query_vector), top-K. Scheme-scoped
 -- like every dialect. FTS does the scale-cut; cosine the precise rank — so a high-
 -- cosine entry that doesn't match the keyword is correctly excluded by the narrow.
+-- Many chunk rows per entry now → GROUP BY entry and rank by the entry's BEST chunk
+-- (max-pool). embedding_model filter keeps cosine within one model's dimensions.
 SELECT e.pathname
 FROM entry_fts f
 JOIN entries e ON e.id = f.rowid
-JOIN entry_embeddings em ON em.entry_id = e.id
+JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
 WHERE f.content MATCH $fts_query
   AND e.session_id = $session_id
   AND e.scheme IS $scheme
-ORDER BY cosine(em.vector, $query_vector) DESC
+GROUP BY e.id
+ORDER BY MAX(cosine(em.vector, $query_vector)) DESC
 LIMIT $k;
 
 -- PREP: semantic_rank_threshold
@@ -39,10 +44,11 @@ LIMIT $k;
 SELECT e.pathname
 FROM entry_fts f
 JOIN entries e ON e.id = f.rowid
-JOIN entry_embeddings em ON em.entry_id = e.id
+JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
 WHERE f.content MATCH $fts_query
   AND e.session_id = $session_id
   AND e.scheme IS $scheme
-  AND cosine(em.vector, $query_vector) >= $threshold
-ORDER BY cosine(em.vector, $query_vector) DESC
+GROUP BY e.id
+HAVING MAX(cosine(em.vector, $query_vector)) >= $threshold
+ORDER BY MAX(cosine(em.vector, $query_vector)) DESC
 LIMIT $cap;

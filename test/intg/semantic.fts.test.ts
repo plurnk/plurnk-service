@@ -87,12 +87,15 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         for (const [p, , v] of ENTRIES) {
             const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
             assert.ok(e);
-            await (db.embedding_set as PrepMethod).run({ entry_id: e.id, vector: blob(v), embedding_model: "test-model" });
+            // buildManifestBody stored a real one-chunk embedding; clear it and seed
+            // the deterministic test vector as the entry's single chunk.
+            await (db.embedding_delete as PrepMethod).run({ entry_id: e.id });
+            await (db.embedding_set as PrepMethod).run({ entry_id: e.id, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob(v), embedding_model: "test-model" });
         }
 
         const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
             fts_query: "payment", session_id: sessionId, scheme: "known",
-            query_vector: blob([1, 0, 0]), k: 2,
+            query_vector: blob([1, 0, 0]), embedding_model: "test-model", k: 2,
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/pay1.ts", "/pay2.ts"],
             "FTS narrows to payment entries; cosine ranks them; auth (perfect cosine, no keyword) excluded by the narrow");
