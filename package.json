@@ -48,7 +48,7 @@
         "@plurnk/plurnk-execs": "0.4.6",
         "@plurnk/plurnk-execs-all": "0.1.5",
         "@plurnk/plurnk-grammar": "0.41.0",
-        "@plurnk/plurnk-mimetypes": "0.15.13",
+        "@plurnk/plurnk-mimetypes": "0.15.14",
         "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@plurnk/plurnk-providers": "0.3.0",
         "@plurnk/plurnk-providers-all": "0.1.0",
