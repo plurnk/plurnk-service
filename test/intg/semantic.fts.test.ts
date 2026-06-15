@@ -160,7 +160,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         await new Known().edit(editStmt(url("bio.md"), content), ctx);
         const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: "/bio.md" });
         assert.ok(e);
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(embedder, content, "text/markdown", [], undefined, undefined);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(embedder, content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `the body tiled into multiple chunks (got ${chunks.length})`);
         await EntrySemantic.indexFts(db, e.id, content);
         await EntrySemantic.indexEmbedding(db, e.id, chunks, model);
@@ -187,7 +187,7 @@ test("[#semantic-json-tile] deriveEmbeddings embeds a tiled entry's chunks as te
     } as unknown as Mimetypes;
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
-    const { chunks } = await EntrySemantic.deriveEmbeddings(embedder, json, "application/json", [], undefined, undefined);
+    const { chunks } = await EntrySemantic.deriveEmbeddings(embedder, json, [], undefined, undefined);
     assert.ok(chunks.length > 1, `the JSON body tiled into multiple chunks (got ${chunks.length})`);
     assert.ok(hints.length > 0 && hints.every((h) => h === "text/plain"), `every chunk embeds as text/plain, not the entry mimetype; got ${JSON.stringify([...new Set(hints)])}`);
 });

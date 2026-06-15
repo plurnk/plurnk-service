@@ -20,7 +20,7 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
     process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.example default
     try {
         const content = Array.from({ length: 40 }, (_, i) => `line ${i} alpha beta gamma`).join("\n"); // ~200 words
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(capable, content, "text/markdown", [], undefined, undefined);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(capable, content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `tiled into multiple chunks (got ${chunks.length})`);
         assert.equal(model, "stub@1");
         const covered = new Set<number>();
@@ -35,12 +35,12 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
 
 test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry chunk from the fallback vector", async () => {
     const fallback = new Uint8Array(new Float32Array([1, 2, 3]).buffer);
-    const { chunks, model } = await EntrySemantic.deriveEmbeddings(dormant, "a\nb\nc", "text/markdown", [], fallback, "real@1");
+    const { chunks, model } = await EntrySemantic.deriveEmbeddings(dormant, "a\nb\nc", [], fallback, "real@1");
     assert.equal(chunks.length, 1, "one whole-entry chunk");
     assert.deepEqual({ s: chunks[0].lineStart, e: chunks[0].lineEnd }, { s: 1, e: 3 });
     assert.equal(model, "real@1");
 
-    const empty = await EntrySemantic.deriveEmbeddings(dormant, "x", "text/markdown", [], undefined, undefined);
+    const empty = await EntrySemantic.deriveEmbeddings(dormant, "x", [], undefined, undefined);
     assert.deepEqual(empty.chunks, [], "no fallback vector → cleared");
     assert.equal(empty.model, undefined);
 });
@@ -57,7 +57,7 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SEMANTIC_CHUNK_TOKENS = the e
             process: async (input: { content: string }) => ({ embedding: fakeVector(input.content), embeddingModel: "small@1" }),
         } as unknown as Mimetypes;
         const content = Array.from({ length: 20 }, (_, i) => `line ${i} a b`).join("\n");
-        const { chunks } = await EntrySemantic.deriveEmbeddings(smallWindow, content, "text/markdown", [], undefined, undefined);
+        const { chunks } = await EntrySemantic.deriveEmbeddings(smallWindow, content, [], undefined, undefined);
         assert.ok(chunks.length > 3, `budget came from the model window (5), not a baked-in number — got ${chunks.length} chunks`);
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;

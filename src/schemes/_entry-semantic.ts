@@ -53,7 +53,6 @@ export default class EntrySemantic {
     static async deriveEmbeddings(
         mimetypes: Mimetypes,
         content: string,
-        mimetype: string,
         symbols: readonly { line?: number; endLine?: number }[],
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,

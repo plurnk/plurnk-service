@@ -91,7 +91,7 @@ export default class EntryManifest {
                         // the embedder reporting its tokenizer — absent → one whole-entry
                         // chunk (today's behavior), present → lossless tiling. result.embedding
                         // is the fallback whole-entry vector for the dormant path.
-                        const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, r.mimetype, result.symbols ?? [], result.embedding, result.embeddingModel);
+                        const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel);
                         await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
                         await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                     }
