@@ -45,7 +45,7 @@
     "prepare": "npm run build"
   },
   "dependencies": {
-    "@plurnk/plurnk-execs": "0.4.3",
+    "@plurnk/plurnk-execs": "0.4.5",
     "@plurnk/plurnk-execs-common": "0.2.1",
     "@plurnk/plurnk-execs-git": "0.1.1",
     "@plurnk/plurnk-execs-search": "0.2.3",

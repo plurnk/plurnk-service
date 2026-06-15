@@ -11,6 +11,7 @@ import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
+import ExecEnv from "./exec-env.ts";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
@@ -250,6 +251,7 @@ export default class Exec {
         try {
             const result = await executor.run({
                 runtime, command, cwd, signal,
+                env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
                 write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                     entryId, channel, chunk, notify: ctx.streamEventNotify,
                 })),
