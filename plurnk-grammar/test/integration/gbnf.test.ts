@@ -408,12 +408,16 @@ test("GBNF: decimal line markers derive — insert-between, threshold, mixed", (
     assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
 });
 
-test("GBNF: strict/plan separator is any whitespace, including none (glued)", () => {
+test("GBNF: strict/plan separator is WS{0,7} — none, mixed, up to 7; 8+ rejected", () => {
     // glued — zero separator between ops
     assert.equal(derives("root-strict", "<<READ(known:///x)::READ<<SEND[200]:done:SEND"), true);
-    // mixed whitespace separator
+    // mixed whitespace separator (CRLF blank line + indent, within 7)
     assert.equal(derives("root-strict", "<<READ(known:///x)::READ \t\n  <<SEND[200]:done:SEND"), true);
-    // leading + trailing whitespace
+    // exactly 7 whitespace chars between ops — ok
+    assert.equal(derives("root-strict", "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[200]:done:SEND"), true);
+    // 8 whitespace chars — over the cap, rejected (no unbounded stall)
+    assert.equal(derives("root-strict", "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[200]:done:SEND"), false);
+    // leading + trailing whitespace (within cap)
     assert.equal(derives("root-strict", "  \n<<SEND[200]:done:SEND\n  "), true);
     // glued under the plan root too
     assert.equal(derives("root-plan", "<<PLAN:think:PLAN<<SEND[200]:done:SEND"), true);
