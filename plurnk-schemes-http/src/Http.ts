@@ -26,18 +26,26 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import type { ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import Browser, { type RenderResult } from "./Browser.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
 const HEADER = "header";
 
+// What Http needs from the render foundation — narrow, so tests inject a fake.
+interface Renderer {
+    render(url: string, opts: { runId: number; signal?: AbortSignal }): Promise<RenderResult>;
+}
+
 export default class Http {
     static manifest: SchemeManifest = {
         name: "http",
-        // body: the response payload (mimetype is per-call — set from the
-        // response Content-Type — so channels declares the names, the write
-        // carries the actual mimetype). header: the response status line + headers.
-        channels: { [BODY]: "text/markdown", [HEADER]: "text/markdown" },
+        // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
+        // body is retyped per-call via notifyChunk's mimetype arg — to the real
+        // response Content-Type, or text/html for a rendered page; octet-stream
+        // is the honest "unknown until fetched". header is always the status
+        // line + headers (text/plain).
+        channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain" },
         defaultChannel: BODY,
         category: "data",
         scope: "session",
@@ -49,13 +57,21 @@ export default class Http {
         },
     };
 
-    // READ → fetch + stream the response body. Returns 102 Processing; the
-    // subscription drives the channel content the model sees next turn.
+    // The render foundation (lazy chromium). Injectable for tests; one warm
+    // pool per Http instance, shared across this scheme's fetches.
+    readonly #browser: Renderer;
+    constructor(browser: Renderer = new Browser()) {
+        this.#browser = browser;
+    }
+
+    // READ → fetch; an HTML page is rendered, everything else streams raw.
+    // Returns 102 Processing; the subscription drives the channel content the
+    // model sees next turn.
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// URL target");
         }
-        return Http.#fetchStream(statement.target, ctx, undefined);
+        return this.#fetchStream(statement.target, ctx, undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC §3.5).
@@ -71,7 +87,7 @@ export default class Http {
         const status = statement.signal;
         if (status === 200) {
             const body = statement.body?.raw ?? "";
-            return Http.#fetchStream(statement.target, ctx, body);
+            return this.#fetchStream(statement.target, ctx, body);
         }
         if (status === 410) {
             const { status: delStatus } = await ctx.entries.delete(statement.target.pathname);
@@ -88,10 +104,12 @@ export default class Http {
     }
 
     // The streaming core, shared by READ and SEND[200]. Opens the subscription
-    // (registering the abort handle for SEND[499] routing), fetches, and pumps
-    // the response body into the BODY channel chunk-by-chunk via the fused
-    // notifyChunk. Settles via close().
-    static async #fetchStream(target: UrlPath, ctx: SchemeCtx, requestBody: string | undefined): Promise<PassthroughResult> {
+    // (registering the abort handle for SEND[499] routing), fetches headers,
+    // then EITHER renders (always-render: a GET of an HTML page is re-acquired
+    // through the browser and its final DOM becomes the body) OR streams the
+    // raw bytes (POST responses and every non-HTML body). Each chunk is labelled
+    // with its real mimetype via notifyChunk. Settles via close().
+    async #fetchStream(target: UrlPath, ctx: SchemeCtx, requestBody: string | undefined): Promise<PassthroughResult> {
         const url = Http.#urlFrom(target);
         const pathname = target.pathname;
 
@@ -100,7 +118,7 @@ export default class Http {
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
         // open() returns the run+teardown-composed signal — fires on loop.cancel
-        // OR our local teardown. Wire it to the fetch so either path aborts it.
+        // OR our local teardown. Wire it so either path aborts the fetch/render.
         const composed = await ctx.subscriptions.open(pathname, handle);
         const onAbort = () => local.abort();
         composed.addEventListener("abort", onAbort, { once: true });
@@ -112,25 +130,38 @@ export default class Http {
                 signal: local.signal,
                 redirect: "follow",
             });
+            const contentType = response.headers.get("content-type") ?? "";
 
-            // Record the response status + headers in the HEADER channel.
-            const headerLines = [`HTTP ${response.status} ${response.statusText}`];
-            for (const [k, v] of response.headers) headerLines.push(`${k}: ${v}`);
-            await ctx.subscriptions.notifyChunk(HEADER, headerLines.join("\n"));
+            // Always-render: a GET of an HTML page is re-acquired through the
+            // browser so the body is the final rendered DOM. The probe-fetch
+            // body is discarded — the browser does its own navigation. A POST
+            // never renders (it can't be replayed as a browser navigation).
+            const isHtml = requestBody === undefined
+                && /^(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
+            if (isHtml) {
+                await response.body?.cancel();
+                const result = await this.#browser.render(url, { runId: ctx.runId, signal: local.signal });
+                await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
+                await ctx.subscriptions.notifyChunk(BODY, result.html, "text/html");
+                await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${result.html.length} chars`);
+                return { shape: "passthrough", status: 102 };
+            }
 
+            // Byte path: stream the body labelled with its real content type.
+            await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
+            const bodyMime = contentType.split(";")[0].trim() || "application/octet-stream";
             if (response.body === null) {
                 await ctx.subscriptions.close("done", `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
             }
-
             let bytes = 0;
             const decoder = new TextDecoder();
             for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
                 bytes += chunk.length;
-                await ctx.subscriptions.notifyChunk(BODY, decoder.decode(chunk, { stream: true }));
+                await ctx.subscriptions.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
             }
             const tail = decoder.decode();
-            if (tail.length > 0) await ctx.subscriptions.notifyChunk(BODY, tail);
+            if (tail.length > 0) await ctx.subscriptions.notifyChunk(BODY, tail, bodyMime);
 
             await ctx.subscriptions.close("done", `HTTP ${response.status}; ${bytes} bytes`);
             return { shape: "passthrough", status: 102 };
@@ -138,11 +169,18 @@ export default class Http {
             const aborted = local.signal.aborted;
             const reason = aborted ? "aborted" : err instanceof Error ? err.message : String(err);
             await ctx.subscriptions.close("error", reason);
-            // 499 for client-cancelled, 502 for upstream/network failure.
+            // 499 for client-cancelled, 502 for upstream/network/render failure.
             return Http.#bad(aborted ? 499 : 502, "http", aborted ? "aborted" : "fetch_failed", reason);
         } finally {
             composed.removeEventListener("abort", onAbort);
         }
+    }
+
+    // Record the response status line + headers into the HEADER channel (text/plain).
+    static async #writeHeader(ctx: SchemeCtx, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
+        const lines = [`HTTP ${status} ${statusText}`];
+        for (const [k, v] of headers) lines.push(`${k}: ${v}`);
+        await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
 
     // Reconstruct the absolute URL from the parsed UrlPath. `raw` is the

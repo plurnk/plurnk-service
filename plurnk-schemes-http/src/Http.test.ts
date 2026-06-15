@@ -18,10 +18,23 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Http from "./Http.ts";
+import type { RenderResult } from "./Browser.ts";
+
+// A fake render foundation: returns a canned rendered page, records the call.
+const fakeBrowser = (html: string) => {
+    const calls: Array<{ url: string; runId: number }> = [];
+    return {
+        calls,
+        render: async (url: string, opts: { runId: number; signal?: AbortSignal }): Promise<RenderResult> => {
+            calls.push({ url, runId: opts.runId });
+            return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
+        },
+    };
+};
 
 // ── conformant ctx + recorder ─────────────────────────────────────────────
 const makeCtx = () => {
-    const chunks: Array<{ channel: string; chunk: string }> = [];
+    const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle } | null = null;
     let closed: { reason: string; outcome?: string } | null = null;
     let deleted: string | null = null;
@@ -45,7 +58,7 @@ const makeCtx = () => {
     const notify: NotifyCaps = { streamEvent() {} };
     const subscriptions: SubscriptionCaps = {
         async open(pathname, handle) { opened = { pathname, handle }; return localAbort.signal; },
-        async notifyChunk(channel, chunk) { chunks.push({ channel, chunk }); },
+        async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
         async close(reason, outcome) { closed = { reason, outcome }; },
     };
     const crossScheme: CrossSchemeCaps = { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" };
@@ -115,9 +128,49 @@ test("READ: streams response body into the body channel and closes done", async 
     assert.equal(opened?.pathname, "/x");
     const body = chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "hello world");
+    // Byte path labels the body with its real content type (not the seed default).
+    assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
     assert.equal(closed?.reason, "done");
     assert.match(closed?.outcome ?? "", /HTTP 200; \d+ bytes/);
+});
+
+test("READ: non-HTML body is labelled with its real content-type", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ['{"a":1}'], { "content-type": "application/json" }), async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/d.json", "/d.json")), ctx);
+    });
+    const body = inspect().chunks.filter((c) => c.channel === "body");
+    assert.equal(body[0]?.mimetype, "application/json");
+});
+
+test("READ: an HTML page is rendered — body is the final DOM, labelled text/html", async () => {
+    const { ctx, inspect } = makeCtx();
+    const browser = fakeBrowser("<html><body>rendered</body></html>");
+    // The probe-fetch returns an HTML content-type (a SPA shim); render takes over.
+    await withFetch(mockFetch(200, "OK", ["<html><body><div id=root></div></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
+        const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
+        assert.equal(r.status, 102);
+    });
+    const { chunks, closed } = inspect();
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1 }]);
+    const bodyChunks = chunks.filter((c) => c.channel === "body");
+    assert.equal(bodyChunks.length, 1); // single-shot: the whole rendered DOM
+    assert.equal(bodyChunks[0].chunk, "<html><body>rendered</body></html>");
+    assert.equal(bodyChunks[0].mimetype, "text/html");
+    assert.equal(closed?.reason, "done");
+    assert.match(closed?.outcome ?? "", /rendered HTTP 200; \d+ chars/);
+});
+
+test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {
+    const { ctx, inspect } = makeCtx();
+    const browser = fakeBrowser("<html>should not be used</html>");
+    await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
+        await new Http(browser).send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+    });
+    assert.equal(browser.calls.length, 0); // render never invoked
+    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
+    assert.equal(body, "<html>body</html>"); // streamed raw, not rendered
 });
 
 test("READ: non-url target → 400 with a scheme:http TelemetryEvent", async () => {

@@ -7,7 +7,10 @@
 ```ts
 static manifest: SchemeManifest = {
     name: "http",
-    channels: { body: "text/markdown", header: "text/markdown" },
+    // Seed defaults (pre-fetch placeholders). `body` is retyped per-call via
+    // notifyChunk's mimetype arg — to the response Content-Type, or text/html
+    // for a rendered page. `header` is always text/plain.
+    channels: { body: "application/octet-stream", header: "text/plain" },
     defaultChannel: "body",
     category: "data",
     scope: "session",
@@ -35,13 +38,14 @@ Results use the `passthrough` family (read-only / network shape) — http entrie
 
 READ and SEND[200] share one core:
 
-1. `ctx.subscriptions.open(pathname, handle)` — registers the subscription for cancel routing; returns the run+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`.
-2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`).
-3. Response status + headers → `ctx.subscriptions.notifyChunk("header", …)`.
-4. Body chunks → `ctx.subscriptions.notifyChunk("body", chunk)` as they arrive (fused append + stream/event).
-5. `ctx.subscriptions.close("done", "HTTP <status>; <n> bytes")` on clean end; `close("error", reason)` on failure.
+1. `ctx.subscriptions.open(pathname, handle)` — registers the subscription for cancel routing; returns the run+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`/render.
+2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`); read the response `Content-Type`.
+3. **Render gate (§6):** a GET whose response is HTML routes to the render path; everything else (POST responses, non-HTML bodies) streams raw.
+4. Response status + headers → `notifyChunk("header", …, "text/plain")`.
+5. Body → `notifyChunk("body", chunk, mimetype)` — labelled with its real type (the response Content-Type, or `text/html` rendered). Byte path streams chunks as they arrive; render path writes the serialized DOM in one chunk.
+6. `close("done", …)` on clean end; `close("error", reason)` on failure.
 
-Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch down.
+Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch/render down.
 
 ## §4 Status mapping
 
@@ -57,6 +61,18 @@ Returns `102 Processing` on success (the subscription drives the channel content
 
 Error results carry a `scheme:http` `TelemetryEvent` (via `Results.error`).
 
-## §5 No runtime dependencies
+## §5 Dependencies
 
-`fetch` / `AbortController` / `TextDecoder` / `ReadableStream` are Node ≥25 built-ins. The package declares only peer deps (`@plurnk/plurnk-schemes`, `@plurnk/plurnk-grammar`) — never pulls a transport library.
+The **byte path** is dependency-free: `fetch` / `AbortController` / `TextDecoder` / `ReadableStream` are Node ≥25 built-ins.
+
+The **render path** takes one runtime dependency, `playwright`, **lazy-imported** (`Browser.ts`) so only an actual render pays for it — a byte fetch never loads it. The chromium binary is optional: set `PLURNK_HTTP_PLAYWRIGHT_WS` to drive a remote CDP endpoint (shared chromium / Lightpanda / browserless) instead of launching locally. This is the conscious, scoped inversion of the original "no runtime deps" stance — rendering is acquisition, and acquisition is this scheme's job.
+
+## §6 Render lifecycle
+
+`Browser` (`export default class`, barrel-exported as a standalone foundation) is the headless-Chromium render engine — ported from rummy.web's WebFetcher, render-only.
+
+- **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
+- **Render:** warm chromium (one per `Browser`), per-run `BrowserContext` keyed on `ctx.runId`, navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
+- **Body:** the serialized DOM is delivered as one `body` chunk labelled `text/html`; the mimetype layer projects everything (`content`/`symbols`/`deepXml`/embedding) off it. http never cleans or extracts — the body is the faithful, final page (schemes-http#1).
+- **Config:** `PLURNK_HTTP_FETCH_TIMEOUT`, `PLURNK_HTTP_NO_SANDBOX`, `PLURNK_HTTP_CHROMIUM_HEAP_MB`, `PLURNK_HTTP_PLAYWRIGHT_WS`. Idle teardown after 15 min.
+- **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
