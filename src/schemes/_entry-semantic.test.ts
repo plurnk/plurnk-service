@@ -44,3 +44,23 @@ test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry
     assert.deepEqual(empty.chunks, [], "no fallback vector → cleared");
     assert.equal(empty.model, undefined);
 });
+
+test("EntrySemantic.deriveEmbeddings: empty PLURNK_SEMANTIC_CHUNK_TOKENS = the embedder's reported window (scalable, no baked-in budget)", async () => {
+    const prev = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
+    delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS; // empty = discover the window
+    try {
+        // A capable embedder advertising a SMALL window (5 tokens). The budget must come
+        // from THAT window, not a hardcoded default — so ~80 words tiles into many chunks.
+        // (Pre-fix, an empty knob fail-harded; this locks the scalable path.)
+        const smallWindow = {
+            embedderInfo: () => ({ maxTokens: 5, countTokens: wordCount }),
+            process: async (input: { content: string }) => ({ embedding: fakeVector(input.content), embeddingModel: "small@1" }),
+        } as unknown as Mimetypes;
+        const content = Array.from({ length: 20 }, (_, i) => `line ${i} a b`).join("\n");
+        const { chunks } = await EntrySemantic.deriveEmbeddings(smallWindow, content, "text/markdown", [], undefined, undefined);
+        assert.ok(chunks.length > 3, `budget came from the model window (5), not a baked-in number — got ${chunks.length} chunks`);
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
+        else process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = prev;
+    }
+});

@@ -71,7 +71,7 @@ export default class EntrySemantic {
             if (typeof s.endLine === "number") boundaries.add(s.endLine);
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
-        const budget = Math.min(EntrySemantic.#chunkTokens(), info.maxTokens);
+        const budget = EntrySemantic.#chunkBudget(info.maxTokens);
         const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
         let model: string | undefined;
         for (const spec of EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
@@ -84,11 +84,15 @@ export default class EntrySemantic {
         return { chunks, model };
     }
 
-    // Chunk budget + overlap — `.env.example` is the law, no code fallback.
-    static #chunkTokens(): number {
-        const v = Number(process.env.PLURNK_SEMANTIC_CHUNK_TOKENS);
-        if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SEMANTIC_CHUNK_TOKENS must be a positive integer, got ${JSON.stringify(process.env.PLURNK_SEMANTIC_CHUNK_TOKENS)}`);
-        return v;
+    // Chunk budget in tokens — `.env.example` is the law, no code fallback. EMPTY =
+    // the embedder's reported window (scalable — NO model-specific number baked in);
+    // a positive value caps BELOW the window (e.g. to sweep granularity).
+    static #chunkBudget(maxTokens: number): number {
+        const raw = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
+        if (raw === undefined || raw.trim() === "") return maxTokens;
+        const v = Number(raw);
+        if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SEMANTIC_CHUNK_TOKENS must be empty (= the embedder's window) or a positive integer, got ${JSON.stringify(raw)}`);
+        return Math.min(v, maxTokens);
     }
 
     static #chunkOverlap(): number {
@@ -110,7 +114,7 @@ export default class EntrySemantic {
     static deepConfigSignature(mimetypes: Mimetypes): string {
         const info = EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) return "embed:none";
-        return `embed:${info.maxTokens}:${EntrySemantic.#chunkTokens()}:${EntrySemantic.#chunkOverlap()}`;
+        return `embed:${info.maxTokens}:${EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
     }
 
     // Build the FTS5 narrow from a ~query: OR the alphanumeric terms (a broad cut —
