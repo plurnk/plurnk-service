@@ -29,6 +29,7 @@ export interface StreamEventPayload {
     loop_seq?: number;             // #224 — the entry's coordinate (see StreamCoordinate)
     turn_seq?: number;
     sequence?: number;
+    mimetype?: string;             // #226 — the channel's current stored mimetype (a streaming scheme may retype it per call)
 }
 
 export type StreamEventNotify = (sessionId: number, event: StreamEventPayload) => void;
@@ -73,6 +74,7 @@ interface ChannelMetaRow {
     scheme: string | null;
     pathname: string;
     state: ChannelState;
+    mimetype: string;
     contentLength: number;
 }
 
@@ -80,6 +82,7 @@ export default class ChannelWrite {
     static #channelMeta(db: Db): PrepMethod { return db.channel_meta as PrepMethod; }
     static #appendStmt(db: Db): PrepMethod { return db.append_to_channel as PrepMethod; }
     static #stateStmt(db: Db): PrepMethod { return db.set_channel_state as PrepMethod; }
+    static #mimetypeStmt(db: Db): PrepMethod { return db.set_channel_mimetype as PrepMethod; }
     static #openSubStmt(db: Db): PrepMethod { return db.open_subscription as PrepMethod; }
     static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
     static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
@@ -94,14 +97,18 @@ export default class ChannelWrite {
 
     static async appendToChannel(
         db: Db,
-        { entryId, channel, chunk, notify, coordinate }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
+        { entryId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
     ): Promise<void> {
         const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
         if (result.changes === 0) return;
+        // #226 — a streaming scheme labels the channel with the body's per-call
+        // type (http's Content-Type varies per fetch). Conditional UPDATE: only
+        // writes when it changed, so labelling every chunk is a steady-state no-op.
+        if (mimetype !== undefined) await ChannelWrite.#mimetypeStmt(db).run({ mimetype, entry_id: entryId, channel });
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, ...coordinate });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     static async setChannelState(
@@ -113,7 +120,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, ...coordinate });
+        notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     static async openSubscription(

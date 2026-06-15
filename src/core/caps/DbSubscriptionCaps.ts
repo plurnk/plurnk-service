@@ -53,10 +53,10 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         return controller.signal;
     }
 
-    async notifyChunk(channel: string, chunk: string): Promise<void> {
+    async notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void> {
         if (this.#entryId === null) throw new Error("subscriptions.notifyChunk: no open subscription");
         await ChannelWrite.appendToChannel(this.#ctx.db, {
-            entryId: this.#entryId, channel, chunk, notify: this.#ctx.streamEventNotify,
+            entryId: this.#entryId, channel, chunk, notify: this.#ctx.streamEventNotify, mimetype,
         });
     }
 

@@ -141,3 +141,29 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
         } finally { ws.close(); }
     });
 });
+
+test("appendToChannel with a mimetype retypes the channel + surfaces it on stream/event (#226)", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "retype-test" });
+            const sessionId = (sessionResp.result as { id: number }).id;
+            const captured = subscribeNotifications(ws, "stream/event");
+            // Seeded text/markdown (the manifest default); a streaming scheme learns the real type per call.
+            const entryId = await seedEntryWithChannel(db, { sessionId, content: "", mimetype: "text/markdown", state: "active" });
+
+            const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
+                daemon.notifyStreamEvent(sid, ev);
+            // First chunk carries the now-known per-call type → retype.
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "{", notify, mimetype: "application/json" });
+            // A later chunk omits it — the retype must persist (stored, not per-event).
+            await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "}", notify });
+            await flush();
+
+            const events = captured() as Array<{ mimetype?: string }>;
+            assert.equal(events.length, 2);
+            assert.equal(events[0].mimetype, "application/json", "the labelled chunk retypes the channel away from text/markdown + carries it (#226)");
+            assert.equal(events[1].mimetype, "application/json", "the retype is stored — a later unlabelled chunk still reports it");
+        } finally { ws.close(); }
+    });
+});

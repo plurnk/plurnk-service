@@ -1,7 +1,7 @@
 -- Channel-write SQL for streaming schemes. SPEC §channel-state + §subscriptions + §notifications.
 
 -- PREP: channel_meta
-SELECT e.session_id, e.scheme, e.pathname, ec.state, length(ec.content) AS contentLength
+SELECT e.session_id, e.scheme, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
 FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE ec.entry_id = $entry_id AND ec.name = $channel;
@@ -15,6 +15,14 @@ WHERE entry_id = $entry_id AND name = $channel;
 UPDATE entry_channels
 SET state = $state
 WHERE entry_id = $entry_id AND name = $channel;
+
+-- PREP: set_channel_mimetype
+-- A streaming scheme labels the channel with the body's per-call type (#226 —
+-- http's Content-Type varies per fetch). Conditional: only writes when the type
+-- actually changed, so labelling every chunk is a steady-state no-op.
+UPDATE entry_channels
+SET mimetype = $mimetype
+WHERE entry_id = $entry_id AND name = $channel AND mimetype != $mimetype;
 
 -- PREP: replace_channel_content
 -- Full content swap for one channel (ChannelCaps.replace). Re-tokenizes at
