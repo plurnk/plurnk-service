@@ -1108,16 +1108,18 @@ export default class Engine {
     #collectTools(): string[] {
         const tools: string[] = [];
         if (process.env.PLURNK_PLAN === "1") {
-            tools.push("- `<<PLAN:...:PLAN` — think or plan in-band before acting; the body is your reasoning, not an op.");
+            tools.push("* <<PLAN:...:PLAN — think or plan in-band before acting; the body is your reasoning, not an op.");
         }
         // Each available runtime tag contributes its self-documenting example —
         // the example carries syntax + purpose, so there's no prose line. Tags
         // with no example (sh/node, covered by the core prompt) contribute
-        // nothing; available-only, so the model never sees an unusable tag.
+        // nothing; available-only, so the model never sees an unusable tag. `* `
+        // bullets + bare op forms match the packet's list/op rendering (no `- `,
+        // no backticks — see packet-wire.ts).
         if (this.#executors !== undefined) {
             for (const tag of this.#executors.availableRuntimes()) {
                 const example = this.#executors.entry(tag)?.example;
-                if (example) tools.push(`- \`${example}\``);
+                if (example) tools.push(`* ${example}`);
             }
         }
         return tools;
