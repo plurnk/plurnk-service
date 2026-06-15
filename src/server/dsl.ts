@@ -1,4 +1,4 @@
-// DSL helpers — clean-shape params → HEREDOC → PlurnkStatement.
+// DSL helpers — clean-shape params → HEREDOC → PlurnkStatement. §methods-op-mirror
 //
 // Per the "Speak in DSL, not plumbing" Standing Rule: every op.* RPC method
 // constructs a HEREDOC string from clean-shape params and parses it via the

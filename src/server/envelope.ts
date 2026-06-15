@@ -49,7 +49,7 @@ export default class Envelope {
     // attach to a run under a reserved name (origin-impersonation — `plurnk`
     // is the runtime actor, §authority-terms/§actor-boundary). Checked case-insensitively, before
     // lookup, so a client can neither forge nor hijack one (SPEC §methods).
-    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]);
+    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]); // §methods-run-name-reserved
 
     // Grammar 0.5.0 (#10): Session and Run carry user-renameable string names.
     // Defaults are `session-{unixtime}` and `run-{unixtime}`; random suffix avoids

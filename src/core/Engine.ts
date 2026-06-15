@@ -827,7 +827,7 @@ export default class Engine {
         // decode at the free window so a runaway can't reach the context wall.
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
-        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens });
+        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
@@ -1054,7 +1054,7 @@ export default class Engine {
         // Resolve persona cascade: loops.persona > runs.persona >
         // sessions.persona > caller-supplied default. SQL coalesces in one
         // query; null result means no DB override exists, use the default.
-        const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId });
+        const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId }); // §persona-cascade-precedence
         const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (loop_run/Daemon read sysprompt + persona but never
@@ -1164,6 +1164,7 @@ export default class Engine {
     // passes, re-measuring between. Folds (never deletes) — the prior turn's logs,
     // then the catalog except the manifest lifeline. The strike it raises and the
     // hard-stop it can signal are returned to runLoop, which owns abandonment.
+    // §grinder-overflow-only — fires only on actual overflow, never speculatively
     async #enforceBudget({ packet, provider, runId, loopId, turnId, sessionId, turnNumber, rebuild }: {
         packet: RequestPacket; provider: Provider;
         runId: number; loopId: number; turnId: number; sessionId: number;
@@ -1198,6 +1199,7 @@ export default class Engine {
     // The model-facing budget event (SPEC §grinder, §telemetry): which entries left the
     // window, by scheme — the model's own terms, no mechanism vocabulary. The
     // strike this overflow triggers stays engine-internal (gamification policy).
+    // §grinder-event-model-terms — model-facing terms only; the strike stays engine-internal
     #emitBudgetOverflow(sessionId: number, loopId: number, folded: Map<string, number>): void {
         if (folded.size === 0) return;
         this.#pushTelemetry(sessionId, loopId, {
@@ -1345,6 +1347,7 @@ export default class Engine {
     // world changed," so the fiction keeps its perspective aligned with what its tooling
     // would show. The fiction lives in the plurnk run's log; every other run pulls it
     // through the one delta path, exactly like a sibling's real edit.
+    // §membership-emi-divergence-signal — disk divergences logged as the plurnk run's source=file EDIT fictions
     async #logFsFictions(sessionId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const run = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" })
@@ -1413,7 +1416,7 @@ export default class Engine {
                     // (signal), cwd (target), and command (body).
                     result = await this.#run("exec", statement, schemeCtx);
                 } else {
-                    result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx);
+                    result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
                 }
             } catch (err) {
                 result = {
@@ -1736,7 +1739,7 @@ export default class Engine {
         const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
         if (manifest === undefined) return null;
         if (manifest.writableBy.includes(origin)) return null;
-        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` };
+        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` }; // §scheme-surface-writableby-403
     }
 
     // Per-loop flag gating. Schemes self-declare their flag affinity in

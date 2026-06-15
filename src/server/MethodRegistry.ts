@@ -88,7 +88,7 @@ export default class MethodRegistry {
     #methods = new Map<string, MethodRegistration>();
     #notifications = new Map<string, NotificationRegistration>();
 
-    registerMethod(name: string, registration: MethodRegistration): void {
+    registerMethod(name: string, registration: MethodRegistration): void { // §method-registration-register
         if (this.#methods.has(name)) {
             throw new Error(`method '${name}' is already registered`);
         }

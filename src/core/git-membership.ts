@@ -1,4 +1,4 @@
-// SPEC §membership D4 — git-ls-files workspace membership.
+// SPEC §membership D4 — git-ls-files workspace membership. §membership-git-membership
 //
 // When a session's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client

@@ -75,7 +75,7 @@ export default class EntryReadMethod {
     }
 
     static register(registry: MethodRegistry): void {
-        registry.registerMethod("entry.read", {
+        registry.registerMethod("entry.read", { // §methods-entry-read
             handler: async (params, ctx) => {
                 const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("entry.read requires params.target: string");

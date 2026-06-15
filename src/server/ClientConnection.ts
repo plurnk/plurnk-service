@@ -12,7 +12,7 @@ import type { Db } from "../core/Db.ts";
 import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
-// JSON-RPC 2.0 standard error codes (SPEC §errors).
+// JSON-RPC 2.0 standard error codes (SPEC §errors). §errors-error-codes
 const ERR_PARSE = -32700;
 const ERR_INVALID_REQUEST = -32600;
 const ERR_METHOD_NOT_FOUND = -32601;

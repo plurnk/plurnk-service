@@ -33,7 +33,7 @@ export default class LogReadMethod {
     }
 
     static register(registry: MethodRegistry): void {
-        registry.registerMethod("log.read", {
+        registry.registerMethod("log.read", { // §methods-log-read
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("log.read requires an attached session");
                 const p = params as Params;

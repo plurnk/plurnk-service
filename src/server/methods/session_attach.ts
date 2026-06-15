@@ -15,6 +15,7 @@ export default class SessionAttachMethod {
                 if (p.runName !== undefined && (typeof p.runName !== "string" || p.runName.length === 0)) {
                     throw new Error("session.attach: runName must be a non-empty string");
                 }
+                // §methods-session-attach — reject reserved run names, case-insensitively
                 if (typeof p.runName === "string" && Envelope.RESERVED_RUN_NAMES.has(p.runName.toLowerCase())) {
                     throw new Error(`session.attach: runName "${p.runName}" is reserved`);
                 }

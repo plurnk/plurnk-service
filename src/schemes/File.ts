@@ -98,6 +98,7 @@ export default class File {
     // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
     // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
     // and a copy into file:/// are the same disk write under the same review.
+    // §membership-edit-membership-gate — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
         if (root === null) return { ok: false, status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };

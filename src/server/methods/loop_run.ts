@@ -39,7 +39,7 @@ interface Params {
 
 export default class LoopRunMethod {
     static register(registry: MethodRegistry): void {
-        registry.registerMethod("loop.run", {
+        registry.registerMethod("loop.run", { // §methods-loop-run
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("loop.run requires an attached session");
                 const p = params as Params;
@@ -66,7 +66,7 @@ export default class LoopRunMethod {
                     throw new Error("loop.run: persona must be a string or null");
                 }
                 // PLURNK_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
-                // cap; positive = a hard cap a per-call maxTurns cannot exceed.
+                // cap; positive = a hard cap a per-call maxTurns cannot exceed. §operator-config-max-turns-ceiling
                 const ceiling = Number(process.env.PLURNK_MAX_TURNS ?? "-1");
                 const requested = p.maxTurns ?? ceiling;
                 const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));

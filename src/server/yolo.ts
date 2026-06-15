@@ -39,6 +39,7 @@ import type { Db } from "../core/Db.ts";
 
 export default class Yolo {
     static attachYolo(engine: Engine, _db: Db): void {
+        // §dual-yolo-server-yolo-auto-accept
         engine.onProposalPending((event: ProposalPendingEvent) => {
             if (!event.flags.yolo) return;
             try {

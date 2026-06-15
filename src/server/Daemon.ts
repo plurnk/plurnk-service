@@ -265,6 +265,7 @@ export default class Daemon {
     }
 
     #registerNotifications(): void {
+        // §notifications-log-entry-notify
         this.#registry.registerNotification("log/entry", {
             description: "A new log_entries row was written; scoped to the connection's attached session.",
             params: { entry: "LogEntry — wire-shape log_entries row" },
@@ -291,6 +292,7 @@ export default class Daemon {
                 usage: "{promptTokens, completionTokens, costPico} — per-loop totals summed over its turns (#197)",
             },
         });
+        // §notifications-stream-event-on-channel-change
         this.#registry.registerNotification("stream/event", {
             description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
             params: {
@@ -304,6 +306,7 @@ export default class Daemon {
                 sequence: "number? — the entry's sequence coordinate",
             },
         });
+        // §notifications-telemetry-event
         this.#registry.registerNotification("telemetry/event", {
             description: "A TelemetryEvent (per @plurnk/plurnk-grammar 0.17.0) was pushed to the loop's telemetry buffer. Same envelope the model sees on the next packet's telemetry.errors[], delivered live for client-side surfacing (debug panel, loop-degrading toasts, session timeline). Sources include `grammar` (parse errors), `engine:rail` (strike, cycle, sudden_death, no_ops, max_commands_exceeded), `scheme:<name>` (action failures, future), and `provider:<vendor>` (provider issues, future). Scoped to the loop's session.",
             params: {
@@ -311,6 +314,7 @@ export default class Daemon {
                 event: "TelemetryEvent — { source, kind, message?, position?, ...kind-specific }",
             },
         });
+        // §notifications-stream-concluded
         this.#registry.registerNotification("stream/concluded", {
             description: "A streaming-scheme subscription closed (the underlying connection / subprocess finished, errored, or was cancelled). Scoped to the entry's session. wakeAction describes whether the daemon opened a fresh loop to surface the conclusion to the model.",
             params: {

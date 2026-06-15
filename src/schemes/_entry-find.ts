@@ -82,8 +82,8 @@ export default class EntryFind {
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
-        const scopeGlob = scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
+        const scopeGlob = scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;  // scope prefix filter — §find-scope-prefix-filter
+        const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — §find-tag-filter-and-semantics
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, sessionId } = ctx;
@@ -111,7 +111,7 @@ export default class EntryFind {
             if (mimetypes === undefined) throw new Error("EntryFind.matchPathnames: body matcher requires the mimetypes capability in ctx");
             pathnames = [];
             for (const cand of candidates) {
-                const match = await Matcher.matchAgainstContent(statement.body, cand.content, cand.mimetype, mimetypes);
+                const match = await Matcher.matchAgainstContent(statement.body, cand.content, cand.mimetype, mimetypes); // matcher runs on content — §find-glob-filter-on-content
                 if (match.status === 400) return { status: 400, pathnames: [] };
                 if (match.status === 200) pathnames.push(cand.pathname);
                 // 204 (no match) / 415 (dialect unsupported for this entry) /
