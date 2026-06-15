@@ -41,18 +41,14 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
-    // Discover external @plurnk/plurnk-schemes-* siblings — agnostic by
-    // plurnk.kind:"scheme" (never by package name) — and register each by its
-    // declared plurnk.name. A sibling reaches the substrate only through the
-    // DB-free SchemeCtx the engine wraps for isExternal() schemes. Mirrors the
-    // execs scan; a name collision with an in-tree scheme fail-hards in register.
+    // Discover external scheme siblings — agnostic by plurnk.kind:"scheme" (never
+    // by package name OR scope, #227) so a third party ships one under ANY name,
+    // exactly like executors. Registered by declared plurnk.name; a sibling reaches
+    // the substrate only through the DB-free SchemeCtx the engine wraps for
+    // isExternal() schemes. A name collision with an in-tree scheme fail-hards in register.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
-        const scope = join(cwd, "node_modules", "@plurnk");
-        const entries = await readdir(scope, { withFileTypes: true }).catch(() => null);
-        if (entries === null) return;
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const raw = await readFile(join(scope, entry.name, "package.json"), "utf8").catch(() => null);
+        for (const dir of await SchemeRegistry.#packageDirs(join(cwd, "node_modules"))) {
+            const raw = await readFile(join(dir, "package.json"), "utf8").catch(() => null);
             if (raw === null) continue;
             let pkg: { plurnk?: { kind?: string; name?: string }; name?: string };
             try { pkg = JSON.parse(raw); } catch { continue; }
@@ -60,13 +56,32 @@ export default class SchemeRegistry {
             if (plurnk?.kind !== "scheme" || typeof plurnk.name !== "string" || plurnk.name === "") continue;
             if (typeof pkg.name !== "string") continue;
             // Idempotent + in-tree precedence: a name already registered (a
-            // built-in, or a re-scan of the same scope) is left as-is rather than
-            // fail-harding on re-register. Discovery must be safe to call again.
+            // built-in, or a re-scan) is left as-is rather than fail-harding on
+            // re-register. Discovery must be safe to call again.
             if (this.has(plurnk.name)) continue;
             const mod = await import(pkg.name) as { default: new () => SchemeHandler };
             this.register(plurnk.name, new mod.default());
             this.#external.add(plurnk.name);
         }
+    }
+
+    // Every installed package dir — unscoped (node_modules/pkg) AND each scoped
+    // member (node_modules/@scope/pkg). The scope-agnostic walk (#227): discovery
+    // keys on plurnk.kind, never the @plurnk scope, so any vendor can publish a sibling.
+    static async #packageDirs(root: string): Promise<string[]> {
+        const top = await readdir(root, { withFileTypes: true }).catch(() => null);
+        if (top === null) return [];
+        const dirs: string[] = [];
+        for (const entry of top) {
+            if (!entry.isDirectory()) continue;
+            if (entry.name.startsWith("@")) {
+                const scoped = await readdir(join(root, entry.name), { withFileTypes: true }).catch(() => null);
+                for (const s of scoped ?? []) if (s.isDirectory()) dirs.push(join(root, entry.name, s.name));
+            } else {
+                dirs.push(join(root, entry.name));
+            }
+        }
+        return dirs;
     }
 
     // Active set under the given loop flags (SPEC §engine-rails). Delegates to
