@@ -18,11 +18,8 @@ export default class Paths {
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#GRAMMAR_ROOT, "plurnk.md");
-    // The GBNF artifact (the full multi-op root) for grammar-constrained
-    // sampling, resolved from the grammar package like the sysprompt above.
-    // Plumbed to the provider per generate() when PLURNK_PROVIDERS_GBNF is
-    // enabled; the service holds no opinion about its content or root.
-    static grammarGbnf = resolve(Paths.#GRAMMAR_ROOT, "dist/plurnk.gbnf");
+    // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
+    // SELECTS the variant from @plurnk/plurnk-grammar; no hardcoded default here, #225.)
     // packet.system.persona DEFAULT. Cascade at packet-build time is
     //   loops.persona > runs.persona > sessions.persona > this file
     // RPC overrides on loop.run / session.attach / session.create populate

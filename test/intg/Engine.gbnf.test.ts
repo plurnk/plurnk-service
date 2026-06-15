@@ -24,17 +24,17 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
     });
 };
 
-// PLURNK_PROVIDERS_GBNF is the *only* knob: enabled → the full plurnk GBNF
-// (multi-op root) reaches the provider verbatim; disabled → nothing does. The
-// service holds no opinion about the grammar's content — pure plumbing (#189).
+// PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant (#189/#225): a variant name
+// resolves to that grammar and reaches the provider verbatim; 0/empty → nothing
+// does. The service resolves + plumbs it; the provider applies-or-drops per backend.
 test("PLURNK_PROVIDERS_GBNF gates whether the plurnk grammar reaches generate() (#189)", async () => {
     const dsl = "<<SEND[200]:ok:SEND";
     const orig = process.env.PLURNK_PROVIDERS_GBNF;
     try {
-        process.env.PLURNK_PROVIDERS_GBNF = "1";
+        process.env.PLURNK_PROVIDERS_GBNF = "plurnk-strict.gbnf";
         const on = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");
-        assert.ok(on.lastGrammar?.includes("root ::="), "enabled → the full plurnk GBNF reaches the provider");
+        assert.ok(on.lastGrammar?.includes("root ::="), "a variant name → that grammar reaches the provider");
 
         process.env.PLURNK_PROVIDERS_GBNF = "0";
         const off = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });

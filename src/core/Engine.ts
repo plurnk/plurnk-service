@@ -19,6 +19,7 @@ import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import Paths from "../Paths.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
@@ -416,8 +417,19 @@ export default class Engine {
     // attaches it iff the backend supports it and silently drops it otherwise —
     // capability is providers' concern, not ours. Pure plumbing grammar→provider.
     async #grammarConstraint(): Promise<string | undefined> {
-        if (process.env.PLURNK_PROVIDERS_GBNF !== "1") return undefined;
-        this.#gbnfCache ??= await readFile(Paths.grammarGbnf, "utf8");
+        // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant to constrain sampling to (#225):
+        // a bare name (`plurnk-strict.gbnf` | `plurnk.gbnf`) is a variant shipped by
+        // @plurnk/plurnk-grammar; an absolute/relative path is a BYO grammar. Empty or "0"
+        // disables — unconstrained generation. (Was a `=== "1"` boolean; the value change
+        // would otherwise read as "off", leaving every turn unconstrained.)
+        const variant = process.env.PLURNK_PROVIDERS_GBNF;
+        if (variant === undefined || variant === "" || variant === "0") return undefined;
+        if (this.#gbnfCache === null) {
+            const path = variant.startsWith("/") || variant.startsWith(".")
+                ? variant
+                : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
+            this.#gbnfCache = await readFile(path, "utf8");
+        }
         return this.#gbnfCache;
     }
 
