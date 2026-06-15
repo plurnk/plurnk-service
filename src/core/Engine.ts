@@ -858,16 +858,22 @@ export default class Engine {
             });
         }
         const opsCount = packetAssistant.ops.length;
+        // Informational SEND[103] broadcasts (#free-text-capture) are log rows, not
+        // actions: excluded from the real-op count so a prose-only turn still strikes
+        // as no-ops, and the terminal scan ignores 1xx so they never set turnStatus.
+        const realOpsCount = packetAssistant.ops.filter(
+            (op) => !(op.op === "SEND" && op.signal === 103 && op.target === null),
+        ).length;
         const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
-                op.op === "SEND" && typeof op.signal === "number",
+                op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
         // Rail #41 (revised): the per-turn requirement is "emit at least one
         // op," not "emit a terminal SEND." SEND is purely a signal verb; many
         // turns may pass without one. An empty op list is the only strike.
         const turnStatus = sendOp !== undefined
             ? sendOp.signal
-            : opsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
+            : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         // Close the turn with the final packet, status, and usage stats.
         const packet = this.#completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
@@ -942,21 +948,38 @@ export default class Engine {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
-        const textFragments: string[] = [];
+        // #plan-reasoning: PLAN bodies are the model's in-band reasoning — hoisted
+        // out of the op stream into the reasoning field, never dispatched as a log op.
+        // Free text becomes informational SEND[103] log ops (#free-text-capture) below.
+        const planFragments: string[] = [];
+        const hoistPlan = (op: PlurnkStatement): boolean => {
+            if (op.op !== "PLAN") return false;
+            const raw = (op.body ?? "").trim();
+            if (raw.length > 0) planFragments.push(raw);
+            return true;
+        };
         // Full PlurnkParseError context (line/column/source) is preserved
         // here so runTurn can build TelemetryEvent envelopes per the
         // grammar 0.17.0 protocol — model needs position info to locate
         // its own offending content on the next turn.
         const parseErrors: ParseErrorInfo[] = [];
         if (preParsedOps !== undefined) {
-            ops.push(...preParsedOps);
+            for (const op of preParsedOps) if (!hoistPlan(op)) ops.push(op);
         } else {
             const parsed = PlurnkParser.parse(assistant.content);
             for (const item of parsed.items) {
-                if (item.kind === "statement") ops.push(item.statement);
+                if (item.kind === "statement") {
+                    if (!hoistPlan(item.statement)) ops.push(item.statement);
+                }
                 else if (item.kind === "text") {
+                    // #free-text-capture: interstitial prose → an informational
+                    // SEND[103] broadcast log op, interleaved in emission order.
                     const trimmed = item.text.trim();
-                    if (trimmed.length > 0) textFragments.push(trimmed);
+                    if (trimmed.length > 0) ops.push({
+                        op: "SEND", suffix: "", signal: 103, target: null,
+                        lineMarker: null, body: { raw: trimmed, json: null },
+                        position: (item as { position?: { line: number; column: number } }).position ?? { line: 1, column: 1 },
+                    } as PlurnkStatement);
                 }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
@@ -980,8 +1003,8 @@ export default class Engine {
             }
         }
         const wireReasoning = assistant.reasoning ?? "";
-        const scrapedReasoning = textFragments.join("\n");
-        const reasoningParts = [wireReasoning, scrapedReasoning].filter((s) => s.length > 0);
+        const planReasoning = planFragments.join("\n\n");
+        const reasoningParts = [wireReasoning, planReasoning].filter((s) => s.length > 0);
         const reasoning = reasoningParts.length > 0 ? reasoningParts.join("\n\n") : null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
@@ -1812,14 +1835,12 @@ export default class Engine {
         return { status: delResult.status };
     }
 
-    // PLAN — undocumented reasoning op (plurnk-grammar 0.30.0, the 11th op). A pure
-    // no-op: the body is the model's in-content reasoning, which lands in the log
-    // row's tx for free via statement serialization, no runtime effect (PLAN ∉
-    // MUTATING_OPS). NOT taught in plurnk.md by design — reserved for a future model
-    // that must reason in the content field (no separate reasoning channel). gemma
-    // reasons on its own channel via the relaxed root, is never shown PLAN, and never
-    // emits it; this handler exists only so the op resolves cleanly if we ever
-    // deliberately reach for it (which would also require a plurnk.md override).
+    // PLAN — the model's in-band reasoning op (plurnk-grammar 0.30.0, the 11th op).
+    // Production HOISTS PLAN bodies into the turn's reasoning field in #parseAssistant
+    // (#plan-reasoning) before dispatch runs, so PLAN normally never reaches here. This
+    // handler is the op's direct-dispatch semantics (exercised by the dispatch unit
+    // test): a pure no-op (PLAN ∉ MUTATING_OPS) whose body would serialize into the log
+    // row's tx, no runtime effect.
     #handlePlan(statement: PlurnkStatement): DispatchResult {
         if (statement.op !== "PLAN") throw new Error("unreachable");
         return { status: 200 };

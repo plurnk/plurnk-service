@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -25,6 +25,20 @@ const sendStmt = (status: number, body: string): SendStatement => ({
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
+
+const planStmt = (body: string): PlanStatement => ({
+    op: "PLAN", suffix: "", signal: null, target: null,
+    lineMarker: null, body, position: { line: 1, column: 1 },
+});
+
+// A response with content but NO pre-parsed ops, so the engine runs the parser
+// (the only path that yields free-text items → synthesized SEND[103]).
+const contentResp = (content: string, completion: number): MockResponse => ({
+    assistant: {
+        content, reasoning: null,
+        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
+    },
+} as MockResponse);
 
 const response = (ops: PlurnkStatement[], content: string = "", completion: number = 0): MockResponse => ({
     assistant: {
@@ -845,5 +859,61 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
         assert.deepEqual(packet.user.telemetry.errors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: interstitial free text → informational SEND[103] log ops, never loop-terminal (#free-text-capture)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // No pre-parsed ops → the engine parses content; the prose before the SEND is
+        // a text item, which becomes a synthesized informational SEND[103] log op.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
+        });
+        const result = await engine.runTurn({
+            provider, sessionId, runId, loopId,
+            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
+        });
+        // statuses ARE the model ops' dispatch results: a 103 here is the synthesized
+        // informational SEND (its body is the prose), dispatched → a real log row.
+        assert.deepEqual(result.statuses, [103, 200], "free text dispatched as 103; the real SEND as 200");
+        assert.equal(result.status, 200, "turn status is the terminal SEND — the 1xx never sets it");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: PLAN is hoisted into the turn's reasoning, not dispatched as a log op (#plan-reasoning)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [response([planStmt("FIND before READ — the marker reasoning"), sendStmt(200, "done")], "", 10)],
+        });
+        const result = await engine.runTurn({
+            provider, sessionId, runId, loopId,
+            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
+        });
+        // statuses hold only the SEND — PLAN never reached dispatch (no PLAN status).
+        assert.deepEqual(result.statuses, [200], "PLAN hoisted out of the op stream; only the SEND dispatched");
+        // content was empty + PLAN left the op stream, so the marker can only be here
+        // via the reasoning field.
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        assert.ok((row?.packet ?? "").includes("FIND before READ — the marker reasoning"), "PLAN body survives as the turn's reasoning");
+    } finally { await db.close(); }
+});
+
+test("Engine.runTurn: a prose-only turn still strikes as no-ops (422) — synthesized 103s are not real ops (#free-text-capture)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [contentResp("Just rambling, taking no action at all.", 8)],
+        });
+        const result = await engine.runTurn({
+            provider, sessionId, runId, loopId,
+            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
+        });
+        assert.deepEqual(result.statuses, [103], "the prose was logged as an informational SEND[103]");
+        assert.equal(result.status, 422, "but the turn is no-ops — a synthesized 103 doesn't count as action");
     } finally { await db.close(); }
 });
