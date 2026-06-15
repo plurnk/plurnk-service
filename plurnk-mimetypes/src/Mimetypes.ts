@@ -35,10 +35,23 @@ interface Embedder {
     // text → native-endian raw Float32 bytes (4 × dimension).
     embed(text: string): Promise<Uint8Array>;
     readonly dimension: number;
-    // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37"). Surfaced on
+    // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37+q8"). Surfaced on
     // ProcessResult.embeddingModel so consumers can store it alongside
     // vectors and detect incomparable BLOBs after a model swap.
     readonly model?: string;
+    // Pure model facts for the host's lossless chunker (embeddings#1).
+    // Optional — an embedder predating the chunking surface omits them and
+    // embedderInfo() reports null, so the host stays on whole-entry behavior.
+    readonly maxTokens?: number;
+    countTokens?(text: string): Promise<number>;
+}
+
+// What embedderInfo() hands the host: the token window plus the model's own
+// counter, the two facts its chunker needs to tile losslessly. null when no
+// embedder is installed OR the installed one predates this surface.
+export interface EmbedderInfo {
+    maxTokens: number;
+    countTokens(text: string): Promise<number>;
 }
 
 // Loader hook: how to resolve a handler package to its default-exported class.
@@ -421,6 +434,21 @@ export default class Mimetypes {
             return surface as unknown as Embedder;
         })();
         return this.#embedderPromise;
+    }
+
+    // Pure model facts for plurnk-service's lossless chunker (embeddings#1):
+    // the token window and the model's own tokenizer counter. The host calls
+    // this once per derivation — null → one whole-entry chunk (today's
+    // behavior); non-null → tile the body into <= maxTokens chunks measured by
+    // countTokens. null when no embedder is installed OR the installed
+    // embedder predates this surface (no maxTokens/countTokens).
+    async embedderInfo(): Promise<EmbedderInfo | null> {
+        const embedder = await this.#getEmbedder();
+        if (!embedder || typeof embedder.maxTokens !== "number" || typeof embedder.countTokens !== "function") {
+            return null;
+        }
+        const { maxTokens, countTokens } = embedder;
+        return { maxTokens, countTokens: (text) => countTokens.call(embedder, text) };
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
