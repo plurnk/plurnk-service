@@ -75,7 +75,10 @@ export default class EntrySemantic {
         const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
         let model: string | undefined;
         for (const spec of await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
-            const e = await mimetypes.process({ content: spec.text, hint: mimetype }, { channels: ["embedding"] });
+            // A chunk is a text fragment, not a standalone document — embedding it under the
+            // entry's mimetype (e.g. application/json) re-validates the partial and throws.
+            // The vector is over tokens; embed every tile as plain text.
+            const e = await mimetypes.process({ content: spec.text, hint: "text/plain" }, { channels: ["embedding"] });
             if (e.embedding !== undefined && e.embedding.byteLength > 0) {
                 chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector: e.embedding });
                 model = e.embeddingModel;

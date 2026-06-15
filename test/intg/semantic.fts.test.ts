@@ -169,3 +169,26 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
     } finally { db.close(); }
 });
 
+test("[#semantic-json-tile] deriveEmbeddings embeds a tiled entry's chunks as text — a fragment is never re-validated under the entry mimetype", async () => {
+    // A tile of a JSON document is an invalid JSON fragment. The real framework process()
+    // validates application/json and throws on it — which crashed every turn that held a
+    // JSON entry large enough to tile. The default intg harness declines the embedder, so
+    // the chunking path never ran in tests; this stub mimics the handler's validation to
+    // exercise it. deriveEmbeddings must hand each tile over as text, not the entry mimetype.
+    const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
+    const hints: string[] = [];
+    const embedder = {
+        process: async (input: { content: string; hint: string }) => {
+            hints.push(input.hint);
+            if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile
+            return { embedding: new Uint8Array(new Float32Array([1, 0]).buffer), embeddingModel: "stub" };
+        },
+        embedderInfo: () => ({ maxTokens: 20, countTokens: wc }),
+    } as unknown as Mimetypes;
+
+    const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
+    const { chunks } = await EntrySemantic.deriveEmbeddings(embedder, json, "application/json", [], undefined, undefined);
+    assert.ok(chunks.length > 1, `the JSON body tiled into multiple chunks (got ${chunks.length})`);
+    assert.ok(hints.length > 0 && hints.every((h) => h === "text/plain"), `every chunk embeds as text/plain, not the entry mimetype; got ${JSON.stringify([...new Set(hints)])}`);
+});
+
