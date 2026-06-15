@@ -10,10 +10,10 @@ Framework + contract for `@plurnk/plurnk-providers-*` sibling packages (LLM tran
 ## Exports
 
 - `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `FinishReason`, `ProviderFactory` — types.
-- `parseAliasesFromEnv`, `resolveActiveAlias`, `instantiateProvider`, `loadActiveProvider` — alias-cascade resolution + full two-tier provider instantiation. The bespoke daughters are this framework's own dependencies; consumers pin one package (SPEC §5).
+- `parseAliasesFromEnv`, `resolveActiveAlias`, `instantiateProvider`, `loadActiveProvider`, `discover` — alias-cascade resolution + two-tier provider instantiation. Tier 1 is the standard table; tier 2 is a scope-agnostic `node_modules` scan for `plurnk.kind:"provider"` packages — first-party daughters (flat via `@plurnk/plurnk-providers-all`) and third-party providers under any scope. The framework is contract-only (SPEC §5).
 - `OpenAICompatProvider` (+ `OpenAICompatConfig`, `ReasoningStyle`, `effortFromBudget`) — shared OpenAI-compatible transport spine; siblings extend it (SPEC §11). Transports GBNF grammar-constrained sampling for capable backends (SPEC §13).
 - `chatCompletionStream`, `OpenAiHttpError`, `StreamResponse` — the shared SSE client.
-- `parseRequiredInt`, `parseOptionalInt`, `parseRequiredFlag`, `requireEnv`, `reasoningKnobsFromEnv` — env helpers (SPEC §4; all required-with-named-errors, no in-code defaults).
+- `parseRequiredInt`, `parseOptionalInt`, `requireEnv`, `reasoningBudgetFromEnv`, `planFromEnv` — env helpers (SPEC §4; all required-with-named-errors, no in-code defaults).
 - `normalizeUsage`, `computeCost` (+ `RawUsage`, `TokenRates`) — usage normalization to the §2 invariant and the single cost formula (SPEC §11).
 - `ProviderError`, `classifyProviderError`, `toProviderError`, `providerSource` (+ `TelemetryEvent`, `ProviderTelemetryKind`) — the TelemetryEvent envelope for transport failures (SPEC §12).
 - `tokenizerFor`, `tokenizerByPublisher`, `parseTokenizerFamily` (+ `TokenizerFamily`, `CountTokens`) — synchronous tokenizer strategies.

@@ -1,6 +1,9 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
-import { parseAliasesFromEnv, resolveActiveAlias, instantiateProvider, loadActiveProvider } from "./ProviderRegistry.ts";
+import { parseAliasesFromEnv, resolveActiveAlias, instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
+
+const fakeProvider = { contextSize: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
+const mapOf = (entries: Record<string, string>) => async () => new Map(Object.entries(entries));
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model>", () => {
     const env = {
@@ -78,48 +81,83 @@ const fullEnv = Object.freeze({
     OPENAI_BASE_URL: "http://x",
 });
 
-test("instantiateProvider: standard name resolves in-framework, no dynamic import", async () => {
+test("instantiateProvider: standard name resolves in-framework, no scan, no import", async () => {
+    resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
         throw new Error("unexpected fetch");
     });
     const imports: string[] = [];
-    const p = await instantiateProvider("openai", { ...fullEnv }, "m", async (s) => { imports.push(s); return {}; });
+    let scanned = false;
+    const p = await instantiateProvider("openai", { ...fullEnv }, "m",
+        async (s) => { imports.push(s); return {}; },
+        async () => { scanned = true; return new Map(); });
     assert.equal(p.model, "m");
-    assert.deepEqual(imports, []); // tier 1 never touches the importer
+    assert.deepEqual(imports, []); // tier 1 never touches the importer…
+    assert.equal(scanned, false); // …nor the scan
     mock.restoreAll();
 });
 
-test("instantiateProvider: bespoke name dynamic-imports the daughter and calls fromEnv", async () => {
-    const fake = { contextSize: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
+test("instantiateProvider: bespoke name resolves via the scan and imports the discovered package", async () => {
+    resetDiscoveryCache();
     const calls: unknown[] = [];
-    const p = await instantiateProvider("openrouter", { ...fullEnv }, "anthropic/claude-opus-latest", async (specifier) => {
-        calls.push(specifier);
-        return { default: { fromEnv: async (env: NodeJS.ProcessEnv, model: string) => { calls.push(model); return fake; } } };
-    });
-    assert.equal(p, fake);
+    const p = await instantiateProvider("openrouter", { ...fullEnv }, "anthropic/claude-opus-latest",
+        async (specifier) => { calls.push(specifier); return { default: { fromEnv: async (_e: NodeJS.ProcessEnv, model: string) => { calls.push(model); return fakeProvider; } } }; },
+        mapOf({ openrouter: "@plurnk/plurnk-providers-openrouter" }));
+    assert.equal(p, fakeProvider);
     assert.deepEqual(calls, ["@plurnk/plurnk-providers-openrouter", "anthropic/claude-opus-latest"]);
 });
 
-test("instantiateProvider: unknown provider throws naming the missing package", async () => {
+test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {
+    resetDiscoveryCache();
+    const imports: string[] = [];
+    const p = await instantiateProvider("foo", { ...fullEnv }, "m",
+        async (specifier) => { imports.push(specifier); return { default: { fromEnv: async () => fakeProvider } }; },
+        mapOf({ foo: "@acme/acme-provider-foo" }));
+    assert.equal(p, fakeProvider);
+    assert.deepEqual(imports, ["@acme/acme-provider-foo"]); // not an @plurnk/ specifier
+});
+
+test("instantiateProvider: a standard name is authoritative — a scanned package of the same name is shadowed", async () => {
+    resetDiscoveryCache();
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        throw new Error("unexpected fetch");
+    });
+    const imports: string[] = [];
+    const p = await instantiateProvider("openai", { ...fullEnv }, "m",
+        async (s) => { imports.push(s); return {}; },
+        mapOf({ openai: "@acme/acme-provider-openai" })); // shadowed by tier 1
+    assert.equal(p.model, "m");
+    assert.deepEqual(imports, []); // the scanned same-name package is never imported
+    mock.restoreAll();
+});
+
+test("instantiateProvider: unknown provider throws — no standard, no discovered package", async () => {
+    resetDiscoveryCache();
     await assert.rejects(
-        () => instantiateProvider("nope", { ...fullEnv }, "m", async () => { throw new Error("MODULE_NOT_FOUND"); }),
-        /unknown provider "nope": not a standard provider and @plurnk\/plurnk-providers-nope is not installed/,
+        () => instantiateProvider("nope", { ...fullEnv }, "m", async () => ({}), mapOf({})),
+        /unknown provider "nope": not a standard provider, and no installed package declares plurnk\.kind:"provider" with name "nope"/,
     );
 });
 
-test("instantiateProvider: daughter without a fromEnv factory throws", async () => {
+test("instantiateProvider: discovered package without a fromEnv factory throws", async () => {
+    resetDiscoveryCache();
     await assert.rejects(
-        () => instantiateProvider("broken", { ...fullEnv }, "m", async () => ({ default: {} })),
-        /@plurnk\/plurnk-providers-broken default export is not a Provider factory/,
+        () => instantiateProvider("broken", { ...fullEnv }, "m",
+            async () => ({ default: {} }),
+            mapOf({ broken: "@acme/acme-provider-broken" })),
+        /@acme\/acme-provider-broken default export is not a Provider factory/,
     );
 });
 
-test("loadActiveProvider: resolves the alias cascade end-to-end", async () => {
-    const fake = { contextSize: 1, model: "x", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
+test("loadActiveProvider: resolves the alias cascade end-to-end via the scan", async () => {
+    resetDiscoveryCache();
     const env = { ...fullEnv, PLURNK_MODEL: "opus", PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest" } as NodeJS.ProcessEnv;
-    const p = await loadActiveProvider(env, async () => ({ default: { fromEnv: async () => fake } }));
-    assert.equal(p, fake);
+    const p = await loadActiveProvider(env,
+        async () => ({ default: { fromEnv: async () => fakeProvider } }),
+        mapOf({ openrouter: "@plurnk/plurnk-providers-openrouter" }));
+    assert.equal(p, fakeProvider);
 });
 
 test("loadActiveProvider: throws a named error when no alias is active", async () => {

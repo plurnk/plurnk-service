@@ -200,9 +200,14 @@ export default class OpenAICompatProvider implements Provider {
             throw toProviderError(err, this.#source);
         }
 
+        // We prefilled the assistant turn with PLAN_PREFILL to steer the model.
+        // The response is streamed, and SSE deltas carry only generated tokens —
+        // the prefill is prompt, never streamed back — so reassemble our half.
+        const content = this.#plan ? PLAN_PREFILL + raw.content : raw.content;
+
         return {
             assistant: {
-                content: raw.content,
+                content,
                 reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
                 usage: normalizeUsage(raw.usage),
                 finishReason: normalizeFinishReason(raw.finish_reason),

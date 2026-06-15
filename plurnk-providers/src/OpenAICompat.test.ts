@@ -209,16 +209,20 @@ test("generate fail-hards on a missing or empty runId", async () => {
 
 test("PLAN prefill (PLURNK_PLAN): seeds a <<PLAN: assistant turn when on, omits otherwise", async () => {
     const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, plan: true });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await on.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    let calls = installFetch([{ choices: [{ delta: { content: "1. plan:PLAN" } }] }]);
+    const res = await on.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     const sent = JSON.parse(calls[0].init.body as string).messages;
     assert.deepEqual(sent.at(-1), { role: "assistant", content: "<<PLAN:\n" });
+    // Streaming carries only generated tokens, so the prefill is absent from the
+    // assembled deltas; the provider reassembles its half into whole content.
+    assert.equal(res.assistant.content, "<<PLAN:\n1. plan:PLAN");
 
     mock.restoreAll();
     const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 }); // plan default false
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await off.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    const offRes = await off.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(JSON.parse(calls[0].init.body as string).messages.length, 1); // no prefill appended
+    assert.equal(offRes.assistant.content, "x"); // content untouched when plan is off
 });
 
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {

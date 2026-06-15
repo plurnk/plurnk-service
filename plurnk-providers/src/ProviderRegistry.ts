@@ -2,14 +2,16 @@
 // PLURNK_MODEL_<alias>=<provider>/<model> env vars; PLURNK_MODEL=<alias>
 // selects which is active at boot.
 //
-// Tier-2 instantiation lives HERE since the framework bundles its own
-// daughter packages (they are this package's dependencies), so Node's
-// caller-relative `import()` resolves them from this module. Consumers pin
-// ONE package and call instantiateProvider / loadActiveProvider; they never
-// pin or import a daughter directly (SPEC §5).
+// Two-tier resolution (SPEC §5): tier 1 is the closed standard-provider table;
+// tier 2 is a SCOPE-AGNOSTIC node_modules scan (discover()) for packages
+// declaring `plurnk.kind:"provider"` — first-party daughters (installed flat
+// via @plurnk/plurnk-providers-all) AND third-party providers under any scope.
+// The framework is contract-only — it does NOT depend on its daughters; the
+// scan is what surfaces them (#12/#14).
 
 import type { Provider, ProviderAlias, ProviderFactory } from "./types.ts";
 import { isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
+import { discover, type DiscoverOptions } from "./discover.ts";
 
 export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): ProviderAlias[] => {
     const out: ProviderAlias[] = [];
@@ -38,32 +40,47 @@ export const resolveActiveAlias = (env: NodeJS.ProcessEnv = process.env): Provid
     return aliases.find((a) => a.alias === selected.toLowerCase()) ?? null;
 };
 
-// The seam is injectable so tests exercise the bespoke path without a real
-// package present; production callers never pass it.
+// Two injectable seams, both defaulting to production behavior and never passed
+// by real callers: the module importer (tests exercise the bespoke path without
+// a real package on disk) and the discovery scan (tests inject a fixed map).
 type ImportModule = (specifier: string) => Promise<unknown>;
 const importModule: ImportModule = (specifier) => import(specifier);
+type DiscoverFn = (options?: DiscoverOptions) => Promise<Map<string, string>>;
 
-// Two-tier resolution (SPEC §5): standard provider → bundled daughter →
-// fail-hard naming both misses. The daughter packages are this framework's
-// own dependencies, so the dynamic import resolves wherever the framework is
-// installed.
+// The node_modules scan is filesystem work that never changes within a process,
+// so it runs once and the name→package map is memoized. A long-lived daemon
+// pays one scan at first bespoke instantiation; every later run reuses it.
+let discoveredCache: Map<string, string> | null = null;
+const providerPackages = async (discoverFn: DiscoverFn): Promise<Map<string, string>> => {
+    discoveredCache ??= await discoverFn();
+    return discoveredCache;
+};
+
+// Two-tier resolution (SPEC §5): tier 1 standard table → tier 2 discovered
+// package (scope-agnostic scan) → fail-hard. The standard table is authoritative
+// — a scanned package whose name duplicates a standard one is shadowed here
+// (never reached), since tier 1 returns first.
 export const instantiateProvider = async (
     name: string,
     env: NodeJS.ProcessEnv,
     model: string,
     importImpl: ImportModule = importModule,
+    discoverFn: DiscoverFn = discover,
 ): Promise<Provider> => {
     if (isStandardProvider(name)) {
         const standard = await standardProviderFromEnv(name, env, model);
         if (standard === null) throw new Error(`provider "${name}": standard registry resolution failed`);
         return standard;
     }
-    const specifier = `@plurnk/plurnk-providers-${name}`;
+    const specifier = (await providerPackages(discoverFn)).get(name);
+    if (specifier === undefined) {
+        throw new Error(`unknown provider "${name}": not a standard provider, and no installed package declares plurnk.kind:"provider" with name "${name}"`);
+    }
     let mod: unknown;
     try {
         mod = await importImpl(specifier);
     } catch (cause) {
-        throw new Error(`unknown provider "${name}": not a standard provider and ${specifier} is not installed`, { cause });
+        throw new Error(`provider "${name}" resolves to ${specifier}, but importing it failed`, { cause });
     }
     const factory = (mod as { default?: ProviderFactory }).default;
     if (factory === undefined || typeof factory.fromEnv !== "function") {
@@ -72,14 +89,18 @@ export const instantiateProvider = async (
     return await factory.fromEnv(env, model);
 };
 
+// Test-only: drop the memoized discovery so a fresh scan/injection runs next.
+export const resetDiscoveryCache = (): void => { discoveredCache = null; };
+
 // Boot convenience: resolve the active alias cascade and instantiate it.
 export const loadActiveProvider = async (
     env: NodeJS.ProcessEnv = process.env,
     importImpl: ImportModule = importModule,
+    discoverFn: DiscoverFn = discover,
 ): Promise<Provider> => {
     const alias = resolveActiveAlias(env);
     if (alias === null) {
         throw new Error("no active provider: set PLURNK_MODEL to an alias declared via PLURNK_MODEL_<alias>=<provider>/<model>");
     }
-    return instantiateProvider(alias.provider, env, alias.model, importImpl);
+    return instantiateProvider(alias.provider, env, alias.model, importImpl, discoverFn);
 };
