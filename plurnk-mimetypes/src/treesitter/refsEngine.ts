@@ -12,12 +12,24 @@ import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 // duplicated container stack: the defs the symbols channel already emits ARE
 // the scopes.
 
+// The ONLY node fields the engine reads off a capture: the matched text and
+// its source span. Blessed as a public type (issue #26) so a Tier 2 adapter
+// composing a qualified name from several capture nodes (HCL `TYPE.NAME`) can
+// construct an honest capture node — no cast through TreeSitterNode relying on
+// a comment-only "engine reads only these three" contract. A real
+// web-tree-sitter node satisfies it structurally, so widening is non-breaking.
+export interface RefsCaptureNode {
+    readonly text: string;
+    readonly startPosition: { readonly row: number; readonly column: number };
+    readonly endPosition: { readonly row: number; readonly column: number };
+}
+
 // The capture surface we need from web-tree-sitter's Query. Typed locally
 // (like TreeSitterParser) so the framework type-checks without depending on
 // web-tree-sitter's types.
 export interface RefsQueryCapture {
     readonly name: string;
-    readonly node: TreeSitterNode;
+    readonly node: RefsCaptureNode;
 }
 
 export interface RefsQuery {

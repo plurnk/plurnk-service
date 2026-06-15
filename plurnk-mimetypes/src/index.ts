@@ -16,6 +16,7 @@ export { default as AntlrExtractor } from "./AntlrExtractor.ts";
 export { default as TreeSitterExtractor } from "./TreeSitterExtractor.ts";
 export type {
     DeepTreeNode,
+    QueryConstructor,
     TreeSitterTree,
     TreeSitterNode,
     TreeSitterParser,
@@ -59,7 +60,7 @@ export { GrammarNotInstalledError } from "./treesitter/handler.ts";
 // references() with the same capture conventions and container resolution
 // the in-registry languages use — queries stay data, the engine stays one.
 export { collectReferences } from "./treesitter/refsEngine.ts";
-export type { RefsQuery, RefsQueryCapture } from "./treesitter/refsEngine.ts";
+export type { RefsCaptureNode, RefsQuery, RefsQueryCapture } from "./treesitter/refsEngine.ts";
 export type {
     ContentOffset,
     LogCoordinate,

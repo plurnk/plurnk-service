@@ -1,6 +1,14 @@
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
-import type { MimeSymbol } from "./types.ts";
+import type { MimeRef, MimeSymbol } from "./types.ts";
+import { collectReferences } from "./treesitter/refsEngine.ts";
+import type { RefsQuery } from "./treesitter/refsEngine.ts";
+
+// web-tree-sitter's Query constructor, typed locally. Produces a raw query
+// object; for most languages it already satisfies RefsQuery (it exposes
+// captures()), so collectRefs() uses it directly. A language needing
+// match-level composition (HCL) passes a `wrap` that adapts the raw object.
+export type QueryConstructor = new (language: unknown, source: string) => unknown;
 
 // Tree-sitter parser-tree types. We only use a small surface (parse, root
 // node, traversal) so we type-import via `unknown`-wrapped abstractions
@@ -44,9 +52,81 @@ export interface TreeSitterNode {
 // empty symbol list, mirroring AntlrExtractor.
 export default abstract class TreeSitterExtractor extends BaseHandler {
     #parserPromise: Promise<unknown> | null = null;
+    // References-engine priming state (issue #26). loadParser() owns the WASM
+    // path, so it is the only place that holds the Language object and the
+    // Query constructor; it hands them to the base via setQueryContext() so
+    // collectRefs() can compile queries without every subclass reimplementing
+    // the retain-and-compile dance.
+    #language: unknown = null;
+    #QueryCtor: QueryConstructor | null = null;
+    #refsQuery: RefsQuery | null = null;
 
     protected abstract loadParser(): Promise<TreeSitterParser>;
     protected abstract extractFromTree(tree: TreeSitterTree, content: string): MimeSymbol[];
+
+    // Called by loadParser() after Language.load(), handing the base the two
+    // objects Query compilation needs. Required before collectRefs() — a
+    // subclass that implements references() via collectRefs() MUST call this
+    // in its loadParser().
+    protected setQueryContext(language: unknown, QueryCtor: QueryConstructor): void {
+        this.#language = language;
+        this.#QueryCtor = QueryCtor;
+    }
+
+    // The whole references() body, owned once: lazy-load the parser (shared
+    // cache), compile + cache the query (priming guaranteed by getParser →
+    // loadParser → setQueryContext), parse, run the engine against the defs
+    // `extractDefs` emits, clean up. Error policy matches the other channels:
+    // GrammarNotInstalledError propagates for the #14 degrade path; parse and
+    // query failures route to an empty channel.
+    //
+    // `wrap` adapts the raw compiled query when a language needs match-level
+    // composition the engine's flat captures() can't express (HCL TYPE.NAME).
+    // Omitted, the raw query is used directly (it already exposes captures()).
+    // A Tier 2 references() collapses to ~3 lines around this call.
+    protected async collectRefs(
+        content: HandlerContent,
+        querySource: string,
+        extractDefs: (root: TreeSitterNode, content: string) => MimeSymbol[],
+        wrap?: (rawQuery: unknown) => RefsQuery,
+    ): Promise<MimeRef[]> {
+        if (typeof content !== "string") return [];
+        let parser: TreeSitterParser;
+        try {
+            parser = await this.getParser();
+        } catch (err) {
+            if (isGrammarNotInstalled(err)) throw err;
+            return [];
+        }
+        const query = this.#primeRefsQuery(querySource, wrap);
+        let tree: TreeSitterTree | null;
+        try {
+            tree = parser.parse(content);
+            if (!tree) return [];
+        } catch {
+            return [];
+        }
+        try {
+            return collectReferences(query, tree, extractDefs(tree.rootNode, content));
+        } catch {
+            return [];
+        } finally {
+            tree?.delete?.();
+        }
+    }
+
+    // Compile-once cache for the refs query. The source is constant per
+    // handler, so we compile on first use and reuse for the handler lifetime.
+    #primeRefsQuery(source: string, wrap?: (rawQuery: unknown) => RefsQuery): RefsQuery {
+        if (this.#refsQuery === null) {
+            if (this.#language === null || this.#QueryCtor === null) {
+                throw new Error("internal: collectRefs() before loadParser() called setQueryContext()");
+            }
+            const raw = new this.#QueryCtor(this.#language, source);
+            this.#refsQuery = wrap ? wrap(raw) : (raw as RefsQuery);
+        }
+        return this.#refsQuery;
+    }
 
     override async extractRaw(content: HandlerContent): Promise<MimeSymbol[]> {
         if (typeof content !== "string") return [];
