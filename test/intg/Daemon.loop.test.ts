@@ -29,6 +29,39 @@ test("[§methods-loop-run] loop.run with mock provider runs a model turn and per
     });
 });
 
+test("loop.inject speaks into an existing run; errors when there's none (#193)", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<SEND[200]:first done:SEND", 10),
+        makeMockResponse("<<SEND[200]:injected done:SEND", 10),
+    ] });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "loop-inject" });
+
+            // No model run yet → inject has nothing to talk to (loop.run starts one).
+            const noRun = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
+            assert.ok(noRun.error !== undefined, "inject before any run errors");
+            assert.match(noRun.error!.message, /no model run/);
+
+            // Start a run; SEND[200] ends it, leaving the run idle.
+            await rpcCall(ws, 3, "loop.run", { prompt: "first", flags: { yolo: true } });
+
+            // Inject into the idle run → enqueues a fresh loop, returns immediately.
+            const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
+            const result = injected.result as { action: string; loopId: number; modelRunId: number };
+            assert.equal(result.action, "enqueued_new_loop", "idle run → a fresh enqueued loop");
+            assert.ok(typeof result.loopId === "number", "returns the loopId");
+            assert.ok(typeof result.modelRunId === "number", "returns the run it spoke into");
+
+            // empty prompt is a contract violation.
+            const empty = await rpcCall(ws, 5, "loop.inject", { prompt: "" });
+            assert.ok(empty.error !== undefined, "empty prompt errors");
+        } finally { ws.close(); }
+    });
+});
+
 test("loop.run streams log/entry notifications during execution", async () => {
     const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });

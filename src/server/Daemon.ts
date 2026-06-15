@@ -44,6 +44,7 @@ import OpDispatchMethod from "./methods/op_dispatch.ts";
 import OpParseMethod from "./methods/op_parse.ts";
 import LoopRunMethod from "./methods/loop_run.ts";
 import LoopCancelMethod from "./methods/loop_cancel.ts";
+import LoopInjectMethod from "./methods/loop_inject.ts";
 import EntryReadMethod from "./methods/entry_read.ts";
 import LogReadMethod from "./methods/log_read.ts";
 import ProvidersListMethod from "./methods/providers_list.ts";
@@ -254,6 +255,7 @@ export default class Daemon {
         OpParseMethod.register(this.#registry);
         LoopRunMethod.register(this.#registry);
         LoopCancelMethod.register(this.#registry);
+        LoopInjectMethod.register(this.#registry);
         LoopResolveMethod.register(this.#registry);
         EntryReadMethod.register(this.#registry);
         LogReadMethod.register(this.#registry);
