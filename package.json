@@ -49,7 +49,7 @@
         "@plurnk/plurnk-execs-all": "0.1.5",
         "@plurnk/plurnk-grammar": "0.41.0",
         "@plurnk/plurnk-mimetypes": "0.15.12",
-        "@plurnk/plurnk-mimetypes-embeddings": "0.1.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "0.1.1",
         "@plurnk/plurnk-providers": "0.3.0",
         "@plurnk/plurnk-providers-all": "0.1.0",
         "@plurnk/plurnk-schemes": "0.7.0",
