@@ -7,7 +7,7 @@ import Ollama from "./Ollama.ts";
 const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_FETCH_TIMEOUT: "600000",
-    PLURNK_PROVIDERS_REASONING_BUDGET: "0",
+    PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PLAN: "0",
 });
 
 // Mock the /api/show probe. `payload` becomes the JSON body it returns.
@@ -29,7 +29,7 @@ test("fromEnv: throws when OLLAMA_BASE_URL is unset", async () => {
 
 test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "m"),
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PLAN: "0" }, "m"),
         /PLURNK_FETCH_TIMEOUT must be set/,
     );
 });
