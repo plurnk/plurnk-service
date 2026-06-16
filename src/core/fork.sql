@@ -1,7 +1,7 @@
 -- Fork a run: deep-copy its log into a NEW run in the SAME session (SPEC §machine-processes —
 -- branch the log, share the world). loops → turns → entries are copied with their
 -- fold-state (indexed) and attribution (origin/source) intact; only the run/loop/
--- turn ids are remapped. Nothing of the world is copied — the session's entries and
+-- turn ids are remapped. Nothing of the world is copied (§machine-processes-fork-shares-the-world) — the session's entries and
 -- overlay are shared. The §env-delta reconciliation snapshot (run_watermarks) is NOT
 -- copied; the branch first-sights its world like any fresh run.
 
@@ -38,7 +38,7 @@ RETURNING id;
 
 -- PREP: fork_get_log_entries
 -- Everything but the row id and run_id (run_id is the branch's; loop_id/turn_id are
--- remapped by the caller). origin/source (attribution) and indexed (fold-state) ride along.
+-- remapped by the caller). origin/source (attribution) and indexed (fold-state) ride along. §machine-processes-fork-copies-the-log
 SELECT loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
        scheme, username, password, hostname, port, pathname, params, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,

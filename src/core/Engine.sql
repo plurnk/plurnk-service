@@ -115,7 +115,7 @@ WHERE l.run_id = $run_id AND t.id != $turn_id;
 -- looked. Real edits (origin model/client) AND the plurnk run's fs-sync fictions
 -- (origin=plurnk on the reserved 'plurnk' run); excludes this run's own rows and
 -- other runs' already-materialized deltas (origin=plurnk on a real run). plurnk:///
--- entries (manifest/prompt/doc) never surface.
+-- entries (manifest/prompt/doc) never surface. This is the environment door (§actor-boundary-two-doors); the voice door is inject.
 SELECT le.run_id, le.scheme, le.pathname, le.rx, le.source
 FROM log_entries le
 JOIN runs r ON r.id = le.run_id
@@ -192,7 +192,7 @@ SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,
-    le.origin,
+    le.origin, -- attribution, never a render filter; the run's actor — §actor-boundary-origin-not-filter §machine-processes-run-origin
     le.op, le.suffix, le.signal,
     le.scheme, le.username, le.password,
     le.hostname, le.port, le.pathname,
@@ -204,7 +204,7 @@ FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.run_id = $run_id -- §actor-boundary-isolation §machine-processes-run-is-its-log: the packet renders exactly one run's log
-  AND NOT (le.status_rx = 202 AND le.state = 'proposed')
+  AND NOT (le.status_rx = 202 AND le.state = 'proposed') -- proposed rows hidden until resolved — §proposal-proposed-hidden
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry

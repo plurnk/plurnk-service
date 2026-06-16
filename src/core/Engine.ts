@@ -1796,7 +1796,7 @@ export default class Engine {
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
 
-        // Relocation: COPY then DELETE source — §move-relocation-deletes-source.
+        // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
         const srcPathname = pathnameFromPath(srcPath);
