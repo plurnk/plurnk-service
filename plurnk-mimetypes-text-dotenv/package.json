@@ -1,0 +1,57 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-text-dotenv",
+    "version": "0.1.0",
+    "description": "text/x-dotenv (.env) mimetype handler for plurnk-service. Variables as symbols, values exposed. Hand-rolled, no parser dependency.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "plurnk": {
+        "kind": "mimetype",
+        "handlers": [
+            {
+                "name": "text/x-dotenv",
+                "glyph": "🔑",
+                "extensions": [
+                    ".env",
+                    ".env.local",
+                    ".env.development",
+                    ".env.production",
+                    ".env.test",
+                    ".env.example"
+                ]
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-mimetypes": "^0.15.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.15.0"
+    }
+}
