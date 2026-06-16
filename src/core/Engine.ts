@@ -2073,7 +2073,8 @@ export default class Engine {
         params: string | null; fragment: string | null;
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null };
+        // `local` (bare path) and `regex` (grammar 0.46 `#pattern#flags` target) carry no URL parts — store the raw text as the pathname for the log record, scheme=null.
+        if (path.kind === "local" || path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null };
         const scheme = path.scheme === "file" ? null : path.scheme;
         return {
             scheme, username: path.username, password: path.password,
