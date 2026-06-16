@@ -55,6 +55,8 @@ export default class Http implements SchemeHandler {
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
+        glyph: "🌐",
+        example: "READ(https://example.com/page)",
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag
         },

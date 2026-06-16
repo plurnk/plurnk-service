@@ -117,6 +117,9 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.flags?.requiresWeb, true);
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header"]);
+    // Self-doc for the model's packet listing (deep docs ride plurnk://schemes/http.md).
+    assert.equal(Http.manifest.glyph, "🌐");
+    assert.match(Http.manifest.example ?? "", /^READ\(https?:\/\//);
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
