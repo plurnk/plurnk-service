@@ -31,7 +31,6 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
-const PERSONA = await readPath(Paths.defaultPersona, "utf8");
 const REQUIREMENTS = await readPath(Paths.defaultRequirements, "utf8");
 
 // Real subprocess executors, same as the daemon wires at boot
@@ -78,7 +77,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId,
-            persona: PERSONA, requirements: REQUIREMENTS,
+            requirements: REQUIREMENTS,
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: userPrompt },

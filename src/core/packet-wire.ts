@@ -46,7 +46,6 @@ interface LogEntryView {
 interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
 interface SystemSection {
     system_definition: string;
-    persona?: unknown;
     log?: unknown;
     tokens?: number;
 }
@@ -63,13 +62,9 @@ type CountTokens = (text: string) => number;
 export default class PacketWire {
     // Render packet.system → system message content (markdown string).
     //   {system_definition verbatim}
-    //   # Plurnk System Instructions   (persona)
     //   # Plurnk System Log            (log entries — only when present)
     static renderSystemContent(system: SystemSection): string {
         const parts: string[] = [system.system_definition];
-        if (typeof system.persona === "string" && system.persona.length > 0) { // empty persona renders no section — §persona-empty-suppresses
-            parts.push(`# Plurnk System Instructions\n\n${system.persona}`);
-        }
         if (Array.isArray(system.log) && system.log.length > 0) {
             parts.push(`# Plurnk System Log\n\n${PacketWire.#renderLogEntries(system.log)}`);
         }

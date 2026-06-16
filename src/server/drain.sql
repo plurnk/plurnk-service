@@ -4,8 +4,8 @@
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-run, 1-based.
-INSERT INTO loops (run_id, sequence, status, prompt, persona)
-VALUES ($run_id, $sequence, 100, $prompt, $persona)
+INSERT INTO loops (run_id, sequence, status, prompt)
+VALUES ($run_id, $sequence, 100, $prompt)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -20,7 +20,7 @@ WHERE id = (
     ORDER BY sequence ASC
     LIMIT 1
 )
-RETURNING id, sequence, prompt, persona, flags;
+RETURNING id, sequence, prompt, flags;
 
 -- PREP: drain_current_loop_for_run
 -- The currently-executing loop for a run (status=102). At most one per run
@@ -64,11 +64,11 @@ LIMIT 1;
 -- (a wake-on-completion, or a loop.run-while-active that landed on a turn the
 -- loop never reached). Engine.inject writes prompt/<loop>/<N> at MAX(turn)+1;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
--- Returns the latest such orphan's body + the ended loop's flags + persona so
+-- Returns the latest such orphan's body + the ended loop's flags so
 -- the drain can promote it to a fresh loop — no wake silently lost.
 -- $pattern = `prompt/<loop_id>/%`, $prefix_len = length of `prompt/<loop_id>/`
 -- built JS-side (per the SqlRite LIKE-binding note above).
-SELECT c.content AS body, l.flags AS flags, l.persona AS persona
+SELECT c.content AS body, l.flags AS flags
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id

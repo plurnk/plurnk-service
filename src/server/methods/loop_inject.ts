@@ -38,10 +38,9 @@ export default class LoopInjectMethod {
                 const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
 
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const persona = await readFile(Paths.defaultPersona, "utf8");
                 const injected = await ctx.daemon.inject({
                     sessionId: ctx.session.sessionId, runId: modelRunId, prompt: p.prompt,
-                    provider: ctx.provider, persona, systemPrompt, maxTurns, flags: p.flags,
+                    provider: ctx.provider, systemPrompt, maxTurns, flags: p.flags,
                 });
 
                 // Fire-and-forget: return as soon as the prompt is placed; the client

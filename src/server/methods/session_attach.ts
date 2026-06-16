@@ -5,7 +5,7 @@ export default class SessionAttachMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("session.attach", {
             handler: async (params, ctx) => {
-                const p = params as { id: number; runId?: number; runName?: string; persona?: string | null };
+                const p = params as { id: number; runId?: number; runName?: string };
                 if (typeof p.id !== "number") {
                     throw new Error("session.attach requires params.id: number");
                 }
@@ -19,27 +19,20 @@ export default class SessionAttachMethod {
                 if (typeof p.runName === "string" && Envelope.RESERVED_RUN_NAMES.has(p.runName.toLowerCase())) {
                     throw new Error(`session.attach: runName "${p.runName}" is reserved`);
                 }
-                const persona = p.persona ?? null;
-                if (persona !== null && typeof persona !== "string") {
-                    throw new Error("session.attach: persona must be a string or null");
-                }
-                const envelope = await Envelope.attachToSession(ctx.db, p.id, { runId: p.runId, runName: p.runName, persona });
+                const envelope = await Envelope.attachToSession(ctx.db, p.id, { runId: p.runId, runName: p.runName });
                 ctx.attachSession(envelope);
                 return {
                     id: envelope.sessionId,
                     name: envelope.sessionName,
-                    sessionPersona: envelope.sessionPersona,
                     runId: envelope.runId,
                     runName: envelope.runName,
-                    runPersona: envelope.runPersona,
                 };
             },
-            description: "Attach this connection to an existing session. Optionally resume an existing run by id or name; otherwise creates a fresh run. The persona param sets run-level persona ONLY when a new run is created (reusing an existing run preserves its stored persona; use session.set_persona for session-level changes).",
+            description: "Attach this connection to an existing session. Optionally resume an existing run by id or name; otherwise creates a fresh run.",
             params: {
                 id: "number — session id to attach to",
                 runId: "number? — resume the run with this id (must belong to the session)",
                 runName: "string? — resume the run with this name within the session; create if absent",
-                persona: "string? — run-level persona (text/markdown); applied to a NEWLY created run only",
             },
         });
     }

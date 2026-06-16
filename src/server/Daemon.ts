@@ -29,7 +29,6 @@ import SessionListMethod from "./methods/session_list.ts";
 import SessionAttachMethod from "./methods/session_attach.ts";
 import SessionRunsMethod from "./methods/session_runs.ts";
 import SessionSetRootMethod from "./methods/session_set_root.ts";
-import SessionSetPersonaMethod from "./methods/session_set_persona.ts";
 import SessionConstraintsMethod from "./methods/session_constraints.ts";
 import OpEditMethod from "./methods/op_edit.ts";
 import OpReadMethod from "./methods/op_read.ts";
@@ -241,7 +240,6 @@ export default class Daemon {
         SessionAttachMethod.register(this.#registry);
         SessionRunsMethod.register(this.#registry);
         SessionSetRootMethod.register(this.#registry);
-        SessionSetPersonaMethod.register(this.#registry);
         SessionConstraintsMethod.register(this.#registry);
         OpEditMethod.register(this.#registry);
         OpReadMethod.register(this.#registry);
@@ -367,8 +365,8 @@ export default class Daemon {
      */
     async inject(args: {
         sessionId: number; runId: number; prompt: string;
-        provider: Provider; persona: string; systemPrompt: string;
-        maxTurns?: number; flags?: { yolo?: boolean }; personaOverride?: string | null;
+        provider: Provider; systemPrompt: string;
+        maxTurns?: number; flags?: { yolo?: boolean };
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;
@@ -387,11 +385,11 @@ export default class Daemon {
             }
         }
 
-        // Enqueue a fresh loop. Persist flags + persona override on the row.
+        // Enqueue a fresh loop. Persist flags on the row.
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
         if (seqRow === undefined) throw new Error("inject: next-sequence query returned no row");
         const loopRow = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
-            run_id: runId, sequence: seqRow.next, prompt, persona: args.personaOverride ?? null,
+            run_id: runId, sequence: seqRow.next, prompt,
         });
         if (loopRow === undefined) throw new Error("inject: loop enqueue returned no row");
         const loopId = loopRow.id;
@@ -412,7 +410,7 @@ export default class Daemon {
         // fast-path response on that.
         const started = this.#ensureDrain({
             sessionId, runId, provider: args.provider,
-            systemPrompt: args.systemPrompt, personaDefault: args.persona,
+            systemPrompt: args.systemPrompt,
             maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
         });
         return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
@@ -433,12 +431,12 @@ export default class Daemon {
      */
     #startDrain(opts: {
         sessionId: number; runId: number; provider: Provider;
-        systemPrompt: string; personaDefault: string; maxTurns: number;
+        systemPrompt: string; maxTurns: number;
     }): {
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
     } {
-        const { sessionId, runId, provider, systemPrompt, personaDefault, maxTurns } = opts;
+        const { sessionId, runId, provider, systemPrompt, maxTurns } = opts;
         // The drain runs under the run's cancellation scope (shared with the
         // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
         const controller = this.#runSignal(runId);
@@ -454,7 +452,7 @@ export default class Daemon {
         let firstSettled = false;
 
         const claim = () => (this.#db.drain_claim_next_loop as PrepMethod).get<{
-            id: number; sequence: number; prompt: string; persona: string | null;
+            id: number; sequence: number; prompt: string;
         }>({ run_id: runId });
 
         const drainPromise = (async () => {
@@ -487,7 +485,6 @@ export default class Daemon {
                             { role: "system", content: systemPrompt },
                             { role: "user", content: loopRow.prompt },
                         ],
-                        persona: personaDefault,
                         origin: "model",
                         onDispatch,
                         signal: controller.signal,
@@ -550,7 +547,7 @@ export default class Daemon {
     // drain for the same run.
     #ensureDrain(opts: {
         sessionId: number; runId: number; provider: Provider;
-        systemPrompt: string; personaDefault: string; maxTurns: number;
+        systemPrompt: string; maxTurns: number;
     }): {
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
@@ -563,17 +560,17 @@ export default class Daemon {
     // an injected wake (stream conclusion) or a loop.run-while-active prompt
     // that landed on a turn the loop didn't reach — into a fresh queued loop.
     // The drain claims it on its next iteration, so a conclusion or client
-    // prompt is never silently dropped. Inherits the ended loop's flags + persona.
+    // prompt is never silently dropped. Inherits the ended loop's flags.
     async #reconcileOrphanedWake(runId: number, endedLoopId: number): Promise<void> {
         const prefix = `prompt/${endedLoopId}/`;
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
-            body: string; flags: string | null; persona: string | null;
+            body: string; flags: string | null;
         }>({ loop_id: endedLoopId, pattern: `${prefix}%`, prefix_len: prefix.length });
         if (orphan === undefined) return;
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
         const fresh = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
-            run_id: runId, sequence: seqRow.next, prompt: orphan.body, persona: orphan.persona,
+            run_id: runId, sequence: seqRow.next, prompt: orphan.body,
         });
         if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
         if (orphan.flags !== null) {
@@ -645,7 +642,6 @@ export default class Daemon {
 
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-            const personaText = await readFile(Paths.defaultPersona, "utf8");
 
             // Unified path: this.inject decides whether to write a prompt
             // entry for an active drain's next turn (no-op-active-loop) or
@@ -656,7 +652,6 @@ export default class Daemon {
                 runId: payload.runId,
                 prompt: payload.summary,
                 provider: this.#provider,
-                persona: personaText,
                 systemPrompt,
             });
 

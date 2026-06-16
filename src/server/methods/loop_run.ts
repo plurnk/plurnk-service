@@ -34,7 +34,6 @@ interface Params {
     maxTurns?: number;
     alias?: string;
     flags?: LoopRunFlags;
-    persona?: string | null;
 }
 
 export default class LoopRunMethod {
@@ -60,10 +59,6 @@ export default class LoopRunMethod {
                     if (p.flags.mode !== undefined && p.flags.mode !== "ask" && p.flags.mode !== "act") {
                         throw new Error("loop.run: flags.mode must be 'ask' or 'act'");
                     }
-                }
-                const loopPersona = p.persona ?? null;
-                if (loopPersona !== null && typeof loopPersona !== "string") {
-                    throw new Error("loop.run: persona must be a string or null");
                 }
                 // PLURNK_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
                 // cap; positive = a hard cap a per-call maxTurns cannot exceed. §operator-config-max-turns-ceiling
@@ -95,7 +90,6 @@ export default class LoopRunMethod {
                 // connection's client run, so the packet never carries client op.*.
                 const modelRunId = ctx.session.modelRunId ?? (ctx.session.modelRunId = await Envelope.ensureModelRun(ctx.db, sessionId));
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const persona = await readFile(Paths.defaultPersona, "utf8");
 
                 // Operator reference docs (PLURNK_MD_<ALIAS>): materialize each as
                 // a plurnk:///<ALIAS>.md entry via the self-hosting keystone (a
@@ -119,8 +113,8 @@ export default class LoopRunMethod {
                 // Idle run → enqueue + start drain (await drain to completion).
                 const injected = await ctx.daemon.inject({
                     sessionId, runId: modelRunId, prompt: p.prompt,
-                    provider, persona, systemPrompt,
-                    maxTurns, flags: p.flags, personaOverride: loopPersona,
+                    provider, systemPrompt,
+                    maxTurns, flags: p.flags,
                 });
 
                 if (injected.action === "injected_next_turn") {
@@ -167,13 +161,12 @@ export default class LoopRunMethod {
                     action: "enqueued_new_loop",
                 };
             },
-            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Optional `persona` sets the loop-level persona override (highest precedence in the cascade loops > runs > sessions > PLURNK_PERSONA file). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
+            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
                 maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§operator-config)",
                 alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
-                persona: "string? — loop-level persona (text/markdown); takes precedence over session and run personas",
             },
             requiresInit: true,
             longRunning: true,

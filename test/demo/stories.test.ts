@@ -39,7 +39,6 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
-const PERSONA = await readPath(Paths.defaultPersona, "utf8");
 const REQUIREMENTS = await readPath(Paths.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
@@ -97,7 +96,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 
     const result = await engine.runLoop({
         provider, sessionId, runId, loopId,
-        persona: PERSONA, requirements: REQUIREMENTS,
+        requirements: REQUIREMENTS,
         ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
         messages: [
             { role: "system", content: SYSTEM_PROMPT },

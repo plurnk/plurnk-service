@@ -11,20 +11,20 @@ import type { Db, PrepMethod } from "./Db.ts";
 
 export default class Fork {
     static async fork(db: Db, parentRunId: number): Promise<number> {
-        const parent = await (db.fork_get_run as PrepMethod).get<{ session_id: number; name: string; persona: string | null; origin: string }>({ id: parentRunId });
+        const parent = await (db.fork_get_run as PrepMethod).get<{ session_id: number; name: string; origin: string }>({ id: parentRunId });
         if (parent === undefined) throw new Error(`fork: run ${parentRunId} not found`);
 
         const branch = await (db.fork_insert_run as PrepMethod).get<{ id: number }>({
-            session_id: parent.session_id, name: `${parent.name}-fork`, persona: parent.persona, parent_run_id: parentRunId, origin: parent.origin,
+            session_id: parent.session_id, name: `${parent.name}-fork`, parent_run_id: parentRunId, origin: parent.origin,
         });
         if (branch === undefined) throw new Error("fork: branch run insert returned no row");
         const branchRunId = branch.id;
 
         // loops → new loops, mapping old id → new id.
-        const loops = await (db.fork_get_loops as PrepMethod).all<{ id: number; sequence: number; status: number; prompt: string; flags: string; persona: string | null }>({ run_id: parentRunId });
+        const loops = await (db.fork_get_loops as PrepMethod).all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ run_id: parentRunId });
         const loopMap = new Map<number, number>();
         for (const l of loops) {
-            const nl = await (db.fork_insert_loop as PrepMethod).get<{ id: number }>({ run_id: branchRunId, sequence: l.sequence, status: l.status, prompt: l.prompt, flags: l.flags, persona: l.persona });
+            const nl = await (db.fork_insert_loop as PrepMethod).get<{ id: number }>({ run_id: branchRunId, sequence: l.sequence, status: l.status, prompt: l.prompt, flags: l.flags });
             if (nl === undefined) throw new Error("fork: loop insert returned no row");
             loopMap.set(l.id, nl.id);
         }

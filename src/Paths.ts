@@ -20,29 +20,12 @@ export default class Paths {
     static instructionsSystem = resolve(Paths.#GRAMMAR_ROOT, "plurnk.md");
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
     // SELECTS the variant from @plurnk/plurnk-grammar; no hardcoded default here, #225.)
-    // packet.system.persona DEFAULT. Cascade at packet-build time is
-    //   loops.persona > runs.persona > sessions.persona > this file
-    // RPC overrides on loop.run / session.attach / session.create populate
-    // the three persistence layers; this file is the final fallback.
-    static defaultPersona = Paths.#resolveDefaultPersona();
     // packet.user.system_requirements DEFAULT. Static contract appended at
     // the end of the user packet — names rules the model has to honor that
     // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").
     static defaultRequirements = Paths.#resolveDefaultRequirements();
 
-    // Resolve the default persona file path: PLURNK_PERSONA env (absolute or
-    // relative-to-package-root) → `persona.md` in package root as the
-    // hardcoded fallback. The env var lets operators point at a custom
-    // persona without forking the file in PACKAGE_ROOT.
-    static #resolveDefaultPersona(): string {
-        const env = process.env.PLURNK_PERSONA;
-        if (typeof env === "string" && env.length > 0) {
-            return resolve(Paths.#PACKAGE_ROOT, env);
-        }
-        return resolve(Paths.#PACKAGE_ROOT, "persona.md");
-    }
-
-    // Same shape as #resolveDefaultPersona: `PLURNK_REQUIREMENTS` env (absolute
+    // Resolve the default requirements file: `PLURNK_REQUIREMENTS` env (absolute
     // or relative-to-package-root) overrides the in-package `requirements.md`.
     static #resolveDefaultRequirements(): string {
         const env = process.env.PLURNK_REQUIREMENTS;
@@ -56,7 +39,7 @@ export default class Paths {
     // `PLURNK_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
     // `plurnk:///<ALIAS>.md` entry the model READs — an idiomatic, userland way
     // to inject standing context (an ordinary entry + READ op, not a bespoke
-    // packet section like persona). `~` expands to home; relative paths resolve
+    // packet section). `~` expands to home; relative paths resolve
     // against the package root. Resolved fresh each call so it tracks the env.
     static docs(): Array<{ entryName: string; path: string }> {
         const out: Array<{ entryName: string; path: string }> = [];

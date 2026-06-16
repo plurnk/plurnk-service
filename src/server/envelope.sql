@@ -1,30 +1,25 @@
 -- Envelope lifecycle queries. SPEC §connection-lifecycle.
 
 -- PREP: envelope_insert_session
-INSERT INTO sessions (name, project_root, persona)
-VALUES ($name, $project_root, $persona)
-RETURNING id, name, project_root, persona;
+INSERT INTO sessions (name, project_root)
+VALUES ($name, $project_root)
+RETURNING id, name, project_root;
 
 -- PREP: envelope_get_session
-SELECT id, name, project_root, persona FROM sessions WHERE id = $id;
+SELECT id, name, project_root FROM sessions WHERE id = $id;
 
 -- PREP: envelope_update_session_project_root
 -- Used by session.set_root (F.1). Returns the updated row so the caller can
 -- refresh its ClientEnvelope copy without a second query.
 UPDATE sessions SET project_root = $project_root WHERE id = $id
-RETURNING id, name, project_root, persona;
-
--- PREP: envelope_update_session_persona
--- Used by session.set_persona (issue #150). Mirrors set_project_root.
-UPDATE sessions SET persona = $persona WHERE id = $id
-RETURNING id, name, project_root, persona;
+RETURNING id, name, project_root;
 
 -- PREP: envelope_insert_run
 -- origin is the run's actor (§machine-processes): 'model' (the conversation),
 -- 'client' (a connection's own run), or 'plurnk' (the runtime self-hosting run).
-INSERT INTO runs (session_id, name, persona, origin)
-VALUES ($session_id, $name, $persona, $origin)
-RETURNING id, name, persona, origin;
+INSERT INTO runs (session_id, name, origin)
+VALUES ($session_id, $name, $origin)
+RETURNING id, name, origin;
 
 -- PREP: envelope_get_run_by_id
 SELECT id, name, session_id FROM runs WHERE id = $id;

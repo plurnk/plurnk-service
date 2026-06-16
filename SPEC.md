@@ -190,7 +190,7 @@ Plus immutable identity: `provider.contextSize` (token total, or `null` → "no 
 
 ### §provider-guarantees Engine → provider guarantees
 
-- `messages` is a complete prompt (`system_definition`, `persona`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` pre-assembled). Provider does not reorder.
+- `messages` is a complete prompt (`system_definition`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` pre-assembled). Provider does not reorder.
 - `signal` is wired to the run's AbortController. {§provider-guarantees-signal-wired}
 - `generate` is single-call per turn. No parallel calls on the same instance. {§provider-guarantees-single-call}
 - `assistantRaw` is opaque to the engine (forensics-only). {§provider-guarantees-assistantraw-opaque}
@@ -712,7 +712,6 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§engine-rails).             |
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§engine-rails).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§engine-rails).            |
-| `PLURNK_PERSONA`                     | `persona.md`       | enforced   | Path to the default persona file. Tail of the persona cascade: loops.persona > runs.persona > sessions.persona > this file. |
 | `PLURNK_MD_<ALIAS>`                  | (unset)            | enforced   | Operator reference doc: materializes `<path>` as `plurnk:///<ALIAS>.md`, auto-READ into every model run's turn 0 (§actor-boundary). `~` expands to home. |
 | `PLURNK_MANIFEST_ITEMS`              | `0`                | enforced   | Turn-0 manifest preview foisted into the model's first turn. `-1` = full `plurnk:///manifest.json`; positive `N` = the first N items (jsonpath slice); `0` / unset = off (§actor-boundary-manifest-preview). |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
@@ -726,7 +725,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 - **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ENABLED` (`=0` flatly denies git service-wide, §membership), `PLURNK_BUDGET_CEILING` (§tokenomics), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
-- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_PERSONA` / `PLURNK_REQUIREMENTS` (the §persona persona cascade / per-call requirements), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
+- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
 
@@ -817,12 +816,11 @@ registry.register("loop.run", {
 
 | Method                 | Params              | Result            | Notes |
 |------------------------|---------------------|-------------------|-------|
-| `session.create`       | `name?: string`, `projectRoot?: string`, `persona?: string` | `{ id, name, runId, runName, projectRoot, persona }` | Creates new session + its first run; auto-name if unprovided. Returns the auto-created run's identity so clients skip the pending-dance ({§methods-session-create}). Optional `projectRoot` pins the workspace (null/omitted = headless). Optional `persona` sets the session-level persona override. |
+| `session.create`       | `name?: string`, `projectRoot?: string` | `{ id, name, runId, runName, projectRoot }` | Creates new session + its first run; auto-name if unprovided. Returns the auto-created run's identity so clients skip the pending-dance ({§methods-session-create}). Optional `projectRoot` pins the workspace (null/omitted = headless). |
 | `session.list`         | none                | `{ sessions: Session[] }` | Lists all sessions. |
-| `session.attach`       | `id: number`, `runId?: number`, `runName?: string`, `persona?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. Optional `persona` sets run-level persona only when a NEW run is created. {§methods-session-attach} |
+| `session.attach`       | `id: number`, `runId?: number`, `runName?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. {§methods-session-attach} |
 | `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
 | `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
-| `session.set_persona`  | `persona: string \| null` | `{ persona }`  | Update the session-level persona. Null clears the override (falls through to PLURNK_PERSONA file). |
 | `session.constrain`    | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Add a workspace membership constraint (§membership overlay): `add` admits files git misses, `ignore` drops tracked matches, `read-only` admits for read but refuses edits. Immediate. |
 | `session.unconstrain`  | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Remove a membership constraint — the inverse of `session.constrain`. Immediate. |
 | `session.constraints`  | none                | `{ constraints }` | List the attached session's membership constraints. |
@@ -837,7 +835,7 @@ registry.register("loop.run", {
 
 | Method            | Params                              | Result                 | Notes |
 |-------------------|-------------------------------------|------------------------|-------|
-| `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags`, `persona?: string` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §engine-rails). Optional `persona` sets the loop-level persona (highest precedence in the cascade). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. {§methods-loop-run} |
+| `loop.run`        | `prompt: string`, `maxTurns?: number`, `alias?: string`, `flags?: LoopFlags` | `{ loopId, turnIds, finalStatus, hitMaxTurns, reason }` | Model-driven loop. Optional `alias` overrides the boot-time `PLURNK_MODEL`. Optional `flags` carries per-loop flags (currently `{yolo?: boolean}`; more arrive as wired — see §engine-rails). Streams `log/entry` and `loop/proposal` notifications during. `longRunning: true`. {§methods-loop-run} |
 | `loop.resolve`    | `logEntryId: number`, `decision: "accept" \| "reject" \| "cancel"`, `body?: string`, `outcome?: string` | `{ status, logEntryId }` | Resolve a pending proposal (status=202 log entry). Engine.dispatch unpauses on resolution. |
 | `loop.cancel`     | `reason?: string`                   | `{ cancelled, runId, reason }` | Abort the attached run's active drain. `{cancelled: true}` if a drain was running, `{false}` if idle. Cancelled loops close at 499; queued-but-unclaimed loops stay enqueued. Default reason `user_cancelled`. {§methods-loop-cancel} |
 | `providers.list`  | none                                | `{ aliases: ProviderAlias[] }` | Lists configured `PLURNK_MODEL_<alias>` entries with `{alias, provider, model, active}`. Clients use to populate model-selection UI. |
@@ -886,7 +884,7 @@ Server-initiated events on the same WebSocket.
 | `log/entry`        | `{ entry: LogEntry }`               | Every `log_entries` write. {§notifications-log-entry-notify} |
 | `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | Loop reaches terminal status. |
 | `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so server-YOLO clients can suppress review UI. Client responds with `loop.resolve` (or `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
-| `session/created`  | `{ id, name, projectRoot, persona }` | Any client creates a session. |
+| `session/created`  | `{ id, name, projectRoot }` | Any client creates a session. |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. {§notifications-stream-event-on-channel-change} |
 | `stream/concluded` | `{ entryId, target, subscriptionId, scheme, closeStatus, summary, wakeAction, wakeLoopId? }` | A streaming subscription closed (subprocess finished / errored / cancelled). `wakeAction` says whether the daemon opened a fresh loop to surface the conclusion to the model. {§notifications-stream-concluded} |
 | `telemetry/event`  | `{ loopId, event: TelemetryEvent }` | A TelemetryEvent (parse error, engine-rail strike/cycle/sudden-death, scheme/provider failure) was buffered — the same envelope the model sees on the next packet, delivered live for client surfacing. {§notifications-telemetry-event} |
@@ -1104,7 +1102,6 @@ type Packet = {
     system: {
         tokens: number;
         system_definition: string;
-        persona: string;
         index: PacketEntry[];               // visible entries (§mimetype / §channels)
         log: PacketLogRow[];                // chronological action-entries (§stream)
     };
@@ -1170,14 +1167,6 @@ Rendered at the END of the user packet under `# Plurnk System Requirements` {§r
 **Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
 
 **Rationale:** the user's prompt is natural language ("Reply with just the number") and routinely conflicts with the grammar's operational contract. Without an explicit requirement block, the model obeys the prompt literally and never reaches for SEND. Requirements are the contract that wins those conflicts.
-
-### §persona Persona — the per-entity cascade
-
-The persona — the character the model wears, rendered into `packet.system` — resolves per turn at packet assembly by a cascade over three nullable columns plus a file default. **`loops.persona` > `runs.persona` > `sessions.persona` > the `PLURNK_PERSONA` file** (`engine_resolve_persona` is `COALESCE(loop, run, session)`, falling to `PATHS.defaultPersona` when all three are null); the most specific level set wins. {§persona-cascade-precedence}
-
-**Null falls through; empty string overrides.** A null at a level defers to the next; an explicit `""` is a non-null value that wins the COALESCE and **suppresses** the cascade — the model gets no persona section. Setting `""` is how a client deliberately strips an inherited persona for one loop. {§persona-null-falls-through} {§persona-empty-suppresses}
-
-**Set by RPC, evaluated at build.** `session.create` / `session.set_persona` set the session level, `session.attach` sets a *new* run's level, `loop.run({persona})` sets the loop level (highest precedence). The cascade resolves fresh each turn — not frozen at loop start — so a runtime `session.set_persona` lands on the next turn.
 
 ---
 

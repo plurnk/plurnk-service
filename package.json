@@ -21,7 +21,6 @@
         "bin/plurnk-service.ts",
         "dist/**/*",
         "migrations/**/*.sql",
-        "persona.md",
         "requirements.md",
         "README.md",
         "SPEC.md"

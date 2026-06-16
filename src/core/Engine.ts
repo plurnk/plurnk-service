@@ -103,7 +103,6 @@ type RequestPacket = {
     system: {
         tokens: number;
         system_definition: string;
-        persona: string;
         log: object[];
     };
     user: {
@@ -484,7 +483,7 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, persona = "", requirements = "", sessionId, runId, loopId,
+        provider, messages, requirements = "", sessionId, runId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
@@ -492,10 +491,6 @@ export default class Engine {
     }: {
         provider: Provider;
         messages: ChatMessage[];
-        // packet.system.persona content. Caller resolves the source (client
-        // override, session-persisted persona once #150 lands, or the
-        // service-default persona.md). Engine just plumbs into the packet.
-        persona?: string;
         // packet.user.system_requirements content. Rendered at the end of
         // the user packet under `# Plurnk System Requirements`. Caller
         // sources from Paths.defaultRequirements.
@@ -568,7 +563,7 @@ export default class Engine {
             }
 
             const turn = await this.runTurn({
-                provider, messages, persona, requirements, sessionId, runId, loopId, origin, signal, onDispatch,
+                provider, messages, requirements, sessionId, runId, loopId, origin, signal, onDispatch,
                 turnNumber: turnIds.length + 1, maxTurns,
             });
             turnIds.push(turn.turnId);
@@ -636,12 +631,11 @@ export default class Engine {
     }
 
     async runTurn({
-        provider, messages, persona = "", requirements = "", sessionId, runId, loopId, origin = "model", signal, onDispatch,
+        provider, messages, requirements = "", sessionId, runId, loopId, origin = "model", signal, onDispatch,
         turnNumber = 1, maxTurns = 50,
     }: {
         provider: Provider;
         messages: ChatMessage[];
-        persona?: string;
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
         origin?: WriterTier;
@@ -798,14 +792,14 @@ export default class Engine {
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#buildRequestPacket({
-            initialMessages: messages, persona, requirements, runId, loopId,
+            initialMessages: messages, requirements, runId, loopId,
             currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#enforceBudget({
             packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
             rebuild: (telemetryErrors) => this.#buildRequestPacket({
-                initialMessages: messages, persona, requirements, runId, loopId,
+                initialMessages: messages, requirements, runId, loopId,
                 currentTurnSeq: seq, provider, telemetryErrors, gitStatus,
             }),
         });
@@ -1019,14 +1013,9 @@ export default class Engine {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async #buildRequestPacket({
-        initialMessages, persona: defaultPersona, requirements, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
     }: {
         initialMessages: ChatMessage[];
-        // Fallback persona content — used only when no per-loop, per-run, or
-        // per-session override exists in the database (issue #150 cascade).
-        // Caller sources this from Paths.defaultPersona (PLURNK_PERSONA env
-        // override → persona.md package default).
-        persona: string;
         // Optional requirements override. Empty in practice — callers don't thread it;
         // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
         requirements: string;
@@ -1052,13 +1041,8 @@ export default class Engine {
         const prompt = (latestPromptRow !== undefined && typeof latestPromptRow.content === "string" && latestPromptRow.content.length > 0)
             ? latestPromptRow.content
             : byRole("user");
-        // Resolve persona cascade: loops.persona > runs.persona >
-        // sessions.persona > caller-supplied default. SQL coalesces in one
-        // query; null result means no DB override exists, use the default.
-        const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId }); // §persona-cascade-precedence
-        const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona; // null falls through to the default — §persona-null-falls-through
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
-        // exactly how it went missing (loop_run/Daemon read sysprompt + persona but never
+        // exactly how it went missing (callers read the sysprompt but never the
         // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
         const requirementsText = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
@@ -1079,7 +1063,7 @@ export default class Engine {
         // headline omitted, section lines still shown).
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const scratch = {
-            system: { system_definition, persona, log },
+            system: { system_definition, log },
             user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, tools: this.#collectTools(), system_requirements: requirementsText },
         };
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
@@ -1093,7 +1077,7 @@ export default class Engine {
                 .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                 .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-        const system = { tokens: 0, system_definition, persona, log };
+        const system = { tokens: 0, system_definition, log };
         const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, tools: scratch.user.tools, system_requirements: requirementsText };
         system.tokens = countTokens(PacketWire.renderSystemContent(system));
         user.tokens = countTokens(PacketWire.renderUserContent(user));
@@ -1353,7 +1337,7 @@ export default class Engine {
     async #logFsFictions(sessionId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const run = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" })
-            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", persona: null, origin: "plurnk" });
+            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", origin: "plurnk" });
         if (run === undefined) throw new Error("logFsFictions: plurnk run resolution returned no row");
         const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");

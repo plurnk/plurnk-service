@@ -32,7 +32,6 @@ const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
 };
 
 const SYSTEM_PROMPT = await readFile(Paths.instructionsSystem, "utf8");
-const PERSONA = await readFile(Paths.defaultPersona, "utf8");
 const REQUIREMENTS = await readFile(Paths.defaultRequirements, "utf8");
 
 const buildProvider = async (): Promise<Provider> => {
@@ -68,7 +67,7 @@ const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<void
     await (s.db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
     await s.engine.runLoop({
         provider: s.provider, sessionId: s.sessionId, runId: s.runId, loopId, maxTurns,
-        persona: PERSONA, requirements: REQUIREMENTS,
+        requirements: REQUIREMENTS,
         messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: prompt },

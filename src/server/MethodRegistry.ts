@@ -28,8 +28,8 @@ export interface DrainLoopResult {
 export interface DaemonSurface {
     inject(args: {
         sessionId: number; runId: number; prompt: string;
-        provider: Provider; persona: string; systemPrompt: string;
-        maxTurns?: number; flags?: { yolo?: boolean }; personaOverride?: string | null;
+        provider: Provider; systemPrompt: string;
+        maxTurns?: number; flags?: { yolo?: boolean };
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;

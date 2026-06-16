@@ -2,8 +2,6 @@
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
 -- non-null = absolute path to the client's source tree, supplied at
 -- session.create or session.set_root.
--- persona: head of the persona cascade (loops.persona > runs.persona >
--- sessions.persona > PATHS.defaultPersona). Nullable; null falls through.
 CREATE TABLE IF NOT EXISTS sessions (
     id                        INTEGER NOT NULL PRIMARY KEY,
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -11,15 +9,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     cost_pico                 INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
-    project_root              TEXT,
-    persona                   TEXT
+    project_root              TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS sessions_created_at ON sessions (created_at);
 
 -- INIT: runs
--- persona: middle of the persona cascade (loops > runs > sessions > default).
--- Nullable; null falls through to the session level.
 CREATE TABLE IF NOT EXISTS runs (
     id            INTEGER NOT NULL PRIMARY KEY,
     version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -29,7 +24,6 @@ CREATE TABLE IF NOT EXISTS runs (
     -- runs fork via parent_run_id; sessions carry no parent — §machine-processes-no-fork-session
     parent_run_id INTEGER          CHECK (parent_run_id IS NULL OR parent_run_id != id),
     cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
-    persona       TEXT,
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     FOREIGN KEY (session_id)    REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_run_id) REFERENCES runs(id)     ON DELETE CASCADE
@@ -44,7 +38,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS runs_session_name          ON runs (session_id
 -- mode). JSON column, merged over DEFAULT_LOOP_FLAGS in code so missing
 -- keys read as their defaults. SchemeRegistry.resolveForLoop gates schemes
 -- by manifest affinity (proposes / excludedInAsk / requiresWeb / etc).
--- persona: head of the cascade (loops > runs > sessions > default).
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
@@ -53,7 +46,6 @@ CREATE TABLE IF NOT EXISTS loops (
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 499)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
-    persona  TEXT,
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 ) STRICT;
 

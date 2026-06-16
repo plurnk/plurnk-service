@@ -19,7 +19,6 @@ import { readFile } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
 
 const SYSTEM_PROMPT = await readFile(Paths.instructionsSystem, "utf8");
-const PERSONA = await readFile(Paths.defaultPersona, "utf8");
 const REQUIREMENTS = await readFile(Paths.defaultRequirements, "utf8");
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -70,7 +69,7 @@ test("regression: a model's EXEC result surfaces in the NEXT turn's log, not jus
     } finally { await db.close(); }
 });
 
-test("regression-replica: under the FULL base context (sysprompt + persona + requirements) the exec result still surfaces", async () => {
+test("regression-replica: under the FULL base context (sysprompt + requirements) the exec result still surfaces", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -90,7 +89,7 @@ test("regression-replica: under the FULL base context (sysprompt + persona + req
         ] });
         const result = await engine.runLoop({
             provider: mock, sessionId, runId, loopId, maxTurns: 4,
-            persona: PERSONA, requirements: REQUIREMENTS,
+            requirements: REQUIREMENTS,
             messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: "what is the hostname of this machine?" }],
         });
         await exec.idle();

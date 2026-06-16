@@ -6,21 +6,21 @@
 -- copied; the branch first-sights its world like any fresh run.
 
 -- PREP: fork_get_run
-SELECT session_id, name, persona, origin FROM runs WHERE id = $id;
+SELECT session_id, name, origin FROM runs WHERE id = $id;
 
 -- PREP: fork_insert_run
 -- A new run in the parent's session; lineage recorded via parent_run_id (§lifecycle-terms).
-INSERT INTO runs (session_id, name, persona, parent_run_id, origin)
-VALUES ($session_id, $name, $persona, $parent_run_id, $origin)
+INSERT INTO runs (session_id, name, parent_run_id, origin)
+VALUES ($session_id, $name, $parent_run_id, $origin)
 RETURNING id;
 
 -- PREP: fork_get_loops
-SELECT id, sequence, status, prompt, flags, persona
+SELECT id, sequence, status, prompt, flags
 FROM loops WHERE run_id = $run_id ORDER BY id;
 
 -- PREP: fork_insert_loop
-INSERT INTO loops (run_id, sequence, status, prompt, flags, persona)
-VALUES ($run_id, $sequence, $status, $prompt, $flags, $persona)
+INSERT INTO loops (run_id, sequence, status, prompt, flags)
+VALUES ($run_id, $sequence, $status, $prompt, $flags)
 RETURNING id;
 
 -- PREP: fork_get_turns

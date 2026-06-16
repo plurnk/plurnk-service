@@ -156,17 +156,6 @@ SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
 -- PREP: test_set_loop_status
 UPDATE loops SET status = $status WHERE id = $id;
 
--- PREP: test_set_loop_persona
--- Used by persona-cascade intg tests to seed loops.persona without going
--- through the full loop.run RPC path.
-UPDATE loops SET persona = $persona WHERE id = $id;
-
--- PREP: test_set_run_persona
-UPDATE runs SET persona = $persona WHERE id = $id;
-
--- PREP: test_set_session_persona
-UPDATE sessions SET persona = $persona WHERE id = $id;
-
 -- PREP: test_set_session_project_root
 -- Sets sessions.project_root for File-scheme intg tests. F.1 added the
 -- column; F.5 made the File scheme read from it instead of an env var.

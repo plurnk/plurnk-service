@@ -19,17 +19,6 @@ SELECT flags FROM loops WHERE id = $loop_id;
 -- Updates the loop's persisted flags (json). Called by loop.run RPC handler.
 UPDATE loops SET flags = $flags WHERE id = $loop_id;
 
--- PREP: engine_resolve_persona
--- Persona cascade (issue #150, migration 016). Returns the first non-null
--- value across loops.persona, runs.persona, sessions.persona for the given
--- loop_id. Falls through to NULL if no override was set at any level;
--- caller (#buildRequestPacket) treats NULL as "use file default."
-SELECT COALESCE(l.persona, r.persona, s.persona) AS persona
-FROM loops l
-JOIN runs r ON r.id = l.run_id
-JOIN sessions s ON s.id = r.session_id
-WHERE l.id = $loop_id;
-
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
 -- system-origin EDIT against plurnk:///prompt/<loop_id>/1 (§packet), at the

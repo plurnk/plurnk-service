@@ -128,7 +128,6 @@ export default class ClientConnection {
                     id: envelope.sessionId,
                     name: envelope.sessionName,
                     projectRoot: envelope.projectRoot,
-                    persona: envelope.sessionPersona,
                 });
             } catch (cause) {
                 const message = cause instanceof Error ? cause.message : String(cause);
