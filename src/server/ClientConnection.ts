@@ -120,7 +120,7 @@ export default class ClientConnection {
             return;
         }
 
-        if (registration.requiresInit && this.#session === null) {
+        if (registration.requiresInit && this.#session === null) { // requiresInit with no session → auto-create an envelope — §methods-auto-envelope
             try {
                 const envelope = await Envelope.createClientEnvelope(this.#db, { prefix: "auto" });
                 this.#session = envelope;
@@ -144,7 +144,7 @@ export default class ClientConnection {
             provider: this.#provider,
             daemon: this.#daemon,
             session: this.#session,
-            attachSession: (envelope) => {
+            attachSession: (envelope) => { // session.create/attach re-binds this connection, no reconnect — §methods-rebind
                 // #196: re-binding switches session/run in place (no reconnect).
                 // Release the prior client loop first — the close() teardown —
                 // then swap.

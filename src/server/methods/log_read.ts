@@ -38,7 +38,7 @@ export default class LogReadMethod {
                 if (ctx.session === null) throw new Error("log.read requires an attached session");
                 const p = params as Params;
                 // Default to the connection's own run; an explicit runId targets any
-                // run in the session — the MODEL run for a conversation client (#214) —
+                // run in the session — the MODEL run for a conversation client (#214, §machine-processes-model-run-readable) —
                 // ownership-verified so a client can't read a run outside its session.
                 let runId = ctx.session.runId;
                 if (typeof p.runId === "number" && p.runId !== runId) {

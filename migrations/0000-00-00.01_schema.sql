@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS runs (
     session_id    INTEGER NOT NULL,
     name          TEXT    NOT NULL CHECK (length(name) > 0),
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    parent_run_id INTEGER          CHECK (parent_run_id IS NULL OR parent_run_id != id),
+    parent_run_id INTEGER          CHECK (parent_run_id IS NULL OR parent_run_id != id), -- runs fork; sessions carry no parent — §machine-processes-no-fork-session
     cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     persona       TEXT,
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),

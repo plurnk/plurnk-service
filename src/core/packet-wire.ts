@@ -67,7 +67,7 @@ export default class PacketWire {
     //   # Plurnk System Log            (log entries — only when present)
     static renderSystemContent(system: SystemSection): string {
         const parts: string[] = [system.system_definition];
-        if (typeof system.persona === "string" && system.persona.length > 0) {
+        if (typeof system.persona === "string" && system.persona.length > 0) { // empty persona renders no section — §persona-empty-suppresses
             parts.push(`# Plurnk System Instructions\n\n${system.persona}`);
         }
         if (Array.isArray(system.log) && system.log.length > 0) {
