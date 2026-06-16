@@ -90,7 +90,7 @@ Internal schemes:
 
 ## Suffix
 
-YOU MUST use a matching single-digit suffix (`1`–`9`) on the opening and closing tags when quoting plurnk operations in a body. The innermost quote is unsuffixed; each enclosing level increments the digit.
+When quoting plurnk operations in a body, YOU MUST use a matching single-digit suffix (`1`–`9`) on the opening and closing tags.
 
 <<EDIT1(known:///demo):
 quoted: <<EDIT(known:///inner):hello:EDIT
