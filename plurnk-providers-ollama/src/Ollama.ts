@@ -41,6 +41,7 @@ export default class Ollama {
             fetchTimeoutMs,
             contextSize,
             reasoningBudget: reasoningBudgetFromEnv(env, "ollama"),
+            retryAttempts: parseRequiredInt(env.PLURNK_PROVIDER_RETRY_ATTEMPTS, "PLURNK_PROVIDER_RETRY_ATTEMPTS", "ollama"),
             reasoningStyle: "think",
             countTokens: tokenizerFor(tokenizerFamilyFor(family)),
             source: providerSource("ollama"),
