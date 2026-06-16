@@ -42,7 +42,11 @@ class Known {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `flags?` | Optional `SchemeFlagAffinity`. |
+| `example?` | One self-documenting usage line (e.g. `"READ(foo://thing/42)"`), surfaced verbatim in the model's packet listing. Omit → not advertised with a usage line. Deep docs do NOT live here — see below. |
+| `glyph?` | Display icon (emoji / nerdfont). Omit → consumer renders the `name` (`glyph ?? name`). |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Resolution: `storedScheme === undefined ? name : storedScheme`. Absent → defaults to `name` (additive; existing manifests unchanged). Explicit `null` → persists BARE (e.g. File: bare paths, `entries.scheme` NULL, routing name `"file"`). |
+
+**Self-doc split.** The manifest carries only the terse listing (`example` + `glyph`). Detailed documentation — every op, channel, status code, gotcha — is a markdown the model reads on demand at **`plurnk://schemes/<name>.md`** (the consumer serves it), bypassing the manifest. Keep the manifest a one-liner; the deep doc carries the prose.
 
 ## §2 Interface
 

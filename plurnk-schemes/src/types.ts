@@ -27,6 +27,17 @@ export interface SchemeManifest {
     readonly volatile: boolean;
     readonly modelVisible: boolean;
     readonly flags?: SchemeFlagAffinity;
+    // Self-doc for the model's packet listing. Terse by design — DEEP docs do
+    // NOT live here; they are a markdown the model reads on demand at
+    // `plurnk://schemes/<name>.md` (the consumer serves it). Keep the manifest a
+    // one-line teaser; the prose lives in the doc.
+    //   example — one self-documenting usage line, surfaced verbatim (e.g.
+    //     "READ(https://example.com/page)"); omit it and the scheme isn't
+    //     advertised with a usage line. Mirrors an execs runtime's `example`.
+    //   glyph — a display icon (emoji / nerdfont). Omit it and the consumer
+    //     renders the scheme `name` in its place (glyph ?? name).
+    readonly example?: string;
+    readonly glyph?: string;
     // The value persisted to `entries.scheme` for this scheme's rows, which can
     // legitimately differ from the addressing `name`. Resolution:
     //   storedScheme === undefined ? name : storedScheme
