@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "0.4.7",
+    "version": "0.4.8",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": [
         "plurnk",
@@ -35,7 +35,8 @@
     "files": [
         "dist/**/*",
         "README.md",
-        "SPEC.md"
+        "SPEC.md",
+        "PATTERN-tooling-docs.md"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",

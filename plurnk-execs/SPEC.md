@@ -103,16 +103,18 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "search", "glyph": "🔎", "example": "EXEC[search]:france population:EXEC" },
+            { "name": "search", "glyph": "🔎", "example": "EXEC[search]:france population:EXEC", "documentation": "# search\n\n`!bang` / `:lang` ride the query…" },
             { "name": "news",   "glyph": "📰" }
         ]
     }
 }
 ```
 
-A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, documentation, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
 
 Each entry's optional **`example`** is a one-line, self-documenting usage example (`EXEC[tag]:body:EXEC`), surfaced verbatim by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
+
+Each entry's optional **`documentation`** is full markdown — flags, modes, gotchas the one-liner can't carry. It is **not** rendered in the hot-path sheet; the consumer serves it on demand behind a `plurnk://execs/<tag>.md` resource the model READs when it commits to a non-trivial tag (progressive disclosure). Defaults to `""`; the consumer skeletons a baseline doc from registry metadata regardless, so the resource never 404s. The sheet line pairs the two — `* plurnk://execs/<tag>.md - <<EXEC[tag]:…:EXEC` — example to vibe off, link for depth. This is the **model-facing tooling-docs convention** (see [`PATTERN-tooling-docs.md`](./PATTERN-tooling-docs.md)), the template the schemes family follows.
 
 **Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The policy mirrors plurnk-service's `PluginTrust.isTrusted`; it's duplicated, not shared, since it can't cross the package boundary.
 

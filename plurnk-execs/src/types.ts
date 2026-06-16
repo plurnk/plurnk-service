@@ -100,6 +100,13 @@ export interface ExecInfo {
     // entry omits it. Kept to one line — the hot-path sheet is token-sensitive;
     // the generic `(target)` slot is documented once at the op level, not here.
     example: string;
+    // Full markdown documentation for this tag — flags, modes, gotchas the
+    // one-line `example` can't carry. NOT rendered in the hot-path sheet: the
+    // consumer serves it on demand behind a `plurnk://execs/<tag>.md` resource
+    // the model READs when it commits to a non-trivial tag (progressive
+    // disclosure). Empty when omitted — the consumer skeletons a baseline doc
+    // from the registry metadata regardless, so the resource never 404s.
+    documentation: string;
     packageName: string;
 }
 
