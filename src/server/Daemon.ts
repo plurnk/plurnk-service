@@ -726,7 +726,7 @@ export default class Daemon {
             return;
         }
         const sessionId = target.sessionId;
-        // Stamp the scope onto the envelope (#191). A notification is broadcast
+        // Stamp the scope onto the envelope (#191, §notifications-envelope-carries-sessionid). A notification is broadcast
         // to exactly one session but carried nothing identifying it, so a
         // multi-session client (one connection, many sessions) couldn't route it
         // — "scoped by connection" only holds for one-connection-per-session.

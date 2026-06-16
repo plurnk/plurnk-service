@@ -10,6 +10,7 @@ import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
 
 export default class Known {
+    // A scheme declares its manifest — channels, default channel, scope, writableBy. §scheme-manifest-manifest
     static manifest: SchemeManifest = {
         name: "known",
         channels: { body: "text/markdown" },

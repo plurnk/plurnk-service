@@ -81,7 +81,7 @@ export default class EntryCrud {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
         }
         // NB: NO @graph derivation here — a write stores content + label; the
-        // mimetypes handler is never invoked at write (§mimetype). The symbol index is
+        // mimetypes handler is never invoked at write (§mimetype, §mimetype-schemes-do-not-invoke-handlers). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody),
         // which walks every entry — files included — once per turn.
 

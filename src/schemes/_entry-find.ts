@@ -87,6 +87,7 @@ export default class EntryFind {
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, sessionId } = ctx;
+        // Candidates are session-scoped — a FIND never reaches across sessions. §find-scoped-isolation
         const candidates = await (db.find_session_entry_candidates as PrepMethod).all<{ pathname: string; content: string; mimetype: string }>({
             session_id: sessionId,
             scheme,

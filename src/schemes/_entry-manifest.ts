@@ -1,4 +1,4 @@
-// The body of plurnk:///manifest.json — the complete, unranked directory of
+// The body of plurnk:///manifest.json — the complete, unranked directory (§packet-manifest-catalog) of
 // every entry the session holds, across all schemes. engine_list_session_entries
 // lists every entry, uniformly READable, in no relevance order. The model
 // ranks/filters it itself by querying the catalog

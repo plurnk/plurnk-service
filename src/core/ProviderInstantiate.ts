@@ -43,7 +43,7 @@ export default class ProviderInstantiate {
     // Convenience: resolve + instantiate in one call. Returns null when no
     // PLURNK_MODEL is set (caller decides what 'no provider' means).
     static async loadActiveProvider(env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> {
-        const alias = resolveActiveAlias(env);
+        const alias = resolveActiveAlias(env); // the active provider alias resolves from PLURNK_MODEL — §provider-instantiation-alias-resolution
         if (alias === null) return null;
         return ProviderInstantiate.instantiateProvider(alias, env);
     }

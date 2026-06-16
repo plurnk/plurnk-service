@@ -1452,7 +1452,7 @@ export default class Engine {
             // YOLO listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
             const target = this.#extractTarget(statement.target);
-            const flags = await this.#loadLoopFlags(loopId);
+            const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
             const event: ProposalPendingEvent = {
                 logEntryId, sessionId, runId, loopId, turnId,
                 op: statement.op,
