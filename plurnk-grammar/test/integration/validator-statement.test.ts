@@ -97,12 +97,12 @@ test("PlurnkStatement: PLAN with tags (parse-side permissive)", () => {
 });
 
 test("PlurnkStatement: KILL with bare target", () => {
-    const r = validateRoundTrip("<<KILL(exec://3/1/2)::KILL");
+    const r = validateRoundTrip("<<KILL(sh:///3/1/2)::KILL");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: KILL with signal and annotation body", () => {
-    const r = validateRoundTrip("<<KILL[9](exec://3/1/2):runaway; no output for 4 turns:KILL");
+    const r = validateRoundTrip("<<KILL[9](sh:///3/1/2):runaway; no output for 4 turns:KILL");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 

@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/ChannelContent.json",
     "title": "ChannelContent",
-    "description": "One named stream of content on an entry. Channels carry distinct, parallel views of an entry (e.g. `stdout` and `stderr` on `exec://`; `body` and `headers` on `https://`; `body` and `symbols` on a code file). Each channel has its own content bytes, mimetype, and token count.",
+    "description": "One named stream of content on an entry. Channels carry distinct, parallel views of an entry (e.g. `stdout` and `stderr` on an executor scheme like `node://`/`sh://`; `body` and `headers` on `https://`; `body` and `symbols` on a code file). Each channel has its own content bytes, mimetype, and token count.",
     "type": "object",
     "required": ["content", "mimetype", "tokens"],
     "additionalProperties": false,

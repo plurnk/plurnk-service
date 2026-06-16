@@ -101,7 +101,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<READ(README.md)://h2/text():READ
 <<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
-<<READ(exec:///3/1/2#stdout)<1,40>::READ
+<<READ(node:///3/1/2#stdout)<1,40>::READ
 <<READ(/etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
@@ -121,7 +121,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 <<KILL(obsolete/file.md)::KILL
-<<KILL(exec:///3/1/2)::KILL
+<<KILL(sh:///3/1/2)::KILL
 <<EDIT(run:///capital-check):Find the capital of France.:EDIT
 <<COPY(run:///.):Re-derive the capital from a primary source.:COPY
 <<OPEN(log:///**/get)<1,10>::OPEN

@@ -18,7 +18,7 @@
         "default_channel": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_-]*$",
-            "description": "Channel name selected when an op against this scheme has no fragment. Conventionally `body`; exec schemes typically declare `stdout`."
+            "description": "Channel name selected when an op against this scheme has no fragment. Conventionally `body`; executor schemes (`{tag}://`) typically declare `stdout`."
         },
         "channel_orientations": {
             "type": "object",

@@ -170,7 +170,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND
 
 31. Kill a runaway process
-	<<KILL(exec:///3/1/2)::KILL
+	<<KILL(sh:///3/1/2)::KILL
 
 32. Permanently delete an entry
 	<<KILL(known:///obsolete/note)::KILL

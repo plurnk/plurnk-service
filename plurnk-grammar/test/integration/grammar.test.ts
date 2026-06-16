@@ -630,13 +630,13 @@ test("ParsedPath cleavage: HTTPS retains authority decomposition", () => {
     assert.equal(p.fragment, "frag");
 });
 
-test("ParsedPath: exec:/// — empty authority, leading-slash pathname", () => {
-    const result = PlurnkParser.parse("<<READ(exec:///run-tests)::READ");
+test("ParsedPath: sh:/// — empty authority, leading-slash pathname", () => {
+    const result = PlurnkParser.parse("<<READ(sh:///run-tests)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
     const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "exec");
+    assert.equal(p.scheme, "sh");
     assert.equal(p.username, null);
     assert.equal(p.password, null);
     assert.equal(p.hostname, null);

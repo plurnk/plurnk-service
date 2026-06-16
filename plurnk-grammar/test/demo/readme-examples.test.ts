@@ -151,7 +151,7 @@ test("ex 30: SEND — informational message at named agent", () => {
 });
 
 test("ex 31: KILL — runaway process", () => {
-    expectOneClean("<<KILL(exec://3/1/2)::KILL");
+    expectOneClean("<<KILL(sh:///3/1/2)::KILL");
 });
 
 test("ex 32: KILL — permanently delete an entry", () => {
