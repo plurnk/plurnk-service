@@ -82,19 +82,30 @@ export default class EntryFind {
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
-        const scopeGlob = scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;  // scope prefix filter — §find-scope-prefix-filter
+        // grammar 0.46 regex-in-path: a `#pattern#flags` target filters by regex over the pathname (below), so it takes no scope-prefix glob.
+        const scopeGlob = statement.target.kind !== "regex" && scopePathname !== null && scopePathname.length > 0 ? `${scopePathname}*` : null;  // scope prefix filter — §find-scope-prefix-filter
         const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — §find-tag-filter-and-semantics
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, sessionId } = ctx;
         // Candidates are session-scoped — a FIND never reaches across sessions. §find-scoped-isolation
-        const candidates = await (db.find_session_entry_candidates as PrepMethod).all<{ pathname: string; content: string; mimetype: string }>({
+        let candidates = await (db.find_session_entry_candidates as PrepMethod).all<{ pathname: string; content: string; mimetype: string }>({
             session_id: sessionId,
             scheme,
             channel: manifest.defaultChannel,
             scope_pathname: scopeGlob,
             tags: tagsParam,
         });
+
+        // grammar 0.46 regex-in-path — a `#pattern#flags` target narrows candidates by regex
+        // over their pathname (in TS; SQLite has no regex). Malformed pattern → 400, parallel
+        // to a malformed body matcher.
+        if (statement.target.kind === "regex") {
+            let re: RegExp;
+            try { re = new RegExp(statement.target.pattern, statement.target.flags || undefined); }
+            catch { return { status: 400, pathnames: [] }; }
+            candidates = candidates.filter((c) => re.test(c.pathname));
+        }
 
         let pathnames: string[];
         if (statement.body === null) {
