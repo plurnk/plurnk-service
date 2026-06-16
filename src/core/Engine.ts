@@ -1789,7 +1789,7 @@ export default class Engine {
         if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
         // MOVE is relocation only — deletion is KILL's job (§move). The /dev/null
         // and null-body delete-by-MOVE back-compat is retired: no silent debt.
-        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" };
+        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" }; // §move-null-body-400
 
         const srcSchemeName = this.#schemeNameOf(srcPath);
         if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };

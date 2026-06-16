@@ -108,7 +108,7 @@ export default class PacketWire {
         if (Array.isArray(user.tools) && user.tools.length > 0) {
             parts.push(`# Plurnk System Tools\n\n${(user.tools as string[]).join("\n")}`);
         }
-        if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) {
+        if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) { // omitted when empty; appended last in the user packet — §requirements-requirements-omitted-when-empty §requirements-requirements-render-last
             parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
         }
         return parts.map((p) => p.replace(/\n+$/, "")).join("\n\n");
@@ -383,7 +383,7 @@ export default class PacketWire {
                     // navigable (JSON, XML, HTML) render verbatim — line
                     // numbers in the wrapper would collide with structural
                     // navigation (jsonpath/xpath) used on these formats.
-                    // Classifier is consumer-side in this repo (SPEC.md §render-rule).
+                    // Classifier is consumer-side in this repo (SPEC.md §render-rule, §render-rule-line-navigable-prefix, §render-rule-tree-navigable-verbatim).
                     const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
                     if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
                         const start = typeof rx.startLine === "number" ? rx.startLine : 1;

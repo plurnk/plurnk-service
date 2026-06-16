@@ -146,7 +146,7 @@ export default class EntryOps {
         }
 
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
-        await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) });
+        await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
         // NB: NO @graph derivation here — a scheme write resolves the mimetype
         // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).

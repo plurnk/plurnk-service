@@ -125,7 +125,7 @@ export default class File {
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
             const viewGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
-            if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" };
+            if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
             original = await readFile(canonical, "utf8");
         }
 
