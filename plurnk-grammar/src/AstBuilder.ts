@@ -330,6 +330,15 @@ export default class AstBuilder {
      */
     static parsePath(raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null {
         if (raw.length === 0) return null;
+        // A leading `#` dispatches a path-name regex (`#pattern#flags`) — an
+        // addressing pattern over paths, not a single address. `#` is collision-
+        // free here: scheme paths never lead with it, and `#channel` is a postfix.
+        // Try-then-fall-back-to-local mirrors the matcher dispatch: a malformed
+        // `#…` (no closing `#`, bad flags) is just a local path that starts with `#`.
+        if (raw.startsWith("#")) {
+            const regex = AstBuilder.#tryParseRegex(raw);
+            if (regex !== null) return { kind: "regex", raw, ...regex };
+        }
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
         }
@@ -375,15 +384,16 @@ export default class AstBuilder {
 
     // Matcher dispatch: try the prefix-indicated dialect; if it doesn't parse cleanly,
     // fall through to glob. Same robustness principle for every prefix — dispatch is a
-    // hint, not a gate. Lets literal `//`-comments, `/path/`-strings, and `$`-prefixed
+    // hint, not a gate. Lets literal `//`-comments, `#…`-strings, and `$`-prefixed
     // shell-ish text reach the model as glob matches instead of hard-erroring.
-    // Semantic (`~`) and graph (`@`) have no parse step — any text is a valid query
-    // — so they dispatch directly.
+    // Regex is `#pattern#flags` (`#` chosen over `/` so it never collides with path
+    // `/` or regex's own `|` alternation). Semantic (`~`) and graph (`@`) have no
+    // parse step — any text is a valid query — so they dispatch directly.
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
             try { xpath.parse(body); return { dialect: "xpath", raw: body }; }
             catch { /* fall through to glob */ }
-        } else if (body.startsWith("/")) {
+        } else if (body.startsWith("#")) {
             const regex = AstBuilder.#tryParseRegex(body);
             if (regex !== null) return { dialect: "regex", raw: body, ...regex };
         } else if (body.startsWith("$")) {
@@ -397,16 +407,19 @@ export default class AstBuilder {
         return { dialect: "glob", raw: body };
     }
 
-    static #tryParseRegex(body: string): { pattern: string; flags: string } | null {
+    // Splits a `#pattern#flags` literal. Assumes raw[0] is the opening `#`. `\#`
+    // escapes a literal hash inside the pattern. Returns null on no closing `#` or
+    // an invalid pattern/flags pair, so callers can fall back (glob / local path).
+    static #tryParseRegex(raw: string): { pattern: string; flags: string } | null {
         let i = 1;
-        while (i < body.length) {
-            if (body[i] === "\\") { i += 2; continue; }
-            if (body[i] === "/") break;
+        while (i < raw.length) {
+            if (raw[i] === "\\") { i += 2; continue; }
+            if (raw[i] === "#") break;
             i++;
         }
-        if (i >= body.length) return null;
-        const pattern = body.slice(1, i);
-        const flags = body.slice(i + 1);
+        if (i >= raw.length) return null;
+        const pattern = raw.slice(1, i);
+        const flags = raw.slice(i + 1);
         try { new RegExp(pattern, flags); } catch { return null; }
         return { pattern, flags };
     }

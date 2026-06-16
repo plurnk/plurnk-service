@@ -100,7 +100,7 @@ test("ex 18: SEND — deliver final answer (200)", () => {
 });
 
 test("ex 19: FIND — case-insensitive regex body", () => {
-    expectOneClean("<<FIND(log://**/error):/timeout|deadline exceeded/i:FIND");
+    expectOneClean("<<FIND(log://**/error):#timeout|deadline exceeded#i:FIND");
 });
 
 test("ex 20: FIND — glob body matching content prefix", () => {
@@ -175,4 +175,8 @@ test("ex 36: nested EDIT via suffix discipline", () => {
 The following is a quoted plurnk operation, preserved verbatim:
 <<EDIT(known://inner):hello world:EDIT
 :EDITouter`);
+});
+
+test("ex 37: FIND — path-name regex target", () => {
+    expectOneClean("<<FIND(#draft.*#i)::FIND");
 });

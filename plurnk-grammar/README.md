@@ -61,9 +61,9 @@ Exit `0` on clean parse, `1` on any error or unparsed tail.
 | KILL | unix signal int  | annotation (opaque)   | n/a                |
 | PLAN | tags             | reasoning text        | n/a                |
 
-Matcher body dialect by leading char: `//` xpath · `/…/flags` regex · `$` jsonpath · `~` semantic · `@` graph · else glob. A body that fails its prefix-indicated dialect falls back to glob.
+Matcher body dialect by leading char: `//` xpath · `#…#flags` regex · `$` jsonpath · `~` semantic · `@` graph · else glob. A body that fails its prefix-indicated dialect falls back to glob.
 
-Path scheme detection: `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
+Path scheme detection: a leading `#` → path-name regex (`#pattern#flags`); else `[a-z][a-z0-9+.-]*://` → URL (fully decomposed); else local (raw). Bare paths default to `file://` at runtime.
 
 Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a non-empty suffix so its close `:OPsuffix` is distinct.
 
@@ -131,7 +131,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[200]:Paris:SEND
 
 19. Search logs for timeout errors (case-insensitive regex body)
-	<<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND
+	<<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
 
 20. Find entries whose content begins with "Paris" (glob body)
 	<<FIND(known:///countries/**):Paris*:FIND
@@ -189,6 +189,9 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	The following is a quoted plurnk operation, preserved verbatim:
 	<<EDIT(known:///inner):hello world:EDIT
 	:EDITouter
+
+37. Find every entry whose path matches a regex (path-name regex target)
+	<<FIND(#draft.*#i)::FIND
 
 ## error format
 

@@ -60,13 +60,13 @@ On structured entries, `<Result>` addresses result index, not line number.
 | leading prefix | dialect  | form                              |
 |----------------|----------|-----------------------------------|
 | `//`           | xpath    | `//selector`                      |
-| `/`            | regex    | `/pattern/[igmsu]?`               |
+| `#`            | regex    | `#pattern#[igmsu]?`               |
 | `$`            | jsonpath | `$.field`                         |
 | `~`            | semantic | `~phrase`                         |
 | `@`            | graph    | `@<symbol`, `@>symbol`, `@symbol` |
 | otherwise      | glob     | `pattern`                         |
 
-Escape `/` inside a regex pattern as `\/`. XPath body begins with `//`. Semantic search narrows top-K via `<Result>` on the host statement.
+Escape `#` inside a regex pattern as `\#`. XPath body begins with `//`. Semantic search narrows top-K via `<Result>` on the host statement.
 
 ## Paths
 
@@ -74,6 +74,7 @@ URI-shaped: `[scheme://]rest`.
 
 * Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
+* A target wrapped in `#pattern#flags` is a path-name regex: it matches entries by path instead of addressing one (e.g. `(#draft.*#i)`).
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
@@ -134,8 +135,9 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(known:///**)<5>:~french revolutionary history:FIND
 <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
 <<FOLD(log:///**/get)<101,200>::FOLD
-<<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND
+<<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
 <<FIND(known:///**):revolution:FIND
+<<FIND(#draft.*#i)::FIND
 <<FIND(src/**):@<createCoder:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh

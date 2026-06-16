@@ -2,10 +2,11 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/ParsedPath.json",
     "title": "ParsedPath",
-    "description": "A parsed path slot from a plurnk statement. Discriminated on `kind`: either a bare local path (no scheme) or a fully decomposed URL.",
+    "description": "A parsed path slot from a plurnk statement. Discriminated on `kind`: a bare local path (no scheme), a fully decomposed URL, or a path-name regex (`#pattern#flags`) that matches entries by path rather than addressing one.",
     "oneOf": [
         { "$ref": "#/$defs/LocalPath" },
-        { "$ref": "#/$defs/UrlPath" }
+        { "$ref": "#/$defs/UrlPath" },
+        { "$ref": "#/$defs/RegexPath" }
     ],
     "$defs": {
         "LocalPath": {
@@ -45,6 +46,19 @@
                 "pathname": { "type": "string" },
                 "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
                 "fragment": { "type": ["string", "null"] }
+            }
+        },
+        "RegexPath": {
+            "title": "RegexPath",
+            "description": "A path-name regex `#pattern#flags` in the target slot — matches entries whose path matches the pattern, rather than addressing a single path. The leading `#` is the dispatch key (collision-free: `#channel` is a postfix, never a leading form). Pattern and flags are split out for direct use; `raw` preserves the literal.",
+            "type": "object",
+            "required": ["kind", "raw", "pattern", "flags"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "regex" },
+                "raw": { "type": "string", "minLength": 2 },
+                "pattern": { "type": "string" },
+                "flags": { "type": "string" }
             }
         }
     }

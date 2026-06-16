@@ -325,13 +325,13 @@ test("invalid path (unterminated IPv6 bracket) produces visitor error", () => {
 });
 
 test("valid regex body accepted", () => {
-    const result = PlurnkParser.parse("<<FIND(log://errors):/timeout|deadline/i:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://errors):#timeout|deadline#i:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("regex body missing closing slash falls back to glob, not error", () => {
-    const result = PlurnkParser.parse("<<FIND(log://x):/unclosed-regex:FIND");
+test("regex body missing closing hash falls back to glob, not error", () => {
+    const result = PlurnkParser.parse("<<FIND(log://x):#unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 0, "disambiguation should fall back, not error");
     const stmt = result.items.find((i) => i.kind === "statement");
@@ -340,7 +340,7 @@ test("regex body missing closing slash falls back to glob, not error", () => {
 });
 
 test("invalid regex pattern (unterminated character class) falls back to glob, not error", () => {
-    const result = PlurnkParser.parse("<<FIND(log://x):/[abc/:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://x):#[abc#:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 0, "disambiguation should fall back, not error");
     const stmt = result.items.find((i) => i.kind === "statement");
@@ -348,7 +348,7 @@ test("invalid regex pattern (unterminated character class) falls back to glob, n
     assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
-test("MatcherBody: /path/-shaped literal falls back to glob", () => {
+test("MatcherBody: single-slash `/path`-shaped literal falls back to glob (`/` is freed)", () => {
     const result = PlurnkParser.parse("<<READ(host.conf):/etc/hosts:READ");
     const stmt = result.items.find((i) => i.kind === "statement");
     if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
@@ -695,7 +695,7 @@ test("ParsedPath cleavage: file:// stays authority-bearing", () => {
 // -------------------------------------------------------------------------
 
 test("MatcherBody: regex returns dialect + compiled regexp", () => {
-    const result = PlurnkParser.parse("<<FIND(log://x):/foo|bar/i:FIND");
+    const result = PlurnkParser.parse("<<FIND(log://x):#foo|bar#i:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
@@ -707,6 +707,16 @@ test("MatcherBody: regex returns dialect + compiled regexp", () => {
     const rx = new RegExp(b.pattern, b.flags);
     assert.equal(rx.test("foo"), true);
     assert.equal(rx.test("FOO"), true); // i flag works
+});
+
+test("target: path-name regex `#…#flags` parses to a regex ParsedPath", () => {
+    const result = PlurnkParser.parse("<<FIND(#draft.*#i)::FIND");
+    const item = result.items[0];
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
+    const t = item.statement.target;
+    if (t?.kind !== "regex") { assert.fail("expected regex target"); return; }
+    assert.equal(t.pattern, "draft.*");
+    assert.equal(t.flags, "i");
 });
 
 test("MatcherBody: xpath returns dialect + raw", () => {

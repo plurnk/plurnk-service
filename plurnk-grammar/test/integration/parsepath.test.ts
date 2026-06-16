@@ -118,3 +118,37 @@ test("parsePath: multi-value params parse to array", () => {
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.deepEqual(p.params, { q: ["1", "2"] });
 });
+
+// Path-name regex (`#pattern#flags`): a leading `#` dispatches a regex over path
+// names, distinct from addressing a single path. `#` is collision-free — schemes
+// never lead with it and `#channel` is a postfix.
+test("parsePath: leading `#…#flags` returns kind=regex with split pattern/flags", () => {
+    const p = AstBuilder.parsePath("#draft.*#i");
+    if (p?.kind !== "regex") { assert.fail("expected regex"); return; }
+    assert.equal(p.raw, "#draft.*#i");
+    assert.equal(p.pattern, "draft.*");
+    assert.equal(p.flags, "i");
+});
+
+test("parsePath: flagless path regex returns empty flags", () => {
+    const p = AstBuilder.parsePath("#^known:///archive#");
+    if (p?.kind !== "regex") { assert.fail("expected regex"); return; }
+    assert.equal(p.pattern, "^known:///archive");
+    assert.equal(p.flags, "");
+});
+
+test("parsePath: escaped `\\#` stays inside the pattern", () => {
+    const p = AstBuilder.parsePath("#issue\\#42#");
+    if (p?.kind !== "regex") { assert.fail("expected regex"); return; }
+    assert.equal(p.pattern, "issue\\#42");
+});
+
+test("parsePath: leading `#` with no closing `#` falls back to local", () => {
+    const p = AstBuilder.parsePath("#stdout");
+    assert.equal(p?.kind, "local");
+});
+
+test("parsePath: leading `#` with invalid flags falls back to local", () => {
+    const p = AstBuilder.parsePath("#a#zzz");
+    assert.equal(p?.kind, "local");
+});

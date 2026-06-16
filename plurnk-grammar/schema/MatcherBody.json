@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `/pattern/flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "description": "Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `#` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `#pattern#flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },
@@ -25,7 +25,7 @@
         },
         "RegexBody": {
             "title": "RegexBody",
-            "description": "JavaScript regex literal `/pattern/flags`. Pattern and flags are split out for direct use. `raw` preserves the literal form for round-tripping.",
+            "description": "JavaScript regex literal `#pattern#flags`. The `#` delimiter is collision-free against path `/` and regex's own `|` alternation. Pattern and flags are split out for direct use. `raw` preserves the literal form for round-tripping.",
             "type": "object",
             "required": ["dialect", "raw", "pattern", "flags"],
             "additionalProperties": false,
