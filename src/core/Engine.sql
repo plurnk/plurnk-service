@@ -91,7 +91,8 @@ JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 -- entries are session-scoped, shared across runs — §machine-processes-one-filesystem
 WHERE e.scope = 'session' AND e.session_id = $session_id
-ORDER BY e.scheme, e.pathname, ec.name;
+-- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
+ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_run_prior_turn_time
 -- §env-delta — timestamp of this run's most recent turn BEFORE the current one

@@ -107,6 +107,10 @@ CREATE TABLE IF NOT EXISTS entries (
     -- sync stat()s every member but re-reads/re-tokenizes/rewrites only one whose
     -- signature changed; an unchanged member is a no-op. NULL = never synced.
     synced_sig TEXT,
+    -- User Note 5 — manifest cache-friendliness. Last-modified stamp, bumped on every
+    -- channel write by entries_touch_on_channel_write; engine_list_session_entries orders
+    -- the catalog by it ASC so dormant entries hold the stable prompt-cache prefix.
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK ((scope = 'agent'   AND session_id IS NULL)
         OR (scope = 'session' AND session_id IS NOT NULL)),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -127,6 +131,15 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     PRIMARY KEY (entry_id, name),
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+-- User Note 5 — bump the entry's updated_at on any channel write so the catalog
+-- (ordered by updated_at ASC) keeps recently-touched entries at the tail and holds
+-- the prompt-cache prefix stable across turns.
+CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_write
+AFTER INSERT ON entry_channels
+BEGIN
+    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
+END;
 
 CREATE TABLE IF NOT EXISTS entry_tags (
     entry_id INTEGER NOT NULL,
