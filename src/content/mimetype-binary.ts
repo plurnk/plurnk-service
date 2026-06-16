@@ -13,5 +13,5 @@ export default class MimetypeBinary {
     static isBinaryMimetype(mimetype: string): boolean { return MimetypeClassifier.isBinary(mimetype); }
     static isJsonMimetype(mimetype: string): boolean { return MimetypeClassifier.isJson(mimetype); }
     static isLineNavigableMimetype(mimetype: string): boolean { return MimetypeClassifier.isLineNavigable(mimetype); }
-    static normalizeAutoTextMimetype(mimetype: string | null | undefined): string { return MimetypeClassifier.normalizeAutoText(mimetype); }
+    static normalizeAutoTextMimetype(mimetype: string | null | undefined): string { return MimetypeClassifier.normalizeAutoText(mimetype); } // auto-text → the text/markdown primitive — §markdown-primitive-text-markdown-normalize
 }

@@ -1,4 +1,4 @@
-// Self-hosting keystone (SPEC §actor-boundary): the runtime acting as an ordinary `plurnk`
+// Self-hosting keystone (SPEC §actor-boundary, §actor-boundary-self-hosting): the runtime acting as an ordinary `plurnk`
 // actor. Uses the session's reserved plurnk run, opens an ephemeral loop+turn,
 // and fires ops through Engine.dispatch with origin=plurnk — the same path the
 // model and clients use. Mirrors _dispatchAsClient, but the work is the

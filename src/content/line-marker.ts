@@ -13,7 +13,7 @@ export type { SliceResult, JsonSliceResult, EditResult };
 export default class LineMarkerOps {
     static sliceLines(content: string, marker: LineMarker): SliceResult { return Slicer.lines(content, marker); }
     static sliceJsonItems(content: string, marker: LineMarker): JsonSliceResult { return Slicer.jsonItems(content, marker); }
-    static applyJsonItemEdit(content: string, marker: LineMarker, body: string): EditResult { return Slicer.jsonItemEdit(content, marker, body); }
+    static applyJsonItemEdit(content: string, marker: LineMarker, body: string): EditResult { return Slicer.jsonItemEdit(content, marker, body); } // structural JSON item edit; malformed JSON → 400 — §json-edit-structural-json-edit §json-edit-json-parse-fail-400
     static sliceLinesRaw(content: string, marker: LineMarker): SliceResult { return Slicer.linesRaw(content, marker); }
     static applyLineMarkerEdit(content: string, marker: LineMarker, body: string): EditResult { return Slicer.lineMarkerEdit(content, marker, body); }
 }

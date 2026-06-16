@@ -13,7 +13,7 @@ export default class SessionConstraintsMethod {
             handler: async (params, ctx) => {
                 if (ctx.session === null) throw new Error("session.constrain requires an attached session");
                 const { effect, glob } = SessionConstraintsMethod.#parse(params, "session.constrain");
-                await (ctx.db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.session.sessionId, effect, glob });
+                await (ctx.db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.session.sessionId, effect, glob }); // the overlay is session-scoped, never per-run — §machine-processes-one-overlay
                 await GitMembership.resolveGitMembership(ctx.db, ctx.session.sessionId, undefined);
                 return { effect, glob };
             },

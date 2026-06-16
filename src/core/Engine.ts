@@ -827,13 +827,13 @@ export default class Engine {
         // decode at the free window so a runaway can't reach the context wall.
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
-        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate
+        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
-        const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response);
+        const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
         // body starting with `//` being interpreted as xpath) silently
