@@ -109,7 +109,10 @@ export function project(nb: Notebook): Projection {
     let codeIndex = 0;
 
     for (const cell of cells) {
-        const src = joinSource(cell.source);
+        // Trim a single trailing newline: nbformat source usually carries one
+        // per cell, which would otherwise render as a blank line inside the
+        // fence / after the cell.
+        const src = joinSource(cell.source).replace(/\n$/, "");
         if (cell.cell_type === "markdown") {
             for (const l of src.split("\n")) {
                 lines.push(l);
