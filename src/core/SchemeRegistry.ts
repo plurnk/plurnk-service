@@ -5,6 +5,7 @@ import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
+import Run from "../schemes/Run.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import PluginTrust from "./plugin-trust.ts";
 import type { LoopFlags } from "./types.ts";
@@ -25,6 +26,7 @@ export default class SchemeRegistry {
         this.register("unknown", new Unknown());
         this.register("skill",   new Skill());
         this.register("file",    new File());
+        this.register("run",     new Run());
     }
 
     register(name: string, handler: SchemeHandler): void {

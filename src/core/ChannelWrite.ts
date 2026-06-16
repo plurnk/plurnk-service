@@ -57,6 +57,20 @@ export interface WakeRunPayload {
 
 export type WakeRunNotify = (payload: WakeRunPayload) => void;
 
+// Start/deliver-to a sister run — the run:// op family's loop-start primitive
+// (spawn/fork/irc; SPEC §machine-processes, §actor-boundary-two-doors voice
+// door). The daemon wires this to Daemon.inject: an active sister folds the
+// prompt into its next turn; an idle sister enqueues a fresh loop and a drain
+// claims it. spawn/fork create/branch the run first, then call this to start
+// it; irc calls it on an existing sister. Returns the delivery action + the
+// loop the prompt landed on. The daemon supplies provider + system prompt; the
+// caller (a scheme handler) carries neither.
+export type InjectRunNotify = (args: {
+    sessionId: number;
+    runId: number;
+    prompt: string;
+}) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
+
 // Telemetry event fan-out. Engine.#pushTelemetry fires this for every
 // TelemetryEvent (parse_error, strike, cycle, sudden_death, no_ops,
 // max_commands_exceeded, action_failure) it pushes to a loop's buffer.

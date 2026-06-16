@@ -13,10 +13,11 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
+import Fork from "./fork.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -365,6 +366,7 @@ export default class Engine {
 
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
+    #injectRun: InjectRunNotify | undefined;
     // Telemetry event fan-out: every TelemetryEvent pushed to the loop's
     // buffer is also broadcast live to the connected client(s) on the
     // session. Without this, the client sees `loop/terminated` with a
@@ -375,12 +377,13 @@ export default class Engine {
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache: string | null = null;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, telemetryEventNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, injectRun, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         wakeRunNotify?: WakeRunNotify;
+        injectRun?: InjectRunNotify;
         telemetryEventNotify?: TelemetryEventNotify;
         tokenize?: (text: string) => number;
     }) {
@@ -388,6 +391,7 @@ export default class Engine {
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeRunNotify = wakeRunNotify;
+        this.#injectRun = injectRun;
         this.#telemetryEventNotify = telemetryEventNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
@@ -1377,6 +1381,7 @@ export default class Engine {
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
+            injectRun: this.#injectRun,
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
@@ -1709,6 +1714,11 @@ export default class Engine {
             return this.#denyIfDisallowed("exec", origin);
         }
 
+        // A run-fork (COPY src=run://) is gated by run://'s writableBy — its body
+        // is a fork prompt, not a dst path, so the entry-COPY dst-parse below
+        // doesn't apply. §machine-processes
+        if (this.#isRunFork(statement)) return this.#denyIfDisallowed("run", origin);
+
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
             const dstScheme = this.#schemeNameOf(dst);
@@ -1759,14 +1769,44 @@ export default class Engine {
             return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
         };
 
+        if (this.#isRunFork(statement)) return check(statement.target); // body is a fork prompt, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
         }
         return check(statement.target);
     }
 
+    // A COPY whose SOURCE is run:// is a run-fork, not an entry-copy — its body
+    // is the fork's seed prompt, not a destination path. The COPY gates and
+    // #handleCopy branch on this so they never parse the prompt as a dst path.
+    #isRunFork(statement: PlurnkStatement): boolean {
+        return statement.op === "COPY" && this.#schemeNameOf(statement.target) === "run";
+    }
+
+    // COPY(run:///<src>):prompt — fork: deep-copy the source run's log into a new
+    // run (Fork), then start it with the prompt (ctx.injectRun). Source "."/"" =
+    // self (ctx.runId); a name resolves within the session (404 if absent).
+    // §machine-processes-fork-copies-the-log
+    async #handleRunFork(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        const target = statement.target;
+        if (target === null) return { status: 400, error: "run:// fork requires a source run" };
+        const name = pathnameFromPath(target).replace(/^\/+/, "");
+        let srcRunId = ctx.runId;
+        if (name !== "" && name !== ".") {
+            const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
+            if (row === undefined) return { status: 404, error: `run:///${name} not found in this session` };
+            srcRunId = row.id;
+        }
+        if (ctx.injectRun === undefined) throw new Error("run fork: injectRun capability absent");
+        const branchRunId = await Fork.fork(this.#db, srcRunId);
+        const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
+        await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt: typeof statement.body === "string" ? statement.body : "" });
+        return { status: 200, body: branch?.name ?? "" };
+    }
+
     async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "COPY") throw new Error("unreachable");
+        if (this.#isRunFork(statement)) return await this.#handleRunFork(statement, ctx);
         const srcPath = statement.target;
         // COPY's body is an opaque raw string (grammar §COPY: a dest path OR a run-fork
         // prompt); parse it to the dest path. Non-path bodies (run:// fork prompts) are

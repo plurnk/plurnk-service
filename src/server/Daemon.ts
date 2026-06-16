@@ -118,6 +118,17 @@ export default class Daemon {
             tokenize: (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
             streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
             wakeRunNotify: (payload) => { void this.#handleWakeRun(payload); },
+            // run:// loop-start primitive — spawn/fork/irc deliver through
+            // Daemon.inject (active sister → fold; idle → enqueue + drain). The
+            // daemon owns provider + the law-file system prompt; the run scheme
+            // handler carries neither. Fire-and-forget: the returned drain runs
+            // independently (the sister is its own run). §machine-processes
+            injectRun: async ({ sessionId, runId, prompt }) => {
+                if (this.#provider === null) throw new Error("injectRun: no provider configured");
+                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+                const { action, loopId } = await this.inject({ sessionId, runId, prompt, provider: this.#provider, systemPrompt });
+                return { action, loopId };
+            },
             telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),
         });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");

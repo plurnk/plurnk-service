@@ -172,6 +172,16 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **Migration path.** Mostly stating what the schema already carries: `runs.parent_run_id` and the parentless `sessions` exist (§lifecycle-terms); `session_constraints` is session-level (§membership); §env-delta already makes a run's timeline self-contained, so a fork's log copy suffices. Additive: `run.fork` over the wire (the engine fork is built). Two repatriations: §actor-boundary's "read-only overlay scopes a run's writable surface" becomes a *session* policy bounding every run uniformly; and the §env-delta environment door has shed its per-run snapshot — a run's only memory is its log, so drift is pulled from the shared log (other actors' edits since the run's last turn) and the filesystem narrates its own through the `plurnk` run, both already log entries, never a per-run shadow.
 
+### §run-scheme The run:// scheme — spawn, irc, fork
+
+The run:// scheme makes §machine-processes addressable: a `run://` target is a sister run in the session — `run:///.` the current run, `run:///<name>` a session-scoped sibling (`runs.name`). Same-session only; a run never addresses another session's runs (§actor-boundary). Three ops, fire-and-forget — the child runs independently, lineage in `runs.parent_run_id`:
+
+- **Spawn** — `EDIT(run:///<name>):prompt` creates a new sister (empty log) and starts it with `prompt` on its first loop; self cannot be spawned (400). {§run-scheme-spawn}
+- **irc** — `SEND(run:///<name>):msg` delivers `msg` to an existing sister, the **voice door** (§actor-boundary-two-doors): an active sister folds it into its next turn, an idle one wakes (§actor-boundary-passive-wake); a name with no run in the session is 404. {§run-scheme-irc}
+- **Fork** — `COPY(run:///<src>):prompt` branches `src` (self when `.`): the source's log is deep-copied into a new sister (§machine-processes-fork-copies-the-log), which continues with `prompt`; the world is shared, never copied (§machine-processes-fork-shares-the-world). {§run-scheme-fork}
+
+All three ride one engine seam — the daemon's inject (active→fold, idle→enqueue+drain) — so the handler creates/branches/resolves the run and hands off; the daemon owns provider + system prompt. COPY's body here is the fork's seed prompt, not a destination path: the engine routes a run:// source away from the entry-copy path before parsing the body.
+
 ---
 
 ## §provider Provider Contract

@@ -6,7 +6,7 @@
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeRunNotify, InjectRunNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type { TelemetryEvent } from "./results.ts";
 
@@ -59,6 +59,11 @@ export interface PlurnkSchemeContext {
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
+    // Start/deliver-to a sister run — the run:// op family's loop-start primitive
+    // (spawn/fork/irc). Engine-populated (daemon-wired to Daemon.inject); absent
+    // in bare test fixtures. The run scheme handler fail-hards if absent rather
+    // than silently dropping a spawn/irc.
+    readonly injectRun?: InjectRunNotify;
     readonly mimetypes?: Mimetypes;
     // Boot-discovered runtime executors (tag → probe/effect/run). Engine-
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
