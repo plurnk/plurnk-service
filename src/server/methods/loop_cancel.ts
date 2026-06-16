@@ -1,4 +1,4 @@
-// loop.cancel — abort the run's active drain. Fires the drain's
+// loop.cancel — abort the run's active drain (§methods-loop-cancel). Fires the drain's
 // AbortController, which cascades to engine.runLoop's loop signal, which
 // in turn aborts in-flight scheme operations (exec spawns, future
 // SSE/WS). Queued loops in the run remain enqueued for a subsequent

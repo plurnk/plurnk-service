@@ -4,6 +4,8 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 
+// Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
+// client renders ordering without re-deriving it from DB keys. §methods-log-coordinate
 export interface LogEntryWire {
     id: number;
     run_id: number;

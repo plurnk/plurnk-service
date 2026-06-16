@@ -11,6 +11,8 @@ const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]
 
 export default class SessionCreateMethod {
     static register(registry: MethodRegistry): void {
+        // session.create makes a session, attaches this connection, and returns the auto-created
+        // run's identity (runId/runName) so the client skips the pending-dance. §methods-session-create
         registry.registerMethod("session.create", {
             handler: async (params, ctx) => {
                 const p = params as { name?: string; projectRoot?: string | null; persona?: string | null; constraints?: unknown };

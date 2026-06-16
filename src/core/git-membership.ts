@@ -83,7 +83,7 @@ export default class GitMembership {
         }
     }
 
-    // The forest (SPEC §membership): union every declared repo's tracked files,
+    // The forest (SPEC §membership, §membership-forest): union every declared repo's tracked files,
     // each path-prefixed by the repo's location relative to the session root (empty
     // prefix when the repo IS the root). Repos that don't resolve are skipped.
     static async #forestTrackedFiles(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
@@ -136,17 +136,17 @@ export default class GitMembership {
         // git membership); PLURNK_GIT_AUTO=1 declares project_root as an implicit repo.
         // Empty when git is denied or no declared repo resolves, so `pick` is then the
         // sole source. No early-return on non-git.
-        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob);
-        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root);
+        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
+        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
         const tracked = process.env.PLURNK_GIT_ALLOWED === "1"
             ? await GitMembership.#forestTrackedFiles(root, repoDirs, signal)
             : [];
 
         // `pick` overlay — a targeted, client-dictated scan for untracked matches
         // (node:fs glob over the client's pattern, never a blind walk).
-        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal);
+        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // §membership-overlay-pick
 
-        // Compose: (git ∪ pick) − hide, tracking origin for reconciliation — a path
+        // Compose: (git ∪ pick) − hide (§membership-overlay-hide), tracking origin for reconciliation — a path
         // in `tracked` is 'git', a pick-only match is 'constraint'.
         const trackedSet = new Set(tracked);
         const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
