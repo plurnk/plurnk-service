@@ -21,7 +21,9 @@ export interface SchemeManifest {
     readonly name: string;                       // addressing/routing identity (the URI prefix)
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
     readonly defaultChannel: string;             // empty when channels is empty
-    readonly category: "data" | "logging";
+    // data: entry-bearing content. logging: log:// rows. control: addresses
+    // sister processes/runs and owns no entries (run://: spawn/fork/irc).
+    readonly category: "data" | "logging" | "control";
     readonly scope: "agent" | "session";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;

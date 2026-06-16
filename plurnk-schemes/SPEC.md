@@ -36,7 +36,7 @@ class Known {
 | `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel name targeted when path has no `#fragment`. Empty when channels is empty. |
-| `category` | `"data"` \| `"logging"`. |
+| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister processes/runs, owns no entries — e.g. `run://`). |
 | `scope` | `"agent"` \| `"session"`. |
 | `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
