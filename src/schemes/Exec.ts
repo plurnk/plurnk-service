@@ -67,6 +67,8 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
 };
 
 export default class Exec {
+    static teach = "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — with output streaming into the `exec:///<runtime>/<loop>/<turn>/<seq>` entry's stdout/stderr. A host-effecting command proposes for review before it runs; a read-only/pure one runs inline and returns its output the same turn. READ the entry on a later turn to see how a backgrounded run finished.";
+
     static manifest: SchemeManifest = {
         name: "exec",
         channels: { stdout: "text/stream", stderr: "text/stream" },

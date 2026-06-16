@@ -156,7 +156,11 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { system: { system_definition: string }; user: { prompt: string }; assistant: unknown };
-        assert.equal(packet.system.system_definition, "system prompt body");
+        // system_definition is the system message body THEN the scheme-education
+        // catalogue (always appended at packet-time; grammar#239). The message
+        // body leads; the prompt-foist fallback is the assertion's real subject.
+        assert.ok(packet.system.system_definition.startsWith("system prompt body"), "system message body leads system_definition");
+        assert.match(packet.system.system_definition, /## Schemes/, "scheme catalogue is appended after the system message body");
         assert.equal(packet.user.prompt, "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }

@@ -10,6 +10,8 @@ import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
 
 export default class Known {
+    static teach = "The general-purpose workspace for entries you author. Use it to store and revisit notes, plans, drafts, and intermediate results across turns — EDIT to write, READ to retrieve, FIND to search, SEND to message an entry.";
+
     // A scheme declares its manifest — channels, default channel, scope, writableBy. §scheme-manifest-manifest
     static manifest: SchemeManifest = {
         name: "known",

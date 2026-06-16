@@ -60,6 +60,8 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // works (readEntry); *into* file:/// stays 501 until the proposal-gated write-back
 // lands. The 501 is duck-typed on writeEntry's absence (Engine.#copyOrchestration).
 export default class File {
+    static teach = "The project's workspace files (git-tracked members, shown as bare paths). READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted. Non-members are invisible, so you can't read or clobber a file outside the tracked surface.";
+
     static manifest: SchemeManifest = {
         name: "file",
         storedScheme: null,  // file rows persist bare (entries.scheme = NULL); renders as a bare path

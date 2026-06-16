@@ -42,6 +42,29 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
+    // Scheme-education catalogue, injected into the model's packet at packet-time
+    // (grammar 0.49+ teaches grammar/dialects only, not the scheme set — grammar#239).
+    // Each registered handler contributes its `static teach` (the semantics/when-to-use
+    // blurb) plus a one-line summary derived from `static manifest` (channels, default
+    // channel, who may write). Handlers with no `teach` are skipped. Insertion order.
+    teach(): string {
+        const sections: string[] = ["## Schemes"];
+        for (const [name, handler] of this.#handlers) {
+            const cls = handler.constructor as {
+                teach?: string;
+                manifest?: { defaultChannel?: string; channels?: Record<string, string>; writableBy?: ReadonlyArray<string> };
+            };
+            if (typeof cls.teach !== "string" || cls.teach.length === 0) continue;
+            const manifest = cls.manifest ?? {};
+            const channelNames = Object.keys(manifest.channels ?? {});
+            const channels = channelNames.length > 0 ? channelNames.join(", ") : "none";
+            const defaultChannel = manifest.defaultChannel !== undefined && manifest.defaultChannel.length > 0 ? manifest.defaultChannel : "none";
+            const writableBy = (manifest.writableBy ?? []).join(", ") || "none";
+            sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.`);
+        }
+        return sections.join("\n\n");
+    }
+
     // Discover external scheme siblings — agnostic by plurnk.kind:"scheme" (never
     // by package name OR scope, #227) so a third party ships one under ANY name,
     // exactly like executors. Registered by declared plurnk.name; a sibling reaches

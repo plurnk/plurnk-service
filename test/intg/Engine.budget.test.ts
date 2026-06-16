@@ -34,7 +34,7 @@ test("Engine.runTurn: budget readout — ratio-derived ceiling, free reconciles 
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 1000, responses: [response([sendStmt(200, "done")])] });
+        const provider = new Mock({ contextSize: 4000, responses: [response([sendStmt(200, "done")])] });
         const result = await engine.runTurn({
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
@@ -43,13 +43,13 @@ test("Engine.runTurn: budget readout — ratio-derived ceiling, free reconciles 
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { system: { tokens: number }; user: { tokens: number; telemetry: { budget: string } } };
         const budget = packet.user.telemetry.budget;
-        // default ratio 0.9 → floor(1000 × 0.9) = 900
-        assert.match(budget, /ceiling 900 · usage \d+ \(\d+%\) · free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
+        // default ratio 0.9 → floor(4000 × 0.9) = 3600
+        assert.match(budget, /ceiling 3600 · usage \d+ \(\d+%\) · free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
         const free = Number(/free (\d+)/.exec(budget)?.[1]);
         const total = packet.system.tokens + packet.user.tokens;
-        assert.ok(free > 0 && free < 900, `free ${free} within (0, 900)`);
+        assert.ok(free > 0 && free < 3600, `free ${free} within (0, 3600)`);
         // Reconciles to ceiling − assembled total, within the placeholder/number
         // substitution delta (tokensFree's own digits change the packet's size).
-        assert.ok(Math.abs(free - (900 - total)) <= 25, `free ${free} ~= 900 - ${total}`);
+        assert.ok(Math.abs(free - (3600 - total)) <= 25, `free ${free} ~= 3600 - ${total}`);
     } finally { await db.close(); }
 });

@@ -1037,7 +1037,10 @@ export default class Engine {
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
-        const system_definition = byRole("system");
+        // plurnk.md (grammar/dialects) THEN the scheme catalogue: grammar 0.49+ is
+        // scheme-agnostic, so the service teaches what schemes exist + what they do
+        // at packet-time (grammar#239 item 7). SchemeRegistry.teach() assembles it.
+        const system_definition = `${byRole("system")}\n\n${this.#schemes.teach()}`;
         // user.prompt sources from the loop's most recent prompt entry first
         // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
         // This is what inject + the turn-1 foist write into. Falls back to
