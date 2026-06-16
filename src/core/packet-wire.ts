@@ -130,6 +130,7 @@ export default class PacketWire {
     // over whatever the packet currently holds, so the caller renders the budget
     // with a `{{tokensFree}}` placeholder, measures, then substitutes (the
     // placeholder/number length delta is negligible).
+    // The budget is render-weight — measured from the assembled packet, not stored depth. §tokenomics-render-weight-budget
     static measureBudgetSections(packet: Packet, countTokens: CountTokens): {
         log: {
             entries: number; tokens: number;
@@ -425,7 +426,7 @@ export default class PacketWire {
 
     // Render TelemetryEvent[] → meta line per event, optionally followed by
     // an N:\t-prefixed snippet block when the event carries `snippet` (the
-    // convention plurnk-service uses for content-offset positions — model
+    // convention plurnk-service uses for content-offset positions (§telemetry-content-offset-snippet) — model
     // sees its own offending bytes alongside the error, not an abstract
     // message it can't trace).
     //

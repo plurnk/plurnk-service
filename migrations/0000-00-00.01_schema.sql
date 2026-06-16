@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE UNIQUE INDEX IF NOT EXISTS entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
 CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
 
--- The ONE engine-imposed constraint (SPEC §stream-constraints): 100 MiB char-length cap
+-- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
 CREATE TABLE IF NOT EXISTS entry_channels (
     entry_id INTEGER NOT NULL,

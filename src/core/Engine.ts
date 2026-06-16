@@ -212,7 +212,7 @@ const pathnameFromPath = (path: ParsedPath): string => {
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 
 // Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
-// action routes through telemetry.errors[] (§telemetry).
+// action routes through telemetry.errors[] (§telemetry, §telemetry-no-error-scheme — never an error:// scheme).
 const TURN_STATUS_NO_OPS = 422;
 
 // Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
@@ -454,6 +454,7 @@ export default class Engine {
         this.#telemetryEventNotify?.(sessionId, { loopId, event });
     }
 
+    // Telemetry drains as it's read into the packet — each event surfaces once. §telemetry-drain-on-read
     #drainTelemetry(loopId: number): object[] {
         const buf = this.#telemetryBuffer.get(loopId);
         if (buf === undefined) return [];
@@ -1085,7 +1086,7 @@ export default class Engine {
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
         const total = countTokens(PacketWire.renderSystemContent(scratch.system)) + countTokens(PacketWire.renderUserContent(scratch.user));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
-        const percent = ceiling === null ? null : Math.round((total / ceiling) * 100);
+        const percent = ceiling === null ? null : Math.round((total / ceiling) * 100); // usage as % of the ceiling — §tokenomics-context-percent
         const budget = tokensFree === null
             ? scratch.user.telemetry.budget
             : scratch.user.telemetry.budget
@@ -1139,9 +1140,10 @@ export default class Engine {
     // contributor (gated by PLURNK_PLAN); each available executor tag then
     // contributes its self-documenting example (plurnk-execs#7), retiring the
     // blind EXEC.
+    // The capability sheet — the live tool surface (PLAN + wired executor tags). §tools-capability-sheet
     #collectTools(): string[] {
         const tools: string[] = [];
-        if (process.env.PLURNK_PLAN === "1") {
+        if (process.env.PLURNK_PLAN === "1") { // <<PLAN advertised only when PLAN is enabled — §tools-plan-gated
             tools.push("* Begin every response with <<PLAN:...:PLAN");
         }
         // Each available runtime tag contributes its self-documenting example —
@@ -1312,7 +1314,7 @@ export default class Engine {
         }));
     }
 
-    // §env-delta — at pre-turn build, surface what changed in the shared world since this
+    // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
     // run last looked. No per-run snapshot (§machine-processes "a run is its log"): every
     // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
     // entries since this run's prior turn — real cross-run edits and the plurnk run's

@@ -111,6 +111,7 @@ export default class Log {
         return this.#setIndexed(statement, ctx, 1);
     }
 
+    // FOLD toggles the indexed bit only — an active subscription stays alive. §subscriptions-fold-keeps-subscription
     async fold(statement: FoldStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
         return this.#setIndexed(statement, ctx, 0);
     }

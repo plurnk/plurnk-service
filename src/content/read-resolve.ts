@@ -61,7 +61,7 @@ export default class ReadResolve {
 
         if (lineMarker !== null) {
             // `<L>` slice mimetype follows the source family: line-navigable → text/markdown,
-            // JSON → application/json (structure preserved for compose). Empty / `[]` → 204.
+            // JSON → application/json (structure preserved for compose, §slice-semantics-compose-pattern). Empty / `[]` → 204.
             const isEmptyJsonArray = workingMimetypeForSlice === "application/json" && workingContent === "[]";
             if (workingContent === "" || isEmptyJsonArray) return { status: 204, content: "", mimetype: workingMimetypeForSlice, startLine: null };
             return { status: 200, content: workingContent, mimetype: workingMimetypeForSlice, startLine: workingStart };

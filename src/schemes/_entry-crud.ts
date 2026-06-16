@@ -73,7 +73,7 @@ export default class EntryCrud {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             await (db.crud_write_channel as PrepMethod).run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
-                tokens: tokenize(channelData.content),
+                tokens: tokenize(channelData.content), // provider tokens stored at write-time — §tokenomics-tokens-stored-at-write
                 state: channelData.state ?? "static",
             });
         }

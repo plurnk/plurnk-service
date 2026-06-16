@@ -306,7 +306,7 @@ export default class Daemon {
                 sequence: "number? — the entry's sequence coordinate",
             },
         });
-        // §notifications-telemetry-event
+        // §notifications-telemetry-event §telemetry-telemetry-event-notify
         this.#registry.registerNotification("telemetry/event", {
             description: "A TelemetryEvent (per @plurnk/plurnk-grammar 0.17.0) was pushed to the loop's telemetry buffer. Same envelope the model sees on the next packet's telemetry.errors[], delivered live for client-side surfacing (debug panel, loop-degrading toasts, session timeline). Sources include `grammar` (parse errors), `engine:rail` (strike, cycle, sudden_death, no_ops, max_commands_exceeded), `scheme:<name>` (action failures, future), and `provider:<vendor>` (provider issues, future). Scoped to the loop's session.",
             params: {
