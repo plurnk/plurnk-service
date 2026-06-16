@@ -47,11 +47,11 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.6",
         "@plurnk/plurnk-execs-all": "0.1.5",
-        "@plurnk/plurnk-grammar": "0.44.0",
+        "@plurnk/plurnk-grammar": "0.45.0",
         "@plurnk/plurnk-mimetypes": "0.15.15",
         "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@plurnk/plurnk-providers": "0.4.0",
-        "@plurnk/plurnk-providers-all": "^0.2.0",
+        "@plurnk/plurnk-providers-all": "0.2.0",
         "@plurnk/plurnk-schemes": "0.7.0",
         "@plurnk/plurnk-schemes-http": "0.2.0",
         "@possumtech/sqlrite": "5.1.1",
