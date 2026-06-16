@@ -9,9 +9,9 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import { chatCompletionStream } from "./openaiStream.ts";
+import { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
-import { toProviderError } from "./telemetry.ts";
+import { toProviderError, classifyProviderError } from "./telemetry.ts";
 
 // How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
 // -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4):
@@ -46,6 +46,10 @@ export type OpenAICompatConfig = {
     // 0 off, -1 adaptive, N capped. The provider maps it to the backend's
     // mechanism via reasoningStyle.
     reasoningBudget: number;
+    // Transient-failure retry budget — REQUIRED, no in-code default
+    // (PLURNK_PROVIDER_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
+    // first failure; N = up to N retries on a transient error (§4, #18).
+    retryAttempts: number;
 };
 
 // Sampling guard under an active grammar (SPEC §13): greedy decoding under
@@ -54,6 +58,27 @@ export type OpenAICompatConfig = {
 // never rely on server launch flags. Probed on llama.cpp b894 + gemma-4-26B
 // (plurnk-providers#9; reference: plurnk-grammar test/llama/gbnf-live.test.ts).
 const GRAMMAR_REPEAT_PENALTY_FLOOR = 1.15;
+
+// Exponential-backoff base for transient-failure retries (#18). Attempt N waits
+// RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
+// wins). The magnitude is mechanism, not operator intent — the COUNT is the
+// knob (PLURNK_PROVIDER_RETRY_ATTEMPTS); the base stays a constant.
+const RETRY_BASE_DELAY_MS = 2000;
+
+// Only these two classifications are transient and worth retrying: rate_limit
+// (429) and network_failure (5xx, timeout, connection reset). unauthorized,
+// quota_exceeded, invalid_response, model_refused are terminal — retrying just
+// burns time and budget.
+const RETRYABLE: ReadonlySet<string> = new Set(["rate_limit", "network_failure"]);
+
+// Sleep that rejects the moment `signal` aborts (caller cancellation must not
+// wait out a backoff). Resolves normally on timeout.
+const sleepWithAbort = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
+    new Promise((resolve, reject) => {
+        if (signal?.aborted) { reject(signal.reason); return; }
+        const timer = setTimeout(resolve, ms);
+        signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+    });
 
 // SPEC §2 closed set. Wire values outside it (provider-specific or absent)
 // collapse to null — the consumer treats null as "no signal".
@@ -84,6 +109,7 @@ export default class OpenAICompatProvider implements Provider {
     #supportsGrammar: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
+    #retryAttempts: number;
 
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
@@ -92,6 +118,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#headers = config.headers ?? {};
         this.#contextSize = config.contextSize ?? null;
         this.#reasoningBudget = config.reasoningBudget;
+        this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#costFor = config.costFor ?? (() => 0);
@@ -160,8 +187,6 @@ export default class OpenAICompatProvider implements Provider {
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
-        const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
-        const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
         const body: Record<string, unknown> = {
             model: this.#model,
@@ -172,15 +197,27 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#slotBody(runId),
         };
 
+        // Transient-failure retry (#18). Each attempt gets a FRESH fetch timeout
+        // (the budget is per-request, not shared across retries); the caller's
+        // signal spans them all. Retry only the transient classifications, prefer
+        // a server Retry-After over the backoff, and let the caller's abort cut
+        // through both the in-flight request and the backoff sleep.
         let raw;
-        try {
-            raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
-        } catch (err) {
-            // Caller-initiated abort is cancellation, not a telemetry-worthy
-            // provider failure — rethrow as-is. Everything else (HTTP error,
-            // timeout, network) becomes a classified ProviderError.
-            if (signal?.aborted) throw err;
-            throw toProviderError(err, this.#source);
+        for (let attempt = 0; ; attempt++) {
+            const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
+            const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+            try {
+                raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
+                break;
+            } catch (err) {
+                // Caller-initiated abort is cancellation — never retried or wrapped.
+                if (signal?.aborted) throw err;
+                const { kind } = classifyProviderError(err);
+                // Terminal kind, or budget spent → surface the classified failure.
+                if (!RETRYABLE.has(kind) || attempt >= this.#retryAttempts) throw toProviderError(err, this.#source);
+                const retryAfter = err instanceof OpenAiHttpError ? err.retryAfter : null;
+                await sleepWithAbort(retryAfter ?? RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
+            }
         }
 
         return {

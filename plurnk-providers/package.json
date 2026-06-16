@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.5.1",
+    "version": "0.6.0",
     "description": "Framework + contract for the @plurnk/plurnk-providers-* LLM transport family.",
     "keywords": [
         "plurnk",

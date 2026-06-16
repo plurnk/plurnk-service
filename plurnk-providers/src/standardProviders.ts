@@ -180,6 +180,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         reasoningBudget: reasoningBudgetFromEnv(env, name),
+        retryAttempts: parseRequiredInt(env.PLURNK_PROVIDER_RETRY_ATTEMPTS, "PLURNK_PROVIDER_RETRY_ATTEMPTS", name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
         source: providerSource(name),
