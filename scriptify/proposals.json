@@ -1,0 +1,7 @@
+[
+{"anchor":"§actor-boundary-isolation","file":"src/core/Engine.sql","oldText":"WHERE le.run_id = $run_id\n  AND NOT (le.status_rx = 202 AND le.state = 'proposed')","newText":"WHERE le.run_id = $run_id -- §actor-boundary-isolation §machine-processes-run-is-its-log: the packet renders exactly one run's log\n  AND NOT (le.status_rx = 202 AND le.state = 'proposed')"},
+{"anchor":"§machine-processes-one-filesystem","file":"src/core/Engine.sql","oldText":"WHERE e.scope = 'session' AND e.session_id = $session_id","newText":"WHERE e.scope = 'session' AND e.session_id = $session_id -- §machine-processes-one-filesystem: entries are session-scoped, shared across runs"},
+{"anchor":"§copy-cross-scheme-copy","file":"src/core/Engine.ts","oldText":"    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {","newText":"    // Same- and cross-scheme COPY share one orchestrator — §copy-cross-scheme-copy §move-cross-scheme-move\n    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {"},
+{"anchor":"§channels-channels-append-only","file":"src/schemes/_entry-crud.ts","oldText":"export interface EntryData {","newText":"// §channels-channels-append-only: channels are content stores keyed by (entry_id, name)\nexport interface EntryData {"},
+{"anchor":"§matcher-dispatch-203-soft-fallback","file":"src/content/matcher.ts","oldText":"couldn't be parsed for its mimetype","newText":"couldn't be parsed for its mimetype (§matcher-dispatch-203-soft-fallback)"}
+]

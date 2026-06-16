@@ -363,7 +363,7 @@ export default class Daemon {
      *     caller can await full completion.
      *
      * Rummy parallel: AgentLoop.inject(). Unified surface — both `loop.run`
-     * and wake-on-completion go through this method.
+     * and wake-on-completion go through this method. §actor-boundary-passive-wake
      */
     async inject(args: {
         sessionId: number; runId: number; prompt: string;
