@@ -194,7 +194,10 @@ Runtime-enforced semantics:
 - Bare paths (no scheme) resolve as `file://` at runtime.
 - Conventional schemes include `known:///`, `unknown:///`, `log:///`,
   `file://`, `http://`, `https://`. Any scheme matching the lexer
-  shape is grammatically valid; resolution is a runtime concern.
+  shape is grammatically valid; resolution is a runtime concern. The
+  scheme catalogue and per-scheme semantics — and their packet-time
+  teaching to the model — are owned by the schemes module, not this
+  grammar; that is why plurnk.md carries no scheme list.
 - Percent-encoding, authority structure, port range, and other RFC
   3986 finer points are validated by the runtime URI resolver, not
   the parser.

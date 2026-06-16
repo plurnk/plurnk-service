@@ -81,16 +81,6 @@ URI-shaped: `[scheme://]rest`.
 * A literal `)` closes the target; percent-encode parens in a path as `%28`/`%29` (e.g. `Mercury_%28planet%29`).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
-Internal schemes:
-
-- `unknown:///` — internal open question entries.
-- `known:///` — internal knowledgebase entries.
-- `exec:///` — execution stream output. not editable.
-- `log:///` — record of operations performed, not editable.
-- `plurnk:///` — internal agent entries, not editable.
-- `run:///` — agent runs; `run:///.` is the current run.
-- `error:///` — rendered telemetry locator, not addressable or editable.
-
 ## Suffix
 
 When quoting plurnk operations in a body, YOU MUST use a matching single-digit suffix (`1`–`9`) on the opening and closing tags.
