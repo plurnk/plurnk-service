@@ -10,6 +10,7 @@
 // in plurnk-grammar issue #7.
 
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import { LineMarkerOps } from "../content/index.ts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-grammar";
 
 interface OpWithMatcher {
@@ -59,8 +60,9 @@ export default class Dsl {
 
     static #formatLineMarker(lm: LineMarker | undefined): string {
         if (lm === undefined || lm === null) return "";
-        if (lm.last === null || lm.last === lm.first) return `<${lm.first}>`;
-        return `<${lm.first}-${lm.last}>`;
+        const { first, last } = LineMarkerOps.firstLast(lm);
+        if (last === null || last === first) return `<${first}>`;
+        return `<${first}-${last}>`;
     }
 
     static #formatPath(path: string | undefined): string {

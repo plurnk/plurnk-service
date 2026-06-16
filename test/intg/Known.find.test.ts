@@ -172,7 +172,7 @@ test("Known.find with <L> paginates results", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
-        const stmt = { ...findStmt(url(""), null), lineMarker: { first: 2, last: 3 } };
+        const stmt: ReturnType<typeof findStmt> = { ...findStmt(url(""), null), lineMarker: { marks: [2, 3] } };
         const r = await new Known().find(stmt, makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, ["known:///b", "known:///c"]);

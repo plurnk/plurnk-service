@@ -28,7 +28,7 @@ interface StatementTx {
     suffix?: unknown;
     signal?: unknown;
     target?: { raw?: unknown } | null;
-    lineMarker?: { first?: unknown; last?: unknown } | null;
+    lineMarker?: { marks?: number[] } | null;
     body?: string | { raw?: unknown } | null;
 }
 interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown }
@@ -274,8 +274,8 @@ export default class PacketWire {
         }
         let markerStr = "";
         const lm = tx.lineMarker;
-        if (lm !== null && lm !== undefined && typeof lm === "object" && typeof lm.first === "number") {
-            markerStr = typeof lm.last === "number" ? `<${lm.first},${lm.last}>` : `<${lm.first}>`;
+        if (lm !== null && lm !== undefined && typeof lm === "object" && Array.isArray(lm.marks) && lm.marks.length > 0) {
+            markerStr = lm.marks.length > 1 ? `<${lm.marks[0]},${lm.marks[1]}>` : `<${lm.marks[0]}>`;
         }
         let body: string;
         if (typeof tx.body === "string") body = tx.body;

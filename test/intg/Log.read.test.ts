@@ -123,7 +123,7 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { first: 1, last: null } };
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [1] } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
@@ -170,7 +170,7 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
         // `[{"status":201}]`; `\d+` extracts the status code.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "/1/1/1")),
-            lineMarker: { first: 1, last: 1 },
+            lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
@@ -203,7 +203,7 @@ test("Log.read: matcher-then-<L> composition — pick Nth match from a prior REA
         });
         // Now <<READ(log:///1/1/1)<2>::READ — structural <L> on the JSON array,
         // picking the 2nd match row.
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { first: 2, last: null } };
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [2] } };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");

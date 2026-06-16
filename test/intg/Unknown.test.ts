@@ -76,7 +76,7 @@ test("Unknown.edit: lineMarker <-1> appends to existing entry", async () => {
     try {
         const u = new Unknown();
         await u.edit(editStmt(urlPath("unknown", "/x"), "one\ntwo"), makeSchemeCtx({ db, sessionId, runId }));
-        const r = await u.edit({ ...editStmt(urlPath("unknown", "/x"), "three"), lineMarker: { first: -1, last: null } }, makeSchemeCtx({ db, sessionId, runId }));
+        const r = await u.edit({ ...editStmt(urlPath("unknown", "/x"), "three"), lineMarker: { marks: [-1] } }, makeSchemeCtx({ db, sessionId, runId }));
         assert.equal(r.status, 200);
         const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r.entryId, name: "body" });
         assert.equal(channel?.content, "one\ntwo\nthree");
@@ -122,7 +122,7 @@ test("Unknown.read: lineMarker, body matcher, tag filter — positive coverage",
     try {
         const u = new Unknown();
         await u.edit(editStmt(urlPath("unknown", "/lined"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, sessionId, runId }));
-        const sliced = await u.read(readStmtPlus(urlPath("unknown", "/lined"), { lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
+        const sliced = await u.read(readStmtPlus(urlPath("unknown", "/lined"), { lineMarker: { marks: [2] } }), makeSchemeCtx({ db, sessionId }));
         assert.equal(sliced.status, 200);
         assert.equal(sliced.content, "beta");
         assert.equal((sliced as { startLine?: number }).startLine, 2);

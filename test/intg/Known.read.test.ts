@@ -77,7 +77,7 @@ test("[§markdown-primitive-text-markdown-normalize] Known.read: lineMarker <N> 
     try {
         const k = new Known();
         await k.edit(editStatement({ target: urlPath("known", "/lined"), body: "first\nsecond\nthird" }), makeSchemeCtx({ db, sessionId, runId }));
-        const result = await k.read(readStatement({ target: urlPath("known", "/lined"), lineMarker: { first: 2, last: null } }), makeSchemeCtx({ db, sessionId }));
+        const result = await k.read(readStatement({ target: urlPath("known", "/lined"), lineMarker: { marks: [2] } }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
         assert.equal(result.content, "second");
         assert.equal((result as { startLine?: number }).startLine, 2);
@@ -140,7 +140,7 @@ test("Known.read: <L> + body matcher composes — slice first, match within, sou
         await k.edit(editStatement({ target: urlPath("known", "/c"), body: "one\nfoo and bar\nthree" }), makeSchemeCtx({ db, sessionId, runId }));
         const result = await k.read(readStatement({
             target: urlPath("known", "/c"),
-            lineMarker: { first: 2, last: 2 },
+            lineMarker: { marks: [2, 2] },
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, sessionId }));
         assert.equal(result.status, 200);
@@ -251,7 +251,7 @@ test("Known: extension `.json` enables structural <L> dispatch on READ", async (
         );
         // <L><2> on JSON source picks the 2nd item (Bob), wrapped in array.
         const result = await k.read(
-            readStatement({ target: urlPath("known", "/users.json"), lineMarker: { first: 2, last: null } }),
+            readStatement({ target: urlPath("known", "/users.json"), lineMarker: { marks: [2] } }),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
         assert.equal(result.status, 200);
@@ -274,7 +274,7 @@ test("Known: no path suffix → scheme default (text/markdown); <L> is line-base
         // Without `.json` suffix, mimetype falls back to manifest default
         // (text/markdown). <L><2> is line-based.
         const result = await k.read(
-            readStatement({ target: urlPath("known", "/users"), lineMarker: { first: 2, last: null } }),
+            readStatement({ target: urlPath("known", "/users"), lineMarker: { marks: [2] } }),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
         assert.equal(result.status, 200);

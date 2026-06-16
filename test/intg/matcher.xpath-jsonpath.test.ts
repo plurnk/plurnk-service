@@ -285,7 +285,7 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
         // Structural <L><2> on the log entry — picks the 2nd match line (Bob).
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "/1/1/1")),
-            lineMarker: { first: 2, last: null },
+            lineMarker: { marks: [2] },
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(r.status, 200);

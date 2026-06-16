@@ -24,13 +24,13 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
 });
 const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target,
-    lineMarker: { first: k, last: null }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    lineMarker: { marks: [k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
 // #209 — decimal <0.x> (+ optional ,N cap) = similarity threshold, not top-K.
 const thresholdStmt = (target: UrlPath, query: string, threshold: number, cap: number | null = null): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target,
-    lineMarker: { first: threshold, last: cap }, body: { dialect: "semantic", raw: query } as MatcherBody,
+    lineMarker: { marks: cap === null ? [threshold] : [threshold, cap] }, body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
 

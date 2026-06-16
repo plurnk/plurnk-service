@@ -150,7 +150,7 @@ test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagin
                 run_id: runId, loop_seq: 1, turn_seq: 1, sequence,
             }))?.indexed ?? -1;
 
-        const stmt = { ...foldStmt(urlPath("log", "/**/READ")), lineMarker: { first: 1, last: 1 } };
+        const stmt: ReturnType<typeof foldStmt> = { ...foldStmt(urlPath("log", "/**/READ")), lineMarker: { marks: [1, 1] } };
         const r = await new Log().fold(stmt, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(await indexedAt(2), 0, "the 1st matched READ (1/1/2) is folded");

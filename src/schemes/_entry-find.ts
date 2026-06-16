@@ -13,6 +13,7 @@
 //   <L>     — results pagination: select results N..M from the matched list
 
 import type { FindStatement, FoldStatement, OpenStatement } from "@plurnk/plurnk-grammar";
+import { LineMarkerOps } from "../content/index.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -78,7 +79,7 @@ export default class EntryFind {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, pathnames: [] };
             if (statement.lineMarker === null) return { status: 400, pathnames: [] };  // ~query needs a top-K, e.g. ~query<10>
-            return EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, statement.lineMarker);
+            return EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
@@ -132,7 +133,7 @@ export default class EntryFind {
         }
 
         if (statement.lineMarker !== null) {
-            const page = EntryFind.#paginate(pathnames, statement.lineMarker);
+            const page = EntryFind.#paginate(pathnames, LineMarkerOps.firstLast(statement.lineMarker));
             if (page.status !== 200) return { status: page.status, pathnames: [] };
             pathnames = page.items ?? [];
         }

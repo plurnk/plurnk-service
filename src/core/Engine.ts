@@ -248,8 +248,8 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         if (body !== null && typeof body === "object" && typeof body.raw === "string") {
             parts.push(`body:${body.raw.slice(0, 64)}`);
         }
-        const lm = (stmt as { lineMarker?: { first: number; last: number | null } | null }).lineMarker;
-        if (lm !== null && lm !== undefined) parts.push(`L:${lm.first},${lm.last ?? ""}`);
+        const lm = (stmt as { lineMarker?: LineMarker | null }).lineMarker;
+        if (lm !== null && lm !== undefined) parts.push(`L:${lm.marks.join(",")}`);
         return parts.length > 0 ? `|${parts.join("|")}` : "";
     };
     if (path === null) {
@@ -1886,7 +1886,7 @@ export default class Engine {
         // `<L>` — source range, no line-number prefix).
         // Applied to every channel of the source entry. Binary channels return
         // 415 since line semantics don't apply.
-        const lineMarker = (statement as { lineMarker?: { first: number; last: number | null } | null }).lineMarker ?? null;
+        const lineMarker = (statement as { lineMarker?: LineMarker | null }).lineMarker ?? null;
         let channels = entry.channels;
         if (lineMarker !== null) {
             const sliced: typeof entry.channels = {};

@@ -22,7 +22,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
@@ -37,7 +37,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: { first: number; last: number | null } | null = null): FindStatement => ({
+const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
@@ -103,7 +103,7 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
     const { db, sessionId, runId } = await setup();
     try {
         await seed(db, sessionId, runId, [["lines", "alpha\nbeta\ngamma"]]);
-        const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { first: 2, last: 2 }, body: null, position: { line: 1, column: 1 } };
+        const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
         const r = await new Known().read(stmt, makeSchemeCtx({ db, sessionId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
@@ -225,7 +225,7 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
             ["a", "the french revolution and the storming of the bastille"],
             ["b", "a recipe for chocolate cake"],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }, { first: 5, last: null }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, ["known:///a"]);
     } finally { db.close(); }

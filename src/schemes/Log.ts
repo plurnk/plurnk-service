@@ -1,4 +1,5 @@
 import type { FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import { LineMarkerOps } from "../content/index.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
@@ -136,7 +137,7 @@ export default class Log {
         if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400 } : { status: 404 };
         let selected = matched;
         if (statement.lineMarker !== null) {
-            const page = paginate(matched, statement.lineMarker);
+            const page = paginate(matched, LineMarkerOps.firstLast(statement.lineMarker));
             if (page.status !== 200) return { status: page.status };
             selected = page.items ?? [];
         }

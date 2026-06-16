@@ -112,7 +112,7 @@ test("[§slice-semantics-compose-pattern] <<READ(log:///1/1/1)<P>::READ picks th
 
         // Compose: structural <L><2> over the matcher result → 2nd match line only.
         const picked = await new Log().read(
-            { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { first: 2, last: null } },
+            { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [2] } },
             makeSchemeCtx({ db, runId, mimetypes }),
         );
         assert.equal(picked.status, 200);

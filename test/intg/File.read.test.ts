@@ -160,7 +160,7 @@ test("File.read: lineMarker <N> selects line N as raw content with startLine=N",
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 2, last: null } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2] } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "beta");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -171,7 +171,7 @@ test("File.read: lineMarker <N,M> selects inclusive range as raw content with st
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 2, last: 3 } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2, 3] } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "b\nc");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -182,7 +182,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { first: 99, last: null } }), ctx);
+        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(r.status, 416);
     });
 });
@@ -207,7 +207,7 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
         await addMember(ctx, "f.txt");
         const r = await new File().read(
             readStmt(urlPath("file", "/f.txt"), {
-                lineMarker: { first: 2, last: 2 },
+                lineMarker: { marks: [2, 2] },
                 body: { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" },
             }),
             ctx,

@@ -31,7 +31,7 @@ test("PLURNK_PROVIDERS_GBNF gates whether the plurnk grammar reaches generate() 
     const dsl = "<<SEND[200]:ok:SEND";
     const orig = process.env.PLURNK_PROVIDERS_GBNF;
     try {
-        process.env.PLURNK_PROVIDERS_GBNF = "plurnk-strict.gbnf";
+        process.env.PLURNK_PROVIDERS_GBNF = "plurnk.gbnf";
         const on = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");
         assert.ok(on.lastGrammar?.includes("root ::="), "a variant name → that grammar reaches the provider");
