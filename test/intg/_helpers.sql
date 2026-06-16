@@ -236,6 +236,9 @@ SELECT id FROM runs WHERE session_id = $session_id LIMIT 1;
 -- PREP: test_get_loop_by_run
 SELECT id FROM loops WHERE run_id = $run_id LIMIT 1;
 
+-- PREP: test_count_loops_by_run
+SELECT COUNT(*) AS n FROM loops WHERE run_id = $run_id;
+
 -- PREP: test_list_channel_names
 SELECT name FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
 

@@ -14,6 +14,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -92,8 +94,41 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
 test("[§actor-boundary-two-doors] state crosses runs via the §env-delta delta; messages via inject — no third channel",
     { todo: "Phase 1 — the voice door (inject, #193) is unbuilt; the environment door is exercised under §env-delta" }, () => {});
 
-test("[§actor-boundary-passive-wake] an idle run wakes on an inject or a stream-status transition, never on a delta",
-    { todo: "Phase 1 — needs inject (#193) plus the idle-run wake path" }, () => {});
+// The voice door (inject) and the negative (a delta must not wake) are locked here;
+// the stream-status door — idle stream-conclusion → opened-loop, active → no-op — is
+// locked in Daemon.exec-wake.test.ts. Together they discharge §141's two-trigger contract.
+test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<SEND[200]:first done:SEND", 10),
+        makeMockResponse("<<SEND[200]:woke done:SEND", 10),
+        makeMockResponse("<<SEND[200]:extra:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "passive-wake" });
+            // Run a loop to completion → the model run is now IDLE (one loop).
+            const ran = await rpcCall(ws, 2, "loop.run", { prompt: "first", flags: { yolo: true } });
+            const { loopId } = ran.result as { loopId: number };
+            const modelRunId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))!.run_id;
+            const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+
+            // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
+            // sibling of the model run (§connection-lifecycle) — touching a shared entry.
+            // This is the environment door; it must NOT wake the idle model run.
+            await rpcCall(ws, 3, "op.edit", { target: "known:///shared.md", content: "a sibling edit — ambient, not addressed to the model run" });
+            const loopsAfterDelta = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle run — no new loop enqueued");
+
+            // The VOICE door: inject a prompt into the same idle run → it wakes, a fresh
+            // loop is enqueued on the model run.
+            const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW — wake up" });
+            assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle run");
+            const loopsAfterInject = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            assert.equal(loopsAfterInject, loopsIdle + 1, "the inject enqueued exactly one new loop — the wake the delta did not cause");
+        } finally { ws.close(); }
+    });
+});
 
 test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run firing ops, not a privileged engine pathway",
     { todo: "Phase 2 — the keystone (dispatchAsPlurnk) + the EMI repatriation make this assertable" }, () => {});
