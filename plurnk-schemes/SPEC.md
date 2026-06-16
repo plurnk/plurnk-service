@@ -46,39 +46,34 @@ class Known {
 
 ## §2 Interface
 
-Sister scheme handlers implement op methods consumed by plurnk-service via dispatch. The expected method shape (per consumer-side §3 of plurnk-service's SPEC):
+Sister scheme handlers implement op methods consumed by plurnk-service via dispatch: the engine calls `handler[statement.op.toLowerCase()](statement, ctx)` and returns **501** for any op whose method is absent. The op-dispatch surface is the exported **`SchemeHandler`** interface — every method optional, each `(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from grammar:
 
 ```ts
-interface PlurnkScheme {
-    // CRUD primitives — REQUIRED for entry-bearing schemes.
-    readEntry(pathname, ctx): Promise<ReadEntryResult>;
-    writeEntry(pathname, entry, ctx): Promise<WriteEntryResult>;
-    deleteEntry(pathname, ctx): Promise<DeleteEntryResult>;
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 
-    // Op handlers — OPTIONAL. Absent op = 501.
-    edit?(statement, ctx): Promise<EditResult>;
-    read?(statement, ctx): Promise<ReadResult>;
-    show?(statement, ctx): Promise<ShowHideResult>;
-    hide?(statement, ctx): Promise<ShowHideResult>;
-    find?(statement, ctx): Promise<FindResult>;
-    send?(statement, ctx): Promise<SendResult>;
-    exec?(statement, ctx): Promise<ExecResult>;
-
-    // Proposal lifecycle — OPTIONAL.
-    onProposalAccepted?(pathname, proposal, ctx): Promise<OpResult>;
-    onProposalRejected?(pathname, proposal, ctx): Promise<void>;
+export interface SchemeHandler {
+    read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    show?(statement: ShowStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    hide?(statement: HideStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    edit?(statement: EditStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 ```
 
-Default export: a class implementing the shape with `static manifest: SchemeManifest`.
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set tracks the pinned grammar (0.21.0) and moves with the framework's grammar bump. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
 
-Result-type definitions (`EditResult`, `ReadResult`, etc.) live in plurnk-service v0 alongside the helpers that produce them. Forward-spec: these migrate to this repo when the namespaced ctx API lands.
+Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
 
 ## §3 Helpers exported by this repo
 
 ### Types
 
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `ShowStatement`, `HideStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`) and path types (`ParsedPath`, `LocalPath`, `UrlPath`).
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
 - Capability ctx (PR-2, see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
 

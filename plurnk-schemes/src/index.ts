@@ -47,3 +47,25 @@ export type {
     SubscriptionHandle,
     TagCaps,
 } from "./ctx.ts";
+
+// ── Behavior contract + the scheme-facing grammar types ──────────────────────
+// SchemeHandler is the typed op surface a sibling `implements`. The per-op
+// statement + path types are re-exported from grammar here so a sibling depends
+// on and exact-pins ONLY this package; grammar is the framework's transitive pin
+// (this repo already peers it). The engine speaks one grammar — keep it single.
+export type { SchemeHandler } from "./handler.ts";
+export type {
+    PlurnkStatement,
+    FindStatement,
+    ReadStatement,
+    ShowStatement,
+    HideStatement,
+    EditStatement,
+    CopyStatement,
+    MoveStatement,
+    SendStatement,
+    ExecStatement,
+    ParsedPath,
+    LocalPath,
+    UrlPath,
+} from "@plurnk/plurnk-grammar";
