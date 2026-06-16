@@ -137,13 +137,16 @@ export const buildModel = (): GModel => {
             bodyRules(model, name, close);
             const body = [lit(":"), ref(`${name}-b0`), lit(close)];
             if (op === "SEND") {
-                // Two forms (#29). Mid-batch: targeted (any status) or pathless with a
-                // non-terminal status. Final: pathless 102/200 — the turn's status
-                // update. The final form is EXCLUDED from mid position so that after
-                // it nothing is admissible and the sampler is forced to stop.
+                // The status code is the LOOP-CONTROL signal, load-bearing only on the
+                // terminator: the turn closes on a pathless SEND[102]/[200] (send-final),
+                // excluded from mid position so nothing follows it (#29). Every OTHER
+                // SEND is communication, not loop control — status optional: targeted
+                // (a message to a path) or pathless, with any status or none.
                 model.set(`${name}-mid`, [
-                    [lit(open), lit("["), ref("status"), lit("]"), ref("target"), ...body],
-                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],
+                    [lit(open), lit("["), ref("status"), lit("]"), ref("target"), ...body],  // targeted, with status
+                    [lit(open), ref("target"), ...body],                                      // targeted, statusless
+                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],             // pathless, non-terminal status
+                    [lit(open), ...body],                                                     // pathless, statusless
                 ]);
                 model.set(`${name}-final`, [[lit(open), lit("["), ref("status-final"), lit("]"), ...body]]);
                 sendMidAlts.push([ref(`${name}-mid`)]);

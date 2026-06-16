@@ -254,6 +254,14 @@ test("GBNF: dash line-marker separator is parse-side only — not derivable", ()
     assert.equal(derives("statement", "<<READ(a.md)<1-5>::READ"), false);
 });
 
+test("GBNF: statusless SEND is a valid mid-batch message (pathless or targeted)", () => {
+    assert.equal(derives("statement", "<<SEND:just a message:SEND"), true);
+    assert.equal(derives("statement", "<<SEND(agent://supervisor):heads up:SEND"), true);
+    // ...but a statusless SEND is NOT a terminator — the turn still needs a status SEND.
+    assert.equal(derives("root-strict", "<<SEND:done:SEND"), false);
+    assert.equal(derives("root-strict", "<<SEND:note:SEND\n<<SEND[200]:done:SEND"), true);
+});
+
 test("GBNF: SEND signal must be three digits", () => {
     assert.equal(derives("statement", "<<SEND[20]:x:SEND"), false);
     assert.equal(derives("statement", "<<SEND[200]:x:SEND"), true);
