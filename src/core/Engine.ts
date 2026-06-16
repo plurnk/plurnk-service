@@ -713,10 +713,16 @@ export default class Engine {
                     target: promptPath, lineMarker: null,
                     body: promptRow.prompt, position: { line: 1, column: 1 },
                 };
+                let promptLogId: number | undefined;
                 await this.dispatch({
                     statement: promptStmt, sessionId, runId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                    sequence: nextActionIndex, origin: "plurnk",
+                    onDispatch: (id) => { promptLogId = id; onDispatch?.(id); },
                 });
+                // §prompt-fold (User Note 6): the prompt EDIT duplicates
+                // packet.user.prompt (its own section), so fold it — logged for
+                // forensics, collapsed in the model's log, re-OPENable.
+                if (promptLogId !== undefined) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: promptLogId });
                 nextActionIndex++;
             }
         }

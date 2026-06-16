@@ -60,12 +60,17 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
-        const engine = engineAt(db, TINY);
+        // Turn 1 runs under a WIDE ceiling so the model completes and leaves an
+        // open SEND (the foisted prompt is now folded by default — §prompt-fold);
+        // turn 2 runs under TINY so its accumulated packet overflows and the
+        // grinder folds turn 1's open log.
+        const wide = engineAt(db, WIDE);
+        const tiny = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.indexed === 1), "turn 1 left an open (indexed=1) log entry");
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
         const t1 = after.filter((r) => r.turn_seq === 1);
         assert.ok(t1.length > 0 && t1.every((r) => r.indexed === 0), "prior turn's logs folded — still listed, collapsed to coordinate (indexed=0), not deleted");
@@ -108,14 +113,16 @@ test("[§grinder-event-model-terms] the overflow event names hidden entries by s
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
-        const engine = engineAt(db, TINY);
+        const wide = engineAt(db, WIDE);
+        const tiny = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
-        // Turn 1 leaves an open log; turn 2 overflows and the prior-turn rollback
-        // folds it (pass 1), emitting budget_overflow into the buffer; turn 3
-        // drains that event into its packet.
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
+        // Turn 1 runs under WIDE so the model leaves an open SEND (the foisted
+        // prompt is folded by default — §prompt-fold); turn 2 overflows under TINY
+        // and the prior-turn rollback folds that SEND (pass 1), emitting
+        // budget_overflow into the buffer; turn 3 drains the event into its packet.
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t3 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row!.packet) as { user: { telemetry: { errors: Array<Record<string, unknown>> } } };
         const evt = packet.user.telemetry.errors.find((e) => e.kind === "budget_overflow");

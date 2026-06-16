@@ -171,6 +171,12 @@ UPDATE log_entries SET indexed = 0
 WHERE loop_id = $loop_id AND indexed = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
+-- PREP: engine_fold_log_entry
+-- §prompt-fold (User Note 6): fold a single log row by id — collapse to its
+-- coordinate, body elided in the render, re-OPENable. Used for the foisted prompt
+-- EDIT, which duplicates packet.user.prompt: logged for forensics, born folded.
+UPDATE log_entries SET indexed = 0 WHERE id = $id;
+
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §packet packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working

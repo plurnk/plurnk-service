@@ -116,7 +116,7 @@ FROM log_entries WHERE run_id = $run_id ORDER BY id;
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries — robust to which run holds the loop (the model
 -- runs in its OWN run now, §connection-lifecycle), so a test queries by the loopId it holds.
-SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
+SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, indexed
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_run_id_by_loop
