@@ -650,7 +650,7 @@ export default class Daemon {
             const result = await this.inject({
                 sessionId: payload.sessionId,
                 runId: payload.runId,
-                prompt: payload.summary,
+                prompt: `${payload.summary}\n\nAutomated environment update; response optional.`,
                 provider: this.#provider,
                 systemPrompt,
             });
