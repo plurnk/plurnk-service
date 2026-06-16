@@ -288,3 +288,31 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         mock.restoreAll();
     }
 });
+
+// — vendored-snapshot fallback (#19): live wins, catalog fills the gap —
+
+import { catalogSnapshot } from "@plurnk/plurnk-models";
+
+test("standard provider: a catalog hit fills contextSize + cost when there's no live source", async () => {
+    // groq doesn't probe; pick a real model id from the vendored snapshot.
+    const [modelId, info] = Object.entries(catalogSnapshot().groq)[0];
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, modelId);
+    assert.ok(p !== null);
+    assert.equal(p.contextSize, info.contextWindow); // catalog window, no probe needed
+    if (info.cost !== undefined) {
+        // 1M output tokens → outputPer1M USD, in pico-USD (per-1M ×1e6 per token).
+        const c = p.costFor({ prompt: 0, completion: 1_000_000, reasoning: 0, cached: 0, total: 1_000_000 });
+        assert.equal(c, Math.round(info.cost.outputPer1M * 1e6 * 1_000_000));
+    } else {
+        assert.equal(p.costFor({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 2 }), 0);
+    }
+});
+
+test("standard provider: a local (non-cataloged) model misses the fallback — probe owns it, contextSize null", async () => {
+    mock.method(globalThis, "fetch", async (url: string) =>
+        String(url).endsWith("/models") ? new Response(JSON.stringify({ data: [] }), { status: 200 }) : new Response("{}", { status: 200 }));
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
+    assert.ok(p !== null);
+    assert.equal(p.contextSize, null); // empty probe + catalog miss → null; live owns the local case
+    mock.restoreAll();
+});

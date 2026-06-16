@@ -8,11 +8,13 @@
 // first, then falls back to dynamic-importing @plurnk/plurnk-providers-<name>
 // for the bespoke ones (openrouter, ollama, google, xai, cloudflare, ...).
 
-import type { Provider } from "./types.ts";
+import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
 import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
+import { computeCost } from "./usage.ts";
+import { lookup } from "@plurnk/plurnk-models";
 
 type StandardProviderSpec = {
     // API-key env var, and whether it's mandatory (local OpenAI-compat servers
@@ -173,6 +175,23 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         if (probe.llamaServer) slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
     }
 
+    // Vendored-snapshot FALLBACK (#19) — live always wins. contextSize already
+    // preferred env then the live probe; the catalog only fills a still-null
+    // window for a known cloud model (groq/deepseek/mistral/…, which don't
+    // probe). A local llama-server model misses the catalog and keeps its
+    // probed n_ctx. Standard providers carry NO live pricing, so the catalog is
+    // the sole — never shadowing — cost source; per-1M USD → pico-USD/token (×1e6).
+    const fallback = lookup(name, model);
+    contextSize ??= fallback?.contextWindow ?? null;
+    const cost = fallback?.cost;
+    const costFor = cost === undefined
+        ? undefined
+        : (usage: ProviderUsage): number => computeCost(usage, {
+            input: cost.inputPer1M * 1e6,
+            output: cost.outputPer1M * 1e6,
+            cached: (cost.cacheReadPer1M ?? cost.inputPer1M) * 1e6,
+        });
+
     return new OpenAICompatProvider({
         model,
         url,
@@ -183,6 +202,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDER_RETRY_ATTEMPTS, "PLURNK_PROVIDER_RETRY_ATTEMPTS", name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
+        costFor,
         source: providerSource(name),
         supportsGrammar,
         // The same fingerprint backs both llama-server dialect extensions.
