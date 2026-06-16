@@ -5,6 +5,11 @@
 //   <0>      sentinel: before position 1 (EDIT prepend)
 //   <-1>     sentinel: after the last position (EDIT append)
 //   <1,-1>   every position (in range context, -1 normalizes to last line)
+//   <N.frac> fractional single mark: an INSERT POINT between lines, not a line
+//            to replace (#18). EDIT inserts after line floor(N.frac), replacing
+//            nothing (<2.5> = between lines 2 and 3; <0.5> = prepend; <T.5> at
+//            T = totalLines = append). For READ it selects no content, like the
+//            <0>/<-1> sentinels.
 //
 // "N and M are signed integers" — but plurnk.md only documents <0> and
 // <-1> as defined sentinels. Other negatives (<-2>, <-3>) are not
@@ -14,7 +19,7 @@
 import type { LineMarker } from "@plurnk/plurnk-grammar";
 
 interface NormalizedMarker {
-    kind: "range" | "before-first" | "after-last";
+    kind: "range" | "before-first" | "after-last" | "insert-between";
     start: number;
     end: number;
 }
@@ -41,6 +46,14 @@ export default class Slicer {
         if (last === null) {
             if (first === 0) return { kind: "before-first", start: 0, end: 0 };
             if (first === -1) return { kind: "after-last", start: 0, end: 0 };
+            // Fractional single mark <N.frac> is an insert point between lines,
+            // not a position to replace (#18): insert after line floor(N.frac).
+            // floor 0 = prepend, floor totalLines = append.
+            if (!Number.isInteger(first)) {
+                const at = Math.floor(first);
+                if (first > 0 && at <= totalLines) return { kind: "insert-between", start: at, end: at };
+                return { error: `insert point ${first} out of range (0..${totalLines})` };
+            }
             if (first > 0 && first <= totalLines) return { kind: "range", start: first, end: first };
             return { error: `line ${first} out of range (1..${totalLines})` };
         }
@@ -288,6 +301,8 @@ export default class Slicer {
     //   <-1>    append body after the last line
     //   <N>     replace line N with body
     //   <N,M>   replace lines N..M with body
+    //   <N.frac> insert body BETWEEN lines (after line floor(N.frac)); replaces
+    //           nothing — empty body is a no-op (#18).
     //   <1,-1>  whole content (replace everything); empty body clears.
     // Empty body with <N>/<N,M> deletes those lines.
     static lineMarkerEdit(content: string, marker: LineMarker, body: string): EditResult {
@@ -301,6 +316,9 @@ export default class Slicer {
             newLines = [...bodyLines, ...lines];
         } else if (norm.kind === "after-last") {
             newLines = [...lines, ...bodyLines];
+        } else if (norm.kind === "insert-between") {
+            // Insert after line floor(N.frac); both neighbours survive.
+            newLines = [...lines.slice(0, norm.start), ...bodyLines, ...lines.slice(norm.start)];
         } else {
             newLines = [...lines.slice(0, norm.start - 1), ...bodyLines, ...lines.slice(norm.end)];
         }

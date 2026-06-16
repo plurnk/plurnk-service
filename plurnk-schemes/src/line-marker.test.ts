@@ -133,6 +133,42 @@ test("applyLineMarkerEdit: empty body with <N> deletes line", () => {
     assert.equal(r.result, "alpha\ngamma\ndelta\n");
 });
 
+// --- #18: fractional <N.frac> insert-between (no flooring/replacing) ---
+test("applyLineMarkerEdit: <2.5> inserts between lines 2 and 3 (replaces nothing)", () => {
+    const r = Slicer.lineMarkerEdit(TEXT, { marks: [2.5] }, "INS");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "alpha\nbeta\nINS\ngamma\ndelta\n");
+});
+
+test("applyLineMarkerEdit: <0.5> floors to 0 = prepend", () => {
+    const r = Slicer.lineMarkerEdit(TEXT, { marks: [0.5] }, "INS");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "INS\nalpha\nbeta\ngamma\ndelta\n");
+});
+
+test("applyLineMarkerEdit: <4.5> floors to last line = append", () => {
+    const r = Slicer.lineMarkerEdit(TEXT, { marks: [4.5] }, "INS");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "alpha\nbeta\ngamma\ndelta\nINS\n");
+});
+
+test("applyLineMarkerEdit: <5.5> past the end → 416", () => {
+    const r = Slicer.lineMarkerEdit(TEXT, { marks: [5.5] }, "INS");
+    assert.equal(r.status, 416);
+});
+
+test("applyLineMarkerEdit: <2.5> empty body is a no-op (insert nothing)", () => {
+    const r = Slicer.lineMarkerEdit(TEXT, { marks: [2.5] }, "");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, TEXT);
+});
+
+test("sliceLines: <2.5> insert point selects no content for READ", () => {
+    const r = Slicer.lines(TEXT, { marks: [2.5] });
+    assert.equal(r.status, 200);
+    assert.equal(r.text, "");
+});
+
 test("applyLineMarkerEdit: multi-line body", () => {
     const r = Slicer.lineMarkerEdit(TEXT, { marks: [2] }, "X\nY");
     assert.equal(r.status, 200);
