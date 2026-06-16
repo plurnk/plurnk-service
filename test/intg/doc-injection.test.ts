@@ -56,3 +56,35 @@ test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+// Note 293 (b): PLURNK_MD inclusions are NOT gated by the manifest-preview switch.
+// With PLURNK_MANIFEST_ITEMS=0 (preview off) the operator doc is STILL foisted into
+// turn 0 — it overrides/bypasses the cap rather than riding it.
+test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-md-0-"));
+    const docPath = join(dir, "policy.md");
+    await writeFile(docPath, "# Policy\nObey.\n", "utf8");
+    const prevMd = process.env.PLURNK_MD_POLICY;
+    const prevItems = process.env.PLURNK_MANIFEST_ITEMS;
+    process.env.PLURNK_MD_POLICY = docPath;
+    process.env.PLURNK_MANIFEST_ITEMS = "0"; // manifest preview OFF
+    try {
+        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "md-zero" });
+                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                const { loopId } = resp.result as { loopId: number };
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/POLICY.md");
+                assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
+                assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "the manifest preview stays off at =0 — the doc foist is independent of it, not capped by it");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prevMd === undefined) delete process.env.PLURNK_MD_POLICY; else process.env.PLURNK_MD_POLICY = prevMd;
+        if (prevItems === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prevItems;
+        await rm(dir, { recursive: true, force: true });
+    }
+});

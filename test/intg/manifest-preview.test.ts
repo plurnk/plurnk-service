@@ -53,3 +53,27 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
         if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
     }
 });
+
+// Note 293 (c): plurnk:///manifest.json is materialized every turn regardless of the
+// preview switch or entry count — so the model always has the directory to READ (a
+// valid, possibly-sparse JSON array), even when the preview is off and nothing's there.
+test("manifest.json is materialized with the preview off — the model always has an (empty) directory to READ", async () => {
+    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    process.env.PLURNK_MANIFEST_ITEMS = "0"; // preview OFF
+    try {
+        await withDaemon(mock(), async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "manifest-empty" });
+                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" });
+                assert.ok(entry?.id !== undefined, "plurnk:///manifest.json is materialized even with the preview off");
+                const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "/manifest.json", scheme: "plurnk", name: "body" });
+                const catalog = JSON.parse(body?.content ?? "null");
+                assert.ok(Array.isArray(catalog), "the materialized manifest is a valid JSON array — the directory the model READs, even when sparse");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
