@@ -1,14 +1,15 @@
 // Channel-write helpers for streaming schemes. SPEC §channel-state (channel state),
 // §subscriptions (subscription registry), §notifications (stream/event notification).
 //
-// Schemes import these and call them as their connection lifecycle progresses.
+// Schemes import these and call them as their connection lifecycle progresses; the
+// engine has no stream/transaction abstraction (§stream-no-engine-transaction-abstraction).
 // Helpers update entry_channels (content / state) and subscriptions, and emit
 // stream/event notifications scoped to the entry's session via an optional
 // callback the daemon wires in.
 
 import type { Db, PrepMethod } from "./Db.ts";
 
-export type ChannelState = "static" | "active" | "closed" | "errored";
+export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
 
 // The loop/turn/sequence coordinate of the entry, mirrored onto stream payloads
 // so clients read it as fields instead of re-parsing the exec URI's trailing
@@ -95,6 +96,9 @@ export default class ChannelWrite {
         return `${scheme === null ? "file" : scheme}://${pathname}`;
     }
 
+    // A stream chunk accumulates into the channel's content (§chunk-accumulation-chunks-accumulate)
+    // and fires a stream/event (§live-updates-stream-event-fires-on-chunk); the log carries the
+    // stream's lifecycle, never per-chunk rows (§no-chunk-rows-log-captures-lifecycle-only).
     static async appendToChannel(
         db: Db,
         { entryId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
@@ -111,6 +115,8 @@ export default class ChannelWrite {
         notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
+    // Schemes drive channel state transitions as their connection lifecycle progresses.
+    // §channel-state-schemes-own-state-transitions
     static async setChannelState(
         db: Db,
         { entryId, channel, state, notify, coordinate }: { entryId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
@@ -123,6 +129,8 @@ export default class ChannelWrite {
         notify(meta.session_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
+    // The subscription registry — open/find/close — is how a stream's cancellation
+    // (SEND[499] / KILL) routes to the right live subscription. §subscriptions-subscription-registry-routes-cancellation
     static async openSubscription(
         db: Db,
         { runId, entryId, scheme, handle }: { runId: number; entryId: number; scheme: string; handle: string },

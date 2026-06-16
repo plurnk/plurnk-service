@@ -41,12 +41,12 @@ export default class EntryOps {
     }
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
-        const target = fragment ?? defaultChannel;
+        const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — §channel-selection-fragment-selects-named-channel §channel-selection-fragmentless-targets-default-channel
         // The default channel is always valid — dynamic-channel schemes (File:
         // channels={}, mimetype derived per-file) declare none, but their body
         // channel still exists. A non-default fragment must be a declared channel.
         if (target === defaultChannel) return target;
-        if (!(target in channels)) return null;
+        if (!(target in channels)) return null; // unknown channel name → null → 400 at the caller — §channel-selection-unknown-channel-400
         return target;
     }
 
@@ -63,7 +63,7 @@ export default class EntryOps {
         const pathname = EntryOps.#pathnameOf(statement);
         const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
 
-        // Non-default channel write requires entry to exist.
+        // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
         if (existing === undefined && fragment !== null) {
             return { status: 404, entryId: null, channel: targetChannel };
         }
@@ -151,6 +151,7 @@ export default class EntryOps {
         // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).
 
+        // Tags apply additively — each signal tag is written, never replacing existing ones. §edit-tags-additive
         if (Array.isArray(statement.signal)) {
             for (const tag of statement.signal) {
                 await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
@@ -202,6 +203,6 @@ export default class EntryOps {
             body: statement.body,
             mimetypes: ctx.mimetypes,
         });
-        return { ...r, channel: targetChannel };
+        return { ...r, channel: targetChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content
     }
 }
