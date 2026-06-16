@@ -22,6 +22,8 @@ export type { EditResult as LineEditResult, JsonSliceResult, SliceResult } from 
 export { default as PathMimetype } from "./path-mimetype.ts";
 export { default as Matcher } from "./matcher.ts";
 export type { MatchResult } from "./matcher.ts";
+export { default as SchemeDiscovery } from "./SchemeDiscovery.ts";
+export type { SchemeInfo, SchemeDiscoveryResult, DiscoverOptions } from "./SchemeDiscovery.ts";
 export { default as Results } from "./results.ts";
 export type {
     EntryResult,
