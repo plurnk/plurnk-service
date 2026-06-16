@@ -9,7 +9,6 @@ import PacketWire from "../../src/core/packet-wire.ts";
 test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/1",
@@ -27,7 +26,6 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
 test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/2",
@@ -46,7 +44,6 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
 test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/2",
@@ -71,7 +68,6 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
 test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/2",
@@ -99,7 +95,6 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
 test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/1",
@@ -125,7 +120,6 @@ test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
 test("log render: EDIT with multi-line body — body's own newlines decide shape (no added padding)", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/4",
@@ -153,7 +147,6 @@ test("log render: EDIT with multi-line body — body's own newlines decide shape
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/3",
@@ -170,7 +163,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
 
 test("log render: EDIT with line marker — heredoc carries the marker", () => {
     const system = {
-        system_definition: "SD", persona: "", index: [],
+        system_definition: "SD", index: [],
         log: [{
             coordinate: "1/1/5",
             origin: "model",
@@ -194,7 +187,7 @@ test("log render: EDIT with line marker — heredoc carries the marker", () => {
 
 test("log render: EDIT with tags and range marker — heredoc carries both", () => {
     const system = {
-        system_definition: "SD", persona: "", index: [],
+        system_definition: "SD", index: [],
         log: [{
             coordinate: "1/1/6",
             origin: "model",
@@ -218,7 +211,7 @@ test("log render: EDIT with tags and range marker — heredoc carries both", () 
 
 test("log render: EDIT with fragment in target.raw — heredoc preserves it", () => {
     const system = {
-        system_definition: "SD", persona: "", index: [],
+        system_definition: "SD", index: [],
         log: [{
             coordinate: "1/1/7",
             origin: "model",
@@ -245,7 +238,6 @@ test("measureBudgetSections: per-section render tokens + assembled total (log on
     const packet = {
         system: {
             system_definition: "SD",
-            persona: "",
             log: [],
         },
         user: { prompt: "go", telemetry: { budget: "{{tokensFree}}", errors: [] }, system_requirements: "" },
@@ -326,7 +318,6 @@ test("[§requirements-requirements-omitted-when-empty] empty system_requirements
 test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
     const system = {
         system_definition: "SD",
-        persona: "",
         index: [],
         log: [{
             coordinate: "1/1/2",
