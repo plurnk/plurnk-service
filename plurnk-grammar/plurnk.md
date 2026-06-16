@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|KILL).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|KILL|EXEC|SEND).
 
 ## Syntax
 
@@ -10,21 +10,22 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 ## Operations
 
-| OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body            |
-|------|-------------|------------|---------------------|-----------------|
-| FIND | filter tags | required   | results `N,M`       | matcher         |
-| READ | filter tags | required   | lines `N,M`         | matcher         |
-| EDIT | tags        | required   | lines `N,M`         | content         |
-| COPY | apply tags  | required   | lines `N,M`         | destination URI |
-| MOVE | apply tags  | required   | lines `N,M`         | destination URI |
-| OPEN | filter tags | log path   | results `N,M`       | matcher         |
-| FOLD | filter tags | log path   | results `N,M`       | matcher         |
-| SEND | status code | recipient  | —                   | message body    |
-| EXEC | executor    | cwd        | —                   | command or code |
-| KILL | —           | required   | —                   | —               |
+| OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
+|------|-------------|------------|---------------------|------------------|
+| PLAN | -           | -          | -                   | plan / reasoning |
+| FIND | filter tags | required   | results `N,M`       | matcher          |
+| READ | filter tags | required   | lines `N,M`         | matcher          |
+| EDIT | tags        | required   | lines `N,M`         | content          |
+| COPY | apply tags  | required   | lines `N,M`         | destination URI  |
+| MOVE | apply tags  | required   | lines `N,M`         | destination URI  |
+| OPEN | filter tags | log path   | results `N,M`       | matcher          |
+| FOLD | filter tags | log path   | results `N,M`       | matcher          |
+| KILL | —           | required   | —                   | —                |
+| EXEC | executor    | cwd        | —                   | command or code  |
+| SEND | status code | recipient  | —                   | message body     |
 
 Operations emit their status and/or results on the subsequent turn.
-READ output prefixes every line with line numbers, `N:\t`. The prefix is not part of the source.
+READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for entries. Do not attempt to edit log items.
 SEND broadcasts to uri when a path is included and messages the user when no path is included.
 EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc.).
@@ -74,12 +75,12 @@ URI-shaped: `[scheme://]rest`.
 * Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
+* Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
 Internal schemes:
 
 - `unknown:///` — open question entries.
 - `known:///` — knowledgebase entries.
-- `skill:///` — available skill entries.
 - `exec:///` — actions.
 - `log:///` — record of operations performed.
 - `plurnk:///` — internal agent entries.
@@ -106,6 +107,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<READ(docs/api.md)://h2/text():READ
 <<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
+<<READ(exec:///3/1/2#stdout)<1,40>::READ
 <<READ(/etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
@@ -147,6 +149,7 @@ chmod +x ./example.sh
 
 <<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
 
+<<SEND(run:///capital-check):{"hint":"prefer primary sources over wikis"}:SEND
+
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
 <<SEND[200]:Paris:SEND
-<<SEND[200]:{"city":"Paris","population":2161000}:SEND
