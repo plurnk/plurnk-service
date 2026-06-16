@@ -108,7 +108,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
 <<READ(README.md):$.Installation:READ
-<<READ(docs/api.md)://h2/text():READ
+<<READ(README.md)://h2/text():READ
 <<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
 <<READ(exec:///3/1/2#stdout)<1,40>::READ
