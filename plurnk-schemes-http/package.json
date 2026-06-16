@@ -48,10 +48,10 @@
         "playwright": "^1.58.2"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-schemes": "0.8.0"
+        "@plurnk/plurnk-schemes": "0.9.0"
     },
     "devDependencies": {
-        "@plurnk/plurnk-schemes": "0.8.0",
+        "@plurnk/plurnk-schemes": "0.9.0",
         "@types/node": "^25.8.0",
         "typescript": "^6.0.3"
     }
