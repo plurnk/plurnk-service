@@ -826,7 +826,7 @@ export default class Engine {
         // The 0.28.0 EOS-forcing root terminates the turn at the status SEND, but a
         // grammar can't bound degeneration *inside* a statement body — this caps the
         // decode at the free window so a runaway can't reach the context wall.
-        const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
+        const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
         const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
 

@@ -210,7 +210,7 @@ First path segment = provider plugin; rest = provider's own model id.
 
 ### §mock-provider Mock provider (sibling fixture)
 
-`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextSize, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this. {§mock-provider-mock-fixture}
+`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextSize, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a daughter export, this contract has no service-side `§`-ref. {§mock-provider-mock-fixture}
 
 ---
 
