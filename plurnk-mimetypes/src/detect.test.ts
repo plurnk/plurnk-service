@@ -43,6 +43,20 @@ describe("detect", () => {
         assert.equal(detect({ path: "/foo/bar/Dockerfile" }, reg), "text/x-dockerfile");
     });
 
+    it("resolves a bare dotfile (.env) via the byExtension full-name fallback", () => {
+        // discover() files `.`-prefixed declarations under byExtension, and a
+        // file literally named `.env` has no extname() — the fallback matches
+        // the whole basename. Also covers the latent `.bashrc`/`.zshrc` case.
+        const reg = registry({ byExtension: { ".env": "text/x-dotenv", ".bashrc": "text/x-shellscript" } });
+        assert.equal(detect({ path: "project/.env" }, reg), "text/x-dotenv");
+        assert.equal(detect({ path: ".bashrc" }, reg), "text/x-shellscript");
+    });
+
+    it("a real extension still wins over the dotfile fallback (foo.env)", () => {
+        const reg = registry({ byExtension: { ".env": "text/x-dotenv" } });
+        assert.equal(detect({ path: "foo.env" }, reg), "text/x-dotenv");
+    });
+
     it("filename match takes priority over extension when both could match", () => {
         const reg = registry({
             byFilename: { "Makefile.toml": "text/x-makefile" },

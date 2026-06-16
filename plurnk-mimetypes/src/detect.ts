@@ -28,6 +28,19 @@ export function detect(input: DetectInput, registry: Registry): string | null {
         if (match !== undefined) return match;
     }
 
+    // Dotfile fallback. A file whose whole basename is a leading-dot name
+    // (`.env`, `.bashrc`, `.editorconfig`) has no extname() to match, and
+    // discover() files `.`-prefixed declarations under byExtension — so match
+    // the full basename there. Runs after extname so `foo.env` still resolves
+    // by its `.env` extension first.
+    if (input.path !== undefined && input.path !== "") {
+        const name = basename(input.path).toLowerCase();
+        if (name.startsWith(".")) {
+            const match = registry.byExtension.get(name);
+            if (match !== undefined) return match;
+        }
+    }
+
     // Content sniffing is a future hook — no magic-byte table yet.
     return null;
 }
