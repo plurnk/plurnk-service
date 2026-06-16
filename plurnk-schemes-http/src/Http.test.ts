@@ -15,8 +15,10 @@ import type {
     NotifyCaps,
     SubscriptionCaps,
     CrossSchemeCaps,
+    ReadStatement,
+    SendStatement,
+    UrlPath,
 } from "@plurnk/plurnk-schemes";
-import type { ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
 

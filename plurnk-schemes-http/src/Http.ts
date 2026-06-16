@@ -23,9 +23,12 @@ import type {
     SubscriptionHandle,
     PassthroughResult,
     SchemeManifest,
+    SchemeHandler,
+    ReadStatement,
+    SendStatement,
+    UrlPath,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
-import type { ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Browser, { type RenderResult } from "./Browser.ts";
 
 // The channel the response body streams into, and the header metadata channel.
@@ -37,7 +40,7 @@ interface Renderer {
     render(url: string, opts: { runId: number; signal?: AbortSignal }): Promise<RenderResult>;
 }
 
-export default class Http {
+export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "http",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
