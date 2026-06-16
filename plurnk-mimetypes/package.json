@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "0.15.15",
+    "version": "0.15.16",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
     "keywords": [
         "plurnk",
@@ -30,6 +30,10 @@
         ".": {
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
+        },
+        "./conformance": {
+            "types": "./dist/conformance.d.ts",
+            "default": "./dist/conformance.js"
         },
         "./package.json": "./package.json"
     },

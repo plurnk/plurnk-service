@@ -107,6 +107,21 @@ export default class TextSomething extends BaseHandler {
 }
 ```
 
+The framework constructs your default export with `new YourClass(metadata)` (injecting `mimetype`/`glyph`/`extensions`) and calls only the channels a `process()` request asks for. Every channel has a working default on `BaseHandler` — override only what your algebra supports:
+
+| Override | Channel / purpose | Default |
+|---|---|---|
+| `extractRaw(content)` | `symbols` — structural defs as `MimeSymbol[]` | `[]` |
+| `deepJson(content)` | `deepJson` — full structural tree (jsonpath/xpath target) | `null` |
+| `deepXml(content)` | `deepXml` — XML view | projects `deepJson()` for you |
+| `references(content)` | `references` — classified symbol uses (`MimeRef[]`), §16 | `[]` |
+| `content(content)` | `content` — model-facing readable text (and embed-source) | `undefined` (absent) |
+| `extent(content)` | navigation bound (lines, pages, items) | line count / `0` for binary |
+| `validate(content)` | throw on malformed input | no-op |
+| `query(...)` / `toText(content)` | body-matcher dispatch (§11) | regex/glob/jsonpath/xpath defaults |
+
+**Binary mimetypes** (PDF, images, archives) set `"binary": true` at the top of the `plurnk` block; the framework then hands every method a `Uint8Array` instead of a `string`. Override `toText()` to provide a readable projection (PDF returns page text) so regex/glob and embeddings still work.
+
 Discovery: declare your handlers in `package.json` (one or more entries per package):
 
 ```json
@@ -120,6 +135,8 @@ Discovery: declare your handlers in `package.json` (one or more entries per pack
 }
 ```
 
+Discovery is **scope-agnostic**: publish under your own scope (`@acme/acme-mime-foo`) and the host's `discover()` scan finds it exactly like a first-party handler — no bundle membership, no registration. It loads by default; a host can opt into `PLURNK_PLUGINS_TRUSTED_ONLY` (the ecosystem-wide gate honored by all four plugin families) to restrict to `@plurnk/*` plus an explicit allowlist. `@plurnk` is scanned last, so you can **add** a mimetype but not shadow a floor handler.
+
 Reference handler: [plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Fork and adapt for new mimetypes — it's a real production handler, not a synthetic skeleton.
 
 For ANTLR-backed handlers, vendor your `.g4` files in `grammar/`, run `npx plurnk-mimetypes-compile`, and switch the parent class to `AntlrExtractor`. The `antlr4ng` runtime ships with the framework; the `antlr-ng` compiler goes in your own devDependencies (it's the framework's only optional peer):
@@ -129,6 +146,26 @@ npm install --save-dev antlr-ng@^1.0.10
 ```
 
 See [SPEC.md](SPEC.md#9-parser-backends) for the backend selection hierarchy and full handler wiring.
+
+### certify your references channel
+
+If your handler emits `references()`, certify it against the same SPEC §16 conformance harness the in-registry languages run — exposed at the `@plurnk/plurnk-mimetypes/conformance` subpath:
+
+```ts
+import { assertHandlerConformance } from "@plurnk/plurnk-mimetypes/conformance";
+import { it } from "node:test";
+
+it("text-something refs are conformant", async () => {
+    await assertHandlerConformance(new TextSomething(metadata), {
+        source: REAL_WORLD_FIXTURE,            // not a synthetic snippet
+        decoyNames: ["secret", "TODO note"],   // strings/comments that must NOT surface as refs
+        expectJoins: [{ refName: "Helper", container: "Foo.run" }], // ≥1 ref that joins to a local def
+        expectRefs: [{ name: "Helper", kind: "instantiate" }],
+    });
+});
+```
+
+It checks 1-indexed positions, container-names-an-emitted-def, no refs from string/comment positions, the service's `(container, name)` join, and deterministic order. Refs-free handlers (data formats, symbols-only) skip it — an empty channel is honest. See [SPEC §16](SPEC.md#16-references-channel-framework-v0150-engine-pending--issues-1619).
 
 ## public API
 
@@ -156,6 +193,10 @@ The package exposes its full primitive surface for tools building on top of it:
 | `GrammarNotInstalledError` | thrown by `process({ strict: true })` / `getHandler` when a grammar package is missing |
 | `runCompile(opts)` | invoke antlr-ng + post-process imports |
 | `rewriteImports(dir)` / `injectBaseImports(dir)` | generated-output post-processing utilities |
+
+References-engine primitives (for handlers that emit `references()`): `collectReferences`, and the types `RefsQuery`, `RefsQueryCapture`, `RefsCaptureNode`, `QueryConstructor` — plus the `TreeSitterExtractor.collectRefs()` / `setQueryContext()` helpers (§16).
+
+Subpath: `@plurnk/plurnk-mimetypes/conformance` exports `assertHandlerConformance(handler, fixture)` and the `ConformanceHandler` / `ConformanceFixture` / `ConformanceResult` types (kept off the main entry so `node:assert` stays out of the runtime bundle).
 
 Public types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ExtractionVisitor`, `Registry`, `DetectInput`, `HandlerInfo`, `Discovery`, `DiscoverOptions`, `TreeNode`, `CompileOptions`, `HandlerLoader`, `MimetypesOptions`, `ProcessInput`, `ProcessOptions`, `ProcessResult`, `QueryDialect`, `QueryMatch`, `ParsedBodyMatcher`, `JsonOutline`, `DeepTreeNode`, `TreeSitterTree`, `TreeSitterNode`, `TreeSitterParser`, `TelemetryEvent`, `ContentOffset`, `LogCoordinate`.
 

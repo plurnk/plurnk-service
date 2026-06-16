@@ -610,6 +610,24 @@ Query conventions:
 
 A language participates in the service's graph only when its conformance suite is green.
 
+**Third-party conformance harness (issue #32).** The invariants above are not framework-internal — a third-party handler whose `references()` emits rows certifies it against the **same** harness the in-registry languages run, exposed at the `@plurnk/plurnk-mimetypes/conformance` subpath (kept off the main entry so `node:assert` stays out of the runtime bundle). There is one invariant implementation; the registry suites and an external author both call it.
+
+```ts
+import { assertHandlerConformance } from "@plurnk/plurnk-mimetypes/conformance";
+import { it } from "node:test";
+
+it("acme-mime-foo refs are conformant", async () => {
+    await assertHandlerConformance(new AcmeFooHandler(metadata), {
+        source: REAL_WORLD_FIXTURE,          // not a synthetic snippet
+        decoyNames: ["secret", "TODO note"], // strings/comments that must NOT surface as refs
+        expectJoins: [{ refName: "Helper", container: "Foo.run" }], // ≥1 join that resolves to a local def
+        expectRefs: [{ name: "Helper", kind: "instantiate" }],
+    });
+});
+```
+
+`assertHandlerConformance(handler, fixture)` drives a minimal duck surface (`extractRaw` + `references`), so it works for any tier — tree-sitter, ANTLR, or hand-rolled — and throws an `AssertionError` on the first violation. **Checklist a refs-emitting handler must satisfy:** (1) at least one ref; (2) every position 1-indexed with `endColumn` present and `endLine >= line`; (3) every `container` equals an emitted def path; (4) no ref at a def's own name position; (5) deterministic document order; (6) no `decoyNames` (string/comment content) surfacing; (7) every `expectJoins` entry resolves (ref name is a local def AND container is its path); (8) every `expectRefs` spot-check present. **Refs-free handlers** (data formats, symbols-only hand-rolls) do not run this — an empty references channel is honest, not a failure.
+
 **Tier 2 authoring (out-of-registry tree-sitter handlers, issue #26).** A handler package that brings its own WASM grammar implements `references()` through the same engine via two `TreeSitterExtractor` affordances, so it never reimplements the priming dance:
 - `loadParser()` calls `this.setQueryContext(language, QueryCtor)` after `Language.load()` — it owns the WASM path, so it is the only place holding the `Language` and the web-tree-sitter `Query` constructor.
 - `references()` is one call to `this.collectRefs(content, querySource, extractDefs, wrap?)`, which owns parse → compile-and-cache query → run `collectReferences` against `extractDefs`'s symbols → cleanup, plus the shared error policy (`GrammarNotInstalledError` propagates for the #14 degrade; parse/query failures → empty channel). The in-registry `TreeSitterLanguageHandler` uses the identical helper — one priming implementation.
