@@ -1,113 +1,49 @@
 # @plurnk/plurnk-mimetypes
 
-Framework + detection service for the `@plurnk/plurnk-mimetypes-*` handler family. Sits between [plurnk-service](https://github.com/plurnk/plurnk-service) (the engine) and individual per-mimetype handler repos (the implementations).
+Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler family. Consumed by [plurnk-service](https://github.com/plurnk/plurnk-service): it hands `Mimetypes.process(path | content)` a blob and gets back `mimetype` + the structural channels it asked for. The service stays mimetype-illiterate; this owns detection, discovery, instantiation, channel selection/projection, and the author contract.
 
-plurnk-service hands a path or content blob to `Mimetypes.process(...)` and gets back metadata (`mimetype`, `ok`, `totalLines`, `extent`) plus the structural channels it asked for: `symbols` (structured definitions), `deepJson` (jsonpath target), `deepXml` (xpath target), `references` (classified symbol uses). The service stays mimetype-illiterate; this helper owns detection, discovery, handler instantiation, channel selection and projection, the duck contract spec, and the build utilities handler repos consume.
+## Documentation
 
-## install
+- [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation.
+- Constellation: [plurnk-grammar](https://github.com/plurnk/plurnk-grammar), [plurnk-execs](https://github.com/plurnk/plurnk-execs), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes).
+
+## Install
 
 ```
 npm install @plurnk/plurnk-mimetypes
 ```
 
-Requires Node ≥ 25 (native TypeScript support, ESM only).
-
-The framework ships the floor: `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, and `text/csv` handlers (plus the tree-sitter and ANTLR loaders) are direct dependencies. One install gives a working framework for those types.
-
-### grammar packages
-
-Tree-sitter languages are opt-in — install only the grammars you actually use:
+Node ≥ 25, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: add the languages you use, or the whole family at once.
 
 ```
-npm install @plurnk/plurnk-mimetypes-grammar-python
-npm install @plurnk/plurnk-mimetypes-grammar-rust
-# ...etc
+npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
+npm install @plurnk/plurnk-mimetypes-all              # every first-party handler
 ```
 
-To install every published grammar in one command:
+Detection auto-finds installed grammars — no code changes when you add or remove one. A detected mimetype whose grammar isn't installed **degrades**: `ok` stays true, metadata is real, requested channels come back empty, and the missing package is on `ProcessResult.grammarMissing`. Pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
 
-```
-npm install \
-  @plurnk/plurnk-mimetypes-grammar-bash \
-  @plurnk/plurnk-mimetypes-grammar-c \
-  @plurnk/plurnk-mimetypes-grammar-cpp \
-  @plurnk/plurnk-mimetypes-grammar-css \
-  @plurnk/plurnk-mimetypes-grammar-dart \
-  @plurnk/plurnk-mimetypes-grammar-elixir \
-  @plurnk/plurnk-mimetypes-grammar-fsharp \
-  @plurnk/plurnk-mimetypes-grammar-fsharp-signature \
-  @plurnk/plurnk-mimetypes-grammar-go \
-  @plurnk/plurnk-mimetypes-grammar-haskell \
-  @plurnk/plurnk-mimetypes-grammar-java \
-  @plurnk/plurnk-mimetypes-grammar-javascript \
-  @plurnk/plurnk-mimetypes-grammar-julia \
-  @plurnk/plurnk-mimetypes-grammar-kotlin \
-  @plurnk/plurnk-mimetypes-grammar-lua \
-  @plurnk/plurnk-mimetypes-grammar-make \
-  @plurnk/plurnk-mimetypes-grammar-ocaml \
-  @plurnk/plurnk-mimetypes-grammar-odin \
-  @plurnk/plurnk-mimetypes-grammar-php \
-  @plurnk/plurnk-mimetypes-grammar-python \
-  @plurnk/plurnk-mimetypes-grammar-ruby \
-  @plurnk/plurnk-mimetypes-grammar-rust \
-  @plurnk/plurnk-mimetypes-grammar-scala \
-  @plurnk/plurnk-mimetypes-grammar-toml \
-  @plurnk/plurnk-mimetypes-grammar-tsx \
-  @plurnk/plurnk-mimetypes-grammar-typescript \
-  @plurnk/plurnk-mimetypes-grammar-yaml \
-  @plurnk/plurnk-mimetypes-grammar-zig
-```
+## Write a handler
 
-The framework auto-detects which grammars are installed; no code changes when you add or remove one. When a detected mimetype's grammar isn't installed, `process()` degrades — `ok` stays true, metadata is real, requested channels come back empty, and the missing package is reported on `ProcessResult.grammarMissing`. Pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
+Ship a handler by publishing a package — **under any scope** (`@acme/whatever`; discovery keys on `plurnk.kind`, not the `@plurnk` scope) — that declares its mimetypes and default-exports a `BaseHandler` subclass.
 
-## use — orchestrator (plurnk-service side)
+### 1. Declare in `package.json`
 
-```ts
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-
-const mimetypes = new Mimetypes({
-    defaultMimetype: "text/markdown",   // fall back when nothing matches
-});
-
-const result = await mimetypes.process(
-    { path: "src/main.py" },
-    { channels: ["symbols", "deepJson", "deepXml"] },   // default: all four
-);
-// result.mimetype   === "text/x-python"
-// result.symbols    === MimeSymbol[] — structured definitions
-// result.deepJson   === structural tree (jsonpath query target)
-// result.deepXml    === XML projection of deepJson (xpath query target)
-// result.totalLines === source line count; result.extent === navigation bound
-// result.ok         === true
-```
-
-Channels are materialized per call: unrequested channels are never computed and their fields are absent. `channels: []` is the cheap stat call — metadata only, no parse. The `references` channel (classified symbol uses for code-graph consumers) ships with its final shape and returns `[]` until the per-language extraction engine lands.
-
-`defaultMimetype` is the mimetype the orchestrator substitutes when detection finds no match. For LLM-driven systems where most content is model-generated, `"text/markdown"` is almost always the right default. Omit the option to preserve strict null-on-miss behavior.
-
-To render symbols as an outline for human eyes, use `format(result.symbols)`.
-
-Body-matcher queries dispatch through `mimetypes.query(input, expression)` — regex (`/pattern/`), glob, jsonpath (`$.field`) against the deep-json channel, and xpath (`//selector`) against the deep-xml channel.
-
-Pipeline failure modes are documented in [SPEC.md](SPEC.md#7-error-policy).
-
-## use — handler authors
-
-A handler is a class extending `BaseHandler` (or `TreeSitterExtractor` / `AntlrExtractor` for grammar-backed extraction). Implement `extractRaw(content)`; the framework derives `symbolsRaw`, the deep channels, and query dispatch from the base classes.
-
-```ts
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
-
-export default class TextSomething extends BaseHandler {
-    extractRaw(content: string): MimeSymbol[] {
-        // return structural declarations as MimeSymbol[]
-        return [];
-    }
+```json
+{
+  "plurnk": {
+    "kind": "mimetype",
+    "handlers": [
+      { "name": "text/x-cobol", "glyph": "🗄", "extensions": [".cbl", ".cob"] }
+    ]
+  }
 }
 ```
 
-The framework constructs your default export with `new YourClass(metadata)` (injecting `mimetype`/`glyph`/`extensions`) and calls only the channels a `process()` request asks for. Every channel has a working default on `BaseHandler` — override only what your algebra supports:
+One package may declare many handlers; each `handlers[]` entry registers independently. Add `"binary": true` at the top of the `plurnk` block for byte-oriented formats (PDF, images) — every method then receives a `Uint8Array` instead of a `string` (override `toText()` so regex/glob and embeddings still get a readable projection).
+
+### 2. Default-export a `BaseHandler` subclass
+
+The framework instantiates one handler per mimetype, injecting `{ mimetype, glyph, extensions }` (`HandlerMetadata`), and calls only the channels a `process()` request asks for. Every channel has a working default — **override only what your algebra supports**:
 
 | Override | Channel / purpose | Default |
 |---|---|---|
@@ -120,43 +56,36 @@ The framework constructs your default export with `new YourClass(metadata)` (inj
 | `validate(content)` | throw on malformed input | no-op |
 | `query(...)` / `toText(content)` | body-matcher dispatch (§11) | regex/glob/jsonpath/xpath defaults |
 
-**Binary mimetypes** (PDF, images, archives) set `"binary": true` at the top of the `plurnk` block; the framework then hands every method a `Uint8Array` instead of a `string`. Override `toText()` to provide a readable projection (PDF returns page text) so regex/glob and embeddings still work.
+```ts
+import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import type { MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
-Discovery: declare your handlers in `package.json` (one or more entries per package):
-
-```json
-{
-    "plurnk": {
-        "kind": "mimetype",
-        "handlers": [
-            { "name": "text/something", "glyph": "✨", "extensions": [".sth"] }
-        ]
+export default class TextCobol extends BaseHandler {
+    extractRaw(content: string): MimeSymbol[] {
+        return [/* structural declarations */];
     }
 }
 ```
 
-Discovery is **scope-agnostic**: publish under your own scope (`@acme/acme-mime-foo`) and the host's `discover()` scan finds it exactly like a first-party handler — no bundle membership, no registration. It loads by default; a host can opt into `PLURNK_PLUGINS_TRUSTED_ONLY` (the ecosystem-wide gate honored by all four plugin families) to restrict to `@plurnk/*` plus an explicit allowlist. `@plurnk` is scanned last, so you can **add** a mimetype but not shadow a floor handler.
+### 3. Pick a parser backend — in this order (SPEC §9)
 
-Reference handler: [plurnk/plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown). Fork and adapt for new mimetypes — it's a real production handler, not a synthetic skeleton.
+1. **tree-sitter, clean WASM** — in-registry via framework PR. Most languages.
+2. **tree-sitter, own WASM** — `extends TreeSitterExtractor`, commit a built `.wasm` from a pinned grammar commit. `references()` is ~3 lines via the base `collectRefs()` helper (§16).
+3. **ANTLR** — vendor `.g4` in `grammar/`, run `npx plurnk-mimetypes-compile`, `extends AntlrExtractor`. `antlr4ng` ships with the framework; `antlr-ng` is your devDep (the only optional peer).
+4. **hand-roll** — `extends BaseHandler` and scan directly. Justify in your README; the bar is high.
 
-For ANTLR-backed handlers, vendor your `.g4` files in `grammar/`, run `npx plurnk-mimetypes-compile`, and switch the parent class to `AntlrExtractor`. The `antlr4ng` runtime ships with the framework; the `antlr-ng` compiler goes in your own devDependencies (it's the framework's only optional peer):
+Fork a real one: [plurnk-mimetypes-text-markdown](https://github.com/plurnk/plurnk-mimetypes-text-markdown) — a production handler, not a synthetic skeleton.
 
-```
-npm install --save-dev antlr-ng@^1.0.10
-```
+### Certify your references channel
 
-See [SPEC.md](SPEC.md#9-parser-backends) for the backend selection hierarchy and full handler wiring.
-
-### certify your references channel
-
-If your handler emits `references()`, certify it against the same SPEC §16 conformance harness the in-registry languages run — exposed at the `@plurnk/plurnk-mimetypes/conformance` subpath:
+If you emit `references()`, certify it against the same SPEC §16 invariants the in-registry languages run — at the `@plurnk/plurnk-mimetypes/conformance` subpath:
 
 ```ts
 import { assertHandlerConformance } from "@plurnk/plurnk-mimetypes/conformance";
 import { it } from "node:test";
 
-it("text-something refs are conformant", async () => {
-    await assertHandlerConformance(new TextSomething(metadata), {
+it("text-cobol refs are conformant", async () => {
+    await assertHandlerConformance(new TextCobol(metadata), {
         source: REAL_WORLD_FIXTURE,            // not a synthetic snippet
         decoyNames: ["secret", "TODO note"],   // strings/comments that must NOT surface as refs
         expectJoins: [{ refName: "Helper", container: "Foo.run" }], // ≥1 ref that joins to a local def
@@ -165,60 +94,55 @@ it("text-something refs are conformant", async () => {
 });
 ```
 
-It checks 1-indexed positions, container-names-an-emitted-def, no refs from string/comment positions, the service's `(container, name)` join, and deterministic order. Refs-free handlers (data formats, symbols-only) skip it — an empty channel is honest. See [SPEC §16](SPEC.md#16-references-channel-framework-v0150-engine-pending--issues-1619).
+Checks 1-indexed positions, container-names-an-emitted-def, no refs from string/comment positions, the service's `(container, name)` join, and deterministic order. Refs-free handlers (data formats, symbols-only) skip it — an empty channel is honest.
 
-## public API
+## Use it (plurnk-service side)
 
-The package exposes its full primitive surface for tools building on top of it:
+```ts
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
-| Export | Purpose |
-|---|---|
-| `Mimetypes` | top-level pipeline orchestrator (`process`, `detect`, `getHandler`, `query`, `ready`) |
-| `BaseHandler` | base class for handlers (default export) |
-| `TreeSitterExtractor` | base class for tree-sitter-backed handlers; `walkDeepNode` default deep-json walker |
-| `AntlrExtractor` | base class for ANTLR-backed handlers |
-| `withExtractor(BaseVisitor)` | mixin that adds symbol-collection state to any antlr4ng visitor |
-| `detect(input, registry)` | path/ext/hint/content → mimetype resolver |
-| `discover(options)` | scan installed `@plurnk/plurnk-mimetypes-*` packages |
-| `emptyRegistry()` | construct an empty `Registry` |
-| `format(symbols)` | `MimeSymbol[]` → indented outline string |
-| `buildTree(symbols)` | flat `MimeSymbol[]` → nested `TreeNode[]` |
-| `renderTree(nodes)` | `TreeNode[]` → outline string |
-| `maxDepth(nodes)` / `pruneToMaxDepth(nodes, limit)` | tree depth primitives |
-| `parseBodyMatcher(expr)` | leading-prefix → `QueryDialect` + pattern |
-| `queryRegex` / `queryGlob` / `queryJsonpathObject` / `queryXpathString` | per-dialect query primitives |
-| `projectJsonToXml(value)` | universal deep-json → deep-xml projection (`pk:` bookkeeping namespace) |
-| `buildJsonOutline(symbols)` | bare-leaves outline for legacy jsonpath fallback |
-| `UnsupportedDialectError` / `InvalidExpressionError` / `QueryParseFailureError` | query error classes with `toTelemetryEvent()` |
-| `GrammarNotInstalledError` | thrown by `process({ strict: true })` / `getHandler` when a grammar package is missing |
-| `runCompile(opts)` | invoke antlr-ng + post-process imports |
-| `rewriteImports(dir)` / `injectBaseImports(dir)` | generated-output post-processing utilities |
-
-References-engine primitives (for handlers that emit `references()`): `collectReferences`, and the types `RefsQuery`, `RefsQueryCapture`, `RefsCaptureNode`, `QueryConstructor` — plus the `TreeSitterExtractor.collectRefs()` / `setQueryContext()` helpers (§16).
-
-Subpath: `@plurnk/plurnk-mimetypes/conformance` exports `assertHandlerConformance(handler, fixture)` and the `ConformanceHandler` / `ConformanceFixture` / `ConformanceResult` types (kept off the main entry so `node:assert` stays out of the runtime bundle).
-
-Public types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ExtractionVisitor`, `Registry`, `DetectInput`, `HandlerInfo`, `Discovery`, `DiscoverOptions`, `TreeNode`, `CompileOptions`, `HandlerLoader`, `MimetypesOptions`, `ProcessInput`, `ProcessOptions`, `ProcessResult`, `QueryDialect`, `QueryMatch`, `ParsedBodyMatcher`, `JsonOutline`, `DeepTreeNode`, `TreeSitterTree`, `TreeSitterNode`, `TreeSitterParser`, `TelemetryEvent`, `ContentOffset`, `LogCoordinate`.
-
-## cli
-
-```
-plurnk-mimetypes-compile      compile grammar/ → src/generated/ via antlr-ng
-                              and rewrite .js import extensions to .ts
+const m = new Mimetypes({ defaultMimetype: "text/markdown" }); // fallback on no match
+const r = await m.process({ path: "src/main.py" }, { channels: ["symbols", "references"] });
+// r.mimetype  "text/x-python"
+// r.symbols   MimeSymbol[]   r.references MimeRef[]
+// r.deepJson  jsonpath target  r.deepXml xpath target  r.content readable text
+// r.extent    navigation bound  r.totalLines  r.ok
 ```
 
-Run from a handler repo's root directory.
+Channels materialize per call — unrequested ones are never computed and their fields are absent. `channels: []` is the stat-only call (metadata, no parse). `embedding` is opt-in (model inference) and needs `@plurnk/plurnk-mimetypes-embeddings`. Body-matcher queries: `m.query(input, expr)` — regex `/p/`, glob, jsonpath `$.x` (deep-json), xpath `//x` (deep-xml). `format(r.symbols)` renders a human outline. Failure modes: [SPEC §7](SPEC.md#7-error-policy).
 
-## development
+## Discovery & trust
+
+`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "mimetype"`, reading handler metadata from `package.json` (no handler code is imported until a mimetype is actually used).
+
+- **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
+- **Trust gate.** `PLURNK_PLUGINS_TRUSTED_ONLY` (host posture, honored by all four plugin families): unset/`""`/`0` → every package registers (default, no regression); any value → `@plurnk/*` always trusted plus a comma-separated allowlist (`1` = first-party only). An untrusted package is discovered but not registered — never a crash.
+- **Floor protection.** `@plurnk` is scanned **last**, so a third party can *add* a mimetype but cannot shadow a floor handler.
+
+## Exports
+
+- `Mimetypes` — orchestrator: `process`, `detect`, `getHandler`, `query`, `embedderInfo`, `ready`.
+- `BaseHandler` (default) / `TreeSitterExtractor` (+ `walkDeepNode`, `collectRefs`, `setQueryContext`) / `AntlrExtractor` / `withExtractor` — the handler base-class ladder.
+- `detect`, `discover`, `emptyRegistry` — detection + the scope-agnostic, trust-gated scan.
+- `collectReferences` + `format`/`buildTree`/`renderTree`/`maxDepth`/`pruneToMaxDepth` — refs engine + outline primitives.
+- `parseBodyMatcher`, `queryRegex`/`queryGlob`/`queryJsonpathObject`/`queryXpathString`, `projectJsonToXml`, `buildJsonOutline` — query primitives.
+- `UnsupportedDialectError`/`InvalidExpressionError`/`QueryParseFailureError`/`GrammarNotInstalledError` — error classes with `toTelemetryEvent()`.
+- `runCompile`/`rewriteImports`/`injectBaseImports` — ANTLR build utilities.
+- Subpath `@plurnk/plurnk-mimetypes/conformance` — `assertHandlerConformance` + conformance types (kept off the main entry so `node:assert` stays out of the runtime bundle).
+- Contract types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ProcessInput`/`ProcessOptions`/`ProcessResult`, `RefsQuery`/`RefsQueryCapture`/`RefsCaptureNode`/`QueryConstructor`, `Discovery`/`DiscoverOptions`/`HandlerInfo`/`Registry`, `QueryDialect`/`QueryMatch`, `TreeSitterTree`/`TreeSitterNode`/`TreeSitterParser`/`DeepTreeNode`, `TelemetryEvent`.
+
+## CLI
 
 ```
-npm install
-npm run build
-npm test
+npx plurnk-mimetypes-compile    # compile grammar/ → src/generated/ via antlr-ng, rewrite .js imports to .ts
 ```
 
-`test:lint`, `test:unit`, `test:intg` separately if needed. No biome / eslint — `tsc --noEmit` is lint.
+Run from a handler repo's root.
 
-## license
+## Development
 
-MIT.
+```
+npm install && npm run build && npm test
+```
+
+`test:lint` (`tsc --noEmit` — no biome/eslint), `test:unit`, `test:intg`, `test:conf` separately. License: MIT.
