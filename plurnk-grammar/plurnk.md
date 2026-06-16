@@ -76,6 +76,7 @@ URI-shaped: `[scheme://]rest`.
 * Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
 * Glob metacharacters (`*`, `**`, `?`, `[...]`) and regex (`#pattern#flags`) are allowed in path segments.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
+* A literal `)` closes the target; percent-encode parens in a path as `%28`/`%29` (e.g. `Mercury_%28planet%29`).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
 Internal schemes:

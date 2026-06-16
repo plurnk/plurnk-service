@@ -165,8 +165,16 @@ Paths are URI-shaped, drawn from RFC 3986 in spirit but not strictly.
 Two RFC concessions justify the relaxation:
 
 1. RFC 3986 lists `)` as a sub-delim — a valid path character. Plurnk
-   reserves `)` to close the path slot. Strict compliance would
-   require an escape mechanism; plurnk does not provide one.
+   reserves a literal `)` to close the path slot and provides no escape
+   mechanism. A path that needs a literal paren **percent-encodes it**
+   (`%28` / `%29`) — the complete, standards-aligned answer:
+   `(https://en.wikipedia.org/wiki/Mercury_%28planet%29)` parses, where
+   `(…Mercury_(planet))` would not. (`(` alone is fine as content; only
+   `)` terminates.) A balanced-paren or escape grammar was considered and
+   rejected: balanced counting is incomplete for unbalanced parens, and
+   both re-complicate the deliberately-opaque target slot for a case
+   percent-encoding already covers. For *matching* a parenthesized name,
+   glob (`Mercury_*planet*`) or a `#…#` regex is the natural form.
 2. Bulk Pattern Matching extends path segments with glob
    metacharacters (`*`, `**`, `?`, `[…]`) that fall outside the RFC
    character set.
@@ -174,7 +182,11 @@ Two RFC concessions justify the relaxation:
 Lexer-enforced shape:
 
 - Optional scheme: `[a-z][a-z0-9+.-]*` followed by `://`.
-- Path content: any character except `)` and newline.
+- Path content: any character except `)`, `<`, and newline. A literal
+  `)` closes the slot (percent-encode to embed one).
+- A `#pattern#flags` regex target is recognized as a unit, bounded by
+  its own `#` delimiters (`\#` escapes a literal hash), so it MAY contain
+  `)` — regex groups work: `(#(draft|final)/.*#)`.
 - Glob metacharacters in path segments are permitted.
 
 Runtime-enforced semantics:
