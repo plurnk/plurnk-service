@@ -100,7 +100,8 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
-WHERE e.scope = 'session' AND e.session_id = $session_id -- §machine-processes-one-filesystem: entries are session-scoped, shared across runs
+-- entries are session-scoped, shared across runs — §machine-processes-one-filesystem
+WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.scheme, e.pathname, ec.name;
 
 -- PREP: engine_run_prior_turn_time
@@ -192,7 +193,8 @@ SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,
-    le.origin, -- attribution, never a render filter; the run's actor — §actor-boundary-origin-not-filter §machine-processes-run-origin
+    -- le.origin is attribution, never a render filter; the run's actor — §actor-boundary-origin-not-filter §machine-processes-run-origin
+    le.origin,
     le.op, le.suffix, le.signal,
     le.scheme, le.username, le.password,
     le.hostname, le.port, le.pathname,
@@ -203,8 +205,10 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
-WHERE le.run_id = $run_id -- §actor-boundary-isolation §machine-processes-run-is-its-log: the packet renders exactly one run's log
-  AND NOT (le.status_rx = 202 AND le.state = 'proposed') -- proposed rows hidden until resolved — §proposal-proposed-hidden
+-- WHERE renders exactly one run's log — §actor-boundary-isolation §machine-processes-run-is-its-log
+-- the AND NOT clause keeps proposed (202) rows hidden until resolved — §proposal-proposed-hidden
+WHERE le.run_id = $run_id
+  AND NOT (le.status_rx = 202 AND le.state = 'proposed')
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry
