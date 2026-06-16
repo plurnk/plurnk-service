@@ -427,7 +427,7 @@ test("AST: line marker single position", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 5, last: null });
+    assert.deepEqual(item.statement.lineMarker, { marks: [5] });
 });
 
 test("AST: line marker positive range", () => {
@@ -435,7 +435,7 @@ test("AST: line marker positive range", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 4, last: 7 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [4, 7] });
 });
 
 test("AST: line marker append sentinel", () => {
@@ -443,7 +443,7 @@ test("AST: line marker append sentinel", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: -1, last: null });
+    assert.deepEqual(item.statement.lineMarker, { marks: [-1] });
 });
 
 test("AST: line marker negative range like <0--5>", () => {
@@ -451,7 +451,7 @@ test("AST: line marker negative range like <0--5>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 0, last: -5 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [0, -5] });
 });
 
 test("AST: line marker range with negative start <-3--1>", () => {
@@ -459,7 +459,7 @@ test("AST: line marker range with negative start <-3--1>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: -3, last: -1 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [-3, -1] });
 });
 
 test("AST: line marker comma-separated range <4,7>", () => {
@@ -467,7 +467,7 @@ test("AST: line marker comma-separated range <4,7>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 4, last: 7 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [4, 7] });
 });
 
 test("AST: line marker comma-separated with negative end <1,-1>", () => {
@@ -475,7 +475,7 @@ test("AST: line marker comma-separated with negative end <1,-1>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 1, last: -1 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [1, -1] });
 });
 
 test("AST: line marker comma+space tolerance <1, -1>", () => {
@@ -483,7 +483,7 @@ test("AST: line marker comma+space tolerance <1, -1>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 1, last: -1 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [1, -1] });
 });
 
 test("AST: line marker comma-separated negative-to-negative <-3,-1>", () => {
@@ -491,7 +491,7 @@ test("AST: line marker comma-separated negative-to-negative <-3,-1>", () => {
     const item = result.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;
-    assert.deepEqual(item.statement.lineMarker, { first: -3, last: -1 });
+    assert.deepEqual(item.statement.lineMarker, { marks: [-3, -1] });
 });
 
 test("AST: empty body is null, not empty string", () => {
@@ -763,7 +763,7 @@ test("MatcherBody: semantic dispatches with top-K via <L>", () => {
     const result = PlurnkParser.parse("<<FIND(known://**)<5>:~graph algorithms:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;
-    assert.deepEqual(item.statement.lineMarker, { first: 5, last: null });
+    assert.deepEqual(item.statement.lineMarker, { marks: [5] });
     const b = item.statement.body;
     assert.ok(b);
     assert.equal(b.dialect, "semantic");
@@ -1023,7 +1023,7 @@ test("slot order: canonical [signal](path)<L> parses", () => {
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
     assert.equal(item.statement.target?.kind, "local");
-    assert.equal(item.statement.lineMarker?.first, 1);
+    assert.equal(item.statement.lineMarker?.marks[0], 1);
 });
 
 test("slot order: (path)[signal]<L> accepted (reordered)", () => {
@@ -1033,7 +1033,7 @@ test("slot order: (path)[signal]<L> accepted (reordered)", () => {
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
     assert.equal(item.statement.target?.kind, "local");
-    assert.equal(item.statement.lineMarker?.first, 1);
+    assert.equal(item.statement.lineMarker?.marks[0], 1);
 });
 
 test("slot order: <L>(path)[signal] accepted (reordered)", () => {
@@ -1043,7 +1043,7 @@ test("slot order: <L>(path)[signal] accepted (reordered)", () => {
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("not FIND"); return; }
     assert.deepEqual(item.statement.signal, ["a", "b"]);
     assert.equal(item.statement.target?.kind, "local");
-    assert.equal(item.statement.lineMarker?.first, 1);
+    assert.equal(item.statement.lineMarker?.marks[0], 1);
 });
 
 test("slot order: all 6 permutations of 3-slot FIND yield equivalent ASTs", () => {
@@ -1062,7 +1062,7 @@ test("slot order: all 6 permutations of 3-slot FIND yield equivalent ASTs", () =
         if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail(`not FIND for: ${input}`); return; }
         assert.deepEqual(item.statement.signal, ["t"], `signal mismatch for: ${input}`);
         assert.equal(item.statement.target?.kind, "local", `path mismatch for: ${input}`);
-        assert.equal(item.statement.lineMarker?.first, 2, `L mismatch for: ${input}`);
+        assert.equal(item.statement.lineMarker?.marks[0], 2, `L mismatch for: ${input}`);
     }
 });
 

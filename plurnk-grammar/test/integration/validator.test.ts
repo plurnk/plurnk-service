@@ -43,42 +43,47 @@ test("Validator: Position rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("Validator: LineMarker accepts single-position", () => {
-    const { valid } = Validator.validateLineMarker({ first: 1, last: null });
+    const { valid } = Validator.validateLineMarker({ marks: [1] });
     assert.equal(valid, true);
 });
 
 test("Validator: LineMarker accepts range", () => {
-    const { valid } = Validator.validateLineMarker({ first: 1, last: 10 });
+    const { valid } = Validator.validateLineMarker({ marks: [1, 10] });
     assert.equal(valid, true);
 });
 
 test("Validator: LineMarker accepts negative sentinel (append)", () => {
-    const { valid } = Validator.validateLineMarker({ first: -1, last: null });
+    const { valid } = Validator.validateLineMarker({ marks: [-1] });
     assert.equal(valid, true);
 });
 
 test("Validator: LineMarker accepts zero sentinel (prepend)", () => {
-    const { valid } = Validator.validateLineMarker({ first: 0, last: null });
+    const { valid } = Validator.validateLineMarker({ marks: [0] });
     assert.equal(valid, true);
 });
 
 test("Validator: LineMarker accepts negative range", () => {
-    const { valid } = Validator.validateLineMarker({ first: -3, last: -1 });
+    const { valid } = Validator.validateLineMarker({ marks: [-3, -1] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker rejects missing last", () => {
-    const { valid } = Validator.validateLineMarker({ first: 1 });
+test("Validator: LineMarker accepts a thresholded triple", () => {
+    const { valid } = Validator.validateLineMarker({ marks: [0.7, 10, 20] });
+    assert.equal(valid, true);
+});
+
+test("Validator: LineMarker rejects empty marks", () => {
+    const { valid } = Validator.validateLineMarker({ marks: [] });
     assert.equal(valid, false);
 });
 
-test("Validator: LineMarker rejects string first", () => {
-    const { valid } = Validator.validateLineMarker({ first: "1", last: null });
+test("Validator: LineMarker rejects a non-number mark", () => {
+    const { valid } = Validator.validateLineMarker({ marks: ["1"] });
     assert.equal(valid, false);
 });
 
 test("Validator: LineMarker rejects extra property", () => {
-    const { valid } = Validator.validateLineMarker({ first: 1, last: null, extra: true });
+    const { valid } = Validator.validateLineMarker({ marks: [1], extra: true });
     assert.equal(valid, false);
 });
 

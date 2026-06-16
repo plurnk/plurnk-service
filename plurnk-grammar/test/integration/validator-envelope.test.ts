@@ -345,7 +345,7 @@ test("Validator: LogEntry accepts lineMarker via cross-schema $ref", () => {
         ...minimalLogEntry(),
         op: "READ" as const,
         signal: [],
-        lineMarker: { first: 1, last: 10 },
+        lineMarker: { marks: [1, 10] },
     };
     const { valid, errors } = Validator.validateLogEntry(log);
     assert.equal(valid, true, JSON.stringify(errors));
@@ -376,7 +376,7 @@ test("Validator: LogEntry rejects SEND with lineMarker", () => {
         ...minimalLogEntry(),
         op: "SEND" as const,
         signal: 200,
-        lineMarker: { first: 1, last: null },
+        lineMarker: { marks: [1] },
     };
     const { valid } = Validator.validateLogEntry(log);
     assert.equal(valid, false);

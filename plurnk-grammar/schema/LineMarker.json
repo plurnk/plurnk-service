@@ -2,12 +2,15 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/LineMarker.json",
     "title": "LineMarker",
-    "description": "A parsed `<L>` slot. `first` is a signed number with sentinel meanings (0 = prepend anchor, -1 = append anchor). Decimals address the spaces between: in line contexts a fractional position inserts between lines (2.5 = after line 2); in result contexts a decimal in (0,1) is a similarity threshold for semantic matchers. `last` is the second position in a range marker, or null for a single-position marker.",
+    "description": "A parsed `<L>` slot: the ordered numeric components, verbatim. Signed numbers carry sentinel meaning (0 = prepend anchor, -1 = append anchor). Decimals address the spaces between (2.5 = after line 2) or, for `~` matchers, a similarity threshold in (0,1). Arity is interpretation, owned by the consumer: `[N]` = one position; `[N, M]` = a range; `[0.7, 10, 20]` = a thresholded range (score ≥ 0.7, positions 10–20). The grammar carries the numbers; it does not assign them roles.",
     "type": "object",
-    "required": ["first", "last"],
+    "required": ["marks"],
     "additionalProperties": false,
     "properties": {
-        "first": { "type": "number" },
-        "last": { "type": ["number", "null"] }
+        "marks": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 1
+        }
     }
 }

@@ -133,7 +133,7 @@ test("PlurnkStatement: SEND rejects string signal", () => {
 });
 
 test("PlurnkStatement: SEND rejects non-null lineMarker", () => {
-    const stmt = { ...baseFields("SEND"), signal: 200, lineMarker: { first: 1, last: null } };
+    const stmt = { ...baseFields("SEND"), signal: 200, lineMarker: { marks: [1] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
@@ -151,7 +151,7 @@ test("PlurnkStatement: EXEC rejects numeric signal", () => {
 });
 
 test("PlurnkStatement: EXEC rejects non-null lineMarker", () => {
-    const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { first: 1, last: null } };
+    const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { marks: [1] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
@@ -169,7 +169,7 @@ test("PlurnkStatement: KILL rejects string signal", () => {
 });
 
 test("PlurnkStatement: KILL rejects non-null lineMarker", () => {
-    const stmt = { ...baseFields("KILL"), signal: 9, lineMarker: { first: 1, last: null } };
+    const stmt = { ...baseFields("KILL"), signal: 9, lineMarker: { marks: [1] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
@@ -181,7 +181,7 @@ test("PlurnkStatement: FIND rejects numeric signal", () => {
 });
 
 test("PlurnkStatement: FIND accepts lineMarker", () => {
-    const stmt = { ...baseFields("FIND"), lineMarker: { first: 1, last: 10 } };
+    const stmt = { ...baseFields("FIND"), lineMarker: { marks: [1, 10] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });

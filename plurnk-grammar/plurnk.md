@@ -52,8 +52,9 @@ Decimals address the spaces between:
 
 `<2.5>` inserts between lines 2 and 3 without replacing (EDIT).
 `<0.7>` selects results scoring at least 0.7 (`~` matchers).
+`<0.7,10,20>` selects results scoring at least 0.7, positions 10 through 20 (threshold, then range).
 
-On structured entries, `<Result>` addresses result index, not line number.
+On structured entries and items, `<Result>` addresses result index, not line number.
 
 ## Body matcher dispatch (FIND, READ, OPEN, FOLD)
 
@@ -73,24 +74,23 @@ Escape `#` inside a regex pattern as `\#`. XPath body begins with `//`. Semantic
 URI-shaped: `[scheme://]rest`.
 
 * Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
-* Glob metacharacters (`*`, `**`, `?`, `[...]`) are allowed in path segments.
-* A target wrapped in `#pattern#flags` is a path-name regex: it matches entries by path instead of addressing one (e.g. `(#draft.*#i)`).
+* Glob metacharacters (`*`, `**`, `?`, `[...]`) and regex (`#pattern#flags`) are allowed in path segments.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
 Internal schemes:
 
-- `unknown:///` — open question entries.
-- `known:///` — knowledgebase entries.
-- `exec:///` — actions.
-- `log:///` — record of operations performed.
-- `plurnk:///` — internal agent entries.
+- `unknown:///` — internal open question entries.
+- `known:///` — internal knowledgebase entries.
+- `exec:///` — execution stream output. not editable.
+- `log:///` — record of operations performed, not editable.
+- `plurnk:///` — internal agent entries, not editable.
 - `run:///` — agent runs; `run:///.` is the current run.
-- `error:///` — rendered telemetry locator, not addressable.
+- `error:///` — rendered telemetry locator, not addressable or editable.
 
 ## Suffix
 
-YOU MUST use a matching digit suffix on the opening and closing tags when quoting plurnk operations in a body.
+YOU MUST use a matching single-digit suffix (`1`–`9`) on the opening and closing tags when quoting plurnk operations in a body. The innermost quote is unsuffixed; each enclosing level increments the digit.
 
 <<EDIT1(known:///demo):
 quoted: <<EDIT(known:///inner):hello:EDIT
@@ -138,6 +138,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
 <<FIND(known:///**):revolution:FIND
 <<FIND(#draft.*#i)::FIND
+<<FIND(#src/.*[.]test[.]ts#)::FIND
 <<FIND(src/**):@<createCoder:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh

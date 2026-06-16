@@ -299,25 +299,35 @@ export default class AstBuilder {
         return c !== undefined && c >= "0" && c <= "9";
     }
 
+    // Scans the `<L>` slot into its ordered numeric components. Separators are `,`
+    // (with an optional space) or `-`; a `-` immediately starting a component is its
+    // sign, not a separator. Roles (position / range / threshold) are the consumer's
+    // to assign — the parser only carries the numbers.
     static #parseLineMarker(text: string): LineMarker {
         const inner = text.slice(1, -1);
+        const marks: number[] = [];
         let i = 0;
-        if (inner[i] === "-") i++;
-        while (AstBuilder.#isDigit(inner[i])) i++;
-        if (inner[i] === "." && AstBuilder.#isDigit(inner[i + 1])) {
-            i++;
-            while (AstBuilder.#isDigit(inner[i])) i++;
+        while (i < inner.length) {
+            let j = i;
+            if (inner[j] === "-") j++;
+            while (AstBuilder.#isDigit(inner[j])) j++;
+            if (inner[j] === "." && AstBuilder.#isDigit(inner[j + 1])) {
+                j++;
+                while (AstBuilder.#isDigit(inner[j])) j++;
+            }
+            marks.push(Number.parseFloat(inner.slice(i, j)));
+            i = j;
+            if (inner[i] === ",") {
+                i++;
+                if (inner[i] === " ") i++;
+            } else if (inner[i] === "-") {
+                i++;
+            } else {
+                break;
+            }
         }
-        const first = Number.parseFloat(inner.slice(0, i));
-        if (i >= inner.length) return { first, last: null };
-        if (inner[i] === ",") {
-            i++;
-            if (inner[i] === " ") i++;
-        } else {
-            i++;
-        }
-        const last = Number.parseFloat(inner.slice(i));
-        return { first, last };
+        // L_MARKER always matches at least one number, so marks is non-empty.
+        return { marks: marks as [number, ...number[]] };
     }
 
     /**

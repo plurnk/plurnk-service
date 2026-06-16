@@ -30,6 +30,14 @@ const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(c
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN"] as const;
+// ε plus 1..9. IRREDUCIBLE, do not "optimize" to `[1-9]*`: the close tag must MATCH
+// the open suffix (`<<EDITk … :EDITk`) AND the body automaton must exclude that exact
+// close literal — both context-sensitive, which a CFG (GBNF, no backrefs) cannot
+// express for a general suffix. The only encoding that honors matching + exclusion is
+// a bounded, enumerated set, one production per value. This is the source of most of
+// the artifact's bulk, and it is the price of reliable same-op nesting up to depth 9
+// (single digit). ANTLR parses any suffix (`[A-Za-z0-9_]+`); the GBNF dictates a
+// single digit and canon teaches `1`.
 const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 const DIGIT = cls([R("0", "9")]);
@@ -38,14 +46,6 @@ const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
 // The lexer's executor IDENT requires a letter/underscore head; canon dictates lowercase.
 const EXEC_HEAD = cls([R("a", "z")]);
 const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
-const SCHEME_HEAD = cls([R("a", "z")]);
-const SCHEME_TAIL = cls([R("a", "z"), R("0", "9"), ...C("+.-")]);
-// `*` admits glob hosts (log://**/get); userinfo, ports, and IPv6 brackets are
-// excluded generation-side so WHATWG URL parsing never throws on a derived path.
-const HOST_CHAR = cls([R("a", "z"), R("0", "9"), ...C("*.-")]);
-const URI_REST_HEAD = cls(C("/?#"));
-const URI_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("._~!$&'*+,;=:@%?#/[]-")]);
-const BARE_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("._~!$&'*+,;=@%?#/[]-")]);
 
 // Body alphabet excludes control chars (tab/newline/CR allowed) plus the chars
 // tracked by the close-literal automaton state.
@@ -67,59 +67,6 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
         alts.push([]);
         model.set(`${name}-b${k}`, alts);
     }
-};
-
-// Free text for the lax root: any characters that never contain a complete open
-// literal (`<<FIND` … `<<PLAN`). Aho-Corasick complement over the literal trie —
-// state = longest literal prefix matched by the current suffix. Completing a
-// literal has no transition (the text interpretation dies; the parallel statement
-// interpretation takes over). One consistency constraint with the ANTLR TEXT
-// rule: text may not END with an ODD run of trailing `<` — `text<` + `<<OP`
-// merges into `<<<OP`, which the lexer treats as all text, and the two layers
-// would disagree about where the statement starts. The `<<` trie state therefore
-// splits by run parity (even may end, odd may not).
-const textRules = (model: GModel): void => {
-    const literals = OPS.map((op) => `<<${op}`);
-    const states: string[] = [""];
-    for (const literal of literals) {
-        for (let k = 1; k < literal.length; k++) {
-            const prefix = literal.slice(0, k);
-            if (!states.includes(prefix)) states.push(prefix);
-        }
-    }
-    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
-    states.push(ODD);
-    const ruleOf = (state: string): string => `text-s${states.indexOf(state)}`;
-    const longestSuffixState = (candidate: string): string => {
-        for (let i = 1; i < candidate.length; i++) {
-            if (states.includes(candidate.slice(i))) return candidate.slice(i);
-        }
-        return "";
-    };
-    for (const state of states) {
-        const trieState = state === ODD ? "<<" : state;
-        const alts: GRule = [];
-        const consumed = new Set<string>();
-        for (const literal of literals) {
-            if (!literal.startsWith(trieState)) continue;
-            const next = literal[trieState.length];
-            if (consumed.has(next)) continue;
-            consumed.add(next);
-            const candidate = trieState + next;
-            // Completing a literal is forbidden — no transition at all.
-            if (candidate === literal) continue;
-            alts.push([lit(next), ref(ruleOf(candidate))]);
-        }
-        if (!consumed.has("<")) {
-            consumed.add("<");
-            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
-            alts.push([lit("<"), ref(ruleOf(target))]);
-        }
-        alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
-        if (state !== "<" && state !== ODD) alts.push([]);
-        model.set(ruleOf(state), alts);
-    }
-    model.set("text", [[ref(ruleOf(""))]]);
 };
 
 export const buildModel = (): GModel => {
@@ -168,65 +115,24 @@ export const buildModel = (): GModel => {
         }
     }
 
-    // Turn shapes (#29). Both roots close on exactly one pathless SEND[102]/[200]
-    // status update, after which nothing is admissible — the sampler is FORCED to
-    // stop. Termination is structural, not an optional EOS a near-greedy decoder
-    // can sail past. Degeneration *inside* a body or text segment remains
-    // unboundable (content is content); the consumer max_tokens cap is backstop.
+    // Turn shape (#29). The single shipped grammar (plurnk.gbnf) is the plan root:
+    // a turn opens with a PLAN op (a forced reasoning step), proceeds strict (ops
+    // only, whitespace-separated, no free text between), and closes on exactly one
+    // pathless SEND[102]/[200] status update — after which nothing is admissible.
+    // Termination is structural (forced EOS), not an optional stop a near-greedy
+    // decoder can sail past. Degeneration *inside* a body remains unboundable
+    // (content is content); the consumer max_tokens cap is the backstop.
     //
-    // Four roots, one per shipped artifact (most→least committed on `<<`):
-    //
-    // root-commit (the DEFAULT, plurnk.gbnf): free reasoning text and statements
-    // interleave, EOS at any boundary — BUT `<<` is a hard commit. Prose may
-    // contain a lone `<` and never `<<`, so the *only* way to produce `<<` is to
-    // begin a real operation. Operation-lookalike garbage (`<<RANDOM`) cannot
-    // exist even as text: at `<<` the sampler is forced into a valid op. Leaner
-    // than root-open (the text automaton is 2 states, not the ~40-state opener
-    // complement). Tradeoff: a fumbled verb is coerced toward a real op, and `<<`
-    // is unwritable in prose. Retreat path is plurnk-free.gbnf if that bites.
-    //
-    // root-open (plurnk-free.gbnf): free text and statements interleave, `<<`
-    // escapable to text. Prose may contain `<<`; an opener-lookalike that never
-    // completes a real keyword stays inert text. The permissive fallback.
-    //
-    // root-closed (plurnk-closed.gbnf): root-open text, but the turn must close
-    // with the final pathless SEND[102]/[200] — structural termination for
-    // models that ramble past optional EOS.
-    //
-    // root-strict (plurnk-strict.gbnf): ops only, separated by up to 7 whitespace
-    // chars (incl. none). For models that don't reason and benefit from the tightest rail.
-    // Text directly after a close tag must be newline-led: the lexer's close-tag
-    // predicate requires a non-ident follow char, so `:KILL4` + text "9..." would
-    // glue into the close tag and the body would never end. Leading text and
-    // glued statements are safe (`<` is non-ident).
-    model.set("root-commit", [[ref("text2"), star(ref("commit-step"))]]);
-    model.set("commit-step", [[ref("statement"), opt(ref("text-after2"))]]);
-    model.set("text-after2", [[lit("\n"), ref("text2")]]);
-    // text2: free text that can never contain `<<` and never ends on a lone `<`
-    // (a trailing `<` + a following `<<OP` would merge into `<<<OP` and the lexer
-    // would read it as all text). 2 states: -a accepts/ends, -b just saw `<` and
-    // must consume a non-`<` before it can end or continue.
-    model.set("text2", [[ref("text2-a")]]);
-    model.set("text2-a", [[bodyOther("<"), ref("text2-a")], [lit("<"), ref("text2-b")], []]);
-    model.set("text2-b", [[bodyOther("<"), ref("text2-a")]]);
-    model.set("root-open", [[ref("text"), star(ref("open-step"))]]);
-    model.set("open-step", [[ref("statement"), opt(ref("text-after"))]]);
-    model.set("root-closed", [[ref("text"), star(ref("closed-step")), ref("send-final-any"), opt(lit("\n"))]]);
-    model.set("closed-step", [[ref("mid-statement"), opt(ref("text-after"))]]);
-    model.set("text-after", [[lit("\n"), ref("text")]]);
-    textRules(model);
-    // Strict/plan separator is up to 7 whitespace chars, including none (`WS{0,7}`):
+    // Inter-op separator is up to 7 whitespace chars, including none (`WS{0,7}`):
     // ops may be glued or split by any spaces/tabs/newlines the model favors
     // (CRLF blank lines, single-level indent, etc.) — but bounded, so a degenerate
     // decoder can't stall in an unbounded whitespace run. No non-whitespace text
     // intrudes. The cap also restores forced-EOS after the final SEND.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
-    model.set("root-strict", [[ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     model.set("batch-step", [[ref("mid-statement"), ref("sep")]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
-    // root-plan (plurnk-plan.gbnf): exactly root-strict, but the turn MUST open
-    // with a PLAN op — force a reasoning step before any action, then proceed
-    // strict (ops only, whitespace-separated, closed by the final status SEND).
+    // root-plan: the turn MUST open with a PLAN op, then proceed strict — ops only,
+    // whitespace-separated, closed by the final pathless status SEND.
     model.set("root-plan", [[ref("sep"), ref("plan-batch-step"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     model.set("plan-batch-step", [[ref("plan-statement"), ref("sep")]]);
     model.set("plan-statement", planAlts);
@@ -248,16 +154,18 @@ export const buildModel = (): GModel => {
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
-    model.set("target", [[lit("("), ref("path"), lit(")")]]);
-    model.set("path", [[ref("uri")], [ref("bare")]]);
-    // Empty authority allowed generically: `scheme:///path` (host parses empty)
-    // is the canonical form for authority-less schemes. Scheme-agnostic — the
-    // grammar never knows which schemes carry a domain; that's runtime's call.
-    model.set("uri", [[ref("scheme"), lit("://"), star(HOST_CHAR), opt(ref("uri-rest"))]]);
-    model.set("scheme", [[SCHEME_HEAD, star(SCHEME_TAIL)]]);
-    model.set("uri-rest", [[URI_REST_HEAD, star(URI_CHAR)]]);
-    model.set("bare", [[plus(BARE_CHAR)]]);
-    model.set("line", [[lit("<"), ref("int"), lit(">")], [lit("<"), ref("int"), lit(","), ref("int"), lit(">")]]);
+    // Target is an OPAQUE blob — any non-`)`/`<`/control run. The grammar does not
+    // litigate what a path contains (scheme, host, regex, glob, channel): that is
+    // the visitor's job. Mirrors the ANTLR `TARGET` lexer mode (`~[)<\r\n]`), so
+    // colons, spaces, drives, and `#…#` regexes all generate. `L(GBNF) ⊆ L(ANTLR)`
+    // holds because this is a strict subset of TARGET_INNER. (Regex groups need a
+    // `)` inside the target — ANTLR accepts them via TARGET_REGEX; the GBNF stays
+    // simple and just doesn't dictate that rarer form for constrained models.)
+    model.set("target", [[lit("("), plus(cls([...CONTROL_RANGES, ...C(")<\r\n")], true)), lit(")")]]);
+    // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
+    // `<0.7,10,20>` all derive; the dash separator (`<N-M>`) stays parse-side only.
+    model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
+    model.set("line-rest", [[lit(","), opt(lit(" ")), ref("int")]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
     model.set("frac", [[lit("."), plus(DIGIT)]]);
     model.set("status", [[DIGIT, DIGIT, DIGIT]]);
@@ -345,10 +253,6 @@ export const serializeGbnf = (model: GModel, rootName: string): string => {
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
-    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-commit"));
-    await writeFile("dist/plurnk-free.gbnf", serializeGbnf(model, "root-open"));
-    await writeFile("dist/plurnk-closed.gbnf", serializeGbnf(model, "root-closed"));
-    await writeFile("dist/plurnk-strict.gbnf", serializeGbnf(model, "root-strict"));
-    await writeFile("dist/plurnk-plan.gbnf", serializeGbnf(model, "root-plan"));
-    process.stderr.write("Generated dist/plurnk.gbnf (commit) + plurnk-free.gbnf + plurnk-closed.gbnf + plurnk-strict.gbnf + plurnk-plan.gbnf\n");
+    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-plan"));
+    process.stderr.write("Generated dist/plurnk.gbnf (plan root)\n");
 }

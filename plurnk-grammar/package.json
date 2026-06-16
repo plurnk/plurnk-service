@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-grammar",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "description": "ANTLR4 grammar for the Plurnk LLM agent protocol",
   "type": "module",
   "license": "MIT",
@@ -16,11 +16,7 @@
       "default": "./dist/src/index.js"
     },
     "./package.json": "./package.json",
-    "./plurnk.gbnf": "./dist/plurnk.gbnf",
-    "./plurnk-strict.gbnf": "./dist/plurnk-strict.gbnf",
-    "./plurnk-closed.gbnf": "./dist/plurnk-closed.gbnf",
-    "./plurnk-free.gbnf": "./dist/plurnk-free.gbnf",
-    "./plurnk-plan.gbnf": "./dist/plurnk-plan.gbnf"
+    "./plurnk.gbnf": "./dist/plurnk.gbnf"
   },
   "bin": {
     "plurnk": "./bin/plurnk.js"

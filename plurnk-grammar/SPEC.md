@@ -274,29 +274,34 @@ operates on or produces. The sequence type is OP-specific (see §4
 per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
 for READ, positions in the matched result set for FIND/OPEN/FOLD.
 
-**Token shape:** `<` `-?[0-9]+(.[0-9]+)?` (`-` `-?[0-9]+(.[0-9]+)?`)? `>`.
+**Token shape:** `<` NUM ((`-` | `,` `' '?`) NUM)* `>`, where NUM is
+`-?[0-9]+(.[0-9]+)?`. One or more numeric components, comma- or
+dash-separated. The parser carries the ordered list verbatim as
+`LineMarker.marks: number[]`; assigning roles to the components is the
+consumer's job (see arity table).
 
-| Form     | Meaning                              |
-|----------|--------------------------------------|
-| `<N>`    | single position N                    |
-| `<N-M>`  | inclusive range N..M                 |
-| `<0>`    | prepend anchor (before position 1)   |
-| `<-1>`   | append anchor (after last position)  |
-| `<2.5>`  | line context: insert between lines 2 and 3 (fraction value is don't-care) |
-| `<0.7>`  | result context: similarity threshold ∈ (0,1) for semantic matchers |
-| `<0.7-20>` | threshold + result cap (wired; canon teaches the single forms) |
+| Form     | `marks`       | Meaning (consumer interpretation)    |
+|----------|---------------|--------------------------------------|
+| `<N>`    | `[N]`         | single position N                    |
+| `<N,M>` / `<N-M>` | `[N, M]` | inclusive range N..M               |
+| `<0>`    | `[0]`         | prepend anchor (before position 1)   |
+| `<-1>`   | `[-1]`        | append anchor (after last position)  |
+| `<2.5>`  | `[2.5]`       | line context: insert between lines 2 and 3 (fraction value is don't-care) |
+| `<0.7>`  | `[0.7]`       | result context: similarity threshold ∈ (0,1) for semantic matchers |
+| `<0.7,10,20>` | `[0.7, 10, 20]` | threshold + range (score ≥ 0.7, positions 10..20) |
 
 Examples involving negative integers:
 
-- `<-1-5>` — range from -1 to 5
-- `<0--5>` — range from 0 to -5
-- `<-3--1>` — range from -3 to -1
+- `<-1-5>` — `[-1, 5]` (dash separator; the following number is positive)
+- `<0,-5>` — `[0, -5]` (comma separator admits a negative second number)
+- `<-3,-1>` — `[-3, -1]`
 
-**Parsing rule:** greedy. The first signed integer consumes leading
-`-` and digits maximally; the optional `-` range separator follows; the
-optional second signed integer consumes its own optional `-` and
-digits. So `<-1-5>` parses as first=`-1`, separator=`-`, second=`5`.
-This falls out of standard ANTLR longest-match.
+**Parsing rule:** greedy. Each component consumes a leading `-` and
+digits (plus an optional `.`-fraction) maximally; a `-` or `,`(` `?)
+then separates the next. So `<-1-5>` parses as `[-1, 5]` — the first
+`-` is the sign of -1, the second `-` is the separator. This falls out
+of standard ANTLR longest-match. The dash separator is parse-side only;
+the GBNF dictates the comma form.
 
 **Runtime concerns** (not enforced by the parser):
 
@@ -501,7 +506,7 @@ interface StatementBase<S> {
     // body type varies per OP — declared on each concrete statement (below).
 }
 
-interface LineMarker { first: number; last: number | null; }
+interface LineMarker { marks: number[]; } // 1+ ordered components; arity = consumer interpretation
 
 // Path is local (no scheme) or URL (has scheme). The Visitor decides by
 // matching the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed

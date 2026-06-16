@@ -79,7 +79,8 @@ private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
 // ============================================================================
 
 fragment SUFFIX    : [A-Za-z0-9_]+ ;
-fragment L_PATTERN : '<' '-'? [0-9]+ ('.' [0-9]+)? (('-' | ',' ' '?) '-'? [0-9]+ ('.' [0-9]+)?)? '>' ;
+fragment NUM       : '-'? [0-9]+ ('.' [0-9]+)? ;
+fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 
 // ============================================================================
 // DEFAULT — between statements; recognize statement openers.
@@ -153,6 +154,12 @@ SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 // ============================================================================
 
 mode TARGET;
+// A `#…#flags` regex target may legitimately contain `)` (regex groups). The naive
+// TARGET_INNER terminates on the first `)`, so recognize a complete regex up front —
+// bounded by its own `#` delimiters (`\#` escapes a literal hash). The trailing
+// predicate requires the next char to be `)`, so this fires ONLY for a whole-target
+// regex; a `#`-leading path that isn't a clean regex falls through to TARGET_INNER.
+TARGET_REGEX : '#' ('\\' . | ~[#\r\n])* '#' [a-zA-Z]* { this.inputStream.LA(1) === 0x29 }? -> type(TARGET_TEXT) ;
 TARGET_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(TARGET_TEXT) ;
 TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 
