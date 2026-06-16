@@ -86,7 +86,7 @@ Default export MUST have a static `fromEnv(env, model)` factory:
 class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
-        // plus universal operator knobs (PLURNK_PROVIDERS_REASON_LEVEL, PLURNK_FETCH_TIMEOUT,
+        // plus universal operator knobs (PLURNK_PROVIDERS_REASONING_BUDGET, PLURNK_FETCH_TIMEOUT,
         // PLURNK_PROVIDER_CONTEXT_SIZE).
         return new OpenAI({ /* ... */ });
     }
@@ -96,7 +96,7 @@ class OpenAI {
 
 The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model)` generically (§5).
 
-`fromEnv` MAY be sync or async; return type `Provider | Promise<Provider>`.
+`fromEnv` MAY be sync or async; return type `Provider | Promise<Provider>`. (Why a factory, where execs/mimes use a base class + constructor injection and schemes a `static manifest`: a provider often **async-probes** at construction — model catalog, context window, slot count — which a constructor can't express. The factory is the seam for that probe.)
 
 `fromEnv` MUST fail fast with a clear error if required env is missing — name the env var the operator needs to set.
 
@@ -129,14 +129,16 @@ This package's exported resolution surface:
 - `instantiateProvider(name, env, model)` — full two-tier resolution (below).
 - `loadActiveProvider(env)` — boot convenience: active alias → `instantiateProvider`.
 - `standardProviderFromEnv(name, env, model)` / `isStandardProvider(name)` — the tier-1 internals, still exported.
-- `discover({ cwd?, packageDirs? })` — the tier-2 scan: a `Map<name, packageSpecifier>` of every installed provider package. Exported so a consumer can enumerate available providers (first-party + third-party) without instantiating them.
+- `discover({ cwd?, packageDirs?, env? })` — the tier-2 scan: a `Discovery` (`{ registry, skipped }`, each a `Map<name, packageSpecifier>`) of every installed provider package, partitioned by the trust gate. Exported so a consumer can enumerate trusted providers — and see which were declined — without instantiating them.
 
 **Two-tier provider resolution — owned entirely by this package.** A provider name resolves in this order:
 
 1. **Standard provider** (`§11`) — if `isStandardProvider(name)`, instantiated directly via `standardProviderFromEnv(name, env, model)`. No package is imported. Covers every plain OpenAI-compatible endpoint (`openai`, `groq`, `deepseek`, `mistral`, `together`, `fireworks`, `deepinfra`, …). The standard table is **authoritative**: a scanned package whose name duplicates a standard one is shadowed (tier 1 returns first).
 2. **Discovered package** — otherwise, a **scope-agnostic `node_modules` scan** (`discover()`) maps the provider name to the installed package that declares `plurnk: { kind: "provider", name }`, which is dynamic-imported and `fromEnv(env, model)`-called. Covers first-party daughters with real runtime surface (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `anthropic`/`bedrock`/`vertex`/`cohere`) **and any third-party provider published under its own scope** (`@acme/llm-provider-foo`) — no involvement from us, no `@plurnk` scope assumption. Two installed packages claiming the same name → fail-hard naming both. Unknown name → fail-hard. The scan runs once per process and is memoized.
 
-The framework is **contract-only** — it does **not** depend on its daughters. First-party daughters install flat via the [`@plurnk/plurnk-providers-all`](https://github.com/plurnk/plurnk-providers-all) aggregator (a code-free package depping the five daughters directly), so npm hoists them to the top of `node_modules` where the scan finds them; a consumer installs `@plurnk/plurnk-providers` + `@plurnk/plurnk-providers-all`. Each daughter declares the framework as a `peerDependency` (`0.3.x`) so one shared copy lives in the tree (class identity for `instanceof ProviderError` included). This mirrors `@plurnk/plurnk-execs` + `@plurnk/plurnk-execs-all`, which proved that framework-aggregates-daughters (execs `0.4.2`) nests the daughters and breaks the scan — reverted at `0.4.3` to exactly this flat-aggregator shape (#12/#14).
+   Discovery honors the host **trust gate** `PLURNK_PLUGINS_TRUSTED_ONLY` — the same env var the execs/mimes/schemes families read (plurnk-service#229, #15). OFF (unset/empty/`0`) trusts every installed provider; ON (any value) trusts `@plurnk/*` plus a comma-separated allowlist and declines the rest. A declined package is recorded in `skipped` (never registered, never thrown), so requesting its name yields a precise *untrusted* error rather than *unknown*.
+
+The framework is **contract-only** — it does **not** depend on its daughters. First-party daughters install flat via the [`@plurnk/plurnk-providers-all`](https://github.com/plurnk/plurnk-providers-all) aggregator (a code-free package depping the five daughters directly), so npm hoists them to the top of `node_modules` where the scan finds them; a consumer installs `@plurnk/plurnk-providers` + `@plurnk/plurnk-providers-all`. Each daughter declares the framework as a `peerDependency` (`0.5.x`) so one shared copy lives in the tree (class identity for `instanceof ProviderError` included). This mirrors `@plurnk/plurnk-execs` + `@plurnk/plurnk-execs-all`, which proved that framework-aggregates-daughters (execs `0.4.2`) nests the daughters and breaks the scan — reverted at `0.4.3` to exactly this flat-aggregator shape (#12/#14).
 
 ## §6 Engine → provider guarantees (consumer side)
 
@@ -223,7 +225,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       fetchTimeoutMs,
       headers,               // fully-resolved request headers (incl. auth)
       contextSize,           // number | null
-      reasonBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort"
+      reasoningBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort" | "template"
       countTokens, costFor,  // strategies; default heuristic / free
       supportsGrammar,       // backend accepts a `grammar` body field (§13); default false
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
@@ -236,7 +238,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`tokenizerFor(family)` / `tokenizerByPublisher(model, table, index)` / `parseTokenizerFamily(...)`** — synchronous tokenizer strategies (`heuristic` | `cl100k` | `llama`) and per-publisher dispatch for relay providers.
-- **`effortFromBudget(budget)`** — the shared `PLURNK_PROVIDERS_REASON_LEVEL` → `low|medium|high` breakpoints.
+- **`effortFromBudget(budget)`** — the shared `PLURNK_PROVIDERS_REASONING_BUDGET` → `low|medium|high` breakpoints.
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base URL, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest.
 

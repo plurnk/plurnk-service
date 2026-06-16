@@ -3,7 +3,8 @@ import { strict as assert } from "node:assert";
 import { parseAliasesFromEnv, resolveActiveAlias, instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
 
 const fakeProvider = { contextSize: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
-const mapOf = (entries: Record<string, string>) => async () => new Map(Object.entries(entries));
+const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
+    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)) });
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model>", () => {
     const env = {
@@ -91,7 +92,7 @@ test("instantiateProvider: standard name resolves in-framework, no scan, no impo
     let scanned = false;
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        async () => { scanned = true; return new Map(); });
+        async () => { scanned = true; return { registry: new Map(), skipped: new Map() }; });
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // tier 1 never touches the importer…
     assert.equal(scanned, false); // …nor the scan
@@ -139,6 +140,18 @@ test("instantiateProvider: unknown provider throws — no standard, no discovere
         () => instantiateProvider("nope", { ...fullEnv }, "m", async () => ({}), mapOf({})),
         /unknown provider "nope": not a standard provider, and no installed package declares plurnk\.kind:"provider" with name "nope"/,
     );
+});
+
+test("instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown' (#15)", async () => {
+    resetDiscoveryCache();
+    const imports: string[] = [];
+    await assert.rejects(
+        () => instantiateProvider("foo", { ...fullEnv }, "m",
+            async (s) => { imports.push(s); return {}; },
+            mapOf({}, { foo: "@acme/acme-provider-foo" })), // discovered but trust-declined
+        /provider "foo" resolves to @acme\/acme-provider-foo, but it is untrusted under PLURNK_PLUGINS_TRUSTED_ONLY/,
+    );
+    assert.deepEqual(imports, []); // never imported an untrusted package
 });
 
 test("instantiateProvider: discovered package without a fromEnv factory throws", async () => {

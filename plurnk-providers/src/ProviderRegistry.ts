@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderAlias, ProviderFactory } from "./types.ts";
 import { isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
-import { discover, type DiscoverOptions } from "./discover.ts";
+import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 
 export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): ProviderAlias[] => {
     const out: ProviderAlias[] = [];
@@ -45,21 +45,22 @@ export const resolveActiveAlias = (env: NodeJS.ProcessEnv = process.env): Provid
 // a real package on disk) and the discovery scan (tests inject a fixed map).
 type ImportModule = (specifier: string) => Promise<unknown>;
 const importModule: ImportModule = (specifier) => import(specifier);
-type DiscoverFn = (options?: DiscoverOptions) => Promise<Map<string, string>>;
+type DiscoverFn = (options?: DiscoverOptions) => Promise<Discovery>;
 
 // The node_modules scan is filesystem work that never changes within a process,
-// so it runs once and the name→package map is memoized. A long-lived daemon
-// pays one scan at first bespoke instantiation; every later run reuses it.
-let discoveredCache: Map<string, string> | null = null;
-const providerPackages = async (discoverFn: DiscoverFn): Promise<Map<string, string>> => {
-    discoveredCache ??= await discoverFn();
+// so it runs once and the result is memoized. A long-lived daemon pays one scan
+// at first bespoke instantiation; every later run reuses it. The trust gate is
+// boot config, so the env from the first scan stands for the process.
+let discoveredCache: Discovery | null = null;
+const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv): Promise<Discovery> => {
+    discoveredCache ??= await discoverFn({ env });
     return discoveredCache;
 };
 
 // Two-tier resolution (SPEC §5): tier 1 standard table → tier 2 discovered
-// package (scope-agnostic scan) → fail-hard. The standard table is authoritative
-// — a scanned package whose name duplicates a standard one is shadowed here
-// (never reached), since tier 1 returns first.
+// package (scope-agnostic scan, trust-gated) → fail-hard. The standard table is
+// authoritative — a scanned package whose name duplicates a standard one is
+// shadowed here (never reached), since tier 1 returns first.
 export const instantiateProvider = async (
     name: string,
     env: NodeJS.ProcessEnv,
@@ -72,8 +73,13 @@ export const instantiateProvider = async (
         if (standard === null) throw new Error(`provider "${name}": standard registry resolution failed`);
         return standard;
     }
-    const specifier = (await providerPackages(discoverFn)).get(name);
+    const { registry, skipped } = await providerPackages(discoverFn, env);
+    const specifier = registry.get(name);
     if (specifier === undefined) {
+        const declined = skipped.get(name);
+        if (declined !== undefined) {
+            throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_PLUGINS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
+        }
         throw new Error(`unknown provider "${name}": not a standard provider, and no installed package declares plurnk.kind:"provider" with name "${name}"`);
     }
     let mod: unknown;

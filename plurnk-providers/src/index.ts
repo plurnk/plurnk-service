@@ -20,7 +20,7 @@ export {
 // Scope-agnostic tier-2 discovery (SPEC §5) — exported so a consumer can list
 // installed providers (first-party + third-party) without instantiating them.
 export { discover } from "./discover.ts";
-export type { DiscoverOptions } from "./discover.ts";
+export type { DiscoverOptions, Discovery } from "./discover.ts";
 
 // Shared OpenAI-compatible transport machinery — the spine every sibling
 // extends and the basis for ./standardProviders.ts.

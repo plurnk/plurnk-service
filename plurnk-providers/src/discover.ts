@@ -17,19 +17,47 @@ import path from "node:path";
 // The standard-provider table (./standardProviders.ts) is a separate, closed
 // tier-1 resolved before this scan — discovery covers tier 2 (bespoke + third
 // party) only. Precedence and standard-name shadowing live in ProviderRegistry.
+//
+// Host plugin trust gate (PLURNK_PLUGINS_TRUSTED_ONLY, #15 / plurnk-service#229)
+// — enforced uniformly across the four scope-agnostic families. An untrusted
+// package is discovered-but-declined (recorded in `skipped`, never registered,
+// never thrown), so the consumer can name it in a precise error.
 
 export type DiscoverOptions = {
-    cwd?: string;            // defaults to process.cwd()
-    packageDirs?: string[];  // explicit dirs skip the node_modules scan (tests)
+    cwd?: string;                  // defaults to process.cwd()
+    packageDirs?: string[];        // explicit dirs skip the node_modules scan (tests)
+    env?: NodeJS.ProcessEnv;       // trust-gate env; defaults to process.env
 };
 
-export const discover = async (options: DiscoverOptions = {}): Promise<Map<string, string>> => {
+// name → package specifier, split by the trust decision.
+export type Discovery = {
+    registry: Map<string, string>; // trusted providers, eligible to instantiate
+    skipped: Map<string, string>;  // declined by the trust gate (untrusted)
+};
+
+// OFF (unset/empty/"0") → every installed provider is trusted (no regression).
+// ON (any value) → `@plurnk/*` always trusted, plus a comma-separated allowlist
+// of additionally-trusted package names ("1" = on with zero third-party).
+const isTrusted = (packageName: string, env: NodeJS.ProcessEnv): boolean => {
+    const gate = env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    if (gate === undefined || gate === "" || gate === "0") return true;
+    if (packageName.startsWith("@plurnk/")) return true;
+    return gate.split(",").map((s) => s.trim()).includes(packageName);
+};
+
+export const discover = async (options: DiscoverOptions = {}): Promise<Discovery> => {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
+    const env = options.env ?? process.env;
 
     const registry = new Map<string, string>();
+    const skipped = new Map<string, string>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
+        if (!isTrusted(info.packageName, env)) {
+            skipped.set(info.name, info.packageName); // declined — not a collision candidate
+            continue;
+        }
         const existing = registry.get(info.name);
         if (existing !== undefined) {
             throw new Error(
@@ -39,7 +67,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Map<strin
         }
         registry.set(info.name, info.packageName);
     }
-    return registry;
+    return { registry, skipped };
 };
 
 // Enumerate every installed package directory — scoped and unscoped — under
