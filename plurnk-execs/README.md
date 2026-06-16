@@ -4,7 +4,7 @@ Framework + contract for `@plurnk/plurnk-execs-*` runtime executor packages. Con
 
 ## Documentation
 
-- [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation.
+- [`SPEC.md`](./SPEC.md) — the authoritative author-facing contract. This README is the orientation and the how-to.
 - Constellation: [plurnk-grammar](https://github.com/plurnk/plurnk-grammar) (EXEC AST), [plurnk-providers](https://github.com/plurnk/plurnk-providers), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) (the reference family this one mirrors).
 
 ## Write an executor
@@ -18,13 +18,18 @@ Ship an executor by publishing a package — **under any scope** (`@acme/whateve
   "plurnk": {
     "kind": "exec",
     "runtimes": [
-      { "name": "cobol", "glyph": "🗄", "example": "EXEC[cobol]:DISPLAY 'HI'.:EXEC" }
+      {
+        "name": "cobol",
+        "glyph": "🗄",
+        "example": "EXEC[cobol]:DISPLAY 'HI'.:EXEC",
+        "documentation": "# cobol\n\nGnuCOBOL `cobc -xj`. Fixed-format source; the body is one program…"
+      }
     ]
   }
 }
 ```
 
-One package may claim many tags (the search sibling claims `search`/`news`/`images`/…); each `runtimes[]` entry registers independently. `glyph` is display; **`example`** is a one-line, self-documenting usage example (`EXEC[tag]:body:EXEC`) surfaced verbatim in the model's tools sheet — omit it and the tag just isn't advertised with a usage line.
+One package may claim many tags (the search sibling claims `search`/`news`/`images`/…); each `runtimes[]` entry registers independently. `glyph` is display; `example` and `documentation` are how the tag tells the model what it is — see [How the model sees your tag](#how-the-model-sees-your-tag).
 
 ### 2. Default-export a `BaseExecutor` subclass
 
@@ -40,6 +45,15 @@ The framework instantiates **one executor per tag**, injecting `{ runtime, glyph
 ### 3. What `run` receives (`ExecArgs`) — sinks, never the substrate
 
 `{ runtime, command, cwd, env, signal, write(channel, chunk), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). `cwd` is the parsed EXEC target; **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
+
+### How the model sees your tag
+
+Your tag documents itself to the model at two altitudes — you provide the content, the consumer decides how it reaches the model:
+
+- **`example`** — one line, the always-on form. The model uses it to reach for a simple tag without reading anything more. Store it **bare** (`EXEC[tag]:…:EXEC`). Keep it to a single line — it's surfaced per available tag, so it's token-sensitive.
+- **`documentation`** — full markdown, depth on demand. The flags, modes, and gotchas the one-liner can't carry (sqlite's `:memory:`-vs-file, jq's `$ENV`, git's tokenized argv). Optional — provide it for non-trivial tags; the consumer can still derive a baseline from the rest of your registry entry (example, channels, effect, availability) when you don't.
+
+Declare the two and a third-party tag gets the same self-documenting surface the first-party tags do. **How** the consumer renders the one-liner and serves the docs on demand is plurnk-service's concern, not this contract's — execs owns the two fields, the consumer owns the wiring.
 
 ## Discovery & trust
 

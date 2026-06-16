@@ -35,8 +35,7 @@
     "files": [
         "dist/**/*",
         "README.md",
-        "SPEC.md",
-        "PATTERN-tooling-docs.md"
+        "SPEC.md"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",

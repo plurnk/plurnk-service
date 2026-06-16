@@ -20,9 +20,9 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // `plurnk.runtimes: { name, glyph?, example?, documentation? }[]` (SPEC §3).
 // Each entry registers its tag separately; one package can claim many tags
 // backed by the same handler (e.g. the search sibling claims `search`, `news`,
-// `images`, …). `example` is a one-line self-documenting usage example for the
-// hot-path tools sheet (plurnk-execs#7); `documentation` is the on-demand
-// markdown the consumer serves behind `plurnk://execs/<tag>.md`.
+// `images`, …). `example` is a one-line self-documenting usage example
+// (plurnk-execs#7); `documentation` is the fuller markdown a consumer can serve
+// on demand. execs carries both; how they reach the model is the consumer's.
 //
 // Tags are a flat global namespace. Unlike plurnk-mimetypes (last-loaded
 // wins), a tag collision here is a FAIL-HARD install error: two packages
