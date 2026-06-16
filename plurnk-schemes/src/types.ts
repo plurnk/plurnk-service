@@ -31,9 +31,11 @@ export interface SchemeManifest {
     // NOT live here; they are a markdown the model reads on demand at
     // `plurnk://schemes/<name>.md` (the consumer serves it). Keep the manifest a
     // one-line teaser; the prose lives in the doc.
-    //   example — one self-documenting usage line, surfaced verbatim (e.g.
-    //     "READ(https://example.com/page)"); omit it and the scheme isn't
-    //     advertised with a usage line. Mirrors an execs runtime's `example`.
+    //   example — one self-documenting usage line, surfaced verbatim, MAY carry
+    //     a short trailing explanation after the snippet (e.g.
+    //     "READ(https://example.com/page) — fetch a URL; HTML is rendered to its
+    //     final DOM"); omit it and the scheme isn't advertised with a usage
+    //     line. Mirrors an execs runtime's `example`.
     //   glyph — a display icon (emoji / nerdfont). Omit it and the consumer
     //     renders the scheme `name` in its place (glyph ?? name).
     readonly example?: string;

@@ -13,20 +13,23 @@
 // on (and exact-pins) ONLY @plurnk/plurnk-schemes — grammar rides underneath as
 // the framework's transitive pin, not a second pin every scheme tracks by hand.
 
-// The op set tracks the EXACT pinned grammar (0.21.0): Find/Read/Show/Hide/
-// Edit/Copy/Move/Send/Exec. When the framework's grammar pin moves and the op
-// surface changes, this interface moves with it — same consumer-driven bump as
-// every other grammar-derived type here.
+// The op set tracks the EXACT pinned grammar (0.49.0): Find/Read/Open/Fold/
+// Edit/Copy/Move/Send/Exec/Kill/Plan. When the framework's grammar pin moves
+// and the op surface changes, this interface moves with it — same consumer-
+// driven bump as every other grammar-derived type here. (Show/Hide were
+// replaced by Open/Fold; Kill/Plan added — grammar 0.49, schemes#19.)
 import type {
     FindStatement,
     ReadStatement,
-    ShowStatement,
-    HideStatement,
+    OpenStatement,
+    FoldStatement,
     EditStatement,
     CopyStatement,
     MoveStatement,
     SendStatement,
     ExecStatement,
+    KillStatement,
+    PlanStatement,
 } from "@plurnk/plurnk-grammar";
 import type { SchemeCtx } from "./ctx.ts";
 import type { SchemeResult } from "./results.ts";
@@ -34,11 +37,13 @@ import type { SchemeResult } from "./results.ts";
 export interface SchemeHandler {
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    show?(statement: ShowStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    hide?(statement: HideStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     edit?(statement: EditStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }

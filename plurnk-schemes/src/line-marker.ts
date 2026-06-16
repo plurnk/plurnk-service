@@ -33,7 +33,11 @@ export default class Slicer {
     }
 
     static #normalize(marker: LineMarker, totalLines: number): NormalizedMarker | { error: string } {
-        const { first, last } = marker;
+        // grammar 0.49 carries raw `marks: [number, ...]` and punts role
+        // assignment to us (#19): marks[0] = first/position, marks[1] = last
+        // (range end). A single mark is a position/sentinel; two is a range.
+        const first = marker.marks[0];
+        const last = marker.marks.length > 1 ? marker.marks[1] : null;
         if (last === null) {
             if (first === 0) return { kind: "before-first", start: 0, end: 0 };
             if (first === -1) return { kind: "after-last", start: 0, end: 0 };
@@ -105,7 +109,8 @@ export default class Slicer {
         catch (err) { return { status: 400, error: `malformed JSON: ${err instanceof Error ? err.message : String(err)}` }; }
         const items = Slicer.#jsonValueToItems(parsed);
         const total = items.length;
-        const { first, last } = marker;
+        const first = marker.marks[0];
+        const last = marker.marks.length > 1 ? marker.marks[1] : null;
         if (last === null) {
             if (first === 0 || first === -1) return { status: 200, body: "[]" };
             if (first > 0 && first <= total) return { status: 200, body: JSON.stringify([items[first - 1]], null, 2) };
@@ -157,7 +162,8 @@ export default class Slicer {
 
     static #applyJsonArrayEdit(source: unknown[], marker: LineMarker, items: unknown[]): EditResult {
         const total = source.length;
-        const { first, last } = marker;
+        const first = marker.marks[0];
+        const last = marker.marks.length > 1 ? marker.marks[1] : null;
         let result: unknown[];
         if (last === null) {
             if (first === 0) result = [...items, ...source];
@@ -197,7 +203,8 @@ export default class Slicer {
         }
         const entries = Object.entries(source);
         const total = entries.length;
-        const { first, last } = marker;
+        const first = marker.marks[0];
+        const last = marker.marks.length > 1 ? marker.marks[1] : null;
         let result: [string, unknown][];
         if (last === null) {
             if (first === 0) result = [...bodyEntries, ...entries];
@@ -227,7 +234,8 @@ export default class Slicer {
         // works cleanly; grow markers (<0>,<-1>) and ranges that imply
         // growth/delete would require type promotion (scalar → array),
         // which is the kind of implicit magic that bites later. Reject.
-        const { first, last } = marker;
+        const first = marker.marks[0];
+        const last = marker.marks.length > 1 ? marker.marks[1] : null;
         if (last === null && first === 1) {
             if (items.length === 0) return { status: 200, result: "null" };  // delete the scalar
             if (items.length === 1) return { status: 200, result: JSON.stringify(items[0], null, 2) };
@@ -250,8 +258,9 @@ export default class Slicer {
         if ("error" in bodyResult) return { status: 400, error: bodyResult.error };
         const items = bodyResult.items;
         // Empty-body sentinel insertion is a no-op (model accidentally
-        // emitted no items at an insertion point).
-        if (items.length === 0 && marker.last === null && (marker.first === 0 || marker.first === -1)) {
+        // emitted no items at an insertion point). Single mark <0>/<-1> (#19).
+        const isInsertSentinel = marker.marks.length === 1 && (marker.marks[0] === 0 || marker.marks[0] === -1);
+        if (items.length === 0 && isInsertSentinel) {
             return { status: 200, result: content };
         }
         if (Array.isArray(parsed)) return Slicer.#applyJsonArrayEdit(parsed, marker, items);

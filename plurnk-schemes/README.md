@@ -51,12 +51,12 @@ static manifest: SchemeManifest = {
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,
-  glyph: "🦊",                    // display icon; omit → the name is shown
-  example: "READ(foo://thing/42)" // one-line usage, shown verbatim in the model's listing
+  glyph: "🦊",                              // display icon; omit → the name is shown
+  example: "READ(foo://thing/42) — read entry 42" // usage + short explanation, shown verbatim
 };
 ```
 
-- **`example`** — a single self-documenting usage line, surfaced **verbatim** in the model's tools listing (like an execs runtime's `example`). Omit it and your scheme isn't advertised with a usage line.
+- **`example`** — a single self-documenting usage line, surfaced **verbatim** in the model's tools listing (like an execs runtime's `example`). May carry a short trailing explanation after the snippet. Omit it and your scheme isn't advertised with a usage line.
 - **`glyph`** — a display icon (emoji / nerdfont). Omit it and the scheme `name` is rendered in its place.
 
 ### 4. Ship deep docs (beyond the one-liner)

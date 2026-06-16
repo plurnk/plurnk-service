@@ -42,7 +42,7 @@ class Known {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `flags?` | Optional `SchemeFlagAffinity`. |
-| `example?` | One self-documenting usage line (e.g. `"READ(foo://thing/42)"`), surfaced verbatim in the model's packet listing. Omit → not advertised with a usage line. Deep docs do NOT live here — see below. |
+| `example?` | One self-documenting usage line, surfaced verbatim in the model's packet listing; may carry a short trailing explanation (e.g. `"READ(foo://thing/42) — read entry 42"`). Omit → not advertised with a usage line. Deep docs do NOT live here — see below. |
 | `glyph?` | Display icon (emoji / nerdfont). Omit → consumer renders the `name` (`glyph ?? name`). |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Resolution: `storedScheme === undefined ? name : storedScheme`. Absent → defaults to `name` (additive; existing manifests unchanged). Explicit `null` → persists BARE (e.g. File: bare paths, `entries.scheme` NULL, routing name `"file"`). |
 
@@ -58,17 +58,19 @@ import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 export interface SchemeHandler {
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    show?(statement: ShowStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    hide?(statement: HideStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     edit?(statement: EditStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 ```
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set tracks the pinned grammar (0.21.0) and moves with the framework's grammar bump. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set tracks the pinned grammar (0.49.0) and moves with the framework's grammar bump. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
 
 Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
 
@@ -77,7 +79,7 @@ Two surfaces are NOT yet in `SchemeHandler`, pending their result types migratin
 ### Types
 
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `ShowStatement`, `HideStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`) and path types (`ParsedPath`, `LocalPath`, `UrlPath`).
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath`, `LocalPath`, `UrlPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
 - Capability ctx (PR-2, see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
