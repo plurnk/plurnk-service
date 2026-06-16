@@ -43,6 +43,7 @@ export type {
     PlurnkStatement,
     Position,
     ReadStatement,
+    RegexPath,
     SendBody,
     SendStatement,
     OpenStatement,
