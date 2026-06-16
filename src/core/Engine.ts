@@ -592,7 +592,7 @@ export default class Engine {
             const cycle = Engine.detectCycle(state.history, minCycles, maxCyclePeriod);
             if (cycle.detected) state.turnErrors++;
             // SPEC §grinder: a non-soft grinder fire counts toward the strike streak.
-            if (turn.budgetStruck) state.turnErrors++;
+            if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — §grinder-strike-coupling
             this.#strikeState.set(loopId, state);
 
             // Rail #38: strike accounting. Three sources strike a turn:
@@ -684,7 +684,7 @@ export default class Engine {
         // otherwise.
         let nextActionIndex = 1;
         if (seq === 1) {
-            // Operator doc READs (PLURNK_MD_<ALIAS>). The docs were materialized
+            // Operator doc READs (PLURNK_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
             // as plurnk:///<entry> entries by the plurnk run (loop_run, via the
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
@@ -1055,7 +1055,7 @@ export default class Engine {
         // sessions.persona > caller-supplied default. SQL coalesces in one
         // query; null result means no DB override exists, use the default.
         const row = await (this.#db.engine_resolve_persona as PrepMethod).get<{ persona: string | null }>({ loop_id: loopId }); // §persona-cascade-precedence
-        const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona;
+        const persona = (row?.persona !== undefined && row?.persona !== null) ? row.persona : defaultPersona; // null falls through to the default — §persona-null-falls-through
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (loop_run/Daemon read sysprompt + persona but never
         // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
@@ -1084,7 +1084,7 @@ export default class Engine {
         const sections = PacketWire.measureBudgetSections(scratch, countTokens);
         scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
         const total = countTokens(PacketWire.renderSystemContent(scratch.system)) + countTokens(PacketWire.renderUserContent(scratch.user));
-        const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total);
+        const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
         const percent = ceiling === null ? null : Math.round((total / ceiling) * 100);
         const budget = tokensFree === null
             ? scratch.user.telemetry.budget
@@ -1179,19 +1179,19 @@ export default class Engine {
 
         // Pass 1 — prior-turn rollback: fold the latest emissions (the ones that
         // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
-        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId }); // prior-turn rollback folds the latest emissions — §grinder-layer1-rollback
         for (const le of priorLogs) note(le.scheme ?? "log");
         if (priorLogs.length > 0) await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
         const errors = packet.user.telemetry.errors;
         let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
         if (measure(current) <= ceiling) {
             this.#emitBudgetOverflow(sessionId, loopId, folded);
-            return { packet: current, fit: true, struck: turnNumber > 1 };
+            return { packet: current, fit: true, struck: turnNumber > 1 }; // turn 0/1 overflow is the environment, never a strike — §grinder-soft-turn-0-1
         }
 
         // Prior-turn rollback is the only budget lever now: entries don't render
         // (no index), so there is no catalog to collapse. If pass 1 didn't fit,
-        // the packet is over and the caller hard-413s.
+        // the packet is over and the caller hard-413s. §grinder-hard-413-abort
         this.#emitBudgetOverflow(sessionId, loopId, folded);
         return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
     }
@@ -1418,7 +1418,7 @@ export default class Engine {
                 } else {
                     result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
                 }
-            } catch (err) {
+            } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
                 result = {
                     status: 500,
                     error: err instanceof Error ? err.message : String(err),
@@ -1427,7 +1427,7 @@ export default class Engine {
         }
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
-        // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve). When a
+        // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
         // scheme returns status 202, the entry is written as state='proposed';
         // dispatch then PAUSES on a per-entry waiter until resolution
         // arrives via Engine.resolveProposal (from the loop/resolve RPC,
@@ -1486,6 +1486,7 @@ export default class Engine {
         return result;
     }
 
+    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. §proposal-accept-applies
     async #runApplyResolution(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
@@ -1655,7 +1656,7 @@ export default class Engine {
                 // transitions to cancelled with outcome='timeout'.
                 if (this.#pendingProposals.has(logEntryId)) {
                     this.#pendingProposals.delete(logEntryId);
-                    resolve({ decision: "cancel", outcome: "timeout" });
+                    resolve({ decision: "cancel", outcome: "timeout" }); // §proposal-timeout-cancels
                 }
             }, timeoutMs);
             this.#pendingProposals.set(logEntryId, { resolve, timeoutHandle });
@@ -1665,8 +1666,8 @@ export default class Engine {
     async #applyResolution(logEntryId: number, resolution: ProposalResolution): Promise<DispatchResult> {
         // Map decision → terminal state + HTTP-aligned status:
         //   accept  → state='resolved', status=200
-        //   reject  → state='failed',   status=400, outcome='rejected' (default)
-        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default)
+        //   reject  → state='failed',   status=400, outcome='rejected' (default) §proposal-reject-fails
+        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) §proposal-cancel-aborts
         // resolution.outcome wins over the default when supplied; this is how
         // veto filters (Phase E.2 proposal.accepting) can specify a more
         // precise outcome string like 'policy_veto' or 'timeout'.
@@ -1795,7 +1796,7 @@ export default class Engine {
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
 
-        // Relocation: COPY then DELETE source.
+        // Relocation: COPY then DELETE source — §move-relocation-deletes-source.
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
         if (copyResult.status >= 400) return copyResult;
         const srcPathname = pathnameFromPath(srcPath);
@@ -1869,7 +1870,7 @@ export default class Engine {
         const dstPathname = pathnameFromPath(dstPath);
 
         const srcResult = await srcHandler.readEntry(srcPathname, ctx);
-        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404
+        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404 §move-missing-source-404
         const entry = srcResult.entry;
 
         // Destination read — the conflict/no-op verdict is deferred until the
@@ -1885,7 +1886,7 @@ export default class Engine {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             const expectedMimetype = dstChannels[channelName];
             if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
-                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` };
+                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` }; // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
             }
         }
 
@@ -1908,7 +1909,7 @@ export default class Engine {
             channels = sliced;
         }
 
-        // Tag resolution: signal = replace; absent/empty = carry from source
+        // Tag resolution: signal = replace (§copy-signal-replaces-source-tags); absent/empty = carry from source (§copy-no-signal-carries-source-tags)
         const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
             ? statement.signal
             : entry.tags;
