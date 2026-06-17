@@ -1135,10 +1135,12 @@ export default class Engine {
                 lines.push("Turns:", "| turn | tokens |", "|---|--:|");
                 for (const t of sections.log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
             }
-            // The heaviest individual entries — the FOLD targets behind the
-            // weight (§tokenomics {§tokenomics-largest-entries}).
+            // The heaviest individual log items — the FOLD targets behind the weight
+            // (§tokenomics {§tokenomics-largest-entries}). "items", not "entries": the readout
+            // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
+            // is only for entries. Do not attempt to edit log items.").
             if (sections.log.largest.length > 0) {
-                lines.push("Heaviest entries:", "| entry | tokens |", "|---|--:|");
+                lines.push("Heaviest items:", "| item | tokens |", "|---|--:|");
                 for (const e of sections.log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
             }
         }

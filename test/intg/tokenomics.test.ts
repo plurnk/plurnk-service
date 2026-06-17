@@ -138,8 +138,8 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
-        assert.match(budget, /Heaviest entries:\n\| entry \| tokens \|/, "heaviest-entries table present");
-        // Every listed entry is a log:/// handle, and the list is heaviest-first.
+        assert.match(budget, /Heaviest items:\n\| item \| tokens \|/, "heaviest-items table present");
+        // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
         const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
         assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
         const tokens = rows.map((l) => Number(l.split("|")[2].trim()));
