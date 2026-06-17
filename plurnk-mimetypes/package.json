@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "0.15.18",
+    "version": "0.15.19",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
     "keywords": [
         "plurnk",

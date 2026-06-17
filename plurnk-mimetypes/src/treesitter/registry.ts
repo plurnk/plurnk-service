@@ -172,7 +172,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         slug: "tsx",
         wasmPackage: "tree-sitter-typescript",
         wasmFile: "tree-sitter-tsx.wasm",
-        importMapping: () => import("./typescript.ts"),
+        importMapping: () => import("./tsx.ts"),
     },
     {
         mimetype: "text/x-php",

@@ -68,3 +68,5 @@ function push(
         endColumn: node.endPosition.column + 1,
     });
 }
+
+export { refsQuery } from "./queries/bash.ts";
