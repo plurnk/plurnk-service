@@ -823,11 +823,17 @@ registry.register("loop.run", {
         "providers": [...],
         "schemes": [...],
         "mimetypes": [...]
+    },
+    "versions": {
+        "service": { "installed": "0.34.0", "latest": "0.35.0" },
+        "client": { "latest": "0.15.0" }
     }
 }
 ```
 
 `capabilities` lists registered plug-ins by `(kind, name)`. Cold clients call `discover` first. No hardcoded method names or capability lists in any client. {§discovery-discover}
+
+`versions` rides the same round-trip so a client shows update status without per-invocation registry IO: `{ service: { installed, latest? }, client: { latest? } }`. `service.installed` is the daemon's own `package.json` version (honest self-report); `latest` is a **cached, best-effort** npm-registry poll (TTL `PLURNK_VERSION_POLL_TTL`) for the service (`@plurnk/plurnk-service`) and client (`@plurnk/plurnk`) packages — offline or registry-down omits `latest`, and the poll never blocks or fails `discover`. The client owns reading its own installed version and the semver compare. {§discovery-versions}
 
 ### §methods Core method set
 
