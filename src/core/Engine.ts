@@ -199,6 +199,9 @@ const readProposalTimeoutMs = (): number => {
     return n;
 };
 
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
+// In-tree dispatch type (PlurnkSchemeContext/DispatchResult); the imported SchemeHandler
+// is the external contract (SchemeCtx) — #run borrows its op-key set, not its ctx shape.
 type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
 
 interface SchemeWithCrud {
@@ -2060,9 +2063,9 @@ export default class Engine {
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (schemeName === null) return { status: 400 };
-        const handler = this.#schemes.get(schemeName) as Record<string, SchemeMethod | undefined> | undefined;
+        const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) return { status: 501 };
-        const methodName = statement.op.toLowerCase();
+        const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         if (typeof method !== "function") return { status: 501 };
         // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx

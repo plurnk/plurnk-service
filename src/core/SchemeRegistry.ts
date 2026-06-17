@@ -8,12 +8,13 @@ import File from "../schemes/File.ts";
 import Run from "../schemes/Run.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
-import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
-
-type SchemeHandler = object;
+import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export default class SchemeRegistry {
-    #handlers = new Map<string, SchemeHandler>();
+    // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
+    // siblings the DB-free SchemeCtx of the imported SchemeHandler; the common supertype
+    // is `object`. Dispatch (Engine.#run) borrows SchemeHandler's op-key set, not its ctx.
+    #handlers = new Map<string, object>();
     #external = new Set<string>();
 
     constructor() {
@@ -27,12 +28,12 @@ export default class SchemeRegistry {
         this.register("run",     new Run());
     }
 
-    register(name: string, handler: SchemeHandler): void {
+    register(name: string, handler: object): void {
         if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
         this.#handlers.set(name, handler);
     }
 
-    get(name: string): SchemeHandler | undefined { return this.#handlers.get(name); }
+    get(name: string): object | undefined { return this.#handlers.get(name); }
 
     has(name: string): boolean { return this.#handlers.has(name); }
 
