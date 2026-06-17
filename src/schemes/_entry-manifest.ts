@@ -22,7 +22,7 @@ import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
 type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null; deep_hash: string | null };
-type CatalogEntry = { path: string; seconds?: number; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
+type CatalogEntry = { path: string; seconds?: number; tags?: string[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
     static #MANIFEST_PATH = "plurnk:///manifest.json";
@@ -36,6 +36,13 @@ export default class EntryManifest {
         if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
         const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
+        // #note13 — surface each entry's tags (entry_tags) in the catalog so the model sees
+        // its own categorization (and can FIND by tag) without a separate read.
+        const tagsById = new Map<number, string[]>();
+        for (const { entry_id, tag } of await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })) {
+            const list = tagsById.get(entry_id);
+            if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
+        }
         const byEntry = new Map<string, CatalogEntry>();
         // The embedding config signature is identical for every entry this build —
         // compute it once and fold it into each deep_hash (re-derive on model/knob change).
@@ -44,7 +51,12 @@ export default class EntryManifest {
             const path = EntryManifest.#toPath(r.scheme, r.pathname);
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
-            if (entry === undefined) { entry = { path, channels: {} }; byEntry.set(path, entry); }
+            if (entry === undefined) {
+                entry = { path, channels: {} };
+                const tags = tagsById.get(r.entry_id);
+                if (tags !== undefined && tags.length > 0) entry.tags = tags;
+                byEntry.set(path, entry);
+            }
             // seconds: live age of an active stream (open subscription), set once
             // at entry level — a clock on running execs, absent for static entries.
             if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;

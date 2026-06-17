@@ -50,6 +50,14 @@ WHERE run_id = $run_id AND turn_id = $turn_id
   AND scheme IS $scheme AND pathname = $pathname
 LIMIT 1;
 
+-- PREP: engine_list_session_entry_tags
+-- #note13 — every (entry, tag) in the session, for the manifest catalog's tags field.
+SELECT et.entry_id, et.tag
+FROM entry_tags et
+JOIN entries e ON e.id = et.entry_id
+WHERE e.session_id = $session_id
+ORDER BY et.entry_id, et.tag;
+
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
