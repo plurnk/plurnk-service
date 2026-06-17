@@ -5,7 +5,7 @@ import GitMembership from "../../core/git-membership.ts";
 // Client tooling for the SPEC §membership constraint overlay — the supersede over git
 // membership. `constrain`/`unconstrain` mutate session_constraints then re-resolve
 // membership so the change lands now, not next turn; `constraints` lists them.
-const EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
+const EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view", "repo"]);
 
 export default class SessionConstraintsMethod {
     static register(registry: MethodRegistry): void {
@@ -17,10 +17,10 @@ export default class SessionConstraintsMethod {
                 await GitMembership.resolveGitMembership(ctx.db, ctx.session.sessionId, undefined);
                 return { effect, glob };
             },
-            description: "Add a workspace membership constraint (SPEC §membership overlay): `pick` admits files git misses (the sole source when git is absent), `hide` drops tracked matches, `view` admits a member for read but refuses edits. Takes effect immediately.",
+            description: "Add a workspace membership constraint (SPEC §membership overlay): `pick` admits files git misses (the sole source when git is absent), `hide` drops tracked matches, `view` admits a member for read but refuses edits, `repo` declares a git repo folder ANYWHERE (under the project root or outside it) so its members (tracked + untracked-non-ignored) join the manifest. Takes effect immediately.",
             params: {
-                effect: "string — one of: pick | hide | view",
-                glob: "string — node:path glob matched against workspace-relative paths",
+                effect: "string — one of: pick | hide | view | repo",
+                glob: "string — a node:path glob (workspace-relative); for `repo`, the folder to declare — under the project root it manifests at relative addresses, outside it at absolute ones",
             },
             requiresInit: true,
         });
@@ -34,7 +34,7 @@ export default class SessionConstraintsMethod {
             },
             description: "Remove a workspace membership constraint — the inverse of session.constrain (the `drop` verb is deleting the constraint row). Takes effect immediately.",
             params: {
-                effect: "string — one of: pick | hide | view",
+                effect: "string — one of: pick | hide | view | repo",
                 glob: "string — the glob to remove",
             },
             requiresInit: true,
@@ -54,7 +54,7 @@ export default class SessionConstraintsMethod {
     static #parse(params: unknown, method: string): { effect: string; glob: string } {
         const p = params as { effect?: unknown; glob?: unknown };
         if (typeof p.effect !== "string" || !EFFECTS.has(p.effect)) {
-            throw new Error(`${method}: effect must be one of pick | hide | view`);
+            throw new Error(`${method}: effect must be one of pick | hide | view | repo`);
         }
         if (typeof p.glob !== "string" || p.glob.length === 0) {
             throw new Error(`${method}: glob must be a non-empty string`);

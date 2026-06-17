@@ -6,8 +6,8 @@ import GitMembership from "../../core/git-membership.ts";
 
 // #200 — membership-overlay effects, mirroring session.constrain (pick admits a
 // file git misses / the sole source when headless; hide drops a tracked match;
-// view admits a member read-only).
-const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
+// view admits a member read-only; repo declares a git repo folder anywhere).
+const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view", "repo"]);
 
 export default class SessionCreateMethod {
     static register(registry: MethodRegistry): void {
@@ -55,7 +55,7 @@ export default class SessionCreateMethod {
             params: {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
-                constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only). glob: node:path glob vs workspace-relative paths.",
+                constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, relative under the project root, absolute outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
                 settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { manifestItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_MANIFEST_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision) }",
             },
         });
@@ -76,7 +76,7 @@ export default class SessionCreateMethod {
         return raw.map((c, i) => {
             const e = c as { effect?: unknown; glob?: unknown };
             if (typeof e.effect !== "string" || !CONSTRAINT_EFFECTS.has(e.effect)) {
-                throw new Error(`session.create: constraints[${i}].effect must be one of pick | hide | view`);
+                throw new Error(`session.create: constraints[${i}].effect must be one of pick | hide | view | repo`);
             }
             if (typeof e.glob !== "string" || e.glob.length === 0) {
                 throw new Error(`session.create: constraints[${i}].glob must be a non-empty string`);

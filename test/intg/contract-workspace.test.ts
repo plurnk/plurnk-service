@@ -316,6 +316,29 @@ test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-fil
     } finally { await db.close(); }
 });
 
+test("a `repo` declared OUTSIDE the project root manifests at absolute addresses — project_root is only the relative-address base, no boundary", async () => {
+    const db = await openMigrated();
+    const external = await mkdtemp(join(tmpdir(), "plurnk-ext-"));
+    try {
+        const { parent, ctx } = await seedForest(db, []); // a bare non-git project home
+        try {
+            // A git repo entirely outside the project home (a sibling temp dir).
+            await execFileP("git", ["init", "-q"], { cwd: external });
+            await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: external });
+            await execFileP("git", ["config", "user.name", "t"], { cwd: external });
+            await writeFile(join(external, "ext.md"), "# external repo, outside the home\n");
+            await execFileP("git", ["add", "ext.md"], { cwd: external });
+            await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: external });
+
+            await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: external });
+            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+
+            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: join(external, "ext.md") });
+            assert.notEqual(member, undefined, "an outside-root repo's member is addressed at its ABSOLUTE disk path — declared, never rejected");
+        } finally { await rm(parent, { recursive: true, force: true }); }
+    } finally { await rm(external, { recursive: true, force: true }); await db.close(); }
+});
+
 test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;

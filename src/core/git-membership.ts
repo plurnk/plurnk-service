@@ -26,7 +26,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
-import { resolve, relative, join, matchesGlob } from "node:path";
+import { resolve, relative, join, matchesGlob, sep } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
@@ -103,13 +103,16 @@ export default class GitMembership {
     static async #forestMembers(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
         for (const dir of repoDirs) {
-            const repoRoot = await GitMembership.#repoToplevel(dir, signal);
+            const repoRoot = await GitMembership.#repoToplevel(resolve(root, dir), signal);
             if (repoRoot === null) continue;
-            const prefix = relative(root, repoRoot);
+            // project_root is no boundary — only the relative-path base. A repo UNDER it
+            // manifests at its path relative to the root (the addressing convenience); a repo
+            // anywhere ELSE manifests at its absolute disk path. {§membership-overlay-repo}
+            const underRoot = repoRoot === root || repoRoot.startsWith(root + sep);
             const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal);
             const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal);
             for (const f of [...tracked, ...untracked]) {
-                members.add(prefix === "" ? f : join(prefix, f));
+                members.add(underRoot ? join(relative(root, repoRoot), f) : join(repoRoot, f));
             }
         }
         return [...members];
@@ -167,13 +170,16 @@ export default class GitMembership {
         // Compose: (git ∪ pick) − hide (§membership-overlay-hide), tracking origin for reconciliation — a path
         // in `members` is 'git', a pick-only match is 'constraint'.
         const memberSet = new Set(members);
+        // Outside-root members are already absolute disk paths (/-rooted); under-root + pick
+        // members are workspace-relative. Namespace-absolutize without doubling the leading /.
+        const nsAbs = (p: string): string => p.startsWith("/") ? p : `/${p}`;
         const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
         const desiredGit = members.filter(passesHide);
         const desiredPick = picked.filter((p) => !memberSet.has(p) && passesHide(p));
         // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.
-        const desired = [...desiredGit, ...desiredPick].map((p) => `/${p}`);
+        const desired = [...desiredGit, ...desiredPick].map(nsAbs);
         const desiredSet = new Set(desired);
 
         // Reconcile so entries == members (the constitutive invariant): register the
@@ -181,10 +187,10 @@ export default class GitMembership {
         // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
         // Model-created ('client') members are never reclaimed.
         for (const pathname of desiredGit) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: nsAbs(pathname), membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
+            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: nsAbs(pathname), membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
         for (const m of registered) {
