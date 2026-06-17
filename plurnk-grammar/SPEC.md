@@ -116,7 +116,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
 | READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:/// (opaque; scheme interprets) | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:// (opaque; scheme interprets) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
@@ -486,7 +486,7 @@ PlurnkParser.parse(input: string): ParseResult
 // applies to every (target) slot. The top-level helper to reach for (no need to
 // touch AstBuilder). Primary use: resolving a COPY destination. COPY's body is an
 // opaque string — a destination URI for an entry copy, a prompt for a run fork
-// (run:///) — so the scheme handler interprets it, then calls this for the
+// (run://) — so the scheme handler interprets it, then calls this for the
 // destination case. MOVE destinations arrive pre-parsed (body is always a path);
 // COPY's do not, because its body is polymorphic.
 parsePath(raw: string): ParsedPath | null

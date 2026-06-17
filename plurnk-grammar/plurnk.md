@@ -34,10 +34,10 @@ EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc
 
 The agent maintains two surfaces for budgeting working-memory tokens:
 
-- **Log** — the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive — folded rows remain listed and re-OPENable.
+- **Log** — the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive — FOLDed rows remain listed and re-OPENable.
 - **`plurnk:///manifest.json`** — what's available: the complete unranked directory of every entry. Query it to discover available entries.
 
-OPEN and FOLD operate on the log only.
+OPEN and FOLD operate on the log only. Log items are read-only, but can be KILLed.
 
 ## `<Line> / <Result>`
 
@@ -122,8 +122,8 @@ Body content is character-perfect, exactly matching whitespace.
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 <<KILL(obsolete/file.md)::KILL
 <<KILL(sh:///3/1/2)::KILL
-<<EDIT(run:///capital-check):Find the capital of France.:EDIT
-<<COPY(run:///.):Re-derive the capital from a primary source.:COPY
+<<EDIT(run://capital-check):Find the capital of France.:EDIT
+<<COPY(run://.):Re-derive the capital from a primary source.:COPY
 <<OPEN(log:///**/get)<1,10>::OPEN
 <<FIND(known:///**)<5>:~french revolutionary history:FIND
 <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
@@ -145,7 +145,7 @@ chmod +x ./example.sh
 
 <<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
 
-<<SEND(run:///capital-check):{"hint":"prefer primary sources over wikis"}:SEND
+<<SEND(run://capital-check):{"hint":"prefer primary sources over wikis"}:SEND
 
 <<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
 <<SEND[200]:Paris:SEND
