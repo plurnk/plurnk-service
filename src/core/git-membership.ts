@@ -131,6 +131,42 @@ export default class GitMembership {
         return MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
     }
 
+    // Shared overlay inputs — the candidate sets (git tracked+untracked union, pick scan) and
+    // the overlay globs, before composition. Single-sources the (git ∪ pick) derivation + the
+    // glob sets for resolveGitMembership (compose + reconcile) and resolveMembershipEffects
+    // (derive per-file effect for clients, #243). Headless (no project_root) → null.
+    static async #resolveOverlayInputs(
+        db: Db,
+        sessionId: number,
+        signal: AbortSignal | undefined,
+    ): Promise<{ root: string; gitMembers: string[]; picked: string[]; hideGlobs: string[]; viewGlobs: string[] } | null> {
+        const root = await GitMembership.#loadSessionRoot(db, sessionId);
+        if (root === null) return null;   // headless — no disk surface to resolve
+
+        const constraints = await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
+        const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
+        const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
+        const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
+
+        // git substrate — the union of the session's DECLARED repos' MEMBERS: tracked files
+        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_GIT_ALLOWED=0 is
+        // the hard ceiling (deny all git membership); PLURNK_GIT_AUTO=1 declares project_root
+        // as an implicit repo. Empty when git is denied or no declared repo resolves, so
+        // `pick` is then the sole source. No early-return on non-git.
+        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
+        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
+        // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
+        const sessionGit = (await SessionSettings.read(db, sessionId)).git;
+        const gitMembers = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
+            ? await GitMembership.#forestMembers(root, repoDirs, signal)
+            : [];
+
+        // `pick` overlay — a targeted, client-dictated scan for untracked matches
+        // (node:fs glob over the client's pattern, never a blind walk).
+        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // §membership-overlay-pick
+        return { root, gitMembers, picked, hideGlobs, viewGlobs };
+    }
+
     // Resolve a session's file membership: the desired set is (git ls-files ∪ pick
     // globs) − hide globs (SPEC §membership overlay), reconciled against the registered
     // overlay-owned members so entries == members. Channel-less rows — disk is the
@@ -144,29 +180,9 @@ export default class GitMembership {
         sessionId: number,
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
-        const root = await GitMembership.#loadSessionRoot(db, sessionId);
-        if (root === null) return [];   // headless — no disk surface to resolve
-
-        const constraints = await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
-        const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
-        const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
-
-        // git substrate — the union of the session's DECLARED repos' MEMBERS: tracked files
-        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_GIT_ALLOWED=0 is
-        // the hard ceiling (deny all git membership); PLURNK_GIT_AUTO=1 declares project_root
-        // as an implicit repo. Empty when git is denied or no declared repo resolves, so
-        // `pick` is then the sole source. No early-return on non-git.
-        const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
-        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
-        // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
-        const sessionGit = (await SessionSettings.read(db, sessionId)).git;
-        const members = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
-            ? await GitMembership.#forestMembers(root, repoDirs, signal)
-            : [];
-
-        // `pick` overlay — a targeted, client-dictated scan for untracked matches
-        // (node:fs glob over the client's pattern, never a blind walk).
-        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // §membership-overlay-pick
+        const inputs = await GitMembership.#resolveOverlayInputs(db, sessionId, signal);
+        if (inputs === null) return [];   // headless — no disk surface to resolve
+        const { gitMembers: members, picked, hideGlobs } = inputs;
 
         // Compose: (git ∪ pick) − hide (§membership-overlay-hide), tracking origin for reconciliation — a path
         // in `members` is 'git', a pick-only match is 'constraint'.
@@ -197,6 +213,37 @@ export default class GitMembership {
             }
         }
         return desired;
+    }
+
+    // Resolve each candidate's membership EFFECT without mutating — a read for clients (#243,
+    // plurnk.nvim gutter signs): the same (git ∪ pick) / hide / view resolution resolveGitMembership
+    // composes, surfaced per-file so a client signs member/view/hidden with ZERO glob-matching of
+    // its own. `members` are (git ∪ pick) − hide, each tagged `view` (read-only, refused at the
+    // File edit gate §membership-overlay-view) or plain `member`; `hidden` are candidates a `hide`
+    // glob excludes (project files absent from the manifest). Paths namespace-absolute, matching
+    // the manifest + storage. Headless → empty. {§membership-resolved-effects}
+    static async resolveMembershipEffects(
+        db: Db,
+        sessionId: number,
+        signal: AbortSignal | undefined,
+    ): Promise<{ members: Array<{ path: string; effect: "member" | "view" }>; hidden: string[] }> {
+        const inputs = await GitMembership.#resolveOverlayInputs(db, sessionId, signal);
+        if (inputs === null) return { members: [], hidden: [] };   // headless
+        const { gitMembers, picked, hideGlobs, viewGlobs } = inputs;
+        // Match hide/view against the BARE path (client globs are bare, as the edit gate does),
+        // then namespace-prefix the output. Composition mirrors resolveGitMembership exactly:
+        // members = (git ∪ pick) − hide, hidden = (git ∪ pick) ∩ hide.
+        const isHidden = (p: string): boolean => hideGlobs.some((g) => matchesGlob(p, g));
+        const isView = (p: string): boolean => viewGlobs.some((g) => matchesGlob(p, g));
+        const members: Array<{ path: string; effect: "member" | "view" }> = [];
+        const hidden: string[] = [];
+        for (const p of new Set([...gitMembers, ...picked])) {
+            if (isHidden(p)) hidden.push(`/${p}`);
+            else members.push({ path: `/${p}`, effect: isView(p) ? "view" : "member" });
+        }
+        members.sort((a, b) => a.path.localeCompare(b.path));
+        hidden.sort();
+        return { members, hidden };
     }
 
     // Targeted client-dictated scan (SPEC §membership `pick`) — enumerate disk files

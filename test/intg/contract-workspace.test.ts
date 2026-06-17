@@ -245,6 +245,26 @@ test("[§membership-edit-write-cas] with no drift the proposal lands and restamp
     });
 });
 
+test("[§membership-resolved-effects] resolveMembershipEffects tags each file member / view / hidden", async () => {
+    await withGitWorkspace(async (root, ctx, db, trackedPath) => {
+        // Two more tracked files so we can view one and hide one.
+        await writeFile(join(root, "readme.md"), "# readme\n");
+        await writeFile(join(root, "secret.md"), "secret\n");
+        await execFileP("git", ["add", "readme.md", "secret.md"], { cwd: root });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "more"], { cwd: root });
+        // view readme.md (read-only member); hide secret.md (excluded from membership).
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "view", glob: "readme.md" });
+        await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "hide", glob: "secret.md" });
+
+        const { members, hidden } = await GitMembership.resolveMembershipEffects(db, ctx.sessionId, undefined);
+        const effectOf = (path: string) => members.find((m) => m.path === path)?.effect;
+        assert.equal(effectOf(`/${trackedPath}`), "member", "a plain tracked file resolves as a writable member");
+        assert.equal(effectOf("/readme.md"), "view", "a view-constrained member resolves read-only (view)");
+        assert.ok(!members.some((m) => m.path === "/secret.md"), "a hidden file is not in members");
+        assert.ok(hidden.includes("/secret.md"), "a hide-constrained tracked file resolves as hidden — the same (ls-files ∪ pick) − hide the manifest uses");
+    });
+});
+
 // ───────────── §membership deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
