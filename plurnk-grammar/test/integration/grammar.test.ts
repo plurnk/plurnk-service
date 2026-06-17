@@ -1099,3 +1099,46 @@ test("SEND/EXEC: <L> slot is rejected (not just unused)", () => {
     const r2 = PlurnkParser.parse("<<EXEC[node]<1>(./):cmd:EXEC");
     assert.ok(r2.items.filter((i) => i.kind === "error").length >= 1);
 });
+
+// -------------------------------------------------------------------------
+// Degenerate / adversarial inputs: delimiter chars in opaque slots must not
+// break the parser. Bodies are opaque (BODY mode), so brackets/braces/parens
+// and JSON arrays are content; only a stray delimiter in the SIGNAL region is
+// a (graceful) error, never a throw or hang.
+// -------------------------------------------------------------------------
+
+const cleanParse = (input: string) => {
+    const r = PlurnkParser.parse(input);
+    return {
+        stmts: r.items.filter((i) => i.kind === "statement").length,
+        errs: r.items.filter((i) => i.kind === "error").length,
+        tail: r.unparsedTail !== undefined,
+    };
+};
+
+test("degenerate: stray right bracket in a SEND body is opaque content", () => {
+    assert.deepEqual(cleanParse("<<SEND[200]:array[0] and a stray ] bracket:SEND"), { stmts: 1, errs: 0, tail: false });
+});
+
+test("degenerate: JSON array in a SEND body parses clean", () => {
+    assert.deepEqual(cleanParse(`<<SEND[400]:{"expected":["a","b"],"got":[1,2]}:SEND`), { stmts: 1, errs: 0, tail: false });
+});
+
+test("degenerate: all-brackets / mixed delimiters in a body parse clean", () => {
+    assert.deepEqual(cleanParse("<<SEND[200]:]]]) }{[ <> mixed:SEND"), { stmts: 1, errs: 0, tail: false });
+    assert.deepEqual(cleanParse("<<EDIT(a.md):x = arr[0] + (y) + {z}:EDIT"), { stmts: 1, errs: 0, tail: false });
+});
+
+test("degenerate: bracket body on a targeted (terminate-and-report) SEND parses clean", () => {
+    assert.deepEqual(cleanParse("<<SEND[200](run://parent):result ] arr[0]:SEND"), { stmts: 1, errs: 0, tail: false });
+});
+
+test("degenerate: bracket immediately before the close tag parses clean", () => {
+    assert.deepEqual(cleanParse("<<SEND[200]:value]:SEND"), { stmts: 1, errs: 0, tail: false });
+});
+
+test("degenerate: stray bracket in the SIGNAL region errors gracefully (no throw)", () => {
+    const r = cleanParse("<<SEND[200]]:body:SEND");
+    assert.equal(r.stmts, 0);
+    assert.ok(r.errs >= 1, "expected a graceful parse error, not a clean parse");
+});
