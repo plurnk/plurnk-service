@@ -1,5 +1,6 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { PrepMethod } from "../core/Db.ts";
+import RunCap from "../core/run-cap.ts";
 import type { EditStatement, SendStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
 // run:// — the agent-run control scheme (SPEC §machine-processes, §actor-boundary).
@@ -33,6 +34,8 @@ export default class Run {
         if (name === null) return { status: 400, error: "run:// spawn requires a run name (run:///<name>)" };
         if (name === "" || name === ".") return { status: 400, error: "run:// spawn cannot target self" };
         if (ctx.injectRun === undefined) throw new Error("run.edit: injectRun capability absent");
+        const denied = await RunCap.deny(ctx.db, ctx.sessionId);
+        if (denied !== null) return denied;
         // reuses fork.sql's run-insert (identical INSERT … RETURNING id).
         const row = await (ctx.db.fork_insert_run as PrepMethod).get<{ id: number }>({
             session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,

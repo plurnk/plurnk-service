@@ -14,6 +14,7 @@ import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
+import RunCap from "./run-cap.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -1798,6 +1799,8 @@ export default class Engine {
             srcRunId = row.id;
         }
         if (ctx.injectRun === undefined) throw new Error("run fork: injectRun capability absent");
+        const denied = await RunCap.deny(this.#db, ctx.sessionId);
+        if (denied !== null) return denied;
         const branchRunId = await Fork.fork(this.#db, srcRunId);
         const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
         await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt: typeof statement.body === "string" ? statement.body : "" });

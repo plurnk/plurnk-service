@@ -134,3 +134,40 @@ test("[§run-scheme-fork] COPY(run:///.):prompt forks — a branch run started v
         assert.deepEqual(calls.at(-1), { sessionId, runId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
     } finally { await db.close(); }
 });
+
+test("run cap: spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508), create nothing", async () => {
+    const db = await openMigrated();
+    const prior = process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE;
+    process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = "1"; // ceiling of 1 active run
+    try {
+        const { calls, injectRun } = recordingInjectRun();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
+        const sessionId = await insertSession(db, `run-cap-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);        // the acting run, its loop 102 = 1 active = the ceiling
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const spawn = await engine.dispatch({
+            statement: editStmt(runPath("worker"), "go"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(spawn.status, 508, "spawn at the ceiling is refused, hard");
+
+        const forkStmt: CopyStatement = {
+            op: "COPY", suffix: "", signal: null, target: runPath("."),
+            lineMarker: null, body: "branch", position: { line: 1, column: 1 },
+        };
+        const fork = await engine.dispatch({
+            statement: forkStmt, sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(fork.status, 508, "fork at the ceiling is refused, hard");
+
+        const worker = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        assert.equal(worker, undefined, "no run is created past the ceiling");
+        assert.equal(calls.length, 0, "no inject on a refused spawn/fork");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE;
+        else process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = prior;
+        await db.close();
+    }
+});
