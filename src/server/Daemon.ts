@@ -475,6 +475,7 @@ export default class Daemon {
         const drainPromise = (async () => {
             let loopsDrained = 0;
             let lastResult: DrainLoopResult | null = null;
+            let currentLoopId: number | null = null; // the loop being drained — for the #204 abort→499 resolution below
             try {
                 while (true) {
                     controller.signal.throwIfAborted();
@@ -490,6 +491,7 @@ export default class Daemon {
                         if (loopRow === undefined) break;
                         this.#activeDrains.set(runId, handle);
                     }
+                    currentLoopId = loopRow.id;
                     const onDispatch = (logEntryId: number): void => {
                         void (async () => {
                             const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
@@ -534,7 +536,23 @@ export default class Daemon {
             } catch (err) {
                 if (!firstSettled) {
                     firstSettled = true;
-                    rejectFirst(err);
+                    // #204 — loop.cancel / shutdown aborted the live drain. A cancellation
+                    // is the loop's TERMINAL state (499), not an error: the pending loop.run
+                    // RESOLVES finalStatus 499, it never rejects with the abort reason
+                    // (runLoop throws the reason via throwIfAborted). A genuine error rejects.
+                    if (controller.signal.aborted) {
+                        resolveFirst({
+                            loopId: currentLoopId ?? 0,
+                            turnIds: [],
+                            finalStatus: 499,
+                            hitMaxTurns: false,
+                            usage: currentLoopId === null
+                                ? { promptTokens: 0, completionTokens: 0, costPico: 0 }
+                                : await this.#engine.loopUsage(currentLoopId),
+                        });
+                    } else {
+                        rejectFirst(err);
+                    }
                 }
                 throw err;
             } finally {
