@@ -165,7 +165,9 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         await EntrySemantic.indexFts(db, e.id, content);
         await EntrySemantic.indexEmbedding(db, e.id, chunks, model);
         const r = await EntrySemantic.rankSemantic(db, sessionId, "known", embedder, "photosynthesis chloroplasts", { first: 5, last: null });
-        assert.ok(r.pathnames.includes("/bio.md"), "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
+        const hit = r.results.find((x) => x.pathname === "/bio.md");
+        assert.ok(hit, "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
+        assert.ok(hit.lineStart >= 1 && hit.lineEnd >= hit.lineStart, `the winning chunk's span rides out (got ${hit.lineStart}-${hit.lineEnd})`);
     } finally { db.close(); }
 });
 

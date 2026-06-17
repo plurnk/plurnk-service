@@ -24,31 +24,41 @@ DELETE FROM entry_embeddings WHERE entry_id = $entry_id;
 -- narrowed candidates over the query embedding ($query_vector), top-K. Scheme-scoped
 -- like every dialect. FTS does the scale-cut; cosine the precise rank — so a high-
 -- cosine entry that doesn't match the keyword is correctly excluded by the narrow.
--- Many chunk rows per entry now → GROUP BY entry and rank by the entry's BEST chunk
--- (max-pool). embedding_model filter keeps cosine within one model's dimensions.
-SELECT e.pathname
-FROM entry_fts f
-JOIN entries e ON e.id = f.rowid
-JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
-WHERE f.content MATCH $fts_query
-  AND e.session_id = $session_id
-  AND e.scheme IS $scheme
-GROUP BY e.id
-ORDER BY MAX(cosine(em.vector, $query_vector)) DESC
+-- Many chunk rows per entry → rank by the entry's BEST chunk (per-entry top cosine via
+-- ROW_NUMBER), and surface that winning chunk's line span as the finding extent
+-- (Project Findings). embedding_model filter keeps cosine within one model's dimensions.
+WITH ranked AS (
+    SELECT e.pathname, em.line_start, em.line_end,
+           cosine(em.vector, $query_vector) AS score,
+           ROW_NUMBER() OVER (PARTITION BY e.id ORDER BY cosine(em.vector, $query_vector) DESC) AS rn
+    FROM entry_fts f
+    JOIN entries e ON e.id = f.rowid
+    JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
+    WHERE f.content MATCH $fts_query
+      AND e.session_id = $session_id
+      AND e.scheme IS $scheme
+)
+SELECT pathname, line_start, line_end FROM ranked
+WHERE rn = 1
+ORDER BY score DESC
 LIMIT $k;
 
 -- PREP: semantic_rank_threshold
 -- #209 — the <0.x> similarity-threshold form: same FTS+cosine fusion, but a cosine
 -- floor ($threshold, in (0,1)) replaces top-K, and $cap (-1 = unbounded) is the
 -- optional <0.x,N> result cap.
-SELECT e.pathname
-FROM entry_fts f
-JOIN entries e ON e.id = f.rowid
-JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
-WHERE f.content MATCH $fts_query
-  AND e.session_id = $session_id
-  AND e.scheme IS $scheme
-GROUP BY e.id
-HAVING MAX(cosine(em.vector, $query_vector)) >= $threshold
-ORDER BY MAX(cosine(em.vector, $query_vector)) DESC
+WITH ranked AS (
+    SELECT e.pathname, em.line_start, em.line_end,
+           cosine(em.vector, $query_vector) AS score,
+           ROW_NUMBER() OVER (PARTITION BY e.id ORDER BY cosine(em.vector, $query_vector) DESC) AS rn
+    FROM entry_fts f
+    JOIN entries e ON e.id = f.rowid
+    JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
+    WHERE f.content MATCH $fts_query
+      AND e.session_id = $session_id
+      AND e.scheme IS $scheme
+)
+SELECT pathname, line_start, line_end FROM ranked
+WHERE rn = 1 AND score >= $threshold
+ORDER BY score DESC
 LIMIT $cap;

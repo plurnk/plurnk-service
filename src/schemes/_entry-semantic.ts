@@ -127,32 +127,34 @@ export default class EntrySemantic {
         return [...new Set(terms)].join(" OR ");
     }
 
-    // The ~query dispatch: embed the query text through the SAME channel, FTS-narrow
-    // by its terms, cosine-rank the narrowed set, top-K. 501 when no embeddings
-    // handler is installed (the channel degrades to `embeddingMissing`).
-    static async rankSemantic(db: Db, sessionId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; pathnames: string[] }> {
+    // The ~query dispatch: embed the query text through the SAME channel, FTS-narrow by
+    // its terms, cosine-rank the narrowed set, top-K. Each result carries its best-matching
+    // chunk's line span (the Finding extent). 501 when no embeddings handler is installed
+    // (the channel degrades to `embeddingMissing`).
+    static async rankSemantic(db: Db, sessionId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
         const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
         // No embedder installed → the channel degrades to empty bytes (not undefined);
         // an empty query vector can't rank, so surface 501 rather than a false 200.
-        if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) return { status: 501, pathnames: [] };
+        if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) return { status: 501, results: [] };
         const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
-        if (ftsQuery.length === 0) return { status: 200, pathnames: [] };
+        if (ftsQuery.length === 0) return { status: 200, results: [] };
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
         // decimal <0.x> → a similarity threshold (minimum cosine in (0,1)), with
         // <0.x,N> capping the threshold set at N (else unbounded). A fractional
         // value outside (0,1) is a nonsense result-marker → 416, never coerced.
         const { first, last } = marker;
+        const toResult = (x: { pathname: string; line_start: number; line_end: number }) => ({ pathname: x.pathname, lineStart: x.line_start, lineEnd: x.line_end });
         if (Number.isInteger(first)) {
-            const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
+            const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
             });
-            return { status: 200, pathnames: rows.map((x) => x.pathname) };
+            return { status: 200, results: rows.map(toResult) };
         }
-        if (first <= 0 || first >= 1) return { status: 416, pathnames: [] };
+        if (first <= 0 || first >= 1) return { status: 416, results: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
-        const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
+        const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
             fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
         });
-        return { status: 200, pathnames: rows.map((x) => x.pathname) };
+        return { status: 200, results: rows.map(toResult) };
     }
 }

@@ -94,8 +94,9 @@ export default class EntryFind {
             if (statement.lineMarker === null) return { status: 400, findings: [] };  // ~query needs a top-K, e.g. ~query<10>
             const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
             if (ranked.status !== 200) return { status: ranked.status, findings: [] };
-            // Semantic findings are whole-entry (extent null) — chunk-extent enrichment is a later phase.
-            return { status: 200, findings: ranked.pathnames.map((p) => ({ path: addr(p), extent: null })) };
+            // Each semantic finding addresses its best-matching chunk (the winning span),
+            // not the whole entry — the model READs the region that actually matched.
+            return { status: 200, findings: ranked.results.map((x) => ({ path: addr(x.pathname), extent: { first: x.lineStart, last: x.lineEnd } })) };
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
