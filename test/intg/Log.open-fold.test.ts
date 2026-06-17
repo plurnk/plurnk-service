@@ -1,6 +1,6 @@
 // log:/// scheme participates in the model's curation surface via OPEN/FOLD
 // on log:///N/T/S URIs. Underlying storage is the log_entries table (separate
-// from entries+entry_channels); the indexed column toggles visibility.
+// from entries+entry_channels); the expanded column toggles visibility.
 // log entries lack channels and many other entry properties but share the
 // URI-dispatched open/fold mechanism.
 
@@ -37,21 +37,21 @@ const setup = async () => {
     return { db, sessionId, runId, loopId, turnId };
 };
 
-const getIndexed = async (db: Awaited<ReturnType<typeof openMigrated>>, runId: number): Promise<number> => {
-    const row = await (db.test_get_log_indexed as PrepMethod).get<{ indexed: number }>({
+const getExpanded = async (db: Awaited<ReturnType<typeof openMigrated>>, runId: number): Promise<number> => {
+    const row = await (db.test_get_log_expanded as PrepMethod).get<{ expanded: number }>({
         run_id: runId, loop_seq: 1, turn_seq: 1, sequence: 1,
     });
-    return row?.indexed ?? -1;
+    return row?.expanded ?? -1;
 };
 
-test("new log entry defaults to indexed=1", async () => {
+test("new log entry defaults to expanded=1", async () => {
     const { db, runId } = await setup();
     try {
-        assert.equal(await getIndexed(db, runId), 1);
+        assert.equal(await getExpanded(db, runId), 1);
     } finally { await db.close(); }
 });
 
-test("FOLD(log:///1/1/1) flips indexed to 0", async () => {
+test("FOLD(log:///1/1/1) flips expanded to 0", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -59,7 +59,7 @@ test("FOLD(log:///1/1/1) flips indexed to 0", async () => {
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
-        assert.equal(await getIndexed(db, runId), 0);
+        assert.equal(await getExpanded(db, runId), 0);
     } finally { await db.close(); }
 });
 
@@ -71,18 +71,18 @@ test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
-        assert.equal(await getIndexed(db, runId), 0);
+        assert.equal(await getExpanded(db, runId), 0);
     } finally { await db.close(); }
 });
 
-test("OPEN(log:///1/1/1) flips indexed back to 1", async () => {
+test("OPEN(log:///1/1/1) flips expanded back to 1", async () => {
     const { db, sessionId, runId, loopId, turnId } = await setup();
     try {
         const log = new Log();
         await log.fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         const r = await log.open(openStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
-        assert.equal(await getIndexed(db, runId), 1);
+        assert.equal(await getExpanded(db, runId), 1);
     } finally { await db.close(); }
 });
 
@@ -145,16 +145,16 @@ test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagin
         };
         await seedRead(2);
         await seedRead(3);
-        const indexedAt = async (sequence: number): Promise<number> =>
-            (await (db.test_get_log_indexed as PrepMethod).get<{ indexed: number }>({
+        const expandedAt = async (sequence: number): Promise<number> =>
+            (await (db.test_get_log_expanded as PrepMethod).get<{ expanded: number }>({
                 run_id: runId, loop_seq: 1, turn_seq: 1, sequence,
-            }))?.indexed ?? -1;
+            }))?.expanded ?? -1;
 
         const stmt: ReturnType<typeof foldStmt> = { ...foldStmt(urlPath("log", "/**/READ")), lineMarker: { marks: [1, 1] } };
         const r = await new Log().fold(stmt, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
-        assert.equal(await indexedAt(2), 0, "the 1st matched READ (1/1/2) is folded");
-        assert.equal(await indexedAt(3), 1, "the 2nd READ (1/1/3) is untouched by <1>");
-        assert.equal(await indexedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
+        assert.equal(await expandedAt(2), 0, "the 1st matched READ (1/1/2) is folded");
+        assert.equal(await expandedAt(3), 1, "the 2nd READ (1/1/3) is untouched by <1>");
+        assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
     } finally { await db.close(); }
 });

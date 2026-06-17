@@ -27,8 +27,8 @@ SELECT sequence, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
 ORDER BY sequence;
 
--- PREP: test_get_log_indexed
-SELECT le.indexed FROM log_entries le
+-- PREP: test_get_log_expanded
+SELECT le.expanded FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
@@ -116,7 +116,7 @@ FROM log_entries WHERE run_id = $run_id ORDER BY id;
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries — robust to which run holds the loop (the model
 -- runs in its OWN run now, §connection-lifecycle), so a test queries by the loopId it holds.
-SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, indexed
+SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, expanded
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_run_id_by_loop

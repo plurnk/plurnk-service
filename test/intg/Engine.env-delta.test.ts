@@ -72,11 +72,11 @@ test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-run snapshot; it learned its world moved purely through its own log.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; indexed: number }>({ run_id: runA });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ run_id: runA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "known" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, String(runB), "the delta is attributed to the sibling run that caused it");
-        assert.equal(delta!.indexed, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
+        assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
     } finally {
         await db.close();
     }
@@ -111,11 +111,11 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 
         // Turn 2 — the plurnk run logs the divergence as a source=file EDIT; A pulls it.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; indexed: number }>({ run_id: runA });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ run_id: runA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "/notes.md", "the delta names the diverged file");
-        assert.equal(delta!.indexed, 0, "the fs delta lands folded");
+        assert.equal(delta!.expanded, 0, "the fs delta lands folded");
         assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span (§edit-result-render)");
     } finally {
         await db.close();
@@ -151,7 +151,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
 
         // A's turn 2 pulls both terminations from the shared log, folded.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; indexed: number }>({ run_id: runA });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ run_id: runA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");
@@ -159,7 +159,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
         assert.equal(win!.source, String(worker), "attributed to the run that terminated");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
-        assert.equal(win!.indexed, 0, "folded — listed, collapsed until A OPENs it");
+        assert.equal(win!.expanded, 0, "folded — listed, collapsed until A OPENs it");
 
         const grind = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/grinder");
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");

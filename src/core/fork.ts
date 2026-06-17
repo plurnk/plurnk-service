@@ -2,7 +2,7 @@
 //
 // A fork is a NEW run in the SAME session (`parent_run_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
-// fold-state (`indexed`) and attribution (`origin`/`source`) intact. It copies
+// fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
 // nothing of the world — the session's entries and overlay are shared, never
 // copied, because a run never owned them. The §env-delta reconciliation snapshot is
 // not copied either; the branch first-sights its world like any fresh run.

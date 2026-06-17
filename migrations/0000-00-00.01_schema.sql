@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS entry_embeddings (
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
 -- proposing schemes transition 'proposed' → resolved/failed/cancelled.
--- indexed: per-row visibility for OPEN/FOLD via the log:/// scheme.
+-- expanded: per-row visibility for OPEN/FOLD via the log:/// scheme.
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -289,7 +289,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     outcome         TEXT,
     attrs           TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
 
-    indexed         INTEGER NOT NULL DEFAULT 1 CHECK (indexed IN (0, 1)),
+    expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
 
     FOREIGN KEY (run_id)  REFERENCES runs(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
@@ -303,7 +303,7 @@ CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (a
 
 -- Column-scoped immutability: the original action's identity and target
 -- never change; the proposal lifecycle is allowed to mutate state,
--- outcome, status_rx, rx, indexed.
+-- outcome, status_rx, rx, expanded.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
     run_id, loop_id, turn_id, sequence, at, origin, source,
@@ -313,7 +313,7 @@ BEFORE UPDATE OF
     lineMarker, tx, mimetype_tx, mimetype_rx, attrs
 ON log_entries
 BEGIN
-    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/indexed may change');
+    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/expanded may change');
 END;
 
 -- INIT: schemes_providers

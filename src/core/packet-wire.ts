@@ -362,7 +362,7 @@ export default class PacketWire {
 
             const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
 
-            // FOLD (indexed=0): the model collapsed this row to its one-line
+            // FOLD (expanded=0): the model collapsed this row to its one-line
             // summary (§open-fold) — render the meta line only, eliding the body.
             // Re-OPEN restores it. The row stays listed; only its weight drops.
             if (e.folded === true) return metaLine;

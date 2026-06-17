@@ -744,8 +744,8 @@ export default class Engine {
         }
 
         // plurnk:///manifest.json — rewritten EVERY turn (a live view of the
-        // entry set, which changes each turn). A derived view like the index,
-        // NOT an action — written directly (Engine.inject's path): no log entry,
+        // entry set, which changes each turn). A derived view (computed each
+        // turn), NOT an action — written directly (Engine.inject's path): no log entry,
         // no sequence slot, not dispatched. The catalog body is built in the
         // schemes layer (_entry-manifest); the engine only orchestrates the
         // per-turn write. Does not list itself.
@@ -1265,7 +1265,7 @@ export default class Engine {
 
     // Render-time mimetype invocation (SPEC §mimetype {§mimetype-handlers-fire-render-time},
     // §per-entry-channels {§per-entry-channels-preview-is-handler-output}). For each (run, entry, channel)
-    // with indexed=1, pass the channel's current content through
+    // with expanded=1, pass the channel's current content through
     // mimetype.preview(content, budget). State is included verbatim — engine
     // does NOT branch on it (§channel-state {§channel-state-engine-does-not-branch-on-state}).
     // SPEC §telemetry: model-facing alert surface.
@@ -1319,7 +1319,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string | null;
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; indexed: number; source: string | null;
+            tx: string; mimetype_tx: string; expanded: number; source: string | null;
         }>({ run_id: runId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -1340,7 +1340,7 @@ export default class Engine {
             mimetype_rx: r.mimetype_rx,
             tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
             mimetype_tx: r.mimetype_tx,
-            folded: r.indexed === 0,
+            folded: r.expanded === 0,
             source: r.source,
         }));
     }

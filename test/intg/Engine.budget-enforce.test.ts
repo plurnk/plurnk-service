@@ -68,12 +68,12 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
         const tiny = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
-        assert.ok(before.some((r) => r.turn_seq === 1 && r.indexed === 1), "turn 1 left an open (indexed=1) log entry");
+        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
+        assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
         await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; indexed: number }>({ run_id: runId });
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
         const t1 = after.filter((r) => r.turn_seq === 1);
-        assert.ok(t1.length > 0 && t1.every((r) => r.indexed === 0), "prior turn's logs folded — still listed, collapsed to coordinate (indexed=0), not deleted");
+        assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's logs folded — still listed, collapsed to coordinate (expanded=0), not deleted");
     } finally { await db.close(); }
 });
 

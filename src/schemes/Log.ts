@@ -111,15 +111,15 @@ export default class Log {
     }
 
     async open(statement: OpenStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
-        return this.#setIndexed(statement, ctx, 1);
+        return this.#setExpanded(statement, ctx, 1);
     }
 
-    // FOLD toggles the indexed bit only — an active subscription stays alive. §subscriptions-fold-keeps-subscription
+    // FOLD toggles the expanded bit only — an active subscription stays alive. §subscriptions-fold-keeps-subscription
     async fold(statement: FoldStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
-        return this.#setIndexed(statement, ctx, 0);
+        return this.#setExpanded(statement, ctx, 0);
     }
 
-    async #setIndexed(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, indexed: 0 | 1): Promise<OpenFoldResult> {
+    async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
         if (statement.target === null) return { status: 400 };
         const { db, runId } = ctx;
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
@@ -127,8 +127,8 @@ export default class Log {
         // Fast path: a single concrete coordinate with no pagination flips that row.
         const coord = parseCoordinate(pathname);
         if (coord !== null && statement.lineMarker === null) {
-            const updated = await (db.log_set_indexed as PrepMethod).get<{ id: number }>({
-                run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence, indexed,
+            const updated = await (db.log_set_expanded as PrepMethod).get<{ id: number }>({
+                run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence, expanded,
             });
             return { status: updated === undefined ? 404 : 200 };
         }
@@ -144,7 +144,7 @@ export default class Log {
             selected = page.items ?? [];
         }
         if (selected.length === 0) return { status: 404 };
-        for (const { id } of selected) await (db.log_set_indexed_by_id as PrepMethod).run({ id, indexed });
+        for (const { id } of selected) await (db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
         return { status: 200 };
     }
 }

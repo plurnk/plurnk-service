@@ -66,15 +66,15 @@ test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (
         await engine.dispatch({ statement: editStmt(urlPath("known", "/b.md"), "second"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
         // Fold the first row — a fold-state bit on the parent's own log.
         const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ run_id: runId });
-        await (db.log_set_indexed_by_id as PrepMethod).run({ id: ids[0].id, indexed: 0 });
+        await (db.log_set_expanded_by_id as PrepMethod).run({ id: ids[0].id, expanded: 0 });
 
         const branchRunId = await Fork.fork(db, runId);
 
-        const shape = (rows: Array<{ op: string; pathname: string; indexed: number }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.indexed}`);
-        const parentLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; indexed: number }>({ run_id: runId });
-        const branchLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; indexed: number }>({ run_id: branchRunId });
+        const shape = (rows: Array<{ op: string; pathname: string; expanded: number }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.expanded}`);
+        const parentLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; expanded: number }>({ run_id: runId });
+        const branchLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; expanded: number }>({ run_id: branchRunId });
         assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and fold-state");
-        assert.ok(branchLog.some((r) => r.indexed === 0), "the row folded on the parent stayed folded in the branch");
+        assert.ok(branchLog.some((r) => r.expanded === 0), "the row folded on the parent stayed folded in the branch");
     } finally { db.close(); }
 });
 

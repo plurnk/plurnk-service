@@ -148,12 +148,12 @@ WHERE r.session_id = $session_id
 ORDER BY le.at;
 
 -- PREP: engine_insert_env_delta
--- §env-delta — materialize a pulled cross-actor edit as a FOLDED delta (indexed=0)
+-- §env-delta — materialize a pulled cross-actor edit as a FOLDED delta (expanded=0)
 -- in this run's log. origin=plurnk; source carries the cause (sibling run id or
 -- 'file'); rx reuses the originating row's result span (§edit-result-render).
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, indexed
+    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
 ) VALUES (
     $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
     'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
@@ -178,7 +178,7 @@ ORDER BY l.terminated_at;
 -- origin=plurnk, source=the terminated run — uniform with the env-delta.
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, indexed
+    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
 ) VALUES (
     $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
     'SEND', 'run', $pathname, '', 'text/plain', $rx, 'text/markdown', $status, 0
@@ -212,21 +212,21 @@ ORDER BY le.sequence;
 -- (collapse to coordinate, not deleting) lightens the render; bodies persist, re-OPENable.
 SELECT le.id, le.scheme
 FROM log_entries le
-WHERE le.loop_id = $loop_id AND le.indexed = 1
+WHERE le.loop_id = $loop_id AND le.expanded = 1
   AND le.turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_grinder_fold_prior_turn_logs
 -- §grinder pass 1: fold the prior turn's still-open logs in one set-op (same WHERE
 -- as engine_grinder_prior_turn_logs above). Rows + bodies stay, re-OPENable.
-UPDATE log_entries SET indexed = 0
-WHERE loop_id = $loop_id AND indexed = 1
+UPDATE log_entries SET expanded = 0
+WHERE loop_id = $loop_id AND expanded = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_fold_log_entry
 -- §prompt-fold (User Note 6): fold a single log row by id — collapse to its
 -- coordinate, body elided in the render, re-OPENable. Used for the foisted prompt
 -- EDIT, which duplicates packet.user.prompt: logged for forensics, born folded.
-UPDATE log_entries SET indexed = 0 WHERE id = $id;
+UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §packet packet.system.log).
@@ -234,7 +234,7 @@ UPDATE log_entries SET indexed = 0 WHERE id = $id;
 -- memory carries across loops within a session's run, not just the
 -- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
--- `indexed = 0` rows are FOLDED — listed but collapsed to their coordinate
+-- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
 -- (FOLD); the renderer elides the body. §open-fold: folded rows stay listed, re-OPENable.
 SELECT
     l.sequence  AS loop_seq,
@@ -248,7 +248,7 @@ SELECT
     le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.indexed, le.source
+    le.state, le.outcome, le.expanded, le.source
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
