@@ -569,7 +569,7 @@ If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (is
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions. v0.15.0 is a deliberate clean break (issue #16/#17): the preview/fitting/tokenize surface was removed outright.
 
-## 16. References channel (framework v0.15.0, engine pending — issues #16/#19)
+## 16. References channel (framework v0.15.x — issues #16/#19, complete)
 
 The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the per-entry raw material for plurnk-service's `symbol_refs` graph rows; linking, traversal, and cross-entry identity are entirely service-side SQL.
 
@@ -591,9 +591,9 @@ interface MimeRef {
 
 **`ref.container` is the enclosing definition's FULL qualified path** — a call inside method `parse` of class `Parser` carries `container: "Parser.parse"`, exactly equal to the source def's composed `container + "." + name`. That equality is the join key for `@>` (edge source → def) — emitting only the immediate class would break it. Module-top-level references omit the key.
 
-**Extraction mechanism (issue #19, engine landed v0.15.x).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR/hand-rolled handlers implement `references()` visitor-side when their language's turn comes. Default everywhere: `[]`.
+**Extraction mechanism (issue #19, engine landed v0.15.x).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR and hand-rolled handlers implement `references()` visitor-side (`withExtractor.addRef` + `gateContainer`, or a direct `MimeRef[]` scan); `withExtractor.refs` returns document order to match the engine. Default everywhere: `[]`.
 
-Coverage: every code language in the registry ships a conformance-gated query (21 suites). Data formats (YAML, TOML, CSS) are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
+Coverage: every code language in the registry ships a conformance-gated query (23 in-registry suites), and the standalone handler family (the DSLs — terraform/dockerfile/protobuf/graphql/cmake/SQL — plus the standalone languages — swift/r/nix/perl/erlang/prolog/datalog/clojure/common-lisp/sparql/csharp/vim) emits conformance-gated references too. Data formats (YAML, TOML, CSS, JSON, CSV, INI, dotenv, …) and Redis are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
 
 Query conventions:
 - `import` refs capture **bound symbol names** (name-join-resolvable), never module-path strings; aliased imports capture the original exported name. Languages whose imports are paths only (Go) emit no import refs.
