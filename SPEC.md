@@ -745,6 +745,10 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
 
+**Client open-context (per session).** Two default-semantics knobs take a client override at `session.create({settings})`, persisted on the session (`sessions.settings`) and read at turn-0 with precedence over env. Operator-arcane knobs stay env-only — this is the narrow client surface:
+- `settings.manifestItems` (number) **replaces** `PLURNK_MANIFEST_ITEMS` for the session: a one-shot opens clean (`0`), a workspace full (`-1`) or capped (`N`). A single scalar — the client value wins outright. {§operator-config-session-manifest-items}
+- `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins (a deliberate shadow), but by default the policy doc rides into every session. The client sends content (it owns the file), not a path. {§operator-config-session-md-docs}
+
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
 External plugins declare their own env vars in their own `.env.example`; service merges at boot via the cascade.
@@ -832,7 +836,7 @@ registry.register("loop.run", {
 
 | Method                 | Params              | Result            | Notes |
 |------------------------|---------------------|-------------------|-------|
-| `session.create`       | `name?: string`, `projectRoot?: string` | `{ id, name, runId, runName, projectRoot }` | Creates new session + its first run; auto-name if unprovided. Returns the auto-created run's identity so clients skip the pending-dance ({§methods-session-create}). Optional `projectRoot` pins the workspace (null/omitted = headless). |
+| `session.create`       | `name?: string`, `projectRoot?: string`, `settings?: object` | `{ id, name, runId, runName, projectRoot }` | Creates new session + its first run; auto-name if unprovided. Returns the auto-created run's identity so clients skip the pending-dance ({§methods-session-create}). Optional `projectRoot` pins the workspace (null/omitted = headless); optional `settings` carries per-session open-context overrides (§operator-config). |
 | `session.list`         | none                | `{ sessions: Session[] }` | Lists all sessions. |
 | `session.attach`       | `id: number`, `runId?: number`, `runName?: string` | `{ id, name, runId, runName }` | Binds this connection to an existing session. Optional `runId` resumes that specific run (must belong to the session). Optional `runName` reuses-or-creates by name within the session. Both omitted → new auto-named run. {§methods-session-attach} |
 | `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |

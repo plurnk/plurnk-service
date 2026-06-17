@@ -88,3 +88,48 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the p
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+// #231 — a client's session.create settings.mdDocs UNION with the server's PLURNK_MD_*
+// docs: the operator's policy doc rides into every session, the client adds its own on
+// top, and on an alias collision the client deliberately shadows the server's.
+test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs with env PLURNK_MD_* — env rides, client adds, client wins a collision", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
+    const policyPath = join(dir, "policy.md");
+    const guidePath = join(dir, "guide.md");
+    await writeFile(policyPath, "# Server policy\nObey.\n", "utf8");
+    await writeFile(guidePath, "# Server guide\nRefer.\n", "utf8");
+    const prevPolicy = process.env.PLURNK_MD_POLICY;
+    const prevGuide = process.env.PLURNK_MD_GUIDE;
+    process.env.PLURNK_MD_POLICY = policyPath; // operator policy doc — the client shadows this one
+    process.env.PLURNK_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
+    try {
+        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "md-union", settings: { mdDocs: [
+                    { alias: "REPO", content: "# Repo guide\nlocal.\n" },
+                    { alias: "POLICY", content: "# Client policy\noverride.\n" },
+                ] } });
+                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                const { loopId } = resp.result as { loopId: number };
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+                const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === p);
+                const bodyOf = (p: string) => (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: p, scheme: "plurnk", name: "body" });
+
+                // the env doc the client didn't touch rides along (UNION, not replace)
+                assert.equal(read("/GUIDE.md")[0]?.status_rx, 200, "the uncollided server doc survives the union");
+                assert.match((await bodyOf("/GUIDE.md"))?.content ?? "", /Server guide/, "GUIDE keeps the server content");
+                // the client's new doc is added
+                assert.equal(read("/REPO.md")[0]?.status_rx, 200, "the client's REPO doc is materialized + READ at turn 0");
+                // collision → client wins, exactly once
+                assert.equal(read("/POLICY.md").length, 1, "POLICY.md foisted once — no duplicate on collision");
+                assert.match((await bodyOf("/POLICY.md"))?.content ?? "", /Client policy/, "on alias collision the client content wins, shadowing the server policy doc");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prevPolicy === undefined) delete process.env.PLURNK_MD_POLICY; else process.env.PLURNK_MD_POLICY = prevPolicy;
+        if (prevGuide === undefined) delete process.env.PLURNK_MD_GUIDE; else process.env.PLURNK_MD_GUIDE = prevGuide;
+        await rm(dir, { recursive: true, force: true });
+    }
+});

@@ -1,8 +1,8 @@
 -- Envelope lifecycle queries. SPEC §connection-lifecycle.
 
 -- PREP: envelope_insert_session
-INSERT INTO sessions (name, project_root)
-VALUES ($name, $project_root)
+INSERT INTO sessions (name, project_root, settings)
+VALUES ($name, $project_root, $settings)
 RETURNING id, name, project_root;
 
 -- PREP: envelope_get_session

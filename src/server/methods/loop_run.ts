@@ -7,6 +7,7 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import { Paths } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
+import SessionSettings from "../../core/session-settings.ts";
 import Envelope from "../envelope.ts";
 import DispatchAsPlurnk from "./_dispatchAsPlurnk.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -96,16 +97,15 @@ export default class LoopRunMethod {
                 // plurnk run, §actor-boundary) so the model READs it at turn 0 (Engine.runTurn
                 // foists the READ). The materializing EDITs land in the plurnk
                 // run's log, invisible to the model. Missing files are skipped.
-                const docStmts: EditStatement[] = [];
-                for (const doc of Paths.docs()) {
-                    let content: string;
-                    try { content = await readFile(doc.path, "utf8"); } catch { continue; }
-                    docStmts.push({
-                        op: "EDIT", suffix: "", signal: null,
-                        target: { kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/${doc.entryName}`, params: {}, fragment: null },
-                        lineMarker: null, body: content, position: { line: 1, column: 1 },
-                    });
-                }
+                // #231 — materialize env docs (PLURNK_MD_*) UNION the session's client docs
+                // (settings.mdDocs); client wins on alias collision. Engine.runTurn foists a
+                // READ of the same set at turn-0.
+                const { mdDocs } = await SessionSettings.read(ctx.db, sessionId);
+                const docStmts: EditStatement[] = (await SessionSettings.resolveDocs(mdDocs)).map((doc) => ({
+                    op: "EDIT", suffix: "", signal: null,
+                    target: { kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/${doc.entryName}`, params: {}, fragment: null },
+                    lineMarker: null, body: doc.content, position: { line: 1, column: 1 },
+                }));
                 if (docStmts.length > 0) await DispatchAsPlurnk.dispatch(ctx.engine, ctx.db, sessionId, docStmts);
 
                 // Delegate to the daemon's unified inject surface. Active-drain

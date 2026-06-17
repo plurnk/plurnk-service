@@ -34,6 +34,11 @@ UPDATE loops SET status = 499, terminal_message = $message WHERE id = $loop_id;
 -- terminal_message is the loop's deliverable (the SEND body) — rides the §run-scheme delta.
 UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_id;
 
+-- PREP: session_get_settings
+-- #231 — the session's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
+-- read at turn-0 with precedence over env.
+SELECT settings FROM sessions WHERE id = $session_id;
+
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 

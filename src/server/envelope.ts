@@ -65,10 +65,10 @@ export default class Envelope {
         return Envelope.#tsName("run");
     }
 
-    static async createClientEnvelope(db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null } = {}): Promise<ClientEnvelope> {
+    static async createClientEnvelope(db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
         const name = opts.name ?? Envelope.#tsName(opts.prefix ?? "session");
         const projectRoot = opts.projectRoot ?? null;
-        const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot });
+        const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
         if (session === undefined) throw new Error("createClientEnvelope: session insert returned no row");
         // SPEC §membership D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is

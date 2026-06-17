@@ -15,7 +15,7 @@ export default class SessionCreateMethod {
         // run's identity (runId/runName) so the client skips the pending-dance. §methods-session-create
         registry.registerMethod("session.create", {
             handler: async (params, ctx) => {
-                const p = params as { name?: string; projectRoot?: string | null; constraints?: unknown };
+                const p = params as { name?: string; projectRoot?: string | null; constraints?: unknown; settings?: unknown };
                 const projectRoot = p.projectRoot ?? null;
                 if (projectRoot !== null) {
                     if (typeof projectRoot !== "string" || projectRoot.length === 0) {
@@ -29,7 +29,10 @@ export default class SessionCreateMethod {
                 // turn-1's manifest already reflects it (no follow-up session.constrain
                 // RPC race). Same effects/semantics as session.constrain.
                 const constraints = SessionCreateMethod.#parseConstraints(p.constraints);
-                const envelope = await Envelope.createClientEnvelope(ctx.db, { name: p.name, projectRoot });
+                // #231 — client-chosen open-context, persisted on the session and read at
+                // turn-0 with precedence over env (manifestItems replaces, mdDocs unions).
+                const settings = SessionCreateMethod.#parseSettings(p.settings);
+                const envelope = await Envelope.createClientEnvelope(ctx.db, { name: p.name, projectRoot, settings });
                 if (constraints.length > 0) {
                     for (const { effect, glob } of constraints) {
                         await (ctx.db.crud_insert_session_constraint as PrepMethod).run({ session_id: envelope.sessionId, effect, glob });
@@ -53,6 +56,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only). glob: node:path glob vs workspace-relative paths.",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { manifestItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_MANIFEST_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision) }",
             },
         });
 
@@ -79,5 +83,34 @@ export default class SessionCreateMethod {
             }
             return { effect: e.effect, glob: e.glob };
         });
+    }
+
+    // #231 — validate + serialize the client open-context bag. manifestItems is a scalar
+    // (replace); mdDocs is [{alias, content}] (union'd with env at turn-0). Alias is a clean
+    // entry-name fragment ([\w.-]) since it becomes plurnk:///<alias>.md. Returns JSON ('{}'
+    // when absent). Operator-arcane knobs stay env-only by omission — this is the client surface.
+    static #parseSettings(raw: unknown): string {
+        if (raw === undefined || raw === null) return "{}";
+        if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
+        const r = raw as { manifestItems?: unknown; mdDocs?: unknown };
+        const out: { manifestItems?: number; mdDocs?: Array<{ alias: string; content: string }> } = {};
+        if (r.manifestItems !== undefined) {
+            if (typeof r.manifestItems !== "number" || !Number.isInteger(r.manifestItems)) {
+                throw new Error("session.create: settings.manifestItems must be an integer (-1 full | 0 off | N first-N)");
+            }
+            out.manifestItems = r.manifestItems;
+        }
+        if (r.mdDocs !== undefined) {
+            if (!Array.isArray(r.mdDocs)) throw new Error("session.create: settings.mdDocs must be an array");
+            out.mdDocs = r.mdDocs.map((d, i) => {
+                const e = d as { alias?: unknown; content?: unknown };
+                if (typeof e.alias !== "string" || e.alias.length === 0 || /[^\w.-]/.test(e.alias)) {
+                    throw new Error(`session.create: settings.mdDocs[${i}].alias must be a non-empty [\\w.-] string`);
+                }
+                if (typeof e.content !== "string") throw new Error(`session.create: settings.mdDocs[${i}].content must be a string`);
+                return { alias: e.alias, content: e.content };
+            });
+        }
+        return JSON.stringify(out);
     }
 }

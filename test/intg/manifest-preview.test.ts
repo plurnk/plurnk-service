@@ -77,3 +77,53 @@ test("manifest.json is materialized with the preview off — the model always ha
         if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
     }
 });
+
+// #231 — a session's client-chosen manifestItems REPLACES the env default outright,
+// both directions: it can switch the preview off when env says on, and on when off.
+test("[§operator-config-session-manifest-items] session.create settings.manifestItems replaces the env default at turn 0", async () => {
+    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    try {
+        // env ON (full) but the client's session asks for OFF (0) → no preview foisted.
+        process.env.PLURNK_MANIFEST_ITEMS = "-1";
+        await withDaemon(mock(), async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "mi-off", settings: { manifestItems: 0 } });
+                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                const { loopId } = resp.result as { loopId: number };
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "session manifestItems:0 replaces env -1 — no preview foisted");
+            } finally { ws.close(); }
+        });
+        // env OFF (0) but the client's session asks for ON (-1) → preview appears.
+        process.env.PLURNK_MANIFEST_ITEMS = "0";
+        await withDaemon(mock(), async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "mi-on", settings: { manifestItems: -1 } });
+                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                const { loopId } = resp.result as { loopId: number };
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const mr = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
+                assert.ok(mr !== undefined && mr.status_rx === 200, "session manifestItems:-1 replaces env 0 — preview foisted");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
+
+// #231 — the client surface is narrow + validated; malformed settings fail hard.
+test("session.create rejects malformed settings — fail hard, no silent accept (#231)", async () => {
+    await withDaemon(mock(), async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const badMI = await rpcCall(ws, 1, "session.create", { name: "bad-mi", settings: { manifestItems: 1.5 } });
+            assert.ok(badMI.error, "a non-integer manifestItems is a JSON-RPC error, not a silent accept");
+            assert.match(badMI.error!.message, /manifestItems must be an integer/);
+            const badAlias = await rpcCall(ws, 2, "session.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "has/slash", content: "x" }] } });
+            assert.ok(badAlias.error, "a malformed mdDocs alias is a JSON-RPC error");
+            assert.match(badAlias.error!.message, /alias must be/);
+        } finally { ws.close(); }
+    });
+});

@@ -15,6 +15,7 @@ import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
+import SessionSettings from "./session-settings.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -73,12 +74,11 @@ const readMaxCommands = (): number => {
 
 // PLURNK_MANIFEST_ITEMS — the turn-0 manifest preview. null = off (no foist);
 // -1 = the full manifest; positive N = the first N items. 0 / unset = off.
+const normalizeManifestItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
 const readManifestItems = (): number | null => {
     const raw = process.env.PLURNK_MANIFEST_ITEMS;
     if (raw === undefined || raw.length === 0) return null;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n === 0) return null;
-    return n < 0 ? -1 : n;
+    return normalizeManifestItems(Number.parseInt(raw, 10));
 };
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -692,7 +692,10 @@ export default class Engine {
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk run's log, never the model's.
-            for (const doc of Paths.docs()) {
+            // #231 — env docs (PLURNK_MD_*) UNION the session's client docs; foist a READ of
+            // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
+            const { mdDocs } = await SessionSettings.read(this.#db, sessionId);
+            for (const doc of await SessionSettings.resolveDocs(mdDocs)) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
                     username: null, password: null, hostname: null, port: null,
@@ -772,7 +775,9 @@ export default class Engine {
         // manifest is JSON); off by default. AFTER the manifest write so the READ hits
         // it, not a 404; same plurnk-origin foist as the operator docs.
         if (seq === 1) {
-            const manifestItems = readManifestItems();
+            // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
+            const { manifestItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
+            const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
             if (manifestItems !== null) {
                 const manifestRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, lineMarker: null,

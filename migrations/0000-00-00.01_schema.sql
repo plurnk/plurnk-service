@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     cost_pico                 INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
-    project_root              TEXT
+    project_root              TEXT,
+    -- #231 client-chosen session-open context: { manifestItems?, mdDocs? }, read at turn-0
+    -- with precedence over env (manifestItems replaces PLURNK_MANIFEST_ITEMS; mdDocs unions PLURNK_MD_*).
+    settings                  TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(settings))
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS sessions_created_at ON sessions (created_at);
