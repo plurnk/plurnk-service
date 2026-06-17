@@ -10,7 +10,7 @@ import type { EditStatement, SendStatement, ParsedPath } from "@plurnk/plurnk-gr
 // sister, waking it if idle). COPY = fork lives in Engine.#handleCopy — it must
 // copy the log before injecting. The scheme owns no entries: pure run control.
 export default class Run {
-    static teach = "Sister agent runs in this session. `run:///.` is you; `run:///<name>` is a sibling. EDIT(run:///name):prompt SPAWNS a new sibling seeded with that prompt; SEND(run:///name):msg messages a sibling, waking it if idle; COPY(run:///.):prompt FORKS — branches a run with your log so far, then continues it with the prompt. Siblings share this session's files and entries; only the conversation log is private to each.";
+    static teach = "Sister agent runs in this session. `run:///.` is you; `run:///<name>` is a sibling. EDIT(run:///name):prompt SPAWNS a new sibling seeded with that prompt; SEND(run:///name):msg messages a sibling, waking it if idle; COPY(run:///.):prompt FORKS — branches a run with your log so far, then continues it with the prompt; KILL(run:///name) ENDS a sibling. Siblings share this session's files and entries; only the conversation log is private to each.";
 
     // A control scheme — no entry channels. `category` is "data" only because
     // SchemeManifest offers no control/process value; the field is descriptive
