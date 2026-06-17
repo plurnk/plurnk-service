@@ -135,7 +135,7 @@ test("[§run-scheme-fork] COPY(run:///.):prompt forks — a branch run started v
     } finally { await db.close(); }
 });
 
-test("run cap: spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508), create nothing", async () => {
+test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE;
     process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = "1"; // ceiling of 1 active run
@@ -172,7 +172,7 @@ test("run cap: spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508
     }
 });
 
-test("run terminate: KILL(run:///name) aborts a sister by address; a missing sister is 404", async () => {
+test("[§run-scheme-terminate] KILL(run:///name) aborts a sister by address; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];

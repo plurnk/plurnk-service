@@ -128,7 +128,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 // run:///<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
 // so a graceful 200 and a grinder 499 surface the same way.
-test("a sibling's loop-termination surfaces folded, carrying its deliverable (SEND body) or abandon reason (§run-scheme)", async () => {
+test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carrying its deliverable (SEND body) or abandon reason", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `loopterm-${crypto.randomUUID()}`);

@@ -172,7 +172,7 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **Migration path.** Mostly stating what the schema already carries: `runs.parent_run_id` and the parentless `sessions` exist (§lifecycle-terms); `session_constraints` is session-level (§membership); §env-delta already makes a run's timeline self-contained, so a fork's log copy suffices. Additive: `run.fork` over the wire (the engine fork is built). Two repatriations: §actor-boundary's "read-only overlay scopes a run's writable surface" becomes a *session* policy bounding every run uniformly; and the §env-delta environment door has shed its per-run snapshot — a run's only memory is its log, so drift is pulled from the shared log (other actors' edits since the run's last turn) and the filesystem narrates its own through the `plurnk` run, both already log entries, never a per-run shadow.
 
-### §run-scheme The run:// scheme — spawn, irc, fork
+### §run-scheme The run:// scheme — spawn, irc, fork, terminate, cap, collect
 
 The run:// scheme makes §machine-processes addressable: a `run://` target is a sister run in the session — `run:///.` the current run, `run:///<name>` a session-scoped sibling (`runs.name`). Same-session only; a run never addresses another session's runs (§actor-boundary). Three ops, fire-and-forget — the child runs independently, lineage in `runs.parent_run_id`:
 
@@ -181,6 +181,12 @@ The run:// scheme makes §machine-processes addressable: a `run://` target is a 
 - **Fork** — `COPY(run:///<src>):prompt` branches `src` (self when `.`): the source's log is deep-copied into a new sister (§machine-processes-fork-copies-the-log), which continues with `prompt`; the world is shared, never copied (§machine-processes-fork-shares-the-world). {§run-scheme-fork}
 
 All three ride one engine seam — the daemon's inject (active→fold, idle→enqueue+drain) — so the handler creates/branches/resolves the run and hands off; the daemon owns provider + system prompt. COPY's body here is the fork's seed prompt, not a destination path: the engine routes a run:// source away from the entry-copy path before parsing the body.
+
+Beyond the three creation ops:
+
+- **Terminate** — `KILL(run:///<name>)` aborts a run by address (self when `.`): its active loop closes 499 and its subscriptions tear down; a name with no run is 404. The override to the fire-and-forget default — not a parent-power, whoever holds the address may end it; a run left alone simply ends at its own `SEND[200]`. {§run-scheme-terminate}
+- **Cap** — `PLURNK_SESSION_RUNS_MAX_ACTIVE` ceilings the *concurrent* active runs per session (a run with a non-terminal loop); a spawn or fork past it fails hard (508 — no queue, no retry), irc exempt; `-1` disables it. The fork-bomb brake, sized for sessions that live for months. {§run-scheme-cap}
+- **Collect** — a run's loop reaching a terminal status surfaces to its sisters as an ambient FOLDED delta (§env-delta): a `SEND` from `run:///<name>` carrying the loop's deliverable — the `SEND[200]` body, or for an abandonment the reason. Every death-path is stamped uniformly, so no termination is silent; collection is the shared world moving, never a verb. {§run-scheme-collect}
 
 ---
 
