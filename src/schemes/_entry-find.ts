@@ -17,6 +17,7 @@ import { LineMarkerOps } from "../content/index.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
+import { decodePathParens } from "../core/path-decode.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
@@ -31,8 +32,8 @@ export default class EntryFind {
     static #scopePathnameOf(statement: FindStatement | OpenStatement | FoldStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
-        if (path.kind === "url") return path.pathname;
-        return path.raw;
+        if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
+        return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
     }
 
     static #paginate<T>(items: T[], marker: { first: number; last: number | null }): { status: number; items?: T[] } {

@@ -16,6 +16,7 @@ import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
 import SessionSettings from "./session-settings.ts";
+import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -207,8 +208,8 @@ interface SchemeWithCrud {
 }
 
 const pathnameFromPath = (path: ParsedPath): string => {
-    if (path.kind === "url") return path.pathname;
-    return path.raw;
+    if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
+    return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
 };
 
 // Default turn.status when ops were emitted but no SEND. Model is implicitly
@@ -2179,11 +2180,12 @@ export default class Engine {
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
         // `local` (bare path) and `regex` (grammar 0.46 `#pattern#flags` target) carry no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "local" || path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null };
+        if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
         return {
             scheme, username: path.username, password: path.password,
-            hostname: path.hostname, port: path.port, pathname: path.pathname,
+            hostname: path.hostname, port: path.port, pathname: decodePathParens(path.pathname), // #239 item 4
             params: JSON.stringify(path.params), fragment: path.fragment,
         };
     }

@@ -1,5 +1,6 @@
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
+import { decodePathParens } from "../core/path-decode.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
@@ -30,8 +31,8 @@ export default class EntryOps {
     static #pathnameOf(statement: { target: EditStatement["target"] }): string {
         const t = statement.target;
         if (t === null) throw new Error("unreachable");
-        if (t.kind === "url") return t.pathname;
-        return t.raw;
+        if (t.kind === "regex") return t.raw; // regex source — parens are syntax, never encoded
+        return decodePathParens(t.kind === "url" ? t.pathname : t.raw); // #239 item 4
     }
 
     static #fragmentOf(statement: { target: EditStatement["target"] }): string | null {

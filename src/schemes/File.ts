@@ -3,6 +3,7 @@ import { relative, isAbsolute, join, matchesGlob } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
+import { decodePathParens } from "../core/path-decode.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { ReadResult } from "./_entry-ops.ts";
@@ -142,7 +143,8 @@ export default class File {
     // calls applyResolution() (below) after the proposal accepts.
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
         if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
-        const pathname = statement.target.kind === "url" ? statement.target.pathname : statement.target.raw;
+        const pathname = statement.target.kind === "regex" ? statement.target.raw
+            : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, ctx);
         if (!target.ok) return { status: target.status, error: target.error };
         const { canonical, rel, fileExists, original, mimetype } = target;
