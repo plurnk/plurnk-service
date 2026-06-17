@@ -212,6 +212,14 @@ test("GBNF: SEND[202] (parked) is a pathless terminator, not a mid status", () =
     assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
+test("GBNF: SEND[500] (failed) is a terminal disposition, reserved from mid", () => {
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:could not complete:SEND"), true);
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500](run://parent):aborted:SEND"), true); // terminate-and-report failure
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:fail:SEND\n<<SEND[200]:done:SEND"), false); // 500 is terminal-only
+    // other 5xx stay available as mid error-report codes
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[503]:upstream busy:SEND\n<<SEND[200]:done:SEND"), true);
+});
+
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, non-loop status) before the final", () => {
     // mid SENDs must NOT carry a loop code (102/202/200) — those are terminal-always.
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
@@ -306,8 +314,8 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
         assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
         // terminal is path-agnostic now — target may be present or null; the loop code is what closes the turn
         assert.ok(
-            last.statement.signal === 102 || last.statement.signal === 200 || last.statement.signal === 202,
-            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202\nbatch: ${JSON.stringify(turn)}`,
+            [102, 200, 202, 500].includes(last.statement.signal as number),
+            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202/500\nbatch: ${JSON.stringify(turn)}`,
         );
     }
 });

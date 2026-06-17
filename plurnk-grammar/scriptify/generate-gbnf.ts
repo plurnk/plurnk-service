@@ -143,16 +143,19 @@ export const buildModel = (): GModel => {
     model.set("send-final-any", sendFinalAlts);
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-    // status-final: the three loop dispositions the model may close a turn with —
-    // 102 continue (re-invoke now), 202 parked (suspend until a wake event), 200 done.
-    // status-mid: any 3-digit code EXCEPT 102, 200, and 202 (finite-literal complement).
-    model.set("status-final", [[lit("102")], [lit("200")], [lit("202")]]);
+    // status-final: the four loop dispositions the model may close a turn with —
+    // 102 continue (re-invoke now), 202 parked (suspend until a wake event),
+    // 200 done (success), 500 failed (aborted, did not complete).
+    // status-mid: any 3-digit code EXCEPT 102, 200, 202, 500 (finite-literal complement).
+    model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("500")]]);
     model.set("status-mid", [
         [lit("10"), cls([R("0", "1"), R("3", "9")])],
         [lit("1"), cls([R("1", "9")]), DIGIT],
         [lit("20"), cls([R("1", "1"), R("3", "9")])],
         [lit("2"), cls([R("1", "9")]), DIGIT],
-        [cls([R("0", "0"), R("3", "9")]), DIGIT, DIGIT],
+        [cls([R("0", "0"), R("3", "4"), R("6", "9")]), DIGIT, DIGIT],
+        [lit("50"), cls([R("1", "9")])],
+        [lit("5"), cls([R("1", "9")]), DIGIT],
     ]);
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
