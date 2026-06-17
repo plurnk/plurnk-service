@@ -1,4 +1,4 @@
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { realpath, stat, writeFile } from "node:fs/promises";
 import { relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
@@ -14,12 +14,12 @@ import type { ReadEntryResult, EntryData, WriteEntryResult } from "./_entry-crud
 
 // Resolved + §membership-gated disk-write target, or the error status to return.
 type WriteTarget =
-    | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string }
+    | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null }
     | { ok: false; status: number; error: string };
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
 // Workspace root for file ops is sourced from `sessions.project_root`,
@@ -147,18 +147,25 @@ export default class File {
         const rel = `/${relBare}`;  // namespace-absolute entry key — matches the parser + membership storage
 
         let original = "";
+        let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         if (fileExists) {
-            const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
+            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
             const viewGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
             if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
-            original = await readFile(canonical, "utf8");
+            // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
+            // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
+            // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
+            // run's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
+            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ session_id: ctx.sessionId, scheme: null, pathname: rel, channel: "body" });
+            original = snapshot?.content ?? "";
+            baseSig = member.synced_sig;
         }
 
         const mimetype = await detectFileMimetype(canonical, ctx);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) return { ok: false, status: 415, error: `cannot write binary mimetype \`${mimetype}\`` };
-        return { ok: true, canonical, rel, fileExists, original, mimetype };
+        return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig };
     }
 
     // Edit op (task #42 canonical proposal consumer). Returns status=202
@@ -171,7 +178,7 @@ export default class File {
             : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, ctx);
         if (!target.ok) return { status: target.status, error: target.error };
-        const { canonical, rel, fileExists, original, mimetype } = target;
+        const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
 
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
@@ -190,7 +197,7 @@ export default class File {
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched } };
+        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, baseSig, existed: fileExists } };
     }
 
     // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
@@ -204,10 +211,10 @@ export default class File {
         if (bodyChannel === undefined) return { status: 400, created: false, entryId: null };
         const target = await this.#resolveWriteTarget(pathname, ctx);
         if (!target.ok) return { status: target.status, created: false, entryId: null };
-        const { canonical, rel, fileExists, original } = target;
+        const { canonical, rel, fileExists, original, baseSig } = target;
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched } };
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, baseSig, existed: fileExists } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
@@ -232,6 +239,27 @@ export default class File {
         if (typeof patched !== "string") {
             return { status: 500, outcome: "applyResolution: missing patched content" };
         }
+        // CAS — the write-side twin of #materializeMember's read-gate (synced_sig === sig). The
+        // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
+        // since propose, the full-blob write would clobber it. Refuse and surface a write_conflict —
+        // the next reconcile narrates disk truth via FsDivergence; the model re-reads + re-proposes.
+        // No clever re-diff, no clobber. §membership-edit-write-cas
+        const baseSig = (args.attrs.baseSig ?? null) as string | null;
+        const existed = args.attrs.existed === true;  // proposal targeted an existing member (edit) vs a fresh create
+        let currentSig: string | null = null;
+        try {
+            const st = await stat(canonical);
+            currentSig = `${st.mtimeMs}:${st.size}`;
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        }
+        // Edit → CAS on the snapshot signature (a null baseSig is an un-materialized member with no
+        // recorded snapshot — no baseline to guard, so the write proceeds). Create → the proposal
+        // assumed an absent path, so any file present now is the conflict.
+        const conflict = existed ? (baseSig !== null && currentSig !== baseSig) : (currentSig !== null);
+        if (conflict) {
+            return { status: 409, outcome: `write_conflict: ${relPath} changed on disk since the proposal (expected ${existed ? baseSig : "absent"}, found ${currentSig ?? "absent"}) — re-read and re-propose` };
+        }
         try {
             await writeFile(canonical, patched, "utf8");
         } catch (err) {
@@ -253,6 +281,12 @@ export default class File {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
             }, ctx, null);
+            // Restamp synced_sig to the landed write so the next reconcile recognizes our own
+            // write as the synced state — not an FsDivergence narrated back at the model.
+            if (entryId !== null) {
+                const landed = await stat(canonical);
+                await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
+            }
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
             // the write as 200 (file is on disk) but log the failure —

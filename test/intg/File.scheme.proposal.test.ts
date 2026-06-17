@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
@@ -75,9 +75,15 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         // File.edit gates on membership (SPEC §membership): a pre-existing file must be a
         // member (git-tracked or client-added) to be editable — register it, the same
         // way READ's gate is satisfied below. A NEW path needs no prior member.
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, target), "hello\n", "utf8");
+        // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
+        // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
+        // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
+        const seeded = await (ctx.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
+        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
+        const seededStat = await stat(join(root, target));
+        await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
 
         const stmt = fileEditStmt(target, "hello world\n");
         const idDeferred = deferred<number>();

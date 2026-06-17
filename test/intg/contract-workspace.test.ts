@@ -196,6 +196,55 @@ test("a member addressed by its ABSOLUTE disk path (echoed from exec/build outpu
     });
 });
 
+type WriteAttrs = { path: string; canonical: string; patched: string; baseSig: string | null };
+
+test("[§membership-edit-write-cas] an out-of-band disk change between propose and accept is a write conflict, never a clobber", async () => {
+    await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
+        await GitMembership.indexGitMembership(ctx); // snapshot: body channel + synced_sig, both from disk
+        const file = new File();
+
+        // The model proposes an edit against the snapshot it READ.
+        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nthe model's revision.\n"), ctx);
+        assert.equal(proposal.status, 202, "edit proposes (202)");
+
+        // An ambient writer (the user's editor, a build step, a sibling run) changes the file on
+        // disk AFTER the proposal was computed — exactly the drift the CAS must catch.
+        const ambient = "# Tracked by git\n\nAMBIENT out-of-band change — written under the paused proposal, clearly a different size.\n";
+        await writeFile(join(root, trackedPath), ambient, "utf8");
+
+        // Accept. body omitted, so a successful write would land attrs.patched (the full proposed
+        // content) — which is exactly what must NOT happen now that disk has drifted from baseSig.
+        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
+        assert.equal(applied.status, 409, "a drifted disk is a write conflict, not a silent clobber");
+        assert.match(applied.outcome ?? "", /write_conflict/, "the conflict surfaces to the model as a write_conflict outcome");
+
+        // The ambient change SURVIVES untouched — nothing got clever, nothing clobbered.
+        assert.equal(await readFile(join(root, trackedPath), "utf8"), ambient, "the ambient out-of-band change is preserved, not overwritten by the stale proposal");
+    });
+});
+
+test("[§membership-edit-write-cas] with no drift the proposal lands and restamps the snapshot signature", async () => {
+    await withGitWorkspace(async (root, ctx, db, trackedPath) => {
+        await GitMembership.indexGitMembership(ctx);
+        const file = new File();
+        const sigBefore = await (db.crud_get_member_sig as PrepMethod).get<{ synced_sig: string | null }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}` });
+
+        const revised = "# Tracked by git\n\nlanded cleanly.\n";
+        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), revised), ctx);
+        assert.equal(proposal.status, 202);
+
+        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
+        assert.equal(applied.status, 200, "no drift → the write lands");
+        assert.equal(await readFile(join(root, trackedPath), "utf8"), revised, "disk holds the proposed content");
+
+        // synced_sig is restamped to the landed write, so the next reconcile doesn't narrate our
+        // own write back at the model as an FsDivergence.
+        const sigAfter = await (db.crud_get_member_sig as PrepMethod).get<{ synced_sig: string | null }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}` });
+        assert.notEqual(sigAfter?.synced_sig, sigBefore?.synced_sig, "synced_sig advanced to the landed write");
+        assert.notEqual(sigAfter?.synced_sig, null, "synced_sig is stamped, not cleared");
+    });
+});
+
 // ───────────── §membership deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
