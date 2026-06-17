@@ -7,10 +7,8 @@ import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
 import Run from "../schemes/Run.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
-import PluginTrust from "./plugin-trust.ts";
 import type { LoopFlags } from "./types.ts";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
 
 type SchemeHandler = object;
 
@@ -84,53 +82,25 @@ export default class SchemeRegistry {
         return out;
     }
 
-    // Discover external scheme siblings — agnostic by plurnk.kind:"scheme" (never
-    // by package name OR scope, #227) so a third party ships one under ANY name,
-    // exactly like executors. Registered by declared plurnk.name; a sibling reaches
-    // the substrate only through the DB-free SchemeCtx the engine wraps for
-    // isExternal() schemes. A name collision with an in-tree scheme fail-hards in register.
+    // Discover external scheme siblings — delegated to the framework's SchemeDiscovery
+    // (schemes 0.9+): the scope-agnostic node_modules scan for plurnk.kind:"scheme" +
+    // plurnk.name AND the PLURNK_PLUGINS_TRUSTED_ONLY trust gate (untrusted → `skipped`,
+    // never crashed) both live there now, single-sourced across the plugin families
+    // (the "delegate upstream" rule — execs/mimetypes/providers already ship discover()).
+    // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
+    // is left as-is) and importing + registering the trusted descriptors. A sibling reaches
+    // the substrate only through the DB-free SchemeCtx the engine wraps for isExternal() schemes.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
-        for (const dir of await SchemeRegistry.#packageDirs(join(cwd, "node_modules"))) {
-            const raw = await readFile(join(dir, "package.json"), "utf8").catch(() => null);
-            if (raw === null) continue;
-            let pkg: { plurnk?: { kind?: string; name?: string }; name?: string };
-            try { pkg = JSON.parse(raw); } catch { continue; }
-            const plurnk = pkg.plurnk;
-            if (plurnk?.kind !== "scheme" || typeof plurnk.name !== "string" || plurnk.name === "") continue;
-            if (typeof pkg.name !== "string") continue;
-            // #229 — trust gate: an untrusted third-party scheme is discovered but
-            // NOT registered (skipped with a note, never crashed).
-            if (!PluginTrust.isTrusted(pkg.name)) {
-                console.warn(`scheme discovery: '${pkg.name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
-                continue;
-            }
-            // Idempotent + in-tree precedence: a name already registered (a
-            // built-in, or a re-scan) is left as-is rather than fail-harding on
-            // re-register. Discovery must be safe to call again.
-            if (this.has(plurnk.name)) continue;
-            const mod = await import(pkg.name) as { default: new () => SchemeHandler };
-            this.register(plurnk.name, new mod.default());
-            this.#external.add(plurnk.name);
+        const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
+        for (const name of skipped) {
+            console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
-    }
-
-    // Every installed package dir — unscoped (node_modules/pkg) AND each scoped
-    // member (node_modules/@scope/pkg). The scope-agnostic walk (#227): discovery
-    // keys on plurnk.kind, never the @plurnk scope, so any vendor can publish a sibling.
-    static async #packageDirs(root: string): Promise<string[]> {
-        const top = await readdir(root, { withFileTypes: true }).catch(() => null);
-        if (top === null) return [];
-        const dirs: string[] = [];
-        for (const entry of top) {
-            if (!entry.isDirectory()) continue;
-            if (entry.name.startsWith("@")) {
-                const scoped = await readdir(join(root, entry.name), { withFileTypes: true }).catch(() => null);
-                for (const s of scoped ?? []) if (s.isDirectory()) dirs.push(join(root, entry.name, s.name));
-            } else {
-                dirs.push(join(root, entry.name));
-            }
+        for (const { name, packageName } of schemes) {
+            if (this.has(name)) continue; // in-tree precedence + idempotent re-scan
+            const mod = await import(packageName) as { default: new () => SchemeHandler };
+            this.register(name, new mod.default());
+            this.#external.add(name);
         }
-        return dirs;
     }
 
     // Active set under the given loop flags (SPEC §engine-rails). Delegates to

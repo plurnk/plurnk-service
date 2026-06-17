@@ -52,7 +52,7 @@
         "@plurnk/plurnk-providers": "0.8.0",
         "@plurnk/plurnk-providers-all": "0.8.0",
         "@plurnk/plurnk-schemes": "0.15.0",
-        "@plurnk/plurnk-schemes-http": "0.3.0",
+        "@plurnk/plurnk-schemes-all": "0.1.1",
         "@possumtech/sqlrite": "5.1.1",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
