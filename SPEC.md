@@ -517,7 +517,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 - `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per grammar plurnk.md §"Body matcher dispatch"; the path-glob lives in the (target), not the body. {§find-glob-filter-on-content}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§find-tag-filter-and-semantics}
 - Session + scheme scoped — no cross-session/cross-scheme leakage. {§find-scoped-isolation}
-- Returns `{ status: 200, results: string }` (newline-separated matching paths, `text/plain`).
+- Returns `FindResult { status, content, mimetype, results: Finding[] }`. A **finding** is its enclosing structural unit, not a bare path: `Finding { path, extent: {first,last}|null, symbol?, content? }` — `extent` is the `<L>` line span (a whole-entry finding is `null`), `symbol` names the unit when known. `content` renders the findings as usable addresses, one per line — `path<extent> (symbol)`, e.g. `known:///auth.ts<10,25> (login)`, or the bare path when `extent` is null (`text/plain`); the model READs an address to pull that region into its log. Extent resolution is per dialect: a content match (glob/regex/jsonpath/xpath) resolves each hit line to its smallest enclosing `symbol_defs` row (the bare line when none covers it); `~`semantic carries the best-matching chunk's span; `@`graph and a body-less FIND yield whole-entry findings. {§find-result-findings}
 
 ### §send SEND
 

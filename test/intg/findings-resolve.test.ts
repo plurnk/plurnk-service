@@ -45,7 +45,7 @@ test("[findings] findingsForMatch maps hit lines to enclosing-symbol findings, d
     } finally { await db.close(); }
 });
 
-test("[findings] FIND returns structured findings end-to-end — extent + symbol, rendered as an address", async () => {
+test("[§find-result-findings] FIND returns structured findings end-to-end — extent + symbol, rendered as an address", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `findings-shape-${crypto.randomUUID()}`);
