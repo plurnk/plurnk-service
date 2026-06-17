@@ -16,7 +16,7 @@
 // The path-globs live in the (target); the body is the content matcher.
 //
 // All four honor this: READ via read-resolve, FIND/OPEN/FOLD via
-// _entry-find.matchPathnames → matchAgainstContent against the candidate's
+// _entry-find.matchFindings → matchAgainstContent against the candidate's
 // CONTENT (_entry-find.ts:95). The body-on-pathname divergence these once
 // pinned is reconciled — they are green pins now, not deferred-reds.
 
@@ -129,7 +129,7 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
         ]);
         const r = await new Known().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///alpha"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alpha"]);
     } finally { db.close(); }
 });
 
@@ -144,7 +144,7 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
         ]);
         const r = await new Known().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///france/capital"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///france/capital"]);
     } finally { db.close(); }
 });
 
@@ -163,7 +163,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///alice.json"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alice.json"]);
     } finally { db.close(); }
 });
 
@@ -177,7 +177,7 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///a.xml"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -196,7 +196,7 @@ test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by struc
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///a.json"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.json"]);
     } finally { db.close(); }
 });
 
@@ -210,7 +210,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
         ]);
         const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///a.xml"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -231,6 +231,6 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         await EntryManifest.buildManifestBody(ctx);  // store real embeddings via the daughter
         const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///a"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a"]);
     } finally { db.close(); }
 });

@@ -25,6 +25,7 @@ export interface MatchResult {
     status: number;
     body?: string;          // N:\t<value> lines (200) or raw fallback content (203)
     matches?: number;       // hit count (status 200 / 204)
+    lines?: number[];       // matched line numbers (status 200) — Project Findings extent substrate
     error?: string;         // status 400 — malformed matcher expression
     mimetype?: string;      // 203 fallback mimetype
     reason?: string;        // 203 fallback: the parse-failure reason for the model
@@ -117,6 +118,6 @@ export default class Matcher {
         }
         if (matches.length === 0) return { status: 204, matches: 0 };
         const adjusted = Matcher.#shiftLines(matches, baseLine);
-        return { status: 200, body: Matcher.#renderMatches(adjusted), matches: adjusted.length };
+        return { status: 200, body: Matcher.#renderMatches(adjusted), matches: adjusted.length, lines: adjusted.map((m) => m.line) };
     }
 }

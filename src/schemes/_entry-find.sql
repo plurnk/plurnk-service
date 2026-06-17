@@ -12,7 +12,7 @@
 -- $channel: default-channel name whose content the body matcher runs against
 -- $scope_pathname: pathname-prefix glob (e.g., "foo/*") or NULL for no prefix
 -- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
-SELECT e.pathname, ec.content, ec.mimetype
+SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.scope = 'session'

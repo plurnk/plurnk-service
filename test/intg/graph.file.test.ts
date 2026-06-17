@@ -51,12 +51,12 @@ test("[#186-graph-file] @graph resolves over file:/// entries — the primary co
         const ctx = makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 });
         const referrers = await new File().find(findStmt(fileUrl(""), graph("@<foo")), ctx);
         assert.equal(referrers.status, 200);
-        assert.deepEqual(referrers.results, ["file:///src/b.ts"]);
+        assert.deepEqual([...new Set(referrers.results.map((f) => f.path))], ["file:///src/b.ts"]);
 
         const referents = await new File().find(findStmt(fileUrl(""), graph("@>foo")), ctx);
-        assert.deepEqual(referents.results, ["file:///src/c.ts"]);
+        assert.deepEqual([...new Set(referents.results.map((f) => f.path))], ["file:///src/c.ts"]);
 
         const neighborhood = await new File().find(findStmt(fileUrl(""), graph("@foo")), ctx);
-        assert.deepEqual(neighborhood.results, ["file:///src/a.ts", "file:///src/b.ts", "file:///src/c.ts"]);
+        assert.deepEqual([...new Set(neighborhood.results.map((f) => f.path))], ["file:///src/a.ts", "file:///src/b.ts", "file:///src/c.ts"]);
     } finally { db.close(); }
 });

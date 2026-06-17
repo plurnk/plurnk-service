@@ -55,7 +55,7 @@ test("regex target selects entries whose pathname matches the regex", async () =
         // or a bare-prefix glob can't produce this, so a hit proves regex-over-pathname.
         const r = await new Known().find(findStmt(regexPath("\\.test\\.ts$")), makeSchemeCtx({ db, sessionId }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///src/auth.test.ts"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///src/auth.test.ts"]);
     } finally { db.close(); }
 });
 
@@ -65,7 +65,7 @@ test("regex target honors flags — case-insensitive pathname match", async () =
         await seed(db, sessionId, runId, ["README.md", "src/readme-helper.ts", "src/other.ts"]);
         const r = await new Known().find(findStmt(regexPath("readme", "i")), makeSchemeCtx({ db, sessionId }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...r.results].sort(), ["known:///README.md", "known:///src/readme-helper.ts"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))].sort(), ["known:///README.md", "known:///src/readme-helper.ts"]);
     } finally { db.close(); }
 });
 

@@ -51,8 +51,8 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         assert.equal(r.status, 200);
         // The two connection entries are returned, real-cosine-ranked; cake (no shared
         // keyword) is excluded by the FTS narrow, never reaching cosine.
-        assert.deepEqual([...r.results].sort(), ["known:///db.md", "known:///sql.md"]);
-        assert.ok(!r.results.includes("known:///cake.md"), "the unrelated recipe never enters the ranking");
+        assert.deepEqual(r.results.map((f) => f.path).sort(), ["known:///db.md", "known:///sql.md"]);
+        assert.ok(!r.results.some((f) => f.path === "known:///cake.md"), "the unrelated recipe never enters the ranking");
     } finally { db.close(); }
 });
 
@@ -74,12 +74,12 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         // an integer top-K would, proving the decimal routes to the threshold path.
         const low = await new Known().find(thresholdStmt(url(""), "database connection error", 0.05), findCtx());
         assert.equal(low.status, 200);
-        assert.deepEqual([...low.results].sort(), ["known:///db.md", "known:///sql.md"]);
+        assert.deepEqual([...new Set(low.results.map((f) => f.path))].sort(), ["known:///db.md", "known:///sql.md"]);
 
         // A near-1 floor admits nothing — the threshold actually filters; it isn't a top-K in disguise.
         const high = await new Known().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
         assert.equal(high.status, 200);
-        assert.deepEqual(high.results, [], "a 0.999 floor filters everything out");
+        assert.deepEqual([...new Set(high.results.map((f) => f.path))], [], "a 0.999 floor filters everything out");
 
         // <0.05,1> — threshold + result cap → at most one, the closest.
         const capped = await new Known().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());

@@ -60,7 +60,7 @@ test("[#186-graph-referrers] @<foo finds entries that REFERENCE foo (not the def
     try {
         const r = await find(db, sessionId, runId, "@<foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///b.ts"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///b.ts"]);
     } finally { db.close(); }
 });
 
@@ -69,7 +69,7 @@ test("[#186-graph-referents] @>foo finds entries DEFINING what foo references", 
     try {
         const r = await find(db, sessionId, runId, "@>foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///c.ts"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///c.ts"]);
     } finally { db.close(); }
 });
 
@@ -78,7 +78,7 @@ test("[#186-graph-neighborhood] @foo = def ∪ referrers ∪ referents", async (
     try {
         const r = await find(db, sessionId, runId, "@foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, ["known:///a.ts", "known:///b.ts", "known:///c.ts"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.ts", "known:///b.ts", "known:///c.ts"]);
     } finally { db.close(); }
 });
 
@@ -87,7 +87,7 @@ test("[#186-graph-miss] @<nope (no such symbol) → 200 with empty results", asy
     try {
         const r = await find(db, sessionId, runId, "@<nope");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, []);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });
 
@@ -99,7 +99,7 @@ test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", as
         await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId, runId }));  // re-derive at manifest-add
         const r = await find(db, sessionId, runId, "@<foo");
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results, []);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });
 

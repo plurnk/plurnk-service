@@ -64,13 +64,13 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const [findByTag] = parse("<<FIND[answer](known:///)::FIND");
         const r6 = await dispatch(findByTag, 5);
         assert.equal(r6.status, 200);
-        assert.deepEqual(r6.results, ["known:///france/capital"]);
+        assert.deepEqual([...new Set((r6.results as { path: string }[]).map((f) => f.path))], ["known:///france/capital"]);
 
         // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
         const [findByGlob] = parse("<<FIND(known:///):Paris*:FIND");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
-        assert.deepEqual(r7.results, ["known:///france/capital"]);
+        assert.deepEqual([...new Set((r7.results as { path: string }[]).map((f) => f.path))], ["known:///france/capital"]);
 
         const [moveOp] = parse("<<MOVE(known:///france/capital):known:///archive/france/capital:MOVE");
         const r10 = await dispatch(moveOp, 9);
