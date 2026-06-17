@@ -113,9 +113,10 @@ CREATE TABLE IF NOT EXISTS entries (
     params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
     -- SPEC §membership — how a file member entered the curated surface. 'git' rows are
-    -- reconciled against `git ls-files − ignore` each turn (registered + un-registered
-    -- so entries == members); 'client'/'constraint' (model-created, add-glob) are not
-    -- git's to reclaim. NULL = not a file member (other schemes don't carry origin).
+    -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-
+    -- but-not-ignored files (§membership-auto-add) — registered + un-registered so entries
+    -- == members; 'client'/'constraint' (model-created, add-glob) are not git's to reclaim.
+    -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
     -- @graph / ~semantic change-gate (#186): hash of the body content at the last
     -- deep-channel derivation. The manifest-add pass re-derives symbols/refs (and

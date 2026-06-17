@@ -74,6 +74,16 @@ export default class GitMembership {
         return files;
     }
 
+    // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add): `git
+    // ls-files --others --exclude-standard -z`. A model-created file is a repo member the
+    // moment it exists — no git-stage required — while `.gitignore` still filters it out
+    // (--exclude-standard). NUL-delimited so paths with spaces/newlines survive; untracked
+    // rows carry no mode, so (unlike --stage) there's no gitlink to filter.
+    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024 });
+        return stdout.split("\0").filter((e) => e.length > 0);
+    }
+
     // Resolve a declared repo folder to its git toplevel (the repo root containing
     // it), or null if it isn't inside a git tree. `rev-parse --show-toplevel` handles
     // plain repos, linked worktrees (`.git` is a gitdir: file), and submodules alike.
@@ -86,16 +96,19 @@ export default class GitMembership {
         }
     }
 
-    // The forest (SPEC §membership, §membership-forest): union every declared repo's tracked files,
-    // each path-prefixed by the repo's location relative to the session root (empty
-    // prefix when the repo IS the root). Repos that don't resolve are skipped.
-    static async #forestTrackedFiles(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
+    // The forest (SPEC §membership, §membership-forest): union every declared repo's MEMBERS —
+    // tracked files PLUS untracked-but-not-ignored ones (§membership-auto-add) — each
+    // path-prefixed by the repo's location relative to the session root (empty prefix when
+    // the repo IS the root). Repos that don't resolve are skipped.
+    static async #forestMembers(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
         for (const dir of repoDirs) {
             const repoRoot = await GitMembership.#repoToplevel(dir, signal);
             if (repoRoot === null) continue;
             const prefix = relative(root, repoRoot);
-            for (const f of await GitMembership.#gitTrackedFiles(repoRoot, signal)) {
+            const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal);
+            const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal);
+            for (const f of [...tracked, ...untracked]) {
                 members.add(prefix === "" ? f : join(prefix, f));
             }
         }
@@ -134,17 +147,17 @@ export default class GitMembership {
         const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
         const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
 
-        // git substrate — the union of the session's DECLARED repos' tracked files
-        // (SPEC §membership forest). PLURNK_GIT_ALLOWED=0 is the hard ceiling (deny all
-        // git membership); PLURNK_GIT_AUTO=1 declares project_root as an implicit repo.
-        // Empty when git is denied or no declared repo resolves, so `pick` is then the
-        // sole source. No early-return on non-git.
+        // git substrate — the union of the session's DECLARED repos' MEMBERS: tracked files
+        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_GIT_ALLOWED=0 is
+        // the hard ceiling (deny all git membership); PLURNK_GIT_AUTO=1 declares project_root
+        // as an implicit repo. Empty when git is denied or no declared repo resolves, so
+        // `pick` is then the sole source. No early-return on non-git.
         const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
         if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
         // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
         const sessionGit = (await SessionSettings.read(db, sessionId)).git;
-        const tracked = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
-            ? await GitMembership.#forestTrackedFiles(root, repoDirs, signal)
+        const members = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
+            ? await GitMembership.#forestMembers(root, repoDirs, signal)
             : [];
 
         // `pick` overlay — a targeted, client-dictated scan for untracked matches
@@ -152,11 +165,11 @@ export default class GitMembership {
         const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // §membership-overlay-pick
 
         // Compose: (git ∪ pick) − hide (§membership-overlay-hide), tracking origin for reconciliation — a path
-        // in `tracked` is 'git', a pick-only match is 'constraint'.
-        const trackedSet = new Set(tracked);
+        // in `members` is 'git', a pick-only match is 'constraint'.
+        const memberSet = new Set(members);
         const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
-        const desiredGit = tracked.filter(passesHide);
-        const desiredPick = picked.filter((p) => !trackedSet.has(p) && passesHide(p));
+        const desiredGit = members.filter(passesHide);
+        const desiredPick = picked.filter((p) => !memberSet.has(p) && passesHide(p));
         // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.

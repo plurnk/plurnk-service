@@ -106,6 +106,27 @@ const withGitWorkspace = async (
     }
 };
 
+test("[§membership-auto-add] an untracked-but-not-ignored file is a member the moment it exists; .gitignore still filters", async () => {
+    await withGitWorkspace(async (root, ctx, db) => {
+        // A model-created file: on disk, untracked, never `git add`ed.
+        await writeFile(join(root, "draft.md"), "# A model-created draft\n");
+        // .gitignore (itself untracked) excludes secret.env — git honors it even uncommitted.
+        await writeFile(join(root, ".gitignore"), "secret.env\n");
+        await writeFile(join(root, "secret.env"), "TOKEN=xxx\n");
+
+        await GitMembership.indexGitMembership(ctx);
+        const member = (pathname: string) => (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname });
+
+        assert.ok(await member("/draft.md"), "the untracked-but-not-ignored file is a member the moment it exists (no git-stage)");
+        assert.equal(await member("/secret.env"), undefined, ".gitignore still filters — an ignored file is never a member");
+
+        // Removing it → the next sync un-registers it (reconciled like any git member, not stranded).
+        await rm(join(root, "draft.md"));
+        await GitMembership.indexGitMembership(ctx);
+        assert.equal(await member("/draft.md"), undefined, "deleting the file un-registers its membership (reconciled)");
+    });
+});
+
 test("[§membership-git-membership] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO crud_insert_session_entry was
