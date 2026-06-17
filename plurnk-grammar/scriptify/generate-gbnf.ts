@@ -120,7 +120,8 @@ export const buildModel = (): GModel => {
     // Turn shape (#29). The single shipped grammar (plurnk.gbnf) is the plan root:
     // a turn opens with a PLAN op (a forced reasoning step), proceeds strict (ops
     // only, whitespace-separated, no free text between), and closes on exactly one
-    // pathless SEND[102]/[200] status update — after which nothing is admissible.
+    // terminal status SEND (102/202/200/500, path-agnostic) — after which nothing is
+    // admissible.
     // Termination is structural (forced EOS), not an optional stop a near-greedy
     // decoder can sail past. Degeneration *inside* a body remains unboundable
     // (content is content); the consumer max_tokens cap is the backstop.
@@ -145,7 +146,13 @@ export const buildModel = (): GModel => {
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
     // status-final: the four loop dispositions the model may close a turn with —
     // 102 continue (re-invoke now), 202 parked (suspend until a wake event),
-    // 200 done (success), 500 failed (aborted, did not complete).
+    // 200 done (success), 500 failed (aborted / could not complete). 500 not 4xx
+    // (deliberated, do not flip): an agent is the *server* fulfilling a request, so its
+    // failure is server-side, not a bad request; and agent failures are usually
+    // stochastic — a retry often succeeds — which 5xx's retryable connotation correctly
+    // carries (4xx would imply deterministic don't-retry). Retry *policy* is the loop's
+    // job; the code reports the failure honestly. (A transient-vs-permanent split would
+    // be a later 4xx/422 add-on for the rarer "task is impossible" case.)
     // status-mid: any 3-digit code EXCEPT 102, 200, 202, 500 (finite-literal complement).
     model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("500")]]);
     model.set("status-mid", [
