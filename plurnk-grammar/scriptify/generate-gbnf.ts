@@ -84,18 +84,20 @@ export const buildModel = (): GModel => {
             bodyRules(model, name, close);
             const body = [lit(":"), ref(`${name}-b0`), lit(close)];
             if (op === "SEND") {
-                // The status code is the LOOP-CONTROL signal, load-bearing only on the
-                // terminator: the turn closes on a pathless SEND[102]/[200] (send-final),
-                // excluded from mid position so nothing follows it (#29). Every OTHER
-                // SEND is communication, not loop control — status optional: targeted
-                // (a message to a path) or pathless, with any status or none.
+                // The loop-disposition codes (102/202/200) are RESERVED for loop control:
+                // they are terminal-ALWAYS, excluded from every mid form, so a SEND carrying
+                // one ends the turn regardless of whether it has a path (#29). The terminal
+                // is therefore path-AGNOSTIC — `send-final` takes an optional target, so a
+                // turn can terminate-and-report in one op (e.g. a child reporting its result
+                // to its parent run). Every mid SEND is communication, not loop control:
+                // non-loop status (status-mid) or none, targeted or pathless.
                 model.set(`${name}-mid`, [
-                    [lit(open), lit("["), ref("status"), lit("]"), ref("target"), ...body],  // targeted, with status
-                    [lit(open), ref("target"), ...body],                                      // targeted, statusless
-                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],             // pathless, non-terminal status
-                    [lit(open), ...body],                                                     // pathless, statusless
+                    [lit(open), lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, non-loop status
+                    [lit(open), ref("target"), ...body],                                          // targeted, statusless
+                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],                 // pathless, non-loop status
+                    [lit(open), ...body],                                                         // pathless, statusless
                 ]);
-                model.set(`${name}-final`, [[lit(open), lit("["), ref("status-final"), lit("]"), ...body]]);
+                model.set(`${name}-final`, [[lit(open), lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...body]]);
                 sendMidAlts.push([ref(`${name}-mid`)]);
                 sendFinalAlts.push([ref(`${name}-final`)]);
             } else if (op === "EXEC") {
@@ -169,7 +171,6 @@ export const buildModel = (): GModel => {
     model.set("line-rest", [[lit(","), opt(lit(" ")), ref("int")]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
     model.set("frac", [[lit("."), plus(DIGIT)]]);
-    model.set("status", [[DIGIT, DIGIT, DIGIT]]);
     model.set("exec-sig", [[lit("["), EXEC_HEAD, star(EXEC_TAIL), lit("]")]]);
     model.set("kill-sig", [[lit("["), DIGIT, opt(DIGIT), lit("]")]]);
     return model;

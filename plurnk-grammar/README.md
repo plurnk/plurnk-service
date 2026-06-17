@@ -167,7 +167,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<SEND[503](log:///errors):{"reason":"git unavailable","command":"git status"}:SEND
 
 30. Direct an informational message at a named agent
-	<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND
+	<<SEND(agent://supervisor):decomposition complete; awaiting clearance:SEND
 
 31. Kill a runaway process
 	<<KILL(sh:///3/1/2)::KILL

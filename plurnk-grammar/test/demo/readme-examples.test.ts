@@ -147,7 +147,7 @@ test("ex 29: SEND — server error with explicit recipient", () => {
 });
 
 test("ex 30: SEND — informational message at named agent", () => {
-    expectOneClean("<<SEND[102](agent://supervisor):decomposition complete; awaiting clearance:SEND");
+    expectOneClean("<<SEND(agent://supervisor):decomposition complete; awaiting clearance:SEND");
 });
 
 test("ex 31: KILL — runaway process", () => {

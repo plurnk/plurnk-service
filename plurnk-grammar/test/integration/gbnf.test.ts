@@ -212,9 +212,12 @@ test("GBNF: SEND[202] (parked) is a pathless terminator, not a mid status", () =
     assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
-test("GBNF: root accepts mid-batch SENDs (targeted; pathless non-status) before the final", () => {
-    const batch = "<<PLAN:plan:PLAN\n<<SEND[102](agent://supervisor):decomposition complete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
+test("GBNF: root accepts mid-batch SENDs (targeted/pathless, non-loop status) before the final", () => {
+    // mid SENDs must NOT carry a loop code (102/202/200) — those are terminal-always.
+    const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
     assert.equal(derives("root-plan", batch), true);
+    // a loop code on a mid (non-final) SEND is rejected — it would end the turn early
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[102](agent://supervisor):progress:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
 test("GBNF: root rejects a batch with no final status SEND", () => {
@@ -222,8 +225,12 @@ test("GBNF: root rejects a batch with no final status SEND", () => {
     assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
 });
 
-test("GBNF: root rejects a targeted SEND as the turn closer", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200](agent://supervisor):done:SEND"), false);
+test("GBNF: root accepts a targeted terminal SEND (terminate-and-report)", () => {
+    // The terminal is path-agnostic: a loop code closes the turn with or without a target.
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND"), true);
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), true);
+    // ...but a targeted terminal still terminates — nothing may follow it.
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND\n<<SEND[200]:again:SEND"), false);
 });
 
 test("GBNF: root rejects any statement after the final status SEND", () => {
@@ -297,7 +304,7 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
         assert.ok(last.kind === "statement", `batch ${i} last item is not a statement`);
         if (last.kind !== "statement") continue;
         assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
-        assert.equal(last.statement.target, null, `batch ${i} final SEND has a target\nbatch: ${JSON.stringify(turn)}`);
+        // terminal is path-agnostic now — target may be present or null; the loop code is what closes the turn
         assert.ok(
             last.statement.signal === 102 || last.statement.signal === 200 || last.statement.signal === 202,
             `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202\nbatch: ${JSON.stringify(turn)}`,
