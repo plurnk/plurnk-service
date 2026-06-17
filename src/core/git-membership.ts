@@ -30,6 +30,7 @@ import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
+import SessionSettings from "./session-settings.ts";
 
 // §env-delta — an ambient disk divergence captured at pre-turn: the entry's content
 // before the git-membership re-read vs the disk content after. The plurnk run narrates
@@ -138,7 +139,9 @@ export default class GitMembership {
         // sole source. No early-return on non-git.
         const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
         if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
-        const tracked = process.env.PLURNK_GIT_ALLOWED === "1"
+        // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
+        const sessionGit = (await SessionSettings.read(db, sessionId)).git;
+        const tracked = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
             ? await GitMembership.#forestTrackedFiles(root, repoDirs, signal)
             : [];
 

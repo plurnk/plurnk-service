@@ -92,13 +92,26 @@ export default class SessionCreateMethod {
     static #parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
         if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
-        const r = raw as { manifestItems?: unknown; mdDocs?: unknown };
-        const out: { manifestItems?: number; mdDocs?: Array<{ alias: string; content: string }> } = {};
+        const r = raw as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown };
+        const out: { manifestItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }> } = {};
         if (r.manifestItems !== undefined) {
             if (typeof r.manifestItems !== "number" || !Number.isInteger(r.manifestItems)) {
                 throw new Error("session.create: settings.manifestItems must be an integer (-1 full | 0 off | N first-N)");
             }
             out.manifestItems = r.manifestItems;
+        }
+        // #232 — tighten-only ceilings: a client may narrow, never widen (composed
+        // most-restrictive-wins at each read-site). maxCommands min()s the env ceiling;
+        // git:false denies git for the session (env AND session).
+        if (r.maxCommands !== undefined) {
+            if (typeof r.maxCommands !== "number" || !Number.isInteger(r.maxCommands) || r.maxCommands < 1) {
+                throw new Error("session.create: settings.maxCommands must be a positive integer (a tighten-only ceiling)");
+            }
+            out.maxCommands = r.maxCommands;
+        }
+        if (r.git !== undefined) {
+            if (typeof r.git !== "boolean") throw new Error("session.create: settings.git must be a boolean (false denies git for the session)");
+            out.git = r.git;
         }
         if (r.mdDocs !== undefined) {
             if (!Array.isArray(r.mdDocs)) throw new Error("session.create: settings.mdDocs must be an array");

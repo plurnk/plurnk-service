@@ -914,7 +914,8 @@ export default class Engine {
         // entries (avoids bloating forensics with hundreds of identical refusals)
         // and the model gets a single telemetry signal next packet so it knows
         // its emission was truncated.
-        const maxCommands = readMaxCommands();
+        // #232 — a session's maxCommands is a tighten-only ceiling: min() the env ceiling.
+        const maxCommands = Math.min(readMaxCommands(), (await SessionSettings.read(this.#db, sessionId)).maxCommands ?? Number.POSITIVE_INFINITY);
         const opsToDispatch = packetAssistant.ops.slice(0, maxCommands);
         const droppedCount = opsCount - opsToDispatch.length;
         const statuses: number[] = [];

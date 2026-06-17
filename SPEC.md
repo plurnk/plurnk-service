@@ -745,9 +745,15 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
 
-**Client open-context (per session).** Two default-semantics knobs take a client override at `session.create({settings})`, persisted on the session (`sessions.settings`) and read at turn-0 with precedence over env. Operator-arcane knobs stay env-only — this is the narrow client surface:
+**Client open-context (per session).** `session.create({settings})` carries per-session overrides, persisted on `sessions.settings` and composed against env at each knob's read-site. Two families, kept distinct so neither semantic leaks into the other; operator-arcane knobs stay env-only — this is the narrow client surface.
+
+*Defaults — explicit-wins (the client replaces/merges freely):*
 - `settings.manifestItems` (number) **replaces** `PLURNK_MANIFEST_ITEMS` for the session: a one-shot opens clean (`0`), a workspace full (`-1`) or capped (`N`). A single scalar — the client value wins outright. {§operator-config-session-manifest-items}
 - `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins (a deliberate shadow), but by default the policy doc rides into every session. The client sends content (it owns the file), not a path. {§operator-config-session-md-docs}
+
+*Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
+- `settings.maxCommands` (number) **min()s** the `PLURNK_MAX_COMMANDS` per-emission cap for the session — a client tightens the runaway-op guard, never raises it past the operator's. {§operator-config-session-max-commands}
+- `settings.git` (`false`) **denies** git for the session (`PLURNK_GIT_ALLOWED` AND session) — the client opts its session out of git membership + telemetry; it can never re-enable git past the operator's service-wide lockout. {§operator-config-session-git}
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 

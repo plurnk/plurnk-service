@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Db, PrepMethod } from "./Db.ts";
+import SessionSettings from "./session-settings.ts";
 
 export interface GitStatus {
     branch: string;
@@ -28,7 +29,8 @@ export default class GitState {
     }
 
     static async status(db: Db, sessionId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
-        if (!GitState.enabled()) return null;
+        // #232 — git:false denies git telemetry for the session (env AND session ceiling).
+        if (!GitState.enabled() || (await SessionSettings.read(db, sessionId)).git === false) return null;
         const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
