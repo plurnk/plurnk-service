@@ -273,11 +273,13 @@ test("baseUrlVar overrides the fixed default", async () => {
 });
 
 test("every registry entry resolves the chat URL the spec encodes", async () => {
-    const envFor = (name: string): NodeJS.ProcessEnv => ({
-        ...baseEnv,
-        OPENAI_BASE_URL: "http://x",
-        ...Object.fromEntries([[STANDARD_PROVIDERS[name].apiKeyVar, "k"]]),
-    });
+    const envFor = (name: string): NodeJS.ProcessEnv => {
+        const spec = STANDARD_PROVIDERS[name];
+        const e: NodeJS.ProcessEnv = { ...baseEnv, [spec.apiKeyVar]: "k" };
+        // Entries with no fixed default (openai, bedrock) require their base URL.
+        if (spec.baseUrl === undefined && spec.baseUrlVar !== undefined) e[spec.baseUrlVar] = "http://x/v1";
+        return e;
+    };
     for (const name of Object.keys(STANDARD_PROVIDERS)) {
         const calls = mockEndpoint();
         const p = await standardProviderFromEnv(name, envFor(name), "m");
@@ -314,5 +316,54 @@ test("standard provider: a local (non-cataloged) model misses the fallback — p
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
     assert.ok(p !== null);
     assert.equal(p.contextSize, null); // empty probe + catalog miss → null; live owns the local case
+    mock.restoreAll();
+});
+
+// — anthropic standard entry (first-party Claude, #18) —
+
+test("anthropic: standard entry sends bearer auth + the thinking param to the compat endpoint", async () => {
+    let body = "";
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 }); }
+        return new Response("{}", { status: 200 });
+    });
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "sk-ant-xyz", PLURNK_PROVIDERS_REASONING_BUDGET: "3000" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
+    assert.ok(p !== null);
+    await p.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    assert.deepEqual(JSON.parse(body).thinking, { type: "enabled", budget_tokens: 3000 });
+    mock.restoreAll();
+});
+
+test("anthropic: context + cost come from the catalog (no probe)", async () => {
+    const [modelId, info] = Object.entries(catalogSnapshot().anthropic)[0];
+    const p = await standardProviderFromEnv("anthropic", { ...baseEnv, ANTHROPIC_API_KEY: "k" }, modelId);
+    assert.equal(p!.contextSize, info.contextWindow);
+});
+
+// — bedrock standard entry (AWS, bearer API key, #19) —
+
+test("bedrock: requires BEDROCK_BASE_URL (region-templated) and AWS_BEARER_TOKEN_BEDROCK", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok" }, "us.anthropic.claude-sonnet-4-6"),
+        /BEDROCK_BASE_URL must be set/,
+    );
+    await assert.rejects(
+        standardProviderFromEnv("bedrock", { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/v1" }, "m"),
+        /AWS_BEARER_TOKEN_BEDROCK must be set/,
+    );
+});
+
+test("bedrock: builds the region URL and sends the Bedrock API key as bearer", async () => {
+    const calls: { url: string; auth: string }[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), auth: String((init?.headers as Record<string, string>)?.Authorization ?? "") });
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+    });
+    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key" };
+    const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
+    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/v1/chat/completions");
+    assert.equal(calls[0].auth, "Bearer bedrock-key");
     mock.restoreAll();
 });

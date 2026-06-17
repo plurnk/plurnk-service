@@ -84,6 +84,25 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrl: "https://api.deepinfra.com/v1/openai", baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
+    // First-party Claude via Anthropic's OpenAI-compat endpoint: bearer auth,
+    // OpenAI SSE, the `thinking` reasoning param (reasoning_effort is ignored).
+    // No probe — context/cost come from the @plurnk/plurnk-models catalog.
+    anthropic: {
+        apiKeyVar: "ANTHROPIC_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.anthropic.com/v1", baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "anthropic", tokenizerDefault: "heuristic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
+    },
+    // AWS Bedrock via its OpenAI-compat chat-completions endpoint, authed with a
+    // Bedrock API key as a bearer token (SigV4 is optional, not required). The
+    // base URL is region-templated, so the operator MUST set BEDROCK_BASE_URL
+    // (e.g. https://bedrock-runtime.us-east-1.amazonaws.com/v1). Multi-model
+    // relay (Claude, gpt-oss, Llama, …) → no single reasoning toggle. Model ids
+    // are inference profiles like `us.anthropic.claude-sonnet-4-6`.
+    bedrock: {
+        apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
+        baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
+    },
 });
 
 export const isStandardProvider = (name: string): boolean => name in STANDARD_PROVIDERS;

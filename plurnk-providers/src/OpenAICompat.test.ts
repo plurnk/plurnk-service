@@ -321,3 +321,27 @@ test("retry: a caller abort during backoff rejects promptly with no further atte
     await assert.rejects(() => promise); // abort cuts through the backoff
     assert.equal(calls.length, 1); // never retried after cancellation
 });
+
+// — anthropic reasoning style (thinking param, #18) —
+
+test("reasoningStyle 'anthropic' maps the budget to the thinking param", async () => {
+    // N>0 → enabled with budget_tokens
+    const capped = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: 4096, reasoningStyle: "anthropic" });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await capped.generate({ runId: "r", messages: [] });
+    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
+
+    mock.restoreAll();
+    // 0 → explicit disabled
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: 0, reasoningStyle: "anthropic" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await off.generate({ runId: "r", messages: [] });
+    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
+
+    mock.restoreAll();
+    // -1 adaptive → omit (API default depth)
+    const adaptive = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: -1, reasoningStyle: "anthropic" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await adaptive.generate({ runId: "r", messages: [] });
+    assert.equal("thinking" in JSON.parse(calls[0].init.body as string), false);
+});

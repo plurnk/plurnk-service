@@ -24,8 +24,11 @@ import { toProviderError, classifyProviderError } from "./telemetry.ts";
 //  - "include_reasoning": OpenRouter relay passthrough toggle when on
 //  - "effort":            o-series / Grok / Gemini → reasoning_effort tier from a
 //                         capped budget (N>0); adaptive (-1) omits the field (API default)
-//  - "none":              provider has no reasoning toggle (e.g. Cloudflare)
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template";
+//  - "anthropic":         Claude OpenAI-compat endpoint → `thinking: { type, budget_tokens }`
+//                         (it IGNORES reasoning_effort): 0 off → disabled, N>0 → enabled with
+//                         budget_tokens, -1 adaptive → omit (the API's default depth)
+//  - "none":              provider has no reasoning toggle (e.g. Cloudflare, Bedrock relay)
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic";
 
 export type OpenAICompatConfig = {
     model: string;
@@ -147,6 +150,11 @@ export default class OpenAICompatProvider implements Provider {
             // effort tiers from a capped budget; adaptive (-1) omits the field
             // (lets the API pick its default depth); off (0) omits.
             case "effort": return b > 0 ? { reasoning_effort: effortFromBudget(b) } : {};
+            // Anthropic compat: explicit thinking object. 0 → disabled; N>0 →
+            // enabled with budget_tokens; -1 adaptive → omit (the API default).
+            case "anthropic": return b === 0
+                ? { thinking: { type: "disabled" } }
+                : b > 0 ? { thinking: { type: "enabled", budget_tokens: b } } : {};
             case "none": return {};
         }
     }
