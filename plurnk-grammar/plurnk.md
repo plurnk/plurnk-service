@@ -135,7 +135,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(src/**):@<createCoder:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
-echo "Taxonomic path names and folksonomic tags on known entries improve reasoning and recall!" > advice.txt
+echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt
 :EDIT
 
 <<EXEC:
@@ -148,6 +148,6 @@ chmod +x ./example.sh
 <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 
 <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
-<<SEND[202]:Parked until the capital-checker run reports.:SEND
+<<SEND[202]:Parked until the capital-checker reports.:SEND
+<<SEND[500]:Failed to identify French capital:SEND
 <<SEND[200]:Paris:SEND
-<<SEND[500]:Could not resolve the capital from available sources.:SEND
