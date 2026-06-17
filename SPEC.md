@@ -351,7 +351,7 @@ No mimetype handlers ship in-tree. Framework + every handler are siblings.
 
 plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
 
-**Required dependencies** (hard deps in `package.json`):
+**Required handlers** (boot-critical, provided via the framework):
 
 | Package | Mimetype | Why required |
 |---|---|---|
@@ -359,7 +359,7 @@ plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype l
 | `@plurnk/plurnk-mimetypes-text-plain` | `text/plain` | Canonical EXEC stdout/stderr channel mimetype. |
 | `@plurnk/plurnk-mimetypes-application-json` | `application/json`, `application/jsonc` | Service emits json for `log_entries` rx/tx, telemetry, packet serialization. |
 
-Everything else is opt-in; framework's `discover()` picks up installed packages automatically.
+These ride in via the framework — `@plurnk/plurnk-mimetypes` pins the core set (markdown / plain / json / xml / csv / html) as its own dependencies, so the service's exact-pin on the framework pins them transitively rather than redeclaring each. Boot relies on them (markdown is the `defaultMimetype`); their loss would be a framework-contract break. Everything else is opt-in; framework's `discover()` picks up installed packages automatically.
 
 **Tokenize injection.** Daemon constructs `Mimetypes` with a `tokenize` lambda capturing the active provider's `countTokens`:
 
