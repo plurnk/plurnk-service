@@ -56,6 +56,15 @@ export default class EntryGraph {
         return { status: 200, pathnames: [...set].sort() };
     }
 
+    // Project Findings — the smallest symbol_def enclosing a line: the structural unit a
+    // match at line N belongs to (a finding IS its enclosing function/class/heading,
+    // addressed by <L>). null when no symbol covers the line — then the extent is the
+    // match line itself.
+    static async enclosingSymbol(db: Db, entryId: number, line: number): Promise<{ name: string; kind: string; line: number; endLine: number } | null> {
+        const row = await (db.graph_enclosing_symbol as PrepMethod).get<{ name: string; kind: string; line: number; end_line: number | null }>({ entry_id: entryId, line });
+        return row === undefined ? null : { name: row.name, kind: row.kind, line: row.line, endLine: row.end_line ?? row.line };
+    }
+
     static async #referrers(db: Db, sessionId: number, scheme: string | null, name: string): Promise<string[]> {
         const rows = await (db.graph_referrers as PrepMethod).all<{ pathname: string }>({ session_id: sessionId, scheme, name });
         return rows.map((r) => r.pathname);
