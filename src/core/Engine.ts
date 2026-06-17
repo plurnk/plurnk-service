@@ -1076,7 +1076,12 @@ export default class Engine {
         // exactly how it went missing (callers read the sysprompt but never the
         // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
-        const requirementsText = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
+        const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
+        // The op syntax leads the requirements; when PLURNK_PLAN=1 the plan directive joins the
+        // HARD requirements list (dynamically added/removed with the flag) rather than softly
+        // appearing in the optional # Plurnk System Tools sheet. §requirements-plan-gated
+        const planDirective = process.env.PLURNK_PLAN === "1" ? "YOU MUST begin every response with <<PLAN:...:PLAN\n" : "";
+        const requirementsText = `Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix\n\n${planDirective}${baseRequirements}`;
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         // Per-section render-cost subtotals via provider's tokenizer.
@@ -1151,18 +1156,15 @@ export default class Engine {
         return lines.join("\n");
     }
 
-    // The # Plurnk System Tools capability sheet (SPEC §tools). A hook: each
-    // enabled capability contributes one line, rendered above Requirements so
-    // the model sees what it can do before the rules. PLAN is the first
-    // contributor (gated by PLURNK_PLAN); each available executor tag then
-    // contributes its self-documenting example (plurnk-execs#7), retiring the
-    // blind EXEC.
-    // The capability sheet — the live tool surface (PLAN + wired executor tags). §tools-capability-sheet
+    // The # Plurnk System Tools capability sheet (SPEC §tools). A hook: each enabled
+    // capability contributes one line, rendered above Requirements so the model sees what
+    // it can do before the rules. Each available executor tag contributes its self-documenting
+    // example (plurnk-execs#7), retiring the blind EXEC. The plan directive is NOT a tool — it
+    // is a hard requirement gated by PLURNK_PLAN (§requirements-plan-gated), so it joins the
+    // rules list, not this optional sheet.
+    // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
     #collectTools(): string[] {
         const tools: string[] = [];
-        if (process.env.PLURNK_PLAN === "1") { // <<PLAN advertised only when PLAN is enabled — §tools-plan-gated
-            tools.push("* Begin every response with <<PLAN:...:PLAN");
-        }
         // Each available runtime tag contributes its self-documenting example —
         // the example carries syntax + purpose, so there's no prose line. Tags
         // with no example (sh/node, covered by the core prompt) contribute

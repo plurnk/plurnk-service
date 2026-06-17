@@ -29,7 +29,7 @@ test("[§tools-capability-sheet] # Plurnk System Tools renders above Requirement
     assert.doesNotMatch(noTools, /# Plurnk System Tools/, "no Tools header when nothing is enabled");
 });
 
-test("[§tools-plan-gated] PLAN is advertised in tools when PLURNK_PLAN=1, absent otherwise", async () => {
+test("[§requirements-plan-gated] the plan directive is a REQUIREMENT when PLURNK_PLAN=1 — not in the optional tools sheet", async () => {
     const prev = process.env.PLURNK_PLAN;
     const db = await openMigrated();
     try {
@@ -38,18 +38,20 @@ test("[§tools-plan-gated] PLAN is advertised in tools when PLURNK_PLAN=1, absen
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const reply = () => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const toolsOf = async (turnId: number): Promise<string[]> => {
+        const userOf = async (turnId: number): Promise<{ tools?: string[]; system_requirements?: string }> => {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
-            return (JSON.parse(row!.packet) as { user: { tools?: string[] } }).user.tools ?? [];
+            return (JSON.parse(row!.packet) as { user: { tools?: string[]; system_requirements?: string } }).user;
         };
 
         process.env.PLURNK_PLAN = "1";
         const on = await engine.runTurn({ provider: reply(), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.ok((await toolsOf(on.turnId)).some((t) => t.includes("<<PLAN")), "PLAN advertised when PLURNK_PLAN=1");
+        const onUser = await userOf(on.turnId);
+        assert.match(onUser.system_requirements ?? "", /<<PLAN/, "plan directive is in the requirements when PLURNK_PLAN=1");
+        assert.ok(!(onUser.tools ?? []).some((t) => t.includes("<<PLAN")), "plan directive is NOT in the optional tools sheet");
 
         process.env.PLURNK_PLAN = "0";
         const off = await engine.runTurn({ provider: reply(), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.ok(!(await toolsOf(off.turnId)).some((t) => t.includes("<<PLAN")), "PLAN absent when PLURNK_PLAN≠1");
+        assert.ok(!/<<PLAN/.test((await userOf(off.turnId)).system_requirements ?? ""), "plan directive absent from requirements when PLURNK_PLAN≠1");
     } finally {
         if (prev === undefined) delete process.env.PLURNK_PLAN; else process.env.PLURNK_PLAN = prev;
         await db.close();
