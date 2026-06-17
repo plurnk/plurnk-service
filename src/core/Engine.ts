@@ -18,7 +18,7 @@ import RunCap from "./run-cap.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -368,6 +368,7 @@ export default class Engine {
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
     #injectRun: InjectRunNotify | undefined;
+    #cancelRun: CancelRunNotify | undefined;
     // Telemetry event fan-out: every TelemetryEvent pushed to the loop's
     // buffer is also broadcast live to the connected client(s) on the
     // session. Without this, the client sees `loop/terminated` with a
@@ -378,13 +379,14 @@ export default class Engine {
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache: string | null = null;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, injectRun, telemetryEventNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, injectRun, cancelRun, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         wakeRunNotify?: WakeRunNotify;
         injectRun?: InjectRunNotify;
+        cancelRun?: CancelRunNotify;
         telemetryEventNotify?: TelemetryEventNotify;
         tokenize?: (text: string) => number;
     }) {
@@ -393,6 +395,7 @@ export default class Engine {
         this.#streamEventNotify = streamEventNotify;
         this.#wakeRunNotify = wakeRunNotify;
         this.#injectRun = injectRun;
+        this.#cancelRun = cancelRun;
         this.#telemetryEventNotify = telemetryEventNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
@@ -1870,6 +1873,21 @@ export default class Engine {
             const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
             if (execHandler === undefined || typeof execHandler.kill !== "function") return { status: 501 };
             return await execHandler.kill(pathnameFromPath(path), ctx);
+        }
+        if (schemeName === "run") {
+            // terminate — abort any run by address; whoever holds it may end it.
+            // `.`/"" = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
+            // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
+            const name = pathnameFromPath(path).replace(/^\/+/, "");
+            let runId = ctx.runId;
+            if (name !== "" && name !== ".") {
+                const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
+                if (row === undefined) return { status: 404, error: `run:///${name} not found in this session` };
+                runId = row.id;
+            }
+            if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
+            this.#cancelRun(runId);
+            return { status: 200 };
         }
         const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
         if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };

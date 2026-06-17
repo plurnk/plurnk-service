@@ -129,6 +129,10 @@ export default class Daemon {
                 const { action, loopId } = await this.inject({ sessionId, runId, prompt, provider: this.#provider, systemPrompt });
                 return { action, loopId };
             },
+            // run:// KILL (terminate) — abort any run's in-flight work by id. One
+            // abort, one scope (Daemon.cancelDrain): the active loop closes 499,
+            // background streams tear down. Whoever holds the address may end it.
+            cancelRun: (runId) => this.cancelDrain(runId, "killed via run:// KILL"),
             telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),
         });
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");

@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, CopyStatement, KillStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -170,4 +170,28 @@ test("run cap: spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508
         else process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = prior;
         await db.close();
     }
+});
+
+test("run terminate: KILL(run:///name) aborts a sister by address; a missing sister is 404", async () => {
+    const db = await openMigrated();
+    try {
+        const killed: number[] = [];
+        const cancelRun = (runId: number): boolean => { killed.push(runId); return true; };
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelRun, tokenize });
+        const sessionId = await insertSession(db, `run-kill-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const workerId = await insertRun(db, sessionId, null, "worker");
+
+        const killWorker: KillStatement = { op: "KILL", suffix: "", signal: null, target: runPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const ok = await engine.dispatch({ statement: killWorker, sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
+        assert.deepEqual(killed, [workerId], "the named sister's run is aborted by id");
+
+        const killGhost: KillStatement = { op: "KILL", suffix: "", signal: null, target: runPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const missing = await engine.dispatch({ statement: killGhost, sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
+        assert.equal(killed.length, 1, "no abort for a missing sister");
+    } finally { await db.close(); }
 });
