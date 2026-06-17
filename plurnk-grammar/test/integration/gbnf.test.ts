@@ -206,6 +206,12 @@ test("GBNF: root accepts a minimal PLAN-then-status-SEND turn", () => {
     assert.equal(derives("root-plan", "<<PLAN:think:PLAN\n<<SEND[102]:still working:SEND"), true);
 });
 
+test("GBNF: SEND[202] (parked) is a pathless terminator, not a mid status", () => {
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked until the fork reports:SEND"), true);
+    // a pathless 202 closes the turn — it can't sit mid-batch ahead of another SEND
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
+});
+
 test("GBNF: root accepts mid-batch SENDs (targeted; pathless non-status) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[102](agent://supervisor):decomposition complete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
     assert.equal(derives("root-plan", batch), true);
@@ -293,8 +299,8 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
         assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
         assert.equal(last.statement.target, null, `batch ${i} final SEND has a target\nbatch: ${JSON.stringify(turn)}`);
         assert.ok(
-            last.statement.signal === 102 || last.statement.signal === 200,
-            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200\nbatch: ${JSON.stringify(turn)}`,
+            last.statement.signal === 102 || last.statement.signal === 200 || last.statement.signal === 202,
+            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202\nbatch: ${JSON.stringify(turn)}`,
         );
     }
 });

@@ -148,4 +148,5 @@ chmod +x ./example.sh
 <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 
 <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
+<<SEND[202]:Parked until the capital-checker run reports.:SEND
 <<SEND[200]:Paris:SEND
