@@ -15,8 +15,10 @@
 //        sessions completely unaffected). The pick/hide/view constraint
 //        overlay (session_constraints) layers on top: resolveMembership applies
 //        `(ls-files ∪ pick) − hide`; view is enforced at the File edit gate.
-//   D5 — EMI is eager + exhaustive: every active member is re-read from disk at
-//        resolution time so a divergent member reflects current disk content.
+//   D5 — coverage is exhaustive, work is change-gated: every member is stat'd each
+//        turn, but only one whose mtime:size signature changed is re-read,
+//        re-tokenized, and rewritten; an unchanged member is a no-op, and the EMI
+//        divergence rides that same pass. {§membership-change-gated-sync}
 //
 // git resolution shells out via node:child_process (the same surface the
 // File scheme's tests and the demo fixture use) and respects AbortSignal.
@@ -205,8 +207,9 @@ export default class GitMembership {
 
     // Materialize a member's disk content into a body channel via writeEntry (the
     // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
-    // (D4/D5). Re-reads disk each call (eager + exhaustive — every active
-    // member, no relevance pass). Binary members materialize as an EMPTY body
+    // (D4/D5). Change-gated: a member whose mtime:size signature is unchanged since its
+    // last sync is a no-op (the stat-gate below) — re-read + rewrite only on change.
+    // Binary members materialize as an EMPTY body
     // channel stamped with their binary mimetype (#186 — visible in the manifest
     // and READ-415 via the one isBinaryMimetype gate, not a 404 ghost).
     // Missing-on-disk (tracked but deleted in the working tree) is
