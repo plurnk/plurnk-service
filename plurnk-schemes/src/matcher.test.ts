@@ -141,7 +141,7 @@ test("matcher: unexpected error propagates (not caught)", async () => {
 // a real Mimetypes instance, not a stub, so a regression in the dep surfaces.
 test("matcher: xpath dialect served by the framework, no local xml engine", async () => {
     const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");
-    const mts = new Mimetypes({ tokenize: async (t: string) => Math.ceil(t.length / 4), defaultMimetype: "text/markdown" });
+    const mts = new Mimetypes({ defaultMimetype: "text/markdown" });
     const xpathBody: MatcherBody = { dialect: "xpath", raw: "//item" };
     const xml = "<root>\n  <item>a</item>\n  <item>b</item>\n</root>";
     const r = await Matcher.matchAgainstContent(xpathBody, xml, "text/html", mts);
