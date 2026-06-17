@@ -12,7 +12,7 @@ Requires Node ≥ 25 (native TypeScript).
 
 ## use
 
-plurnk-service constructs the provider via the static `fromEnv` factory (PROVIDERS.md §3.7). Direct construction is also supported.
+plurnk-service constructs the provider via the static `fromEnv` factory (SPEC §3). Direct construction is also supported.
 
 ```ts
 import Ollama from "@plurnk/plurnk-providers-ollama";
@@ -34,8 +34,9 @@ No fallback defaults — required vars throw at `fromEnv` if missing or unparsea
 | Variable | Required | Notes |
 |---|---|---|
 | `OLLAMA_BASE_URL` | yes | Ollama server URL (e.g. `http://localhost:11434`) |
-| `PLURNK_REASON` | yes | Universal reasoning budget (PROVIDERS.md §3.8); `0` disables, `> 0` toggles `think: true` on the request body |
-| `PLURNK_FETCH_TIMEOUT` | yes | Universal fetch timeout in ms (PROVIDERS.md §3.9) |
+| `PLURNK_PROVIDERS_REASONING_BUDGET` | yes | Universal reasoning budget (SPEC §4); `0` disables, `> 0` toggles `think: true` on the request body |
+| `PLURNK_FETCH_TIMEOUT` | yes | Universal fetch timeout in ms (SPEC §4) |
+| `PLURNK_PROVIDER_RETRY_ATTEMPTS` | yes | Transient-failure retry budget (SPEC §4): `0` disables; `N` retries on 429/5xx/timeout/network with exponential backoff, honoring `Retry-After`. |
 
 ## context size
 
