@@ -555,7 +555,7 @@ export default class Engine {
             }
 
             if (maxTurns >= 0 && turnIds.length >= maxTurns) {
-                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
+                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "max_turns" });
                 cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
             }
@@ -578,7 +578,7 @@ export default class Engine {
 
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
-                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
+                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "budget_overflow" });
                 cleanup("forceful", "budget_overflow");
                 return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "budget_overflow" };
             }
@@ -619,7 +619,7 @@ export default class Engine {
             if (struck) {
                 state.streak++;
                 if (state.streak >= maxStrikes) {
-                    await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId });
+                    await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "strike_threshold" });
                     cleanup("forceful", "strike_threshold");
                     return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "strike_threshold" };
                 }
@@ -1341,6 +1341,21 @@ export default class Engine {
             });
             written++;
         }
+        // §run-scheme — loop-terminations: a sibling's loop reaching terminal surfaces the
+        // same way an entry-change does, carrying its deliverable (the SEND body) or the
+        // abandonment reason. Folded, attributed to the terminated run.
+        const terms = await (this.#db.engine_pull_loop_terminations as PrepMethod).all<{
+            run_id: number; run_name: string; status: number; prompt: string; terminal_message: string | null;
+        }>({ session_id: sessionId, run_id: runId, since });
+        for (const t of terms) {
+            await (this.#db.engine_insert_loop_termination_delta as PrepMethod).run({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                source: String(t.run_id), pathname: `/${t.run_name}`,
+                rx: t.terminal_message ?? `loop "${t.prompt}" ended (${t.status})`,
+                status: t.status,
+            });
+            written++;
+        }
         return written;
     }
 
@@ -1997,7 +2012,10 @@ export default class Engine {
         const status = statement.signal;
         if (status === null) return { status: 400 };
         if (status === 200 || status === 499) {
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId });
+            // the loop's terminal message — its deliverable — rides the termination delta.
+            const body = statement.body;
+            const message = body === null ? null : typeof body === "string" ? body : body.raw;
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId, message });
         }
         return { status };
     }

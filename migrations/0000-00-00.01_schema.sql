@@ -46,10 +46,27 @@ CREATE TABLE IF NOT EXISTS loops (
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 499)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
+    -- §run-scheme loop-termination delta: terminated_at is stamped by the trigger
+    -- below when status crosses into terminal (every death-path, uniformly);
+    -- terminal_message is the deliverable — the SEND[200] body or the abandonment
+    -- reason — set by the terminating PREP (engine_loop_set_status / _cancel).
+    terminated_at    TEXT,
+    terminal_message TEXT,
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_run_id_sequence ON loops (run_id, sequence);
+
+-- §run-scheme: a loop crossing into a terminal status (200/499) stamps terminated_at,
+-- so sibling runs pull the termination as a folded ambient delta — the time is caught
+-- uniformly across every death-path (SEND, grinder, KILL). The stamp updates
+-- terminated_at, never status, so it cannot re-fire this trigger.
+CREATE TRIGGER IF NOT EXISTS loops_stamp_terminated_at
+AFTER UPDATE OF status ON loops
+WHEN NEW.status IN (200, 499) AND OLD.status NOT IN (200, 499)
+BEGIN
+    UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
 
 -- INIT: turns
 -- finish_reason / model: provider-call metadata (plurnk-grammar Turn.json).

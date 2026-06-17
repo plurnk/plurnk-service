@@ -27,10 +27,12 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_loop_cancel
-UPDATE loops SET status = 499 WHERE id = $loop_id;
+-- terminal_message carries the abandonment reason — rides the §run-scheme delta.
+UPDATE loops SET status = 499, terminal_message = $message WHERE id = $loop_id;
 
 -- PREP: engine_loop_set_status
-UPDATE loops SET status = $status WHERE id = $loop_id;
+-- terminal_message is the loop's deliverable (the SEND body) — rides the §run-scheme delta.
+UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_id;
 
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
@@ -131,6 +133,31 @@ INSERT INTO log_entries (
 ) VALUES (
     $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
     'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
+);
+
+-- PREP: engine_pull_loop_terminations
+-- §run-scheme — sibling runs' loops that reached a terminal status since this run last
+-- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
+-- deliverable or the abandonment reason. Excludes this run's own loops.
+SELECT l.run_id, r.name AS run_name, l.status, l.prompt, l.terminal_message
+FROM loops l
+JOIN runs r ON r.id = l.run_id
+WHERE r.session_id = $session_id
+  AND l.terminated_at IS NOT NULL
+  AND l.terminated_at > $since
+  AND l.run_id != $run_id
+ORDER BY l.terminated_at;
+
+-- PREP: engine_insert_loop_termination_delta
+-- §run-scheme — materialize a sibling's loop-termination as a FOLDED delta: a SEND
+-- from run:///<name> carrying the terminal status + message (the deliverable).
+-- origin=plurnk, source=the terminated run — uniform with the env-delta.
+INSERT INTO log_entries (
+    run_id, loop_id, turn_id, sequence, origin, source,
+    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, indexed
+) VALUES (
+    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
+    'SEND', 'run', $pathname, '', 'text/plain', $rx, 'text/markdown', $status, 0
 );
 
 -- PREP: engine_entry_tags

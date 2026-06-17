@@ -122,3 +122,51 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         await rm(root, { recursive: true, force: true });
     }
 });
+
+// §run-scheme loop-termination rides the same env-delta rail: when a sibling's loop
+// reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
+// run:///<name> carrying the loop's deliverable — the SEND[200] body or, for an
+// abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
+// so a graceful 200 and a grinder 499 surface the same way.
+test("a sibling's loop-termination surfaces folded, carrying its deliverable (SEND body) or abandon reason (§run-scheme)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `loopterm-${crypto.randomUUID()}`);
+        const runA = await insertRun(db, sessionId);                       // the observer
+        const loopA = await insertLoop(db, runA, 1, "go");
+        const worker = await insertRun(db, sessionId, null, "worker");      // finishes gracefully
+        const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
+        const grinder = await insertRun(db, sessionId, null, "grinder");    // gets abandoned
+        const grinderLoop = await insertLoop(db, grinder, 1, "grind forever");
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+
+        // A's turn 1 sets its "last looked" boundary; the siblings are still running.
+        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await sleep(2);  // ms-resolution — terminations must land strictly after A's turn 1
+
+        // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
+        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: workerLoop, message: "the answer is 42" });
+        await (db.engine_loop_cancel as PrepMethod).run({ loop_id: grinderLoop, message: "budget_overflow" });
+
+        // A's turn 2 pulls both terminations from the shared log, folded.
+        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; indexed: number }>({ run_id: runA });
+
+        const win = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/worker");
+        assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");
+        assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
+        assert.equal(win!.source, String(worker), "attributed to the run that terminated");
+        assert.equal(win!.status_rx, 200, "the terminal status rides");
+        assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
+        assert.equal(win!.indexed, 0, "folded — listed, collapsed until A OPENs it");
+
+        const grind = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/grinder");
+        assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
+        assert.equal(grind!.status_rx, 499, "abandonment is a 499 termination");
+        assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
+        assert.equal(grind!.source, String(grinder), "attributed to the abandoned run");
+    } finally {
+        await db.close();
+    }
+});
