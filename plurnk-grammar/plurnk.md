@@ -122,7 +122,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 <<KILL(obsolete/file.md)::KILL
 <<KILL(sh:///3/1/2)::KILL
-<<EDIT(run://capital-check):Find the capital of France.:EDIT
+<<EDIT(run://capital-checker):Find the capital of France.:EDIT
 <<COPY(run://.):Re-derive the capital from a primary source.:COPY
 <<OPEN(log:///**/get)<1,10>::OPEN
 <<FIND(known:///**)<5>:~french revolutionary history:FIND
@@ -135,7 +135,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<FIND(src/**):@<createCoder:FIND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
-echo "Hello, world!" > hello.txt
+echo "Taxonomic path names and folksonomic tags on known entries improve reasoning and recall!" > advice.txt
 :EDIT
 
 <<EXEC:
@@ -145,7 +145,7 @@ chmod +x ./example.sh
 
 <<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
 
-<<SEND(run://capital-check):{"hint":"prefer primary sources over wikis"}:SEND
+<<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 
-<<SEND[102]:decomposed prompt into unknowns; plan initialized:SEND
+<<SEND[102]:Forking a research run, optimizing log relevance...:SEND
 <<SEND[200]:Paris:SEND
