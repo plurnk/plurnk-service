@@ -1167,11 +1167,28 @@ export default class Engine {
         // no backticks — see packet-wire.ts).
         if (this.#executors !== undefined) {
             for (const tag of this.#executors.availableRuntimes()) {
-                const example = this.#executors.entry(tag)?.example;
-                if (example) tools.push(`* ${example}`);
+                const entry = this.#executors.entry(tag);
+                if (entry?.example) tools.push(`* ${entry.example}`);
+                // #note12 — link the executor's fuller doc (materialized at plurnk:///docs/<tag>);
+                // its token cost rides that manifest entry, so no inline recount here.
+                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk:///docs/${tag}`);
             }
         }
         return tools;
+    }
+
+    // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
+    // materialized at plurnk:///docs/<name> by loop_run (like operator docs) so the
+    // catalogue's doc-links READ and the manifest carries each doc's token cost.
+    docEntries(): Array<{ name: string; content: string }> {
+        const out = this.#schemes.docs();
+        if (this.#executors !== undefined) {
+            for (const tag of this.#executors.availableRuntimes()) {
+                const doc = this.#executors.entry(tag)?.documentation;
+                if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
+            }
+        }
+        return out;
     }
 
     // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet

@@ -18,6 +18,9 @@ export interface RegistryEntry {
     // One-line self-documenting usage example for the tag (plurnk-execs#7),
     // surfaced in the # Plurnk System Tools sheet. "" when the package omits it.
     readonly example: string;
+    // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation), materialized
+    // at plurnk:///docs/<tag> and linked from the tools sheet. "" when the package omits it. #note12
+    readonly documentation: string;
     readonly available: boolean;
     readonly detail: string | undefined;
 }
@@ -41,7 +44,7 @@ export default class ExecutorRegistry {
     static async build({ defaultRuntime = null, probeTimeoutMs = 3000, discoverFn = discover, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
-        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; packageName: string }>; skipped?: string[] }>;
+        discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; documentation?: string; packageName: string }>; skipped?: string[] }>;
         load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
         const { registry: discovered, skipped = [] } = await discoverFn();
@@ -69,6 +72,7 @@ export default class ExecutorRegistry {
                 executor,
                 glyph: info.glyph,
                 example: info.example ?? "",
+                documentation: info.documentation ?? "",
                 available: availability.available,
                 detail: availability.detail,
             });

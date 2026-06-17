@@ -54,7 +54,7 @@ export default class SchemeRegistry {
         for (const [name, handler] of this.#handlers) {
             const cls = handler.constructor as {
                 teach?: string;
-                manifest?: { defaultChannel?: string; channels?: Record<string, string>; writableBy?: ReadonlyArray<string> };
+                manifest?: { defaultChannel?: string; channels?: Record<string, string>; writableBy?: ReadonlyArray<string>; example?: string; documentation?: string };
             };
             if (typeof cls.teach !== "string" || cls.teach.length === 0) continue;
             const manifest = cls.manifest ?? {};
@@ -62,9 +62,26 @@ export default class SchemeRegistry {
             const channels = channelNames.length > 0 ? channelNames.join(", ") : "none";
             const defaultChannel = manifest.defaultChannel !== undefined && manifest.defaultChannel.length > 0 ? manifest.defaultChannel : "none";
             const writableBy = (manifest.writableBy ?? []).join(", ") || "none";
-            sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.`);
+            // #note12 — the daughter's usage example (inline) + a doc-link to its fuller
+            // documentation when the manifest ships it (optional; in-tree schemes have none
+            // yet, so the link lights up the day plurnk-schemes adds `documentation`, exactly
+            // as execs do today). The doc's token cost rides the manifest entry it materializes.
+            const example = typeof manifest.example === "string" && manifest.example.length > 0 ? `\nExample: ${manifest.example}` : "";
+            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk:///docs/${name}` : "";
+            sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.${example}${docLink}`);
         }
         return sections.join("\n\n");
+    }
+
+    // #note12 — schemes that ship a `documentation` string, for materialization at
+    // plurnk:///docs/<name>. Optional + currently none in-tree; future-proofs the link.
+    docs(): Array<{ name: string; content: string }> {
+        const out: Array<{ name: string; content: string }> = [];
+        for (const [name, handler] of this.#handlers) {
+            const doc = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
+            if (typeof doc === "string" && doc.length > 0) out.push({ name, content: doc });
+        }
+        return out;
     }
 
     // Discover external scheme siblings — agnostic by plurnk.kind:"scheme" (never
