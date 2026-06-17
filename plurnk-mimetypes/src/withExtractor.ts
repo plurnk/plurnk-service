@@ -57,7 +57,12 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
         }
 
         get refs(): MimeRef[] {
-            return [...this.#refs];
+            // Document order (SPEC §16 conformance invariant), matching the
+            // tree-sitter refsEngine. Visitors emit in traversal order, which
+            // is usually document order but not always — e.g. a helper that
+            // collects sibling nodes via a stack walk returns them reversed.
+            // Sorting here makes every ANTLR handler's refs ordered for free.
+            return [...this.#refs].sort((a, b) => a.line - b.line || a.column - b.column);
         }
 
         get inBody(): boolean {
