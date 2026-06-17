@@ -164,6 +164,14 @@ export default class Envelope {
         return await (db.envelope_list_runs_for_session as PrepMethod).all<RunRow>({ session_id: sessionId });
     }
 
+    // #238 — a session's prior user prompts, newest-first, capped. The conversation run's
+    // loop seeds (engine_get_loop_prompt is the per-loop read); exposed directly so a
+    // client seeds up/down history without log archaeology.
+    static async listPromptsForSession(db: Db, sessionId: number, limit: number): Promise<string[]> {
+        const rows = await (db.envelope_list_session_prompts as PrepMethod).all<{ prompt: string }>({ session_id: sessionId, limit });
+        return rows.map((r) => r.prompt);
+    }
+
     static async closeClientLoop(db: Db, loopId: number, status: 200 | 499): Promise<void> {
         await (db.envelope_close_client_loop as PrepMethod).run({ status, loop_id: loopId });
     }

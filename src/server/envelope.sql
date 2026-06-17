@@ -33,6 +33,21 @@ FROM runs
 WHERE session_id = $session_id
 ORDER BY created_at DESC;
 
+-- PREP: envelope_list_session_prompts
+-- #238 — a session's user prompts for client up/down history: the conversation run's
+-- non-empty loop seeds, newest-first, capped. The conversation run is origin='model' +
+-- parentless; spawned/forked run:// sub-runs (parent_run_id set) are excluded — their
+-- seed prompts are not user input.
+SELECT l.prompt
+FROM loops l
+JOIN runs r ON r.id = l.run_id
+WHERE r.session_id = $session_id
+  AND r.origin = 'model'
+  AND r.parent_run_id IS NULL
+  AND length(l.prompt) > 0
+ORDER BY l.id DESC
+LIMIT $limit;
+
 -- PREP: envelope_insert_client_loop
 -- sequence is auto-computed: 1 + max(existing sequence in this run) so
 -- multiple client connections attaching to the same run get distinct loops.
