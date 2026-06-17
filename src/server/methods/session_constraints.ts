@@ -20,7 +20,7 @@ export default class SessionConstraintsMethod {
             description: "Add a workspace membership constraint (SPEC §membership overlay): `pick` admits files git misses (the sole source when git is absent), `hide` drops tracked matches, `view` admits a member for read but refuses edits, `repo` declares a git repo folder ANYWHERE (under the project root or outside it) so its members (tracked + untracked-non-ignored) join the manifest. Takes effect immediately.",
             params: {
                 effect: "string — one of: pick | hide | view | repo",
-                glob: "string — a node:path glob (workspace-relative); for `repo`, the folder to declare — under the project root it manifests at relative addresses, outside it at absolute ones",
+                glob: "string — a node:path glob (workspace-relative); for `repo`, the folder to declare — manifested relative to the project root, clean when under it, `..`-prefixed when outside",
             },
             requiresInit: true,
         });

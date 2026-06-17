@@ -12,7 +12,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -316,7 +316,7 @@ test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-fil
     } finally { await db.close(); }
 });
 
-test("a `repo` declared OUTSIDE the project root manifests at absolute addresses — project_root is only the relative-address base, no boundary", async () => {
+test("a `repo` declared OUTSIDE the project root manifests at a relative (..) address whose content resolves to disk", async () => {
     const db = await openMigrated();
     const external = await mkdtemp(join(tmpdir(), "plurnk-ext-"));
     try {
@@ -331,10 +331,17 @@ test("a `repo` declared OUTSIDE the project root manifests at absolute addresses
             await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: external });
 
             await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: external });
-            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+            await GitMembership.indexGitMembership(ctx); // registers AND materializes (an absolute key would never materialize)
 
-            const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: join(external, "ext.md") });
-            assert.notEqual(member, undefined, "an outside-root repo's member is addressed at its ABSOLUTE disk path — declared, never rejected");
+            // The member is addressed RELATIVE to the project root — a `..`-prefix, never absolute.
+            const pathname = `/${join(relative(parent, external), "ext.md")}`;
+            assert.match(pathname, /^\/\.\.\//, "the outside-root member's address is a relative ..-path, not absolute");
+            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname });
+            assert.notEqual(entry, undefined, "the outside-root member registers at its relative address");
+            // The decisive check the absolute version never made: its CONTENT materialized — proof
+            // join(project_root, "../..") resolved to the real disk file (an absolute key would nest under root).
+            const body = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({ session_id: ctx.sessionId, scheme: null, pathname, channel: "body" });
+            assert.match(body?.content ?? "", /external repo/, "the outside-root member's content materialized — the relative address resolved to its real disk file");
         } finally { await rm(parent, { recursive: true, force: true }); }
     } finally { await rm(external, { recursive: true, force: true }); await db.close(); }
 });
