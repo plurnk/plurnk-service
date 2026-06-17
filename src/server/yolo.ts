@@ -43,6 +43,14 @@ export default class Yolo {
         engine.onProposalPending((event: ProposalPendingEvent) => {
             if (!event.flags.yolo) return;
             try {
+                if (event.staleClobberRisk) {
+                    // #note10 — the target diverged on disk this turn; the model's EDIT is
+                    // based on a stale read. Reject rather than silently clobber the ambient
+                    // change. The model sees an ordinary reject (outcome is forensics-only)
+                    // and can re-READ the entry + retry against the current content.
+                    engine.resolveProposal(event.logEntryId, { decision: "reject", outcome: "stale_read_clobber" });
+                    return;
+                }
                 engine.resolveProposal(event.logEntryId, { decision: "accept" });
             } catch {
                 // Errors here don't abort dispatch — the proposal stays

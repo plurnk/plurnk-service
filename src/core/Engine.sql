@@ -39,6 +39,17 @@ UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_
 -- read at turn-0 with precedence over env.
 SELECT settings FROM sessions WHERE id = $session_id;
 
+-- PREP: engine_target_diverged_this_turn
+-- #note10 — did this entry diverge on disk THIS turn? A source=file env-delta for the
+-- target, materialized into this run's log at the current turn, means the model's view
+-- predates the ambient change — a YOLO auto-accept of a same-turn EDIT would clobber it.
+SELECT 1 AS hit
+FROM log_entries
+WHERE run_id = $run_id AND turn_id = $turn_id
+  AND origin = 'plurnk' AND source = 'file' AND op = 'EDIT'
+  AND scheme IS $scheme AND pathname = $pathname
+LIMIT 1;
+
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 

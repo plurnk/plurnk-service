@@ -181,6 +181,10 @@ export interface ProposalPendingEvent {
     body: string;
     attrs: object;
     flags: LoopFlags;
+    // #note10 — the target entry diverged on disk this turn (ambient change since the
+    // model's prior turn), so the model's EDIT is based on a stale read. A server-YOLO
+    // auto-accept would silently clobber the ambient change; YOLO rejects when set.
+    staleClobberRisk: boolean;
 }
 
 // Resolution timeout — proposed entries auto-cancel if nothing arrives
@@ -1478,6 +1482,9 @@ export default class Engine {
             // resolve synchronously inside their handlers.
             const target = this.#extractTarget(statement.target);
             const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
+            // #note10 — if the target diverged on disk this turn, the model's EDIT is based
+            // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
+            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ run_id: runId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
             const event: ProposalPendingEvent = {
                 logEntryId, sessionId, runId, loopId, turnId,
                 op: statement.op,
@@ -1485,6 +1492,7 @@ export default class Engine {
                 body: typeof result.body === "string" ? result.body : "",
                 attrs: (result.attrs ?? {}) as object,
                 flags,
+                staleClobberRisk: diverged !== undefined,
             };
             for (const listener of this.#proposalPendingListeners) {
                 try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
