@@ -23,7 +23,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Known from "../../src/schemes/Known.ts";
+import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -213,19 +215,21 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
 });
 
 // plurnk.md (grammar 0.21.0): `<<FIND(known:///**)<5>:~french revolutionary history:FIND`
-// — RAG semantic similarity, top-K via <L>. The feature is built (embeddings on by
-// default); the full real-model pipeline is validated in test/live/semantic.test.ts.
-// This tier is model-free by design — its Mimetypes declines the embeddings daughter
-// — so the embedder is absent and ~query is a 501 here. Kept as a todo so the grammar
-// example stays pinned; it is green against the real model in the live tier.
-test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", { todo: "model-free intg → embedder absent (501); real-model coverage in test/live/semantic.test.ts" }, async () => {
+// — RAG semantic similarity, top-K via <L>. Runs against the REAL embedder
+// (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
+// path, not a model-free stub. Semantics is normal intg coverage; the model load is an
+// accepted cost (AGENTS: no fast-tier carve-out that hides a working feature). The body
+// `raw` is the bare query the parser yields after consuming the ~ sigil (_entry-find.ts:82).
+test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", async () => {
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
     const { db, sessionId, runId } = await setup();
     try {
-        await seed(db, sessionId, runId, [
-            ["a", "the french revolution and the storming of the bastille"],
-            ["b", "a recipe for chocolate cake"],
-        ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "~french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        await new Known().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
+        await new Known().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
+        await EntryManifest.buildManifestBody(ctx);  // store real embeddings via the daughter
+        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results, ["known:///a"]);
     } finally { db.close(); }
