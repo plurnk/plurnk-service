@@ -14,7 +14,7 @@
 
 import type { FindStatement, FoldStatement, OpenStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
-import type { PrepMethod } from "../core/Db.ts";
+import type { Db, PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import { decodePathParens } from "../core/path-decode.ts";
@@ -26,6 +26,17 @@ export interface FindResult {
     content: string | null;
     mimetype: string | null;
     results: string[];
+}
+
+// Project Findings — a finding IS its enclosing structural unit, not a bare pathname.
+// `extent` is the <L> line span — the enclosing symbol's range, the match line itself when
+// no symbol covers it, or null for a whole-entry match. `symbol` names that unit when
+// known; `content` is opt-in (OPEN curates body into context).
+export interface Finding {
+    path: string;
+    extent: { first: number; last: number } | null;
+    symbol?: string;
+    content?: string;
 }
 
 export default class EntryFind {
@@ -139,6 +150,24 @@ export default class EntryFind {
             pathnames = page.items ?? [];
         }
         return { status: 200, pathnames };
+    }
+
+    // Project Findings — resolve a matched entry's hit lines to findings: each line maps to
+    // its smallest enclosing symbol (the structural unit it belongs to), or to the line
+    // itself when no symbol covers it. Deduped by extent — many hits in one function
+    // collapse to one finding. Phase 2b wires this into the FIND result shape.
+    static async findingsForMatch(db: Db, entryId: number, path: string, lines: readonly number[]): Promise<Finding[]> {
+        const findings: Finding[] = [];
+        const seen = new Set<string>();
+        for (const line of lines) {
+            const sym = await EntryGraph.enclosingSymbol(db, entryId, line);
+            const extent = sym === null ? { first: line, last: line } : { first: sym.line, last: sym.endLine };
+            const key = `${extent.first}-${extent.last}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            findings.push(sym === null ? { path, extent } : { path, extent, symbol: sym.name });
+        }
+        return findings;
     }
 
     static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
