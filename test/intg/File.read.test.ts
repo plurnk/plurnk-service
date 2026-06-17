@@ -240,16 +240,17 @@ test("File.read: long content round-trips", async () => {
     });
 });
 
-test("File.read: absolute path → 404 (entries are relative-keyed, uniform with Known)", async () => {
+test("File.read: absolute path under root → normalizes to the member's relative key (exec-echoed-path ergonomic)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
         await addMember(ctx, "abs.txt");
-        // The entry is keyed by its workspace-relative pathname ("abs.txt"); an
-        // absolute-path READ is a different key → no entry → 404. File does no
-        // scheme-specific absolute→relative resolution (that was the disk path).
+        // The entry is keyed by its workspace-relative pathname ("/abs.txt"). A member READ by
+        // its ABSOLUTE disk path (echoed from exec/build output) normalizes back to that key on
+        // the 404-fallback and resolves — File handles the disk-path form Known never sees.
         const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
-        assert.equal(result.status, 404);
+        assert.equal(result.status, 200, "an absolute path under the root normalizes to the relative member key and resolves");
+        assert.equal(result.content, "abs content");
     });
 });
 

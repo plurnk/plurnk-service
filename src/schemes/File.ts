@@ -1,5 +1,5 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { relative, isAbsolute, join, matchesGlob } from "node:path";
+import { relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -32,6 +32,14 @@ const loadSessionRoot = async (db: Db, sessionId: number): Promise<string | null
     const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
     return row?.project_root ?? null;
 };
+
+// The model may hand us an absolute disk path (echoed from exec/build output) instead of the
+// workspace-relative key it sees in the manifest. An absolute path UNDER the project root
+// normalizes back to its relative key — so it resolves to the member, not a 404 (READ) or a
+// wrong CREATE nested under root (EDIT). Outside-root absolutes don't arise: the model only
+// ever sees those members as their `../`-relative keys, never an absolute form.
+const toWorkspaceRelative = (pathname: string, root: string): string =>
+    pathname === root || pathname.startsWith(root + sep) ? `/${relative(root, pathname)}` : pathname;
 
 // Detect mimetype from a file's path. Routes through the Mimetypes service
 // when available; falls back to the text primitive (text/markdown). The
@@ -81,7 +89,20 @@ export default class File {
     // → 404, the same gate Known runs on. Disk is reached only at the materialize
     // and write-back edges (git-membership, applyResolution) — never on a read.
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readSessionEntry(statement, ctx, File.manifest);
+        const r = await EntryOps.readSessionEntry(statement, ctx, File.manifest);
+        if (r.status !== 404) return r;
+        // 404 fallback: the model may have used an absolute disk path (echoed from exec/build
+        // output) instead of the relative key it sees. Normalize + retry — an absolute-under-
+        // root member then resolves; anything else keeps the 404. No cost on the hit path.
+        const normalized = File.#normalizeFileTarget(statement, await loadSessionRoot(ctx.db, ctx.sessionId));
+        return normalized === statement ? r : EntryOps.readSessionEntry(normalized, ctx, File.manifest);
+    }
+
+    static #normalizeFileTarget(statement: ReadStatement, root: string | null): ReadStatement {
+        const t = statement.target;
+        if (root === null || t === null || t.kind !== "url") return statement;
+        const norm = toWorkspaceRelative(t.pathname, root);
+        return norm === t.pathname ? statement : { ...statement, target: { ...t, pathname: norm } };
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
@@ -105,6 +126,9 @@ export default class File {
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
         if (root === null) return { ok: false, status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
+        // An absolute disk path the model echoed → its relative key, so EDIT hits the member
+        // instead of proposing a wrong CREATE nested under root (the fileExists=false path).
+        pathname = toWorkspaceRelative(pathname, root);
 
         let canonical: string;
         // pathname is namespace-absolute (`/note`); join roots it at the workspace

@@ -177,6 +177,25 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
     });
 });
 
+test("a member addressed by its ABSOLUTE disk path (echoed from exec/build output) normalizes to the relative key", async () => {
+    await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
+        await GitMembership.indexGitMembership(ctx); // materialize the tracked member
+        const abs = `${root}/${trackedPath}`; // the path an exec/build tool would print
+
+        // READ by absolute path → resolves to the member (normalized to /tracked.md), not the
+        // 404 the raw lookup gives (its stored key is /tracked.md, not the absolute form).
+        const read = await new File().read(readStmt(urlPath("file", abs)), ctx);
+        assert.equal(read.status, 200, "a member read by its absolute disk path resolves (normalized), not 404");
+        assert.equal(read.content, "# Tracked by git\n\nThis file is a git member.\n");
+
+        // EDIT by absolute path → proposes against the member's REAL file, not a wrong CREATE
+        // at root/<absolute> nested under the root (which the un-normalized join would produce).
+        const edit = await new File().edit(editStmt(urlPath("file", abs), "# Tracked by git\n\nrevised.\n"), ctx);
+        assert.equal(edit.status, 202, "EDIT by absolute disk path proposes (202)");
+        assert.equal((edit.attrs as { canonical: string }).canonical, join(root, trackedPath), "EDIT resolves to the member's real file, not a path nested under root");
+    });
+});
+
 // ───────────── §membership deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion
