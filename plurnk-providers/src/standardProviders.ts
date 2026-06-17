@@ -5,8 +5,9 @@
 // sibling package; the framework instantiates them directly.
 //
 // Two-tier resolution (SPEC §5): the consumer tries standardProviderFromEnv
-// first, then falls back to dynamic-importing @plurnk/plurnk-providers-<name>
-// for the bespoke ones (openrouter, ollama, google, xai, cloudflare, ...).
+// first, then falls back to the discover() node_modules scan for the bespoke
+// ones (openrouter, ollama, google, xai, cloudflare, third-party). The scan
+// resolves the package specifier — it is NOT a hardcoded @plurnk/ pattern.
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
@@ -97,7 +98,10 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // base URL is region-templated, so the operator MUST set BEDROCK_BASE_URL
     // (e.g. https://bedrock-runtime.us-east-1.amazonaws.com/v1). Multi-model
     // relay (Claude, gpt-oss, Llama, …) → no single reasoning toggle. Model ids
-    // are inference profiles like `us.anthropic.claude-sonnet-4-6`.
+    // are inference profiles like `us.anthropic.claude-sonnet-4-6`, which the
+    // models.dev catalog does NOT key on — so bedrock has no catalog
+    // context/cost; set PLURNK_PROVIDER_CONTEXT_SIZE for a context window (a
+    // catalog inference-profile mapping is a deliberate follow-on, #19).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",

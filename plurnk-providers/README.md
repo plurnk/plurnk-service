@@ -5,6 +5,7 @@ Framework + contract for `@plurnk/plurnk-providers-*` sibling packages (LLM tran
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — author-facing contract for sibling implementers.
+- [`.env.example`](./.env.example) — the authoritative operator config reference: every env knob the provider layer reads (all required, fail-hard, no defaults).
 - Constellation: [plurnk-grammar](https://github.com/plurnk/plurnk-grammar) (HEREDOC + AST), [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes), [plurnk-schemes](https://github.com/plurnk/plurnk-schemes), [plurnk-execs](https://github.com/plurnk/plurnk-execs) (the reference family this one mirrors).
 
 ## Write a provider
