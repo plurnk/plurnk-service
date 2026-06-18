@@ -1,3 +1,5 @@
+import { OutputScheme } from "@plurnk/plurnk-schemes";
+import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
@@ -9,13 +11,38 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, Runti
 // subscriptions, AbortController bridging, wake-on-completion). The executor
 // receives sinks via ExecArgs and nothing more — it stays stateless across
 // runs beyond its construction metadata (SPEC §5).
-export default abstract class BaseExecutor {
+export default abstract class BaseExecutor implements SchemeHandler {
     readonly runtime: string;
     readonly glyph: string;
 
     constructor({ runtime, glyph }: ExecutorMetadata) {
         this.runtime = runtime;
         this.glyph = glyph;
+    }
+
+    // --- executor-is-a-scheme face (schemes#20 / service#240) ---------------
+    // The executor's output is addressed at `<tag>://<coord>` and READ back. Its
+    // scheme manifest is DERIVED from the runtime declaration — no separate
+    // authoring — via schemes' `manifestFromRuntime`. The default READ over that
+    // output (slice/match) is the consumer's: `DefaultRead` is a pure resolver
+    // needing a Mimetypes instance the executor isn't handed, and the consumer
+    // holds the output store. Rich executors (MCP, sqlite) override `read`/`find`
+    // on the SchemeHandler face for custom semantics over their own output.
+    get manifest(): SchemeManifest {
+        return OutputScheme.manifestFromRuntime({
+            name: this.runtime,
+            glyph: this.glyph,
+            channels: Object.fromEntries(
+                Object.entries(this.channels).map(([name, decl]) => [name, decl.mimetype]),
+            ),
+            defaultChannel: this.defaultChannel,
+        });
+    }
+
+    // The channel a bare `READ <tag>://<coord>` resolves to. Defaults to the
+    // first declared channel; subprocess runtimes override to `stdout`.
+    get defaultChannel(): string {
+        return Object.keys(this.channels)[0] ?? "";
     }
 
     // Channels this executor writes to. The consuming scheme seeds the exec

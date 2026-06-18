@@ -77,3 +77,32 @@ test("BaseExecutor.run: matched tag flows through to the executor", async () => 
 
     assert.deepEqual(JSON.parse(h.writes[0].chunk), { runtime: "images", command: "golden retriever" });
 });
+
+// --- executor-is-a-scheme face (schemes#20 / service#240) ---
+
+test("BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
+    const m = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" }).manifest;
+    assert.equal(m.name, "sqlite", "scheme name is the tag");
+    assert.equal(m.glyph, "🗃");
+    assert.deepEqual(m.channels, { results: "application/json" }, "channels derive from the declared output channels");
+    assert.equal(m.defaultChannel, "results");
+    // the read-only-output default an executor-scheme inherits
+    assert.equal(m.category, "data");
+    assert.equal(m.scope, "session");
+    assert.deepEqual(m.writableBy, ["plugin"]);
+    assert.equal(m.volatile, true);
+    assert.equal(m.foldedByDefault, true, "output streams land folded — the containment default");
+});
+
+test("BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
+    class Subproc extends BaseExecutor {
+        get channels(): Readonly<Record<string, ChannelDecl>> {
+            return { stdout: { mimetype: "text/stream" }, stderr: { mimetype: "text/stream" } };
+        }
+        async run(): Promise<ExecResult> { return { status: 200 }; }
+    }
+    assert.equal(new Subproc({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stdout");
+
+    class Custom extends Subproc { override get defaultChannel(): string { return "stderr"; } }
+    assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
+});
