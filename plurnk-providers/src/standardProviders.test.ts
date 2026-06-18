@@ -367,3 +367,86 @@ test("bedrock: builds the region URL and sends the Bedrock API key as bearer", a
     assert.equal(calls[0].auth, "Bearer bedrock-key");
     mock.restoreAll();
 });
+
+// — plurnk hosted model: optional two-credential auth, anonymous fallback (default vendor) —
+
+// Mock that serves the /models probe + captures the chat-completions request
+// headers; `chatStatus` lets a test force a rejection.
+const plurnkMock = (chatStatus = 200) => {
+    const seen: { url: string; headers: Record<string, string>; body: string }[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        seen.push({ url: u, headers, body: String(init?.body ?? "") });
+        if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "plurnk", meta: { n_ctx: 49152 } }] }), { status: 200 });
+        if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        if (chatStatus !== 200) return new Response("denied", { status: chatStatus });
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+    });
+    return seen;
+};
+const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =>
+    seen.find((s) => s.url.endsWith("/chat/completions"))!.headers;
+
+test("plurnk: anonymous (no PLURNK_KEY/PLURNK_ACCOUNT) sends NO auth headers — the throttled default tier", async () => {
+    const seen = plurnkMock();
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // hardcoded base, no creds
+    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    const h = chatHeaders(seen);
+    assert.equal("Authorization" in h, false);
+    assert.equal("Plurnk-Account" in h, false);
+    mock.restoreAll();
+});
+
+test("plurnk: PLURNK_KEY + PLURNK_ACCOUNT send bearer + the Plurnk-Account routing header", async () => {
+    const seen = plurnkMock();
+    const env = { ...baseEnv, PLURNK_KEY: "pk-live-123", PLURNK_ACCOUNT: "acct_42" };
+    const p = await standardProviderFromEnv("plurnk", env, "plurnk");
+    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    const h = chatHeaders(seen);
+    assert.equal(h.Authorization, "Bearer pk-live-123");
+    assert.equal(h["Plurnk-Account"], "acct_42");
+    mock.restoreAll();
+});
+
+test("plurnk: each credential is independent (key-only, account-only)", async () => {
+    let seen = plurnkMock();
+    let p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_KEY: "k" }, "plurnk");
+    await p!.generate({ runId: "r", messages: [] });
+    let h = chatHeaders(seen);
+    assert.equal(h.Authorization, "Bearer k");
+    assert.equal("Plurnk-Account" in h, false);
+    mock.restoreAll();
+
+    seen = plurnkMock();
+    p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_ACCOUNT: "acct_9" }, "plurnk");
+    await p!.generate({ runId: "r", messages: [] });
+    h = chatHeaders(seen);
+    assert.equal(h["Plurnk-Account"], "acct_9");
+    assert.equal("Authorization" in h, false);
+    mock.restoreAll();
+});
+
+test("plurnk: a present-but-rejected key 401s terminally — no retry, no silent anon downgrade", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const seen = plurnkMock(401);
+    const env = { ...baseEnv, PLURNK_PROVIDER_RETRY_ATTEMPTS: "3", PLURNK_KEY: "expired" };
+    const p = await standardProviderFromEnv("plurnk", env, "plurnk");
+    await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError); assert.equal(err.kind, "unauthorized"); return true;
+    });
+    assert.equal(seen.filter((s) => s.url.endsWith("/chat/completions")).length, 1); // terminal — never retried
+    mock.restoreAll();
+});
+
+test("plurnk: llama.cpp behavior is inherited — grammar capability + n_ctx from the probe", async () => {
+    const seen = plurnkMock();
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    assert.equal(p!.contextSize, 49152); // probed n_ctx (the live source)
+    // The probe saw the llama-server meta block, so a caller-supplied grammar
+    // transports on the wire — identical to the local model.
+    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);
+    assert.equal(body.grammar, 'root ::= "ok"');
+    mock.restoreAll();
+});

@@ -18,10 +18,18 @@ import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
 
 type StandardProviderSpec = {
-    // API-key env var, and whether it's mandatory (local OpenAI-compat servers
-    // run without auth, so the generic "openai" entry leaves it optional).
-    apiKeyVar: string;
-    apiKeyRequired: boolean;
+    // Single-var bearer auth, and whether it's mandatory (local OpenAI-compat
+    // servers run without auth, so the generic "openai" entry leaves it
+    // optional). Omit both when supplying a custom `headersFromEnv` builder.
+    apiKeyVar?: string;
+    apiKeyRequired?: boolean;
+    // Custom request-header builder for auth shapes the single-var bearer can't
+    // express — multiple optional credentials, vendor routing headers. Returns
+    // the headers built from env; an EMPTY object is a valid anonymous request.
+    // When set, it REPLACES the apiKeyVar bearer logic. (The `plurnk` entry uses
+    // this: bearer `PLURNK_KEY` + the OpenAI-org-style `Plurnk-Account` routing
+    // header, both optional → blank = anonymous, the server decides the tier.)
+    headersFromEnv?: (env: NodeJS.ProcessEnv) => Record<string, string>;
     // Base URL: a fixed default and/or an operator override var. At least one
     // must resolve to a non-empty value.
     baseUrl?: string;
@@ -107,6 +115,27 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
+    // The plurnk hosted model — a llama.cpp endpoint, so it behaves exactly like
+    // a local llama-server (probe → grammar transport, n_ctx, slot pinning). The
+    // base URL is hardcoded but overridable (PLURNK_BASE_URL) — MIT, never
+    // forcing the hosted model. Auth follows the OpenAI org-scoping convention:
+    // bearer `PLURNK_KEY` + the `Plurnk-Account` routing header, BOTH optional —
+    // blank sends an anonymous request and the server serves a throttled tier.
+    // A present-but-rejected key 401s → classified `unauthorized` (terminal, no
+    // silent downgrade to anon — a bad key is misconfiguration, surfaced).
+    plurnk: {
+        baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
+        headersFromEnv: (env) => {
+            const h: Record<string, string> = {};
+            const key = env.PLURNK_KEY ?? "";
+            const account = env.PLURNK_ACCOUNT ?? "";
+            if (key.length > 0) h.Authorization = `Bearer ${key}`;
+            if (account.length > 0) h["Plurnk-Account"] = account;
+            return h;
+        },
+        reasoningStyle: "think", tokenizerDefault: "llama", tokenizerEnvVar: "PLURNK_TOKENIZER",
+        probeNctx: true,
+    },
 });
 
 export const isStandardProvider = (name: string): boolean => name in STANDARD_PROVIDERS;
@@ -119,6 +148,18 @@ const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: s
     }
     const trimmed = spec.flexBaseStrip === true ? base.replace(/\/v1\/?$/, "") : base.replace(/\/$/, "");
     return `${trimmed}${spec.chatPath}`;
+};
+
+// Auth/routing headers. A custom builder (multi-credential auth) wins; otherwise
+// the single-var bearer: required → fail-hard if unset, optional → omitted when
+// blank (keyless local servers, and anonymous tiers, send no Authorization).
+const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string): Record<string, string> => {
+    if (spec.headersFromEnv !== undefined) return spec.headersFromEnv(env);
+    if (spec.apiKeyVar === undefined) return {};
+    const apiKey = spec.apiKeyRequired === true
+        ? requireEnv(env[spec.apiKeyVar], spec.apiKeyVar, label)
+        : env[spec.apiKeyVar] ?? "";
+    return apiKey.length > 0 ? { Authorization: `Bearer ${apiKey}` } : {};
 };
 
 // GET /v1/models probe. Yields the reported context window (llama-server nests
@@ -169,12 +210,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const spec = STANDARD_PROVIDERS[name];
     if (spec === undefined) return null;
 
-    const apiKey = spec.apiKeyRequired
-        ? requireEnv(env[spec.apiKeyVar], spec.apiKeyVar, name)
-        : env[spec.apiKeyVar] ?? "";
-
-    const headers: Record<string, string> = {};
-    if (apiKey.length > 0) headers.Authorization = `Bearer ${apiKey}`;
+    const headers = resolveHeaders(spec, env, name);
 
     const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
     const url = resolveUrl(spec, env, name);
