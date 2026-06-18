@@ -28,6 +28,13 @@ export interface SchemeManifest {
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
+    // Entries land FOLDED, off the ranked manifest surface, by default —
+    // discoverable and READable via their address, but not poured into the
+    // ranked view the model pays tokens to see. The containment invariant one
+    // level up: executor-output streams (`<tag>://…`) declare this so a long run
+    // of tool calls doesn't rebuild the flood the receipt exists to kill
+    // (service#240). Absent/false → first-class ranked (every existing scheme).
+    readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
     // Self-doc for the model's packet listing. Terse by design — DEEP docs do
     // NOT live here; they are a markdown the model reads on demand at

@@ -26,6 +26,10 @@ export { default as SchemeDiscovery } from "./SchemeDiscovery.ts";
 export type { SchemeInfo, SchemeDiscoveryResult, DiscoverOptions } from "./SchemeDiscovery.ts";
 export { default as Summarize } from "./Summarize.ts";
 export type { OrientIndex } from "./Summarize.ts";
+export { default as OutputScheme } from "./OutputScheme.ts";
+export type { RuntimeDecl } from "./OutputScheme.ts";
+export { default as DefaultRead } from "./DefaultRead.ts";
+export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./results.ts";
 export type {
     EntryResult,
