@@ -226,14 +226,15 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       fetchTimeoutMs,
       headers,               // fully-resolved request headers (incl. auth)
       contextSize,           // number | null
-      reasoningBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort" | "template"
+      reasoningBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic"
       countTokens, costFor,  // strategies; default heuristic / free
-      supportsGrammar,       // backend accepts a `grammar` body field (§13); default false
+      grammarStyle,          // "none" | "llamacpp" | "response_format" — GBNF wire shape (§13); default "none"
+      streaming,             // SSE transport; default true (false → one non-streamed JSON)
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
   });
   ```
 
-  The `openai` standard provider sets `supportsGrammar` and `supportsSlotPinning` from the same llama-server fingerprint, and `slotCount` from a `/props` probe (§11). The run→slot mapping itself lives inside `OpenAICompatProvider`: sticky per `runId`, round-robin across new runs, LRU-bounded.
+  The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The run→slot mapping lives inside `OpenAICompatProvider`: sticky per `runId`, round-robin across new runs, LRU-bounded.
 
 - **`chatCompletionStream` / `OpenAiHttpError` / `StreamResponse`** — the SSE client. One shared copy.
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
@@ -274,6 +275,11 @@ The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structura
 
 **Native reasoning and the grammar are mutually exclusive; in-DSL reasoning is the working pattern.** The GBNF masks every sampled token. With NATIVE thinking live (llama-server's own `--reasoning-budget` default, or `enable_thinking: true`), the server auto-gates the grammar past the think block — reasoning flows free — but content-channel enforcement then **leaks** (unconstrained prose, degenerates) or content never arrives; explicit `grammar_lazy`/`grammar_triggers` are ignored on the chat-completions path. The constrained configuration therefore requires the native channel **explicitly closed** — `PLURNK_PROVIDERS_REASONING_BUDGET=0`, which the `template` style emits as `enable_thinking: false`; mere field omission leaves the server default live, and think-inviting tasks then break the loop. With the channel closed, the model willingly reasons **inside the DSL**: the grammar's `PLAN` statement is a free-text body the model fills with genuine step-by-step reasoning before acting (probed live, b894+gemma: correct chain-of-thought inside `<<PLAN:…:PLAN`, then a clean `SEND`, `finish_reason: stop`). Channeling reasoning through `PLAN` is consumer/prompt policy; the provider's job is closing the native channel deterministically.
 
-**Capability detection.** `OpenAICompatConfig.supportsGrammar` (default `false`). The `openai` standard provider detects it from the §11 probe: only llama-server rows on `GET /v1/models` carry a `meta` block, and llama-server is the backend whose chat-completions accepts `grammar`. vLLM speaks a different guided-decoding dialect and is deliberately excluded. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal — no `ProviderDeclaration` schema field until the consumer actually needs to branch on it.
+**Grammar transport — same GBNF, different wire shapes (`grammarStyle`, default `"none"`).** Backends carry the *same* grammar string differently:
+- **`"llamacpp"`** — top-level `grammar` field + the repeat-penalty floor (§9). Detected from the §11 probe: only llama-server rows on `GET /v1/models` carry a `meta` block. This is `model.plurnk.ai` and any local llama-server.
+- **`"response_format"`** — `response_format: { type: "grammar", grammar }`. **Fireworks** (set statically, `grammarStyle: "response_format"`). Verified live: a forcing grammar constrains the output. ⚠️ Fireworks' *streamed* response mislabels grammar-constrained output as `reasoning_content`, so the fireworks entry also sets **`streaming: false`** — the non-streamed JSON returns it as `content` (the contract is atomic either way). Live-confirmed on `deepseek-v4-flash`/`-pro`.
+- **`"none"`** — the grammar is **not sent** (never silently — a constrained consumer must not mistake unconstrained output for enforced).
+
+vLLM/Deepinfra was probed and does **not** expose working GBNF over its OpenAI-compat surface (`guided_grammar` silently ignored; `response_format` accepts only `'text'`) — deliberately left `"none"`. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal.
 
 Zero grammar dependency (§11) is preserved: the GBNF string arrives per call; this package never imports the artifact.

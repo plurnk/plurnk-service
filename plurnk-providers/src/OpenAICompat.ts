@@ -9,7 +9,7 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
+import { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError } from "./telemetry.ts";
 
@@ -30,6 +30,18 @@ import { toProviderError, classifyProviderError } from "./telemetry.ts";
 //  - "none":              provider has no reasoning toggle (e.g. Cloudflare, Bedrock relay)
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic";
 
+// How a caller-supplied GBNF grammar is carried on the wire — backends accept
+// different shapes for the SAME GBNF (probed/configured, never guessed; §13):
+//  - "llamacpp":         llama.cpp/llama-server → top-level `grammar` field
+//                        (+ the repeat-penalty floor); detected via the probe.
+//  - "response_format":  Fireworks (and compatible) → `response_format:
+//                        { type: "grammar", grammar }`. Verified live: a forcing
+//                        grammar constrains the output (plurnk-providers#…).
+//  - "none":             backend has no working GBNF path — the grammar is NOT
+//                        sent (never silently, so a constrained consumer can't
+//                        mistake unconstrained output for enforced).
+export type GrammarStyle = "none" | "llamacpp" | "response_format";
+
 export type OpenAICompatConfig = {
     model: string;
     url: string;                              // fully-resolved chat-completions URL
@@ -40,7 +52,8 @@ export type OpenAICompatConfig = {
     countTokens?: (text: string) => number;   // default chars/4 heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
-    supportsGrammar?: boolean;                 // backend accepts a `grammar` body field (llama-server); default false
+    grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
+    streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
@@ -109,7 +122,8 @@ export default class OpenAICompatProvider implements Provider {
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
-    #supportsGrammar: boolean;
+    #grammarStyle: GrammarStyle;
+    #streaming: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -126,7 +140,8 @@ export default class OpenAICompatProvider implements Provider {
         this.#countTokens = config.countTokens ?? heuristicTokens;
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
-        this.#supportsGrammar = config.supportsGrammar ?? false;
+        this.#grammarStyle = config.grammarStyle ?? "none";
+        this.#streaming = config.streaming ?? true;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
     }
@@ -182,12 +197,20 @@ export default class OpenAICompatProvider implements Provider {
         return { id_slot: slot };
     }
 
-    // Grammar transport (SPEC §13): attach the caller-supplied GBNF verbatim
-    // when the backend supports it, with the repeat-penalty floor it requires.
-    // Unsupported backend → no wire field at all (cloud APIs 400 on unknowns).
+    // Grammar transport (SPEC §13): carry the caller-supplied GBNF in the shape
+    // the backend accepts. Same grammar, different wire field per backend; an
+    // unsupported/unknown backend sends NO field at all (cloud APIs 400 on
+    // unknowns, and a silent send would let a constrained consumer mistake
+    // unconstrained output for enforced).
     #grammarBody(grammar: string | undefined): Record<string, unknown> {
-        if (grammar === undefined || !this.#supportsGrammar) return {};
-        return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
+        if (grammar === undefined) return {};
+        switch (this.#grammarStyle) {
+            // llama.cpp greedy-decodes under hard constraint and loops without
+            // the repeat-penalty floor (#9) — it rides with the grammar here.
+            case "llamacpp": return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
+            case "response_format": return { response_format: { type: "grammar", grammar } };
+            case "none": return {};
+        }
     }
 
     async generate({ messages, runId, signal, grammar, maxTokens }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse> {
@@ -210,12 +233,13 @@ export default class OpenAICompatProvider implements Provider {
         // signal spans them all. Retry only the transient classifications, prefer
         // a server Retry-After over the backoff, and let the caller's abort cut
         // through both the in-flight request and the backoff sleep.
+        const transport = this.#streaming ? chatCompletionStream : chatCompletion;
         let raw;
         for (let attempt = 0; ; attempt++) {
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
             const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
             try {
-                raw = await chatCompletionStream({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
+                raw = await transport({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
                 break;
             } catch (err) {
                 // Caller-initiated abort is cancellation — never retried or wrapped.

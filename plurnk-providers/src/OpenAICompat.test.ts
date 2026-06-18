@@ -158,26 +158,37 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
 
 // — grammar-constrained sampling (SPEC §13, issues #8/#9) —
 
-test("grammar transport: attaches the GBNF verbatim plus the repeat-penalty floor", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsGrammar: true });
+test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.grammar, "root ::= statement");
     assert.equal(body.repeat_penalty, 1.15);
+    assert.equal("response_format" in body, false);
 });
 
-test("grammar transport: unsupported backend ignores the grammar (no wire fields)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 }); // default: no support
+test("grammar transport 'response_format': response_format.grammar, no top-level grammar (Fireworks)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.response_format, { type: "grammar", grammar: "root ::= statement" });
+    assert.equal("grammar" in body, false);          // not the llama.cpp shape
+    assert.equal("repeat_penalty" in body, false);
+});
+
+test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
-    assert.equal("repeat_penalty" in body, false);
+    assert.equal("response_format" in body, false);
 });
 
 test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsGrammar: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
@@ -344,4 +355,27 @@ test("reasoningStyle 'anthropic' maps the budget to the thinking param", async (
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await adaptive.generate({ runId: "r", messages: [] });
     assert.equal("thinking" in JSON.parse(calls[0].init.body as string), false);
+});
+
+// — non-streaming transport (streaming:false) —
+
+test("streaming:false posts without stream and parses the single JSON response", async () => {
+    const calls: { body: string }[] = [];
+    mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+        calls.push({ body: String(init.body) });
+        return new Response(JSON.stringify({
+            model: "wire-model",
+            choices: [{ message: { content: "hello", reasoning_content: "because" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false });
+    const res = await p.generate({ runId: "r", messages: [] });
+    const sent = JSON.parse(calls[0].body);
+    assert.equal("stream" in sent, false);                 // no streaming flag
+    assert.equal(res.assistant.content, "hello");          // content from message.content
+    assert.equal(res.assistant.reasoning, "because");      // reasoning_content mapped
+    assert.equal(res.assistant.finishReason, "stop");
+    assert.equal(res.assistant.usage.total, 4);
+    mock.restoreAll();
 });

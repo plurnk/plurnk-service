@@ -25,8 +25,8 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 // Shared OpenAI-compatible transport machinery — the spine every sibling
 // extends and the basis for ./standardProviders.ts.
 export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompat.ts";
-export type { OpenAICompatConfig, ReasoningStyle } from "./OpenAICompat.ts";
-export { chatCompletionStream, OpenAiHttpError } from "./openaiStream.ts";
+export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAICompat.ts";
+export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 export { tokenizerFor, tokenizerByPublisher, parseTokenizerFamily } from "./tokenizers.ts";

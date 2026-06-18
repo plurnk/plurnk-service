@@ -10,7 +10,7 @@
 // resolves the package specifier — it is NOT a hardcoded @plurnk/ pattern.
 
 import type { Provider, ProviderUsage } from "./types.ts";
-import OpenAICompatProvider, { type ReasoningStyle } from "./OpenAICompat.ts";
+import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
 import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
@@ -39,6 +39,15 @@ type StandardProviderSpec = {
     // not already include it.
     flexBaseStrip?: boolean;
     reasoningStyle: ReasoningStyle;
+    // How this backend carries a GBNF grammar (default "none" — not sent). A
+    // probeNctx entry is upgraded to "llamacpp" when the probe sees a
+    // llama-server; cloud backends that support GBNF set their shape statically
+    // (fireworks → "response_format", verified live).
+    grammarStyle?: GrammarStyle;
+    // SSE streaming (default true). Set false for a backend whose streamed
+    // response misbehaves — fireworks labels grammar-constrained output as
+    // reasoning_content under stream, but returns it as content non-streamed.
+    streaming?: boolean;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
@@ -84,7 +93,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrl: "https://api.fireworks.ai/inference/v1", baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "none", grammarStyle: "response_format", streaming: false, tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: "DEEPINFRA_API_KEY", apiKeyRequired: true,
@@ -215,18 +224,25 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // hinge on whether the operator pinned PLURNK_PROVIDER_CONTEXT_SIZE. For
     // contextSize itself, explicit env still wins over the probed n_ctx.
     let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
-    let supportsGrammar = false;
+    // Grammar shape: a static spec choice (e.g. fireworks → "response_format"),
+    // upgraded to "llamacpp" when the probe fingerprints a llama-server. Slot
+    // pinning is llama-server-only, so it keys on that same fingerprint.
+    let grammarStyle: GrammarStyle = spec.grammarStyle ?? "none";
+    let supportsSlotPinning = false;
     let slotCount: number | null = null;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         const probe = await probeModels(url, headers, model, fetchTimeoutMs);
-        supportsGrammar = probe.llamaServer;
         contextSize ??= probe.nCtx;
-        // llama-server ignores `think` — its working reasoning toggle is the
-        // jinja chat_template_kwargs.enable_thinking, including the explicit
-        // FALSE at budget 0 that grammar-constrained loops require (§13).
-        if (probe.llamaServer && reasoningStyle === "think") reasoningStyle = "template";
-        if (probe.llamaServer) slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
+        if (probe.llamaServer) {
+            grammarStyle = "llamacpp";
+            supportsSlotPinning = true;
+            slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
+            // llama-server ignores `think` — its working reasoning toggle is the
+            // jinja chat_template_kwargs.enable_thinking, including the explicit
+            // FALSE at budget 0 that grammar-constrained loops require (§13).
+            if (reasoningStyle === "think") reasoningStyle = "template";
+        }
     }
 
     // Vendored-snapshot FALLBACK (#19) — live always wins. contextSize already
@@ -258,9 +274,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         countTokens: tokenizerFor(family),
         costFor,
         source: providerSource(name),
-        supportsGrammar,
-        // The same fingerprint backs both llama-server dialect extensions.
-        supportsSlotPinning: supportsGrammar,
+        grammarStyle,
+        streaming: spec.streaming,
+        supportsSlotPinning,
         slotCount,
     });
 };

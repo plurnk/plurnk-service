@@ -43,6 +43,40 @@ const parseRetryAfter = (header: string | null): number | null => {
     return null;
 };
 
+// Non-streaming sibling. Same request/error handling, but POSTs without
+// `stream` and parses the single JSON body into the SAME StreamResponse shape.
+// For backends whose STREAMING response misbehaves (e.g. Fireworks labels
+// grammar-constrained output as `reasoning_content` instead of `content`) —
+// the Provider contract is atomic either way, so the transport is free to
+// choose. The fetch timeout (AbortSignal) bounds the wait; there is no proxy
+// between us and the backend that would idle out a non-streamed request.
+export const chatCompletion = async ({ url, headers, body, signal }: StreamRequest): Promise<StreamResponse> => {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+        signal,
+    });
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new OpenAiHttpError(response.status, errorBody, parseRetryAfter(response.headers.get("retry-after")));
+    }
+    const j = (await response.json()) as Record<string, any>;
+    const choice = (j.choices?.[0] ?? {}) as Record<string, any>;
+    const msg = (choice.message ?? {}) as Record<string, any>;
+    const reasoning = msg.reasoning_content ?? msg.reasoning ?? msg.thinking ?? "";
+    const chunkMetadata: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(j)) if (k !== "choices" && k !== "usage") chunkMetadata[k] = v;
+    return {
+        model: typeof j.model === "string" ? j.model : null,
+        content: typeof msg.content === "string" ? msg.content : "",
+        reasoning_content: typeof reasoning === "string" ? reasoning : "",
+        finish_reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null,
+        usage: (j.usage ?? null) as StreamResponse["usage"],
+        chunkMetadata,
+    };
+};
+
 export const chatCompletionStream = async ({ url, headers, body, signal }: StreamRequest): Promise<StreamResponse> => {
     const requestBody = { ...body, stream: true, stream_options: { include_usage: true } };
 

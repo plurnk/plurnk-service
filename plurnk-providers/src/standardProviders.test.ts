@@ -8,7 +8,7 @@ const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
 const mockEndpoint = ({ nctx, metaNctx, modelId = "m" }: { nctx?: number; metaNctx?: number; modelId?: string } = {}) => {
     const calls: string[] = [];
-    mock.method(globalThis, "fetch", async (url: string) => {
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         const u = String(url);
         calls.push(u);
         if (u.endsWith("/models")) {
@@ -19,8 +19,10 @@ const mockEndpoint = ({ nctx, metaNctx, modelId = "m" }: { nctx?: number; metaNc
             };
             return new Response(JSON.stringify({ data: [row] }), { status: 200 });
         }
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
-        return new Response(body, { status: 200 });
+        // Honor the request's transport: SSE when stream:true, one JSON otherwise.
+        const streamed = init?.body !== undefined && JSON.parse(String(init.body)).stream === true;
+        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        return new Response(JSON.stringify({ model: modelId, choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
     return calls;
 };
@@ -448,5 +450,21 @@ test("plurnk: llama.cpp behavior is inherited — grammar capability + n_ctx fro
     await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);
     assert.equal(body.grammar, 'root ::= "ok"');
+    mock.restoreAll();
+});
+
+// — fireworks carries GBNF via response_format.grammar (cloud GBNF, #grammarStyle) —
+
+test("fireworks: a grammar transports as response_format.grammar (not the llama.cpp top-level field)", async () => {
+    let body = "";
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } }); }
+        return new Response("{}", { status: 200 });
+    });
+    const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "accounts/fireworks/models/deepseek-v4-pro");
+    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const b = JSON.parse(body);
+    assert.deepEqual(b.response_format, { type: "grammar", grammar: 'root ::= "ok"' });
+    assert.equal("grammar" in b, false);
     mock.restoreAll();
 });
