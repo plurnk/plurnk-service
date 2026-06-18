@@ -212,12 +212,13 @@ test("GBNF: SEND[202] (parked) is a pathless terminator, not a mid status", () =
     assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
-test("GBNF: SEND[500] (failed) is a terminal disposition, reserved from mid", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:could not complete:SEND"), true);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500](run://parent):aborted:SEND"), true); // terminate-and-report failure
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:fail:SEND\n<<SEND[200]:done:SEND"), false); // 500 is terminal-only
-    // other 5xx stay available as mid error-report codes
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[503]:upstream busy:SEND\n<<SEND[200]:done:SEND"), true);
+test("GBNF: SEND[499] (give-up) is a terminal disposition; 500 (engine verdict) is not emittable as a terminal", () => {
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499]:giving up:SEND"), true);
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499](run://parent):aborting:SEND"), true); // terminate-and-report give-up
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499]:abort:SEND\n<<SEND[200]:done:SEND"), false); // 499 is terminal-only
+    // 500 is an engine verdict, never a model terminal — only usable as a mid message code
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND"), false); // 500 not a terminal
+    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[200]:done:SEND"), true); // 500 ok as a mid code
 });
 
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, non-loop status) before the final", () => {
@@ -314,8 +315,8 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
         assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
         // terminal is path-agnostic now — target may be present or null; the loop code is what closes the turn
         assert.ok(
-            [102, 200, 202, 500].includes(last.statement.signal as number),
-            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202/500\nbatch: ${JSON.stringify(turn)}`,
+            [102, 200, 202, 499].includes(last.statement.signal as number),
+            `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202/499\nbatch: ${JSON.stringify(turn)}`,
         );
     }
 });

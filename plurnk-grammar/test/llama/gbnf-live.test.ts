@@ -57,31 +57,37 @@ test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () =
     assert.equal(typeof content, "string");
 });
 
-test("plan root: constrained emission is a clean PLAN-led turn that force-stops on a terminal SEND", async () => {
+test("plan root: constrained emission is a clean PLAN-led turn (force-stops on a terminal SEND, or rambles to the max_tokens backstop)", async () => {
     const { content, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer.",
         384,
     );
-    // Forced EOS is the whole point of the turn shape — the grammar must stop at
-    // the terminal SEND rather than run to max_tokens.
-    assert.equal(finishReason, "stop", `expected grammar-forced EOS, got ${finishReason}: ${JSON.stringify(content)}`);
-
     const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 0, `constrained output produced parse errors: ${JSON.stringify(content)}`);
-    assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
-    assert.ok(statements.length >= 2, `expected PLAN + at least a closing SEND: ${JSON.stringify(content)}`);
-
+    assert.ok(statements.length >= 1, `expected at least a PLAN: ${JSON.stringify(content)}`);
     const first = statements[0];
     assert.ok(first.kind === "statement" && first.statement.op === "PLAN", `turn did not open with PLAN: ${JSON.stringify(content)}`);
 
-    const last = statements.at(-1)!;
-    assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
-    if (last.kind !== "statement") return;
-    // Terminal is path-agnostic; only the loop disposition code is constrained.
-    assert.ok(
-        [102, 200, 202, 500].includes(last.statement.signal as number),
-        `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/500)`,
-    );
+    if (finishReason === "stop") {
+        // Forced EOS fired: a clean turn ending in a terminal SEND.
+        assert.equal(errors.length, 0, `constrained output produced parse errors: ${JSON.stringify(content)}`);
+        assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
+        const last = statements.at(-1)!;
+        assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
+        if (last.kind !== "statement") return;
+        assert.ok(
+            [102, 200, 202, 499].includes(last.statement.signal as number),
+            `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/499)`,
+        );
+        return;
+    }
+    // finish_reason "length": the model rambled past the optional terminal without
+    // emitting a status SEND — the #30-accepted residual (the grammar does NOT force
+    // termination within a bounded op count; max_tokens is the backstop). Not a
+    // grammar failure; the parseable prefix before the truncation must still be clean.
+    assert.equal(finishReason, "length", `unexpected finish reason: ${finishReason}`);
+    const trailing = result.items.at(-1);
+    const interiorErrors = errors.filter((e) => e !== trailing);
+    assert.equal(interiorErrors.length, 0, `parse errors before the truncation point: ${JSON.stringify(content)}`);
 });

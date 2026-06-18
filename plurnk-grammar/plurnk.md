@@ -149,5 +149,5 @@ chmod +x ./example.sh
 
 <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
 <<SEND[202]:Parked until the capital-checker reports.:SEND
-<<SEND[500]:Failed to identify French capital:SEND
+<<SEND[499]:Giving up — cannot identify the capital from available sources.:SEND
 <<SEND[200]:Paris:SEND

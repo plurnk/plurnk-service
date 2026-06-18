@@ -105,7 +105,16 @@ test("Validator: Loop accepts status 499 (terminal cancel)", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: Loop rejects status outside {102, 200, 499}", () => {
+test("Validator: Loop accepts engine-imposed statuses (100/413/429/500/508)", () => {
+    for (const status of [100, 413, 429, 500, 508]) {
+        const { valid } = Validator.validateLoop({
+            id: 1, version: 0, run_id: 1, sequence: 1, status, prompt: "Hello",
+        });
+        assert.equal(valid, true, `status ${status} should be a valid persisted Loop.status`);
+    }
+});
+
+test("Validator: Loop rejects status outside the persisted set (e.g. 404)", () => {
     const { valid } = Validator.validateLoop({
         id: 1, version: 0, run_id: 1, sequence: 1, status: 404, prompt: "Hello",
     });
