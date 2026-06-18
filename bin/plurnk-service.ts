@@ -36,11 +36,34 @@ export default class Cli {
         return value;
     }
 
+    // Optional integer sqlite tuning knob — undefined when unset (so it never clobbers
+    // sqlrite's default by spreading an explicit `undefined`); fail-hard on a non-integer.
+    static #sqliteKnob(name: string): number | undefined {
+        const raw = process.env[name];
+        if (raw === undefined || raw.trim() === "") return undefined;
+        const n = Number(raw);
+        if (!Number.isInteger(n)) Cli.#die(78, `${name} must be an integer, got ${JSON.stringify(raw)}`);
+        return n;
+    }
+
     static async #openDb(dbPath: string): Promise<Db> {
+        // Curated sqlite tuning (sqlrite 5.2.0, #7) — pass through ONLY the knobs the
+        // operator set, so an unset one keeps sqlrite's default (e.g. busy_timeout=5000).
+        const tuning: Record<string, number> = {};
+        for (const [env, opt] of [
+            ["PLURNK_SQLITE_TIMEOUT", "timeout"],
+            ["PLURNK_SQLITE_CACHE_SIZE", "cacheSize"],
+            ["PLURNK_SQLITE_MMAP_SIZE", "mmapSize"],
+            ["PLURNK_SQLITE_MAX_PAGE_COUNT", "maxPageCount"],
+        ] as const) {
+            const v = Cli.#sqliteKnob(env);
+            if (v !== undefined) tuning[opt] = v;
+        }
         const db = await SqlRite.open({
             path: dbPath,
             dir: [resolve(Cli.#projectRoot, "migrations"), resolve(Cli.#projectRoot, "src")],
             functions: [resolve(Cli.#projectRoot, "src/schemes/cosine.ts")],
+            ...tuning,
         });
         return db as unknown as Db;
     }

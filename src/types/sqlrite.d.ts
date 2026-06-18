@@ -10,6 +10,11 @@ declare module "@possumtech/sqlrite" {
         dir?: string | string[];
         functions?: string | string[];
         params?: Record<string, string | number | null>;
+        // Curated sqlite tuning knobs (sqlrite 5.2.0, #7). Integers; absent = sqlrite default.
+        timeout?: number;        // busy_timeout ms (default 5000)
+        cacheSize?: number;      // cache_size: + = pages, − = KiB
+        mmapSize?: number;       // mmap_size: bytes (inert on :memory:)
+        maxPageCount?: number;   // max_page_count: hard db-size ceiling, pages
     }
 
     interface SqlRiteInstance {
