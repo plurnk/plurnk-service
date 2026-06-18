@@ -347,23 +347,25 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
 // Rail #38: strike system. Hard outcomes accumulate consecutive strikes;
 // soft outcomes (404, 501) and clean turns reset the streak.
 
-test("Engine.runLoop: three consecutive hard failures abandon at 499 with strike_threshold reason", async () => {
+test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // EDIT log:/// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
-        const denied = (): EditStatement => ({
+        // Vary the path per turn so the failures stay DISTINCT (no cycle) — this isolates
+        // the failure path → 500 (an identical-repeat would also trip cycle → 508).
+        const denied = (n: number): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/x"),
+            target: urlPath("log", `/x-${n}`),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
             contextSize: 100000,
-            responses: Array.from({ length: 5 }, () => response([denied(), sendStmt(102, "going")])),
+            responses: Array.from({ length: 5 }, (_, i) => response([denied(i), sendStmt(102, "going")])),
         });
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
         });
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.finalStatus, 500, "distinct hard failures abandon at 500 Internal Server Error");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.hitMaxTurns, false);
         assert.equal(result.turnIds.length, 3, "abandoned on the 3rd consecutive struck turn");
@@ -428,7 +430,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.finalStatus, 500, "distinct hard failures → 500");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 4, "clean turn 2 reset streak; abandon fired on turn 4");
     } finally { await db.close(); }
@@ -445,7 +447,7 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.finalStatus, 500, "no-op strikes (no cycle) → 500");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 2);
     } finally { await db.close(); }
@@ -501,7 +503,7 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
         });
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.finalStatus, 508, "cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 5, "cycle fires on turn 3; 3 consecutive cycle strikes (3, 4, 5) abandon");
     } finally { await db.close(); }
@@ -553,7 +555,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, messages: [], maxTurns: 20, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
-        assert.equal(result.finalStatus, 499);
+        assert.equal(result.finalStatus, 508, "period-2 cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.ok(result.turnIds.length >= 6 && result.turnIds.length <= 8, `period-2 cycle abandons in the 7th-8th turn (got ${result.turnIds.length})`);
     } finally { await db.close(); }

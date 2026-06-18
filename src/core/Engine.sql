@@ -26,12 +26,10 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 -- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
--- PREP: engine_loop_cancel
--- terminal_message carries the abandonment reason — rides the §run-scheme delta.
-UPDATE loops SET status = 499, terminal_message = $message WHERE id = $loop_id;
-
 -- PREP: engine_loop_set_status
--- terminal_message is the loop's deliverable (the SEND body) — rides the §run-scheme delta.
+-- The universal terminal setter. terminal_message carries either the loop's deliverable
+-- (the SEND body) or the engine's abandonment reason (max_turns / budget_overflow /
+-- strike_threshold) — rides the §run-scheme delta.
 UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_id;
 
 -- PREP: session_get_settings

@@ -193,7 +193,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "iterate", maxTurns: 3 });
             const result = response.result as { finalStatus: number; hitMaxTurns: boolean; turnIds: number[] };
             assert.equal(result.hitMaxTurns, true);
-            assert.equal(result.finalStatus, 499);
+            assert.equal(result.finalStatus, 429, "max_turns exhausts the turn ceiling → 429");
             assert.equal(result.turnIds.length, 3);
         } finally { ws.close(); }
     });

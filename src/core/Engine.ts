@@ -563,9 +563,11 @@ export default class Engine {
             }
 
             if (maxTurns >= 0 && turnIds.length >= maxTurns) {
-                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "max_turns" });
+                // §loop-terminals — the turn ceiling is exhausted: 429 Too Many Requests
+                // (kin to the soft sudden-death 429 warnings that precede it).
+                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 429, message: "max_turns" });
                 cleanup("forceful", "max_turns");
-                return { turnIds, finalStatus: 499, hitMaxTurns: true, reason: "max_turns" };
+                return { turnIds, finalStatus: 429, hitMaxTurns: true, reason: "max_turns" };
             }
 
             // PLURNK_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
@@ -586,9 +588,10 @@ export default class Engine {
 
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
-                await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "budget_overflow" });
+                // §loop-terminals — the packet won't fit even collapsed: 413 Content Too Large.
+                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 413, message: "budget_overflow" });
                 cleanup("forceful", "budget_overflow");
-                return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "budget_overflow" };
+                return { turnIds, finalStatus: 413, hitMaxTurns: false, reason: "budget_overflow" };
             }
 
             // Rail #39: cycle detection. Push this turn's fingerprint to
@@ -627,9 +630,13 @@ export default class Engine {
             if (struck) {
                 state.streak++;
                 if (state.streak >= maxStrikes) {
-                    await (this.#db.engine_loop_cancel as PrepMethod).run({ loop_id: loopId, message: "strike_threshold" });
+                    // §loop-terminals — a cycle-driven strike is the model spinning in place
+                    // (508 Loop Detected); a failure/no-op strike is the model failing (500
+                    // Internal Server Error). The straw that crossed the threshold picks it.
+                    const status = cycle.detected ? 508 : 500;
+                    await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status, message: "strike_threshold" });
                     cleanup("forceful", "strike_threshold");
-                    return { turnIds, finalStatus: 499, hitMaxTurns: false, reason: "strike_threshold" };
+                    return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
                 }
             } else {
                 state.streak = 0;

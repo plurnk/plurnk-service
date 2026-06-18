@@ -31,15 +31,19 @@ test("loops: insert with required fields — status defaults to 102", async () =
     } finally { await db.close(); }
 });
 
-test("loops: status enum — 102, 200, 499 all accepted", async () => {
+test("loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", async () => {
     const db = await openMigrated();
     try {
         const runId = await seedRun(db, "ws-loops-enum");
-        await (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 1, status: 102, prompt: "a" });
-        await (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 2, status: 200, prompt: "b" });
-        await (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 3, status: 499, prompt: "c" });
+        // The full terminal vocabulary: model SENDs (200), engine-imposed ceilings
+        // (413 budget, 429 turn-cap), cancel (499), and the strike split (500 fail,
+        // 508 runaway). 102 = running. (100 queued is covered in the next test.)
+        const valid = [102, 200, 413, 429, 499, 500, 508];
+        for (const [i, status] of valid.entries()) {
+            await (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: i + 1, status, prompt: "x" });
+        }
         const rows = await (db.test_loops_statuses_by_run as PrepMethod).all<{ status: number }>({ run_id: runId });
-        assert.deepEqual(rows.map((r) => r.status), [102, 200, 499]);
+        assert.deepEqual(rows.map((r) => r.status), valid);
     } finally { await db.close(); }
 });
 
@@ -56,11 +60,12 @@ test("loops: status enum accepts 100 (queued) — drain prerequisite", async () 
     } finally { await db.close(); }
 });
 
-test("loops: status enum rejects non-enum values (e.g. 201, 500, 0, -1)", async () => {
+test("loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
     const db = await openMigrated();
     try {
         const runId = await seedRun(db, "ws-loops-badenum");
-        for (const bad of [201, 500, 0, -1]) {
+        // 201/300 are valid HTTP but not loop statuses; 0/-1 are out of range.
+        for (const bad of [201, 300, 0, -1]) {
             await assert.rejects(
                 () => (db.test_loops_insert_with_status as PrepMethod).run({ run_id: runId, sequence: 1, status: bad, prompt: "x" }),
                 /CHECK constraint failed/,

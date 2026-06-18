@@ -77,13 +77,13 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-abort] when even the manifest won't fit, the loop abandons at 499 (budget_overflow)", async () => {
+test("[§grinder-hard-413-abort] when even the manifest won't fit, the loop abandons at 413 (budget_overflow)", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
         const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: okSends(3) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.finalStatus, 499, "hard-stop abandons the loop");
+        assert.equal(result.finalStatus, 413, "hard-stop abandons the loop at 413 Content Too Large");
         assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
     } finally { await db.close(); }
 });

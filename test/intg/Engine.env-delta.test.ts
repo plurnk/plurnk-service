@@ -147,7 +147,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
 
         // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
         await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: workerLoop, message: "the answer is 42" });
-        await (db.engine_loop_cancel as PrepMethod).run({ loop_id: grinderLoop, message: "budget_overflow" });
+        await (db.engine_loop_set_status as PrepMethod).run({ status: 413, loop_id: grinderLoop, message: "budget_overflow" });
 
         // A's turn 2 pulls both terminations from the shared log, folded.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
@@ -163,7 +163,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
 
         const grind = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/grinder");
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
-        assert.equal(grind!.status_rx, 499, "abandonment is a 499 termination");
+        assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
         assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
         assert.equal(grind!.source, String(grinder), "attributed to the abandoned run");
     } finally {
