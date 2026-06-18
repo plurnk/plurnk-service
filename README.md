@@ -1,6 +1,12 @@
 # plurnk-service
 
 LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC for clients. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk).
+Default Provider: [plurnk.ai](https://plurnk.ai).
+
+* Plurnk Service is vendor-agnostic, and connects to (almost) any LLM.
+* Plurnk Service is MIT Licensed and owned by Plurnk Foundation, not Plurnk, Inc.
+* Plurnk, Inc.'s grammar-tuned [plurnk.ai](https://plurnk.ai) model is offered as an optional convenience.
+* You may (OPTIONALLY) obtain free PLURNK_ACCOUNT and PLURNK_KEY variables at [plurnk.ai](https://plurnk.ai).
 
 ## Documentation
 
