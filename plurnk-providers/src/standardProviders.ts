@@ -23,12 +23,10 @@ type StandardProviderSpec = {
     // optional). Omit both when supplying a custom `headersFromEnv` builder.
     apiKeyVar?: string;
     apiKeyRequired?: boolean;
-    // Custom request-header builder for auth shapes the single-var bearer can't
-    // express — multiple optional credentials, vendor routing headers. Returns
-    // the headers built from env; an EMPTY object is a valid anonymous request.
-    // When set, it REPLACES the apiKeyVar bearer logic. (The `plurnk` entry uses
-    // this: bearer `PLURNK_KEY` + the OpenAI-org-style `Plurnk-Account` routing
-    // header, both optional → blank = anonymous, the server decides the tier.)
+    // Custom request-header builder for auth the single-var bearer can't express
+    // (multiple optional credentials, vendor routing headers). Returns the
+    // headers built from env; an empty object means no auth headers are sent.
+    // When set, it REPLACES the apiKeyVar bearer logic.
     headersFromEnv?: (env: NodeJS.ProcessEnv) => Record<string, string>;
     // Base URL: a fixed default and/or an operator override var. At least one
     // must resolve to a non-empty value.
@@ -115,14 +113,11 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
-    // The plurnk hosted model — a llama.cpp endpoint, so it behaves exactly like
-    // a local llama-server (probe → grammar transport, n_ctx, slot pinning). The
-    // base URL is hardcoded but overridable (PLURNK_BASE_URL) — MIT, never
-    // forcing the hosted model. Auth follows the OpenAI org-scoping convention:
-    // bearer `PLURNK_KEY` + the `Plurnk-Account` routing header, BOTH optional —
-    // blank sends an anonymous request and the server serves a throttled tier.
-    // A present-but-rejected key 401s → classified `unauthorized` (terminal, no
-    // silent downgrade to anon — a bad key is misconfiguration, surfaced).
+    // The plurnk hosted model — a llama.cpp endpoint, so it inherits the local
+    // llama-server behavior via the probe (grammar transport, n_ctx, slot
+    // pinning). Base URL defaults to model.plurnk.ai, overridable via
+    // PLURNK_BASE_URL. Two optional credentials: bearer PLURNK_KEY + the
+    // Plurnk-Account header, each sent only when set.
     plurnk: {
         baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         headersFromEnv: (env) => {
@@ -152,7 +147,7 @@ const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: s
 
 // Auth/routing headers. A custom builder (multi-credential auth) wins; otherwise
 // the single-var bearer: required → fail-hard if unset, optional → omitted when
-// blank (keyless local servers, and anonymous tiers, send no Authorization).
+// blank (a keyless server then receives no Authorization header).
 const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string): Record<string, string> => {
     if (spec.headersFromEnv !== undefined) return spec.headersFromEnv(env);
     if (spec.apiKeyVar === undefined) return {};

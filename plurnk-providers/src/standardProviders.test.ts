@@ -368,7 +368,7 @@ test("bedrock: builds the region URL and sends the Bedrock API key as bearer", a
     mock.restoreAll();
 });
 
-// — plurnk hosted model: optional two-credential auth, anonymous fallback (default vendor) —
+// — plurnk hosted model: two optional credentials via headersFromEnv —
 
 // Mock that serves the /models probe + captures the chat-completions request
 // headers; `chatStatus` lets a test force a rejection.
@@ -388,9 +388,9 @@ const plurnkMock = (chatStatus = 200) => {
 const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =>
     seen.find((s) => s.url.endsWith("/chat/completions"))!.headers;
 
-test("plurnk: anonymous (no PLURNK_KEY/PLURNK_ACCOUNT) sends NO auth headers — the throttled default tier", async () => {
+test("plurnk: with no PLURNK_KEY/PLURNK_ACCOUNT, no auth headers are sent", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // hardcoded base, no creds
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // default base, no creds
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal("Authorization" in h, false);
@@ -427,7 +427,7 @@ test("plurnk: each credential is independent (key-only, account-only)", async ()
     mock.restoreAll();
 });
 
-test("plurnk: a present-but-rejected key 401s terminally — no retry, no silent anon downgrade", async () => {
+test("plurnk: a 401 is classified unauthorized — terminal, never retried", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const seen = plurnkMock(401);
     const env = { ...baseEnv, PLURNK_PROVIDER_RETRY_ATTEMPTS: "3", PLURNK_KEY: "expired" };
