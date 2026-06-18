@@ -190,4 +190,13 @@ export default class Envelope {
         await GitMembership.resolveGitMembership(db, sessionId, undefined);
         return row.project_root;
     }
+
+    // session.rename — the session name is a mutable handle (vs a run's immutable
+    // name, §machine-processes). Mutates sessions.name only; the UNIQUE constraint is
+    // the real guard against collision (the handler pre-checks for a clean error).
+    static async updateSessionName(db: Db, sessionId: number, name: string): Promise<string> {
+        const row = await (db.envelope_set_session_name as PrepMethod).get<{ id: number; name: string }>({ id: sessionId, name });
+        if (row === undefined) throw new Error(`session ${sessionId} not found`);
+        return row.name;
+    }
 }

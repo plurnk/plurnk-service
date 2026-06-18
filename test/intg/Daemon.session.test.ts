@@ -74,3 +74,38 @@ test("#196 a bound connection re-binds to a different session in place (no recon
         } finally { ws.close(); }
     });
 });
+
+test("[§methods-session-rename] session.rename mutates the session name; rejects collision + empty (#248)", async () => {
+    await withDaemon(async (_db, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "session.create", { name: "rename-a" });
+            const id = (created.result as { id: number }).id;
+
+            // Rename the attached session — same id (immutable identity), new handle.
+            const renamed = await rpcCall(ws, 2, "session.rename", { name: "rename-b" });
+            const rr = renamed.result as { id: number; name: string };
+            assert.equal(rr.id, id, "same session — the run-immutable name a session is NOT; only the handle changed");
+            assert.equal(rr.name, "rename-b", "the session name is mutated");
+
+            // The old name is freed — a new session can take it (and re-binds this connection).
+            const reuse = await rpcCall(ws, 3, "session.create", { name: "rename-a" });
+            assert.equal(reuse.error, undefined, "the freed name is available again");
+
+            // Collision: rename the (now "rename-a") session to a name another session holds.
+            const collide = await rpcCall(ws, 4, "session.rename", { name: "rename-b" });
+            assert.ok(collide.error, "renaming to a name another session holds is rejected");
+            assert.match(collide.error!.message, /already exists/);
+
+            // Empty name is a contract violation.
+            const empty = await rpcCall(ws, 5, "session.rename", { name: "" });
+            assert.ok(empty.error, "empty name is rejected");
+            assert.match(empty.error!.message, /non-empty/);
+
+            // Self-rename is a no-op, not a collision.
+            const self = await rpcCall(ws, 6, "session.rename", { name: "rename-a" });
+            assert.equal(self.error, undefined, "renaming to its own name is a no-op, not a collision");
+            assert.equal((self.result as { name: string }).name, "rename-a");
+        } finally { ws.close(); }
+    });
+});

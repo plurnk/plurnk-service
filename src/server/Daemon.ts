@@ -30,6 +30,7 @@ import SessionAttachMethod from "./methods/session_attach.ts";
 import SessionRunsMethod from "./methods/session_runs.ts";
 import SessionPromptsMethod from "./methods/session_prompts.ts";
 import SessionSetRootMethod from "./methods/session_set_root.ts";
+import SessionRenameMethod from "./methods/session_rename.ts";
 import SessionConstraintsMethod from "./methods/session_constraints.ts";
 import SessionMembersMethod from "./methods/session_members.ts";
 import OpEditMethod from "./methods/op_edit.ts";
@@ -258,6 +259,7 @@ export default class Daemon {
         SessionRunsMethod.register(this.#registry);
         SessionPromptsMethod.register(this.#registry);
         SessionSetRootMethod.register(this.#registry);
+        SessionRenameMethod.register(this.#registry);
         SessionConstraintsMethod.register(this.#registry);
         SessionMembersMethod.register(this.#registry);
         OpEditMethod.register(this.#registry);

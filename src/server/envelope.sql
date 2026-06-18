@@ -14,6 +14,17 @@ SELECT id, name, project_root FROM sessions WHERE id = $id;
 UPDATE sessions SET project_root = $project_root WHERE id = $id
 RETURNING id, name, project_root;
 
+-- PREP: envelope_get_session_by_name
+-- session.rename collision check — sessions.name is UNIQUE.
+SELECT id FROM sessions WHERE name = $name;
+
+-- PREP: envelope_set_session_name
+-- Used by session.rename. The session name is a MUTABLE handle (vs a run's
+-- immutable name, §machine-processes). Returns the updated row to refresh the
+-- caller's ClientEnvelope copy.
+UPDATE sessions SET name = $name WHERE id = $id
+RETURNING id, name;
+
 -- PREP: envelope_insert_run
 -- origin is the run's actor (§machine-processes): 'model' (the conversation),
 -- 'client' (a connection's own run), or 'plurnk' (the runtime self-hosting run).
