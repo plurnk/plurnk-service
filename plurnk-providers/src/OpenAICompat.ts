@@ -233,7 +233,13 @@ export default class OpenAICompatProvider implements Provider {
         // signal spans them all. Retry only the transient classifications, prefer
         // a server Retry-After over the backoff, and let the caller's abort cut
         // through both the in-flight request and the backoff sleep.
-        const transport = this.#streaming ? chatCompletionStream : chatCompletion;
+        // Stream by default, but fall back to one non-streamed JSON for the one
+        // case it breaks: a response_format grammar (fireworks) streams its
+        // constrained output mislabeled as reasoning_content, yet returns it as
+        // content non-streamed. The atomic dump is correct either way, so the
+        // demotion is scoped to exactly that request, not the whole provider.
+        const grammarBreaksStream = grammar !== undefined && this.#grammarStyle === "response_format";
+        const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
         let raw;
         for (let attempt = 0; ; attempt++) {
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);

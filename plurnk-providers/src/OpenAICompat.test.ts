@@ -23,6 +23,19 @@ const installFetch = (chunks: unknown[]) => {
     return calls;
 };
 
+// Fake fetch returning one non-streamed JSON body — for the paths the spine
+// demotes off SSE (a response_format grammar). Captures the request the same way.
+const installFetchJson = (payload: unknown) => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    return calls;
+};
+
+const jsonChoice = { model: "m", choices: [{ message: { content: "x" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
+
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
 // streams its chunks; any other status returns that error (with an optional
 // retry-after header). The last entry repeats once the script runs out.
@@ -170,12 +183,27 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
 
 test("grammar transport 'response_format': response_format.grammar, no top-level grammar (Fireworks)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const calls = installFetchJson(jsonChoice);   // response_format grammar demotes off SSE
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.response_format, { type: "grammar", grammar: "root ::= statement" });
     assert.equal("grammar" in body, false);          // not the llama.cpp shape
     assert.equal("repeat_penalty" in body, false);
+});
+
+// A response_format grammar is the one case the spine drops streaming for, even
+// with streaming on (default): fireworks mislabels the streamed grammar output
+// as reasoning_content but returns it as content non-streamed (§13). The demotion
+// is per-request — a grammarless call on the same provider still streams.
+test("response_format grammar demotes THIS request off SSE; grammarless calls still stream", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    const jsonCalls = installFetchJson(jsonChoice);
+    await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    assert.equal("stream" in JSON.parse(jsonCalls[0].init.body as string), false);   // no SSE flag
+    mock.restoreAll();
+    const sseCalls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [] });                                   // no grammar → streams
+    assert.equal(JSON.parse(sseCalls[0].init.body as string).stream, true);           // SSE flag present
 });
 
 test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {

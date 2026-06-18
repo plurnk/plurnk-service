@@ -468,3 +468,25 @@ test("fireworks: a grammar transports as response_format.grammar (not the llama.
     assert.equal("grammar" in b, false);
     mock.restoreAll();
 });
+
+// — fireworks modelPrefix: the alias carries only the distinctive tail —
+
+const fireworksWireModel = async (alias: string): Promise<string> => {
+    let body = "";
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } }); }
+        return new Response("{}", { status: 200 });
+    });
+    const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, alias);
+    await p!.generate({ runId: "r", messages: [] });
+    mock.restoreAll();
+    return JSON.parse(body).model;
+};
+
+test("fireworks: a bare alias is prefixed with accounts/fireworks/models/ on the wire", async () => {
+    assert.equal(await fireworksWireModel("deepseek-v4-pro"), "accounts/fireworks/models/deepseek-v4-pro");
+});
+
+test("fireworks: an already-prefixed id is left unchanged (idempotent prepend)", async () => {
+    assert.equal(await fireworksWireModel("accounts/fireworks/models/deepseek-v4-pro"), "accounts/fireworks/models/deepseek-v4-pro");
+});

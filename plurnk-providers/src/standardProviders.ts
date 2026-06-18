@@ -44,10 +44,16 @@ type StandardProviderSpec = {
     // llama-server; cloud backends that support GBNF set their shape statically
     // (fireworks → "response_format", verified live).
     grammarStyle?: GrammarStyle;
-    // SSE streaming (default true). Set false for a backend whose streamed
-    // response misbehaves — fireworks labels grammar-constrained output as
-    // reasoning_content under stream, but returns it as content non-streamed.
+    // SSE streaming (default true). The streaming transport is dropped
+    // per-request only when it would break a feature (a response_format grammar
+    // arrives mislabeled as reasoning_content under fireworks' stream); leave
+    // unset to keep streaming on for every other call. See OpenAICompat.generate.
     streaming?: boolean;
+    // Constant model-id prefix the backend requires but the alias shouldn't
+    // repeat (fireworks → "accounts/fireworks/models/", so the alias is just
+    // `fireworks/deepseek-v4-pro`). Prepended idempotently to form the wire id,
+    // which is ALSO the catalog key (models.dev keys fireworks-ai on the full id).
+    modelPrefix?: string;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
@@ -93,7 +99,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrl: "https://api.fireworks.ai/inference/v1", baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", grammarStyle: "response_format", streaming: false, tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "none", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: "DEEPINFRA_API_KEY", apiKeyRequired: true,
@@ -214,6 +220,13 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const spec = STANDARD_PROVIDERS[name];
     if (spec === undefined) return null;
 
+    // The on-the-wire model id: a backend-required constant prefix (fireworks)
+    // prepended idempotently, so the operator's alias carries only the distinctive
+    // tail. This id is what the backend, the probe, AND the catalog key on.
+    const wireModel = spec.modelPrefix !== undefined && !model.startsWith(spec.modelPrefix)
+        ? `${spec.modelPrefix}${model}`
+        : model;
+
     const headers = resolveHeaders(spec, env, name);
 
     const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
@@ -232,7 +245,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let slotCount: number | null = null;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
-        const probe = await probeModels(url, headers, model, fetchTimeoutMs);
+        const probe = await probeModels(url, headers, wireModel, fetchTimeoutMs);
         contextSize ??= probe.nCtx;
         if (probe.llamaServer) {
             grammarStyle = "llamacpp";
@@ -251,7 +264,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // probe). A local llama-server model misses the catalog and keeps its
     // probed n_ctx. Standard providers carry NO live pricing, so the catalog is
     // the sole — never shadowing — cost source; per-1M USD → pico-USD/token (×1e6).
-    const fallback = lookup(name, model);
+    const fallback = lookup(name, wireModel);
     contextSize ??= fallback?.contextWindow ?? null;
     const cost = fallback?.cost;
     const costFor = cost === undefined
@@ -263,7 +276,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         });
 
     return new OpenAICompatProvider({
-        model,
+        model: wireModel,
         url,
         headers,
         contextSize,
