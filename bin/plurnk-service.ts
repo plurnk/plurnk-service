@@ -24,8 +24,23 @@ export default class Cli {
             try { process.loadEnvFile(path); }
             catch (cause) { Cli.#die(64, `failed to load ${path}: ${cause instanceof Error ? cause.message : String(cause)}`); }
         } else if (required) {
-            Cli.#die(64, `--config: ${path} does not exist`);
+            Cli.#die(64, `${path} does not exist`);
         }
+    }
+
+    // node-style env-file flags: --env-file=<path> (required) / --env-file-if-exists=<path>
+    // (skip if missing), repeatable, in command-line order. They layer extra files ABOVE
+    // the .env cascade but BELOW shell env (loadEnvFile is set-if-unset) and the --<knob>
+    // CLI flags (assigned last). The `=` form only — node's canonical syntax (so it never
+    // leaks a positional). NB: node validates these paths from the full argv (and exits on
+    // a missing *required* one), but only LOADS pre-script files — the post-script loading
+    // a published `plurnk-service --env-file=…` needs is this.
+    static #envFileArgs(): Array<{ path: string; required: boolean }> {
+        return process.argv.flatMap((a): Array<{ path: string; required: boolean }> => {
+            if (a.startsWith("--env-file-if-exists=")) return [{ path: a.slice(a.indexOf("=") + 1), required: false }];
+            if (a.startsWith("--env-file=")) return [{ path: a.slice(a.indexOf("=") + 1), required: true }];
+            return [];
+        });
     }
 
     // The .env cascade always populates these from .env.example, so absence is
@@ -94,10 +109,13 @@ export default class Cli {
     }
 
     static async main(): Promise<void> {
-        // Env cascade: .env.example (shipped defaults) < .env (project) <
-        // .env.<config> (--config) < shell. process.loadEnvFile is set-if-unset,
-        // so loading in low→high precedence order yields the right effective env
-        // (highest precedence loads FIRST — first write wins).
+        // Env cascade, highest precedence loads FIRST (loadEnvFile is set-if-unset,
+        // first write wins): --env-file(s) < --config < .env < .env.example, all of them
+        // OUTRANKED by pre-set shell env, then by the --<knob> CLI flags (assigned last,
+        // below). So --env-file overrides the .env files but never a shell var or a CLI
+        // arg — node-idiomatic layering.
+        for (const { path: envFile, required } of Cli.#envFileArgs()) Cli.#loadEnv(envFile, required);
+
         const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
         const configFile = ((): string | null => {
             if (configFlagIndex === -1) return null;
@@ -120,8 +138,10 @@ export default class Cli {
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
 
-  --config=<path>  layer additional env from <path>
-  -h, --help       show this help
+  --env-file=<path>            layer env from <path> (repeatable; errors if missing)
+  --env-file-if-exists=<path>  layer env from <path> if present (repeatable)
+  --config=<path>              layer additional env from <path>
+  -h, --help                   show this help
 `;
 
         const { positionals, values } = parseArgs({
