@@ -1182,16 +1182,16 @@ export default class Engine {
             for (const tag of this.#executors.availableRuntimes()) {
                 const entry = this.#executors.entry(tag);
                 if (entry?.example) tools.push(`* ${entry.example}`);
-                // #note12 — link the executor's fuller doc (materialized at plurnk:///docs/<tag>);
+                // #note12 — link the executor's fuller doc (materialized at plurnk:///docs/<tag>.md);
                 // its token cost rides that manifest entry, so no inline recount here.
-                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk:///docs/${tag}`);
+                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk:///docs/${tag}.md`);
             }
         }
         return tools;
     }
 
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at plurnk:///docs/<name> by loop_run (like operator docs) so the
+    // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
     docEntries(): Array<{ name: string; content: string }> {
         const out = this.#schemes.docs();

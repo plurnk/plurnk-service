@@ -107,11 +107,11 @@ export default class LoopRunMethod {
                     lineMarker: null, body: doc.content, position: { line: 1, column: 1 },
                 }));
                 // #note12 — materialize the daughter scheme/exec reference docs at
-                // plurnk:///docs/<name> so the catalogue's doc-links READ + carry token cost.
+                // plurnk:///docs/<name>.md so the catalogue's doc-links READ + carry token cost.
                 for (const { name, content } of ctx.engine.docEntries()) {
                     docStmts.push({
                         op: "EDIT", suffix: "", signal: null,
-                        target: { kind: "url", raw: `plurnk:///docs/${name}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/docs/${name}`, params: {}, fragment: null },
+                        target: { kind: "url", raw: `plurnk:///docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/docs/${name}.md`, params: {}, fragment: null },
                         lineMarker: null, body: content, position: { line: 1, column: 1 },
                     });
                 }

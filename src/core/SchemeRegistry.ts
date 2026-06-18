@@ -66,14 +66,14 @@ export default class SchemeRegistry {
             // yet, so the link lights up the day plurnk-schemes adds `documentation`, exactly
             // as execs do today). The doc's token cost rides the manifest entry it materializes.
             const example = typeof manifest.example === "string" && manifest.example.length > 0 ? `\nExample: ${manifest.example}` : "";
-            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk:///docs/${name}` : "";
+            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk:///docs/${name}.md` : "";
             sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.${example}${docLink}`);
         }
         return sections.join("\n\n");
     }
 
     // #note12 — schemes that ship a `documentation` string, for materialization at
-    // plurnk:///docs/<name>. Optional + currently none in-tree; future-proofs the link.
+    // plurnk:///docs/<name>.md. Optional + currently none in-tree; future-proofs the link.
     docs(): Array<{ name: string; content: string }> {
         const out: Array<{ name: string; content: string }> = [];
         for (const [name, handler] of this.#handlers) {

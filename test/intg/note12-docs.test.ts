@@ -1,8 +1,8 @@
 // note 12 — the schemes catalogue surfaces a scheme's daughter-provided usage `example`
-// inline + a plurnk:///docs/<name> doc-link when the manifest ships `documentation`
+// inline + a plurnk:///docs/<name>.md doc-link when the manifest ships `documentation`
 // (optional). In-tree schemes ship none yet, so the link is future-proof — it lights up
 // the day plurnk-schemes adds the field, exactly as execs do via ExecInfo.documentation.
-// docs() carries the content for materialization at plurnk:///docs/<name> (loop_run writes
+// docs() carries the content for materialization at plurnk:///docs/<name>.md (loop_run writes
 // it like an operator doc; its token cost then rides the manifest entry).
 
 import test from "node:test";
@@ -24,10 +24,10 @@ test("[note 12] teach() surfaces a scheme's example + doc-link; docs() carries i
 
     const teaching = registry.teach();
     assert.match(teaching, /Example: <<READ\(docstub:\/\/\/x\)::READ/, "the daughter usage example is surfaced inline");
-    assert.match(teaching, /Docs: plurnk:\/\/\/docs\/docstub/, "a doc-link renders when the scheme ships documentation");
+    assert.match(teaching, /Docs: plurnk:\/\/\/docs\/docstub\.md/, "a doc-link renders when the scheme ships documentation");
 
     const stub = registry.docs().find((d) => d.name === "docstub");
-    assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at plurnk:///docs/<name>");
+    assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at plurnk:///docs/<name>.md");
 
     // An in-tree scheme without documentation renders no doc-link (optional, no clutter).
     assert.doesNotMatch(teaching, /Docs: plurnk:\/\/\/docs\/known\b/, "a scheme without documentation gets no doc-link");

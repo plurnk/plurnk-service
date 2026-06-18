@@ -19,7 +19,7 @@ export interface RegistryEntry {
     // surfaced in the # Plurnk System Tools sheet. "" when the package omits it.
     readonly example: string;
     // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation), materialized
-    // at plurnk:///docs/<tag> and linked from the tools sheet. "" when the package omits it. #note12
+    // at plurnk:///docs/<tag>.md and linked from the tools sheet. "" when the package omits it. #note12
     readonly documentation: string;
     readonly available: boolean;
     readonly detail: string | undefined;
