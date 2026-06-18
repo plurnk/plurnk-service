@@ -77,8 +77,8 @@ test("plan root: constrained emission is a clean PLAN-led turn (force-stops on a
         assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
         if (last.kind !== "statement") return;
         assert.ok(
-            [102, 200, 202, 499].includes(last.statement.signal as number),
-            `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/499)`,
+            [102, 200, 202, 300, 499].includes(last.statement.signal as number),
+            `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/300/499)`,
         );
         return;
     }

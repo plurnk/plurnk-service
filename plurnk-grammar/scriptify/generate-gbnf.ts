@@ -210,22 +210,25 @@ export const buildModel = (): GModel => {
     model.set("open-step", [[ref("statement"), opt(ref("text-after"))]]);
     model.set("text-after", [[lit("\n"), ref("text")]]);
     textRules(model);
-    // status-final: the four loop dispositions the model may EMIT to close a turn —
-    // 102 continue, 202 parked, 200 done (success), 499 give-up (the model's own
-    // "I'm stopping" — HTTP 499 client-closed). NOT 500: "failed" is an ENGINE verdict
-    // (imposed on a strike-out via a direct DB write), never a model SEND, so it is
-    // persisted-only (Loop.status) and never emittable. The emittable set and the
-    // persisted Loop.status superset are *meant* to differ — see plurnk-service#33.
-    // status-mid: any 3-digit code EXCEPT the terminals 102, 200, 202, 499.
-    model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("499")]]);
+    // status-final: model-emittable turn-closers — 102 continue, 202 parked,
+    // 200 done (success), 499 give-up (HTTP 499 client-closed), and 300 = a question
+    // for the user (awaiting input). 300 is ALLOWED/emittable but UNTAUGHT in canon (no
+    // example) — staged ahead of the engine like 202/500 were; an unrecognized terminal
+    // degrades gracefully (no state change) until the service handles it. NOT 500:
+    // "failed" is an ENGINE verdict, never a model SEND (persisted-only). Emittable vs
+    // persisted (Loop.status) are meant to differ — see plurnk-service#33.
+    // status-mid: any 3-digit code EXCEPT the terminals 102, 200, 202, 300, 499.
+    model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("300")], [lit("499")]]);
     model.set("status-mid", [
         [lit("10"), cls([R("0", "1"), R("3", "9")])],
         [lit("1"), cls([R("1", "9")]), DIGIT],
         [lit("20"), cls([R("1", "1"), R("3", "9")])],
         [lit("2"), cls([R("1", "9")]), DIGIT],
+        [lit("30"), cls([R("1", "9")])],
+        [lit("3"), cls([R("1", "9")]), DIGIT],
         [lit("4"), cls([R("0", "8")]), DIGIT],
         [lit("49"), cls([R("0", "8")])],
-        [cls([R("0", "0"), R("3", "3"), R("5", "9")]), DIGIT, DIGIT],
+        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],
     ]);
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
