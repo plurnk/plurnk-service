@@ -69,6 +69,60 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
     }
 };
 
+// Free text for the permissive (free) root: any characters that never contain a
+// complete open literal (`<<FIND` … `<<PLAN`). Aho-Corasick complement over the
+// literal trie — state = longest literal prefix matched by the current suffix.
+// Completing a literal has no transition (the text interpretation dies; the parallel
+// statement interpretation takes over). One consistency constraint with the ANTLR
+// TEXT rule: text may not END with an ODD run of trailing `<` — `text<` + `<<OP`
+// merges into `<<<OP`, which the lexer treats as all text, and the two layers would
+// disagree about where the statement starts. The `<<` trie state therefore splits by
+// run parity (even may end, odd may not). Reachable only from root-open, so it is
+// pruned out of the plan-root artifact (plurnk.gbnf).
+const textRules = (model: GModel): void => {
+    const literals = OPS.map((op) => `<<${op}`);
+    const states: string[] = [""];
+    for (const literal of literals) {
+        for (let k = 1; k < literal.length; k++) {
+            const prefix = literal.slice(0, k);
+            if (!states.includes(prefix)) states.push(prefix);
+        }
+    }
+    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
+    states.push(ODD);
+    const ruleOf = (state: string): string => `text-s${states.indexOf(state)}`;
+    const longestSuffixState = (candidate: string): string => {
+        for (let i = 1; i < candidate.length; i++) {
+            if (states.includes(candidate.slice(i))) return candidate.slice(i);
+        }
+        return "";
+    };
+    for (const state of states) {
+        const trieState = state === ODD ? "<<" : state;
+        const alts: GRule = [];
+        const consumed = new Set<string>();
+        for (const literal of literals) {
+            if (!literal.startsWith(trieState)) continue;
+            const next = literal[trieState.length];
+            if (consumed.has(next)) continue;
+            consumed.add(next);
+            const candidate = trieState + next;
+            // Completing a literal is forbidden — no transition at all.
+            if (candidate === literal) continue;
+            alts.push([lit(next), ref(ruleOf(candidate))]);
+        }
+        if (!consumed.has("<")) {
+            consumed.add("<");
+            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
+            alts.push([lit("<"), ref(ruleOf(target))]);
+        }
+        alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
+        if (state !== "<" && state !== ODD) alts.push([]);
+        model.set(ruleOf(state), alts);
+    }
+    model.set("text", [[ref(ruleOf(""))]]);
+};
+
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
     const opAlts: GRule = [];
@@ -144,6 +198,18 @@ export const buildModel = (): GModel => {
     model.set("send-final-any", sendFinalAlts);
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
+
+    // root-open (plurnk-free.gbnf): the PERMISSIVE variant. Free reasoning text and
+    // statements interleave, `<<` escapable to text, EOS at any boundary. No PLAN-first
+    // and no terminal-SEND enforcement — any op and any SEND (any status, any position)
+    // appear freely; the turn shape is NOT imposed. The text automaton excludes only
+    // complete `<<OP` openers, so prose can carry a lone `<` or an opener-lookalike
+    // that never finishes a keyword. (text* rules are reachable only from here, so
+    // serializing root-plan prunes them — plurnk.gbnf is unaffected.)
+    model.set("root-open", [[ref("text"), star(ref("open-step"))]]);
+    model.set("open-step", [[ref("statement"), opt(ref("text-after"))]]);
+    model.set("text-after", [[lit("\n"), ref("text")]]);
+    textRules(model);
     // status-final: the four loop dispositions the model may EMIT to close a turn —
     // 102 continue, 202 parked, 200 done (success), 499 give-up (the model's own
     // "I'm stopping" — HTTP 499 client-closed). NOT 500: "failed" is an ENGINE verdict
@@ -263,5 +329,6 @@ if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
     await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-plan"));
-    process.stderr.write("Generated dist/plurnk.gbnf (plan root)\n");
+    await writeFile("dist/plurnk-free.gbnf", serializeGbnf(model, "root-open"));
+    process.stderr.write("Generated dist/plurnk.gbnf (plan root) + dist/plurnk-free.gbnf (free root)\n");
 }

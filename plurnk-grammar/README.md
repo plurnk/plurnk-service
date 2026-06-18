@@ -199,12 +199,16 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-One generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar ships for llama.cpp constrained sampling: **`plurnk.gbnf`**. A turn opens with a `<<PLAN:` op (a forced reasoning step), proceeds strict (ops only, bounded `WS{0,7}` separators, no free text between), and closes on exactly one pathless `SEND[102]`/`SEND[200]` status update — structural termination (forced EOS), not an optional stop a near-greedy decoder can sail past.
+Two generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship for llama.cpp constrained sampling:
 
-The parser remains the permissive contract — everything the GBNF can generate, the parser accepts (and much it doesn't: interstatement text, word suffixes, richer slot internals).
+- **`plurnk.gbnf` (plan root, strict)** — a turn opens with a `<<PLAN:` op (a forced reasoning step), proceeds strict (ops only, bounded `WS{0,7}` separators, no free text between), and closes on exactly one terminal `SEND[102|200|202|499]` — structural termination (forced EOS), not an optional stop a near-greedy decoder can sail past.
+- **`plurnk-free.gbnf` (free root, permissive)** — free reasoning text and statements interleave, `<<` escapable to text; no PLAN-first and no terminal-SEND enforcement. The fallback for models that need to think between ops without the strict rail.
+
+The parser remains the permissive contract — everything either grammar can generate, the parser accepts (and much it doesn't: word suffixes, richer slot internals).
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")
+import.meta.resolve("@plurnk/plurnk-grammar/plurnk-free.gbnf")
 ```
 
 `npm run test:llama` validates the grammar against a live llama-server (`PLURNK_LLAMA_URL`, default `http://127.0.0.1:11435`) and demos constrained emission end-to-end. Opt-in; not part of `test:all`.

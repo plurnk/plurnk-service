@@ -390,9 +390,51 @@ test("GBNF: plan root — strict, but the turn must open with a PLAN", () => {
     assert.equal(derives("root-plan", "<<PLAN:think:PLAN"), false);
 });
 
+// -------------------------------------------------------------------------
+// Free root (plurnk-free.gbnf): permissive — text interleaves, no PLAN/SEND rule
+// -------------------------------------------------------------------------
+
+test("GBNF: free root accepts text and statements interleaved, EOS at any boundary", () => {
+    assert.equal(derives("root-open", "just musing, no operations yet"), true);
+    assert.equal(derives("root-open", "<<EDIT(known://a.md):x:EDIT"), true);
+    assert.equal(derives("root-open", "think first\n<<READ(known://a.md)::READ\nstill thinking, not concluding"), true);
+    // a complete `<<OP` opener in prose must resolve to a statement, not stay text
+    assert.equal(derives("root-open", "discussing <<EDIT without closing it"), false);
+    // a non-keyword `<<RANDOM` stays inert text
+    assert.equal(derives("root-open", "mentioning <<RANDOM in prose"), true);
+});
+
+test("GBNF: free root enforces neither PLAN-first nor a terminal SEND", () => {
+    assert.equal(derives("root-open", "<<READ(known://a.md)::READ"), true);          // op-first, no PLAN
+    assert.equal(derives("root-open", "<<EDIT(known://a.md):x:EDIT"), true);         // no closing SEND
+    assert.equal(derives("root-open", "<<SEND[200]:done:SEND\nafterthought"), true); // statements after a status SEND
+    assert.equal(derives("root-open", "<<SEND[200]:a:SEND<<SEND[200]:b:SEND"), true); // two terminal SENDs, fine here
+    // contrast: the plan root rejects all of the above
+    assert.equal(derives("root-plan", "<<READ(known://a.md)::READ"), false);
+});
+
+test("GBNF: free-root text automaton can't swallow a complete opener or end on a lone `<`", () => {
+    assert.equal(derives("text", "thinking about <<EDIT here"), false);
+    assert.equal(derives("text", "thinking about <EDIT and << here"), true);
+    assert.equal(derives("text", "abc<"), false);
+    assert.equal(derives("text", "abc<<"), true);
+});
+
+test("GBNF: 100 seeded random free-root turns parse cleanly", () => {
+    const rng = mulberry32(23);
+    for (let i = 0; i < 100; i++) {
+        const turn = sample("root-open", rng);
+        const result = PlurnkParser.parse(turn);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 0, `free turn ${i} produced parse errors\nturn: ${JSON.stringify(turn)}`);
+        assert.equal(result.unparsedTail, undefined, `free turn ${i} left an unparsed tail\nturn: ${JSON.stringify(turn)}`);
+    }
+});
+
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
     const text = serializeGbnf(model, "root-plan");
     assert.match(text, /^root ::= root-plan$/m);
+    assert.match(serializeGbnf(model, "root-open"), /^root ::= root-open$/m);
     const collectRefs = (item: GItem): string[] => {
         if (item.kind === "ref") return [item.name];
         if (item.kind === "rep") return collectRefs(item.item);
