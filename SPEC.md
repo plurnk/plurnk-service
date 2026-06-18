@@ -156,7 +156,7 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **One filesystem.** The entries are the session's: `entries.session_id`, never a run. A write by any run is a write to the one filesystem every run reads; there is no per-run entry set. {§machine-processes-one-filesystem}
 
-**One overlay.** Membership — `git ls-files ∪ add − ignore` with read-only (§membership) — is the session's: `session_constraints.session_id`, never a run. It is workspace *curation*, and the workspace *is* the session; two runs are two conversations about one curated workspace and see the same one. Divergent membership is a different session, never a per-run overlay. {§machine-processes-one-overlay}
+**One overlay.** Membership — `git ls-files ∪ pick − hide` with `view` read-only (§membership) — is the session's: `session_constraints.session_id`, never a run. It is workspace *curation*, and the workspace *is* the session; two runs are two conversations about one curated workspace and see the same one. Divergent membership is a different session, never a per-run overlay. {§machine-processes-one-overlay}
 
 **A run is its log — and nothing beside.** The run-private state is the log and only the log. *What I am looking at* (OPEN/FOLD) is `log_entries.expanded`, a bit on the run's own rows, toggled by ordinary `log:///` ops — not a second store, and never membership (§open-fold). *What I last saw* needs no shadow either: a run learns its world moved through log entries (§env-delta) — a sibling's write broadcast into its log, an out-of-band disk change detected against the entry's own content and broadcast the same way — never through a per-run snapshot the run cannot see. The log is the whole of a run's memory. {§machine-processes-run-is-its-log}
 
@@ -856,9 +856,10 @@ registry.register("loop.run", {
 | `session.runs`         | `id?: number`       | `{ runs: Run[] }` | Lists runs in a session (defaults to attached session); most-recent first. |
 | `session.prompts`      | `id?: number`, `limit?: number` | `{ prompts: string[] }` | A session's prior user prompts (the conversation run's loop seeds), newest-first, capped by `limit` (default 100); defaults to attached session. Lets a client seed up/down recall without log archaeology. |
 | `session.set_root`     | `projectRoot: string \| null` | `{ projectRoot }` | Update the workspace pointer on the attached session. Null reverts to headless. |
-| `session.constrain`    | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Add a workspace membership constraint (§membership overlay): `add` admits files git misses, `ignore` drops tracked matches, `read-only` admits for read but refuses edits. Immediate. |
-| `session.unconstrain`  | `effect: "add" \| "ignore" \| "read-only"`, `glob: string` | `{ effect, glob }` | Remove a membership constraint — the inverse of `session.constrain`. Immediate. |
+| `session.constrain`    | `effect: "pick" \| "hide" \| "view" \| "repo"`, `glob: string` | `{ effect, glob }` | Add a workspace membership constraint (§membership overlay): `pick` admits a file git misses (the sole source when git is absent), `hide` drops a tracked match, `view` admits a member read-only (refused at the edit gate), `repo` declares a git repo folder anywhere so its members join the manifest. Immediate. |
+| `session.unconstrain`  | `effect: "pick" \| "hide" \| "view" \| "repo"`, `glob: string` | `{ effect, glob }` | Remove a membership constraint (the `drop` verb) — the inverse of `session.constrain`. Immediate. |
 | `session.constraints`  | none                | `{ constraints }` | List the attached session's membership constraints. |
+| `session.members`      | none                | `{ members: [{ path, effect }], hidden }` | Resolve each project file's membership effect — `members` tagged `member`/`view` plus the `hide`-excluded `hidden` — so a client signs file visibility (member / read-only / ignored) without reimplementing the overlay glob-matching (§membership-resolved-effects). |
 
 **Re-binding.** `session.create` and `session.attach` may be called on a connection that already has a session attached — the connection switches in place, releasing the prior client loop (closed at 200). No reconnect needed to change session or run. {§methods-rebind}
 
