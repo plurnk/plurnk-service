@@ -48,9 +48,10 @@ SELECT session_id FROM runs WHERE id = $run_id;
 -- "current" prompt the model sees in user.prompt. Falls back to NULL when
 -- no prompt entry exists for the loop (caller substitutes runLoop's
 -- messages parameter for backward compat with tests that bypass inject).
--- Pattern is built JS-side as `prompt/<loop_id>/%` — SqlRite's parameter
+-- Pattern is built JS-side as `/prompt/<loop_id>/%` (canonical leading-slash storage form,
+-- matching the foist's #pathnameOf and the inject) — SqlRite's parameter
 -- binding doesn't reliably coerce integers for `LIKE` with `||`.
-SELECT c.content
+SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'plurnk'

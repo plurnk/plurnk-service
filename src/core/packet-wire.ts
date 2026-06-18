@@ -78,6 +78,14 @@ export default class PacketWire {
     //   # Plurnk System Requirements   (static per-turn rules)
     // Requirements renders LAST so the contract the model has to honor is the
     // most recent thing in the user message — closest to the assistant turn.
+    // PLURNK_PROMPT_PREVIEW_CHARS caps the prompt body rendered in user.prompt — a fat prompt
+    // replays every turn, so show the first `cap` chars + a pointer to the full body (always
+    // READable at its own entry, never lost). cap < 0 = no cap (full prompt).
+    static previewPrompt(content: string, fullAddr: string, cap: number): string {
+        if (cap < 0 || content.length <= cap) return content;
+        return `${content.slice(0, cap)}\n\n…(prompt preview — full body READable at ${fullAddr})`;
+    }
+
     static renderUserContent(user: UserSection): string {
         const parts: string[] = [];
         if (typeof user.prompt === "string" && user.prompt.length > 0) {

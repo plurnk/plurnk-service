@@ -12,7 +12,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
-import { foldAuthorityIntoPath } from "./plurnk-uri.ts";
+import { foldAuthorityIntoPath, renderAddress } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
@@ -1076,9 +1076,10 @@ export default class Engine {
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
-        const latestPromptRow = await (this.#db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({ pattern: `prompt/${loopId}/%` });
+        const latestPromptRow = await (this.#db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` });
+        const promptCap = Number.parseInt(process.env.PLURNK_PROMPT_PREVIEW_CHARS ?? "", 10);
         const prompt = (latestPromptRow !== undefined && typeof latestPromptRow.content === "string" && latestPromptRow.content.length > 0)
-            ? latestPromptRow.content
+            ? PacketWire.previewPrompt(latestPromptRow.content, renderAddress("plurnk", latestPromptRow.pathname), Number.isInteger(promptCap) ? promptCap : -1)
             : byRole("user");
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (callers read the sysprompt but never the
@@ -1670,7 +1671,7 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
         if (sessionRow === undefined) throw new Error(`Engine.inject: run ${runId} not found`);
-        const pathname = `prompt/${loopId}/${turnSeq}`;
+        const pathname = `/prompt/${loopId}/${turnSeq}`; // canonical storage form (leading slash), matching the foist via #pathnameOf
         const ctx: PlurnkSchemeContext = {
             db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId

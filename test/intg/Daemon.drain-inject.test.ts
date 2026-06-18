@@ -173,7 +173,7 @@ test("loop.run while a loop is live: second call injects into its next-turn slot
 
             type EntryRow = { scheme: string; pathname: string };
             const entries = await (db as unknown as { test_list_entries_by_session_session_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_session_session_pathname.all<EntryRow>({ session_id: 1 });
-            const injected = entries.find((e) => e.scheme === "plurnk" && /^prompt\/\d+\/[2-9]\d*$/.test(e.pathname));
+            const injected = entries.find((e) => e.scheme === "plurnk" && /^\/prompt\/\d+\/[2-9]\d*$/.test(e.pathname));
             assert.ok(injected, "injected prompt entry exists in a turn slot >1");
 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
