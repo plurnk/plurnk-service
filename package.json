@@ -45,9 +45,9 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.8",
+        "@plurnk/plurnk-execs": "0.4.9",
         "@plurnk/plurnk-execs-all": "0.1.5",
-        "@plurnk/plurnk-grammar": "0.60.0",
+        "@plurnk/plurnk-grammar": "0.62.0",
         "@plurnk/plurnk-mimetypes": "0.15.19",
         "@plurnk/plurnk-mimetypes-all": "0.4.0",
         "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
