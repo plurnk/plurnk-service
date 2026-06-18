@@ -15,8 +15,13 @@
 import { STANDARD_PROVIDERS } from "@plurnk/plurnk-providers";
 
 export default class ExecEnv {
+    // apiKeyVar is optional (providers 0.9.0): an anonymous provider like `plurnk`
+    // has none. It loses no secret here — plurnk's PLURNK_KEY/PLURNK_ACCOUNT creds are
+    // already stripped by the PLURNK_ prefix rule below — so drop the empties.
     static #providerKeys: ReadonlySet<string> = new Set(
-        Object.values(STANDARD_PROVIDERS).map((spec) => spec.apiKeyVar),
+        Object.values(STANDARD_PROVIDERS)
+            .map((spec) => spec.apiKeyVar)
+            .filter((v): v is string => v !== undefined),
     );
 
     // Read at call time (not memoized) so a secret set into process.env after boot is
