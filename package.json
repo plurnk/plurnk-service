@@ -53,8 +53,8 @@
         "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@plurnk/plurnk-providers": "0.9.0",
         "@plurnk/plurnk-providers-all": "0.8.0",
-        "@plurnk/plurnk-schemes": "0.18.0",
-        "@plurnk/plurnk-schemes-all": "0.1.1",
+        "@plurnk/plurnk-schemes": "0.20.0",
+        "@plurnk/plurnk-schemes-all": "0.1.4",
         "@possumtech/sqlrite": "5.1.1",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
