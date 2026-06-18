@@ -54,6 +54,13 @@ type StandardProviderSpec = {
     // `fireworks/deepseek-v4-pro`). Prepended idempotently to form the wire id,
     // which is ALSO the catalog key (models.dev keys fireworks-ai on the full id).
     modelPrefix?: string;
+    // First-party telemetry forwarding. ONLY the plurnk hosted endpoint sets
+    // this — it forwards the consumer's per-turn `attributions` (contributor
+    // credit) and `client` (originating frontend) as `Plurnk-Attribution` /
+    // `Plurnk-Client` headers. Absent everywhere else, so those signals are
+    // structurally incapable of reaching a third-party backend (never sold,
+    // never leaked — the destination is the consent boundary).
+    firstPartyMetadata?: boolean;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
@@ -144,7 +151,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
             return h;
         },
         reasoningStyle: "think", tokenizerDefault: "llama", tokenizerEnvVar: "PLURNK_TOKENIZER",
-        probeNctx: true,
+        probeNctx: true, firstPartyMetadata: true,
     },
 });
 
@@ -289,6 +296,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         source: providerSource(name),
         grammarStyle,
         streaming: spec.streaming,
+        firstPartyMetadata: spec.firstPartyMetadata,
         supportsSlotPinning,
         slotCount,
     });

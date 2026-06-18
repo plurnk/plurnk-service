@@ -411,6 +411,32 @@ test("plurnk: PLURNK_KEY + PLURNK_ACCOUNT send bearer + the Plurnk-Account routi
     mock.restoreAll();
 });
 
+test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firstPartyMetadata)", async () => {
+    const seen = plurnkMock();
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
+    const h = chatHeaders(seen);
+    assert.equal(h["Plurnk-Attribution"], '["@acme/x@1.0.0"]');
+    assert.equal(h["Plurnk-Client"], "plurnk-tui/0.9.0");
+    mock.restoreAll();
+});
+
+test("fireworks: does NOT forward attributions/client — first-party telemetry can't leak to a third party", async () => {
+    let seenHeaders: Record<string, string> = {};
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/chat/completions")) {
+            seenHeaders = (init?.headers ?? {}) as Record<string, string>;
+            return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        }
+        return new Response("{}", { status: 200 });
+    });
+    const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "deepseek-v4-flash");
+    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
+    assert.equal("Plurnk-Attribution" in seenHeaders, false);
+    assert.equal("Plurnk-Client" in seenHeaders, false);
+    mock.restoreAll();
+});
+
 test("plurnk: each credential is independent (key-only, account-only)", async () => {
     let seen = plurnkMock();
     let p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_KEY: "k" }, "plurnk");

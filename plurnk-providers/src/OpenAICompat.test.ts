@@ -215,6 +215,35 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
+// — first-party telemetry headers (attribution + client, SPEC §5) —
+
+const headerVal = (init: RequestInit, name: string): string | undefined =>
+    new Headers(init.headers).get(name) ?? undefined;
+
+test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "plurnk.nvim/1.4.0" });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), '["@acme/x@1.2.0","@foo/y@0.3.1"]');
+    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "plurnk.nvim/1.4.0");
+});
+
+test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0" });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);   // never leaks to a non-first-party backend
+    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
+});
+
+test("firstPartyMetadata on but empty values: no header emitted", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], attributions: [], client: "" });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);
+    assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
+});
+
 test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

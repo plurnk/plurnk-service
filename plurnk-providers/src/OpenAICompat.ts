@@ -54,6 +54,7 @@ export type OpenAICompatConfig = {
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
+    firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
@@ -124,6 +125,7 @@ export default class OpenAICompatProvider implements Provider {
     #source: string;
     #grammarStyle: GrammarStyle;
     #streaming: boolean;
+    #firstPartyMetadata: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -142,6 +144,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#streaming = config.streaming ?? true;
+        this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
     }
@@ -213,7 +216,19 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    async generate({ messages, runId, signal, grammar, maxTokens }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse> {
+    // First-party telemetry headers (SPEC §5): forwarded ONLY when the spec
+    // opted in (the plurnk endpoint). The gate is here, not at the call site, so
+    // attributions/client can never reach a third-party backend even if the
+    // consumer passes them to the wrong provider. Empty values emit no header.
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined): Record<string, string> {
+        if (!this.#firstPartyMetadata) return {};
+        const h: Record<string, string> = {};
+        if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
+        if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
+        return h;
+    }
+
+    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
@@ -240,12 +255,16 @@ export default class OpenAICompatProvider implements Provider {
         // demotion is scoped to exactly that request, not the whole provider.
         const grammarBreaksStream = grammar !== undefined && this.#grammarStyle === "response_format";
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
+
+        // Per-request headers = static auth/routing + any first-party telemetry.
+        const metaHeaders = this.#metadataHeaders(attributions, client);
+        const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
             const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
             try {
-                raw = await transport({ url: this.#url, headers: this.#headers, body, signal: effectiveSignal });
+                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal });
                 break;
             } catch (err) {
                 // Caller-initiated abort is cancellation — never retried or wrapped.

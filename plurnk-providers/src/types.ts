@@ -55,7 +55,15 @@ export interface Provider {
     // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
     // its content. The consumer never sees or chooses backend resources
     // (slot integers, connections); the *mechanism* is the provider's (#11).
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
+    //
+    // `attributions` (per-turn, runtime-observed) and `client` (session-stable,
+    // self-identified) are first-party telemetry the consumer hands down: which
+    // installed plugin packages dispatched this turn, and which frontend
+    // originated the run. They are forwarded ONLY by a provider whose spec opts
+    // in (the first-party `plurnk` endpoint, via `Plurnk-Attribution` /
+    // `Plurnk-Client` headers); every other provider DROPS them — the gate is
+    // structural so first-party metadata can never leak to a third-party backend.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.
