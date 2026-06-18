@@ -150,6 +150,11 @@ AGENTS.md
 # `npm run test:digest`. Same shape as AGENTS.md — local-only.
 test/digest/
 
+# Live-fire / provider scratch — not source (injected during local-model testing).
+scratch-*
+_fw-*
+scratch/
+
 # SQLite working files (WAL mode)
 *.db
 *.db-shm
