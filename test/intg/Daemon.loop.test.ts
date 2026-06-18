@@ -62,7 +62,7 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
     });
 });
 
-test("run.fork branches the model run into a new -fork run; errors with no run (#228)", async () => {
+test("run.fork branches the model run into a new -fork run; names it at instantiation; errors with no run (#228, #248)", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -80,7 +80,25 @@ test("run.fork branches the model run into a new -fork run; errors with no run (
             const r = fork.result as { runId: number; runName: string | null; parentRunId: number };
             assert.ok(typeof r.runId === "number" && typeof r.parentRunId === "number", "returns new + parent run ids");
             assert.notEqual(r.runId, r.parentRunId, "the fork is a distinct run");
-            assert.match(r.runName ?? "", /-fork$/, "the fork is named <parent>-fork");
+            assert.match(r.runName ?? "", /-fork$/, "the fork is named <parent>-fork by default");
+
+            // #248 — an explicit name names the branch at instantiation (immutable after; no rename).
+            const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
+            assert.equal((named.result as { runName: string | null }).runName, "harvest", "an explicit name names the branch");
+
+            // Reserved + taken names are refused up front (runs.name is UNIQUE per session) —
+            // mirrors session.attach, never falling through to the insert.
+            const reserved = await rpcCall(ws, 6, "run.fork", { name: "plurnk" });
+            assert.ok(reserved.error, "the reserved name is refused");
+            assert.match(reserved.error!.message, /reserved/);
+
+            const taken = await rpcCall(ws, 7, "run.fork", { name: "harvest" });
+            assert.ok(taken.error, "a name already in the session is refused — names are immutable");
+            assert.match(taken.error!.message, /already exists/);
+
+            const empty = await rpcCall(ws, 8, "run.fork", { name: "" });
+            assert.ok(empty.error, "an empty name is refused");
+            assert.match(empty.error!.message, /non-empty/);
         } finally { ws.close(); }
     });
 });

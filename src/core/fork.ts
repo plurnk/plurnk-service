@@ -10,12 +10,13 @@
 import type { Db, PrepMethod } from "./Db.ts";
 
 export default class Fork {
-    static async fork(db: Db, parentRunId: number): Promise<number> {
+    static async fork(db: Db, parentRunId: number, name?: string): Promise<number> {
         const parent = await (db.fork_get_run as PrepMethod).get<{ session_id: number; name: string; origin: string }>({ id: parentRunId });
         if (parent === undefined) throw new Error(`fork: run ${parentRunId} not found`);
 
+        // #248 — name the branch at instantiation (immutable after); default `<parent>-fork`.
         const branch = await (db.fork_insert_run as PrepMethod).get<{ id: number }>({
-            session_id: parent.session_id, name: `${parent.name}-fork`, parent_run_id: parentRunId, origin: parent.origin,
+            session_id: parent.session_id, name: name ?? `${parent.name}-fork`, parent_run_id: parentRunId, origin: parent.origin,
         });
         if (branch === undefined) throw new Error("fork: branch run insert returned no row");
         const branchRunId = branch.id;
