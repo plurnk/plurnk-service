@@ -24,11 +24,11 @@ test("[note 12] teach() surfaces a scheme's example + doc-link; docs() carries i
 
     const teaching = registry.teach();
     assert.match(teaching, /Example: <<READ\(docstub:\/\/\/x\)::READ/, "the daughter usage example is surfaced inline");
-    assert.match(teaching, /Docs: plurnk:\/\/\/docs\/docstub\.md/, "a doc-link renders when the scheme ships documentation");
+    assert.match(teaching, /Docs: plurnk:\/\/docs\/docstub\.md/, "a doc-link renders when the scheme ships documentation");
 
     const stub = registry.docs().find((d) => d.name === "docstub");
     assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at plurnk:///docs/<name>.md");
 
     // An in-tree scheme without documentation renders no doc-link (optional, no clutter).
-    assert.doesNotMatch(teaching, /Docs: plurnk:\/\/\/docs\/known\b/, "a scheme without documentation gets no doc-link");
+    assert.doesNotMatch(teaching, /Docs: plurnk:\/\/docs\/known\b/, "a scheme without documentation gets no doc-link");
 });

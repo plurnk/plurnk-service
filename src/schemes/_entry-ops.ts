@@ -1,6 +1,7 @@
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
+import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
@@ -32,7 +33,10 @@ export default class EntryOps {
         const t = statement.target;
         if (t === null) throw new Error("unreachable");
         if (t.kind === "regex") return t.raw; // regex source — parens are syntax, never encoded
-        return decodePathParens(t.kind === "url" ? t.pathname : t.raw); // #239 item 4
+        // Namespace-as-authority: fold a plurnk://docs/x.md authority back into the storage
+        // path (/docs/x.md) so it keys identically to the empty-authority form. #239 item 4
+        if (t.kind === "url") return decodePathParens(foldAuthorityIntoPath(t.hostname, t.pathname));
+        return decodePathParens(t.raw);
     }
 
     static #fragmentOf(statement: { target: EditStatement["target"] }): string | null {

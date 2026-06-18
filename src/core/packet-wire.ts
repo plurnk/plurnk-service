@@ -14,6 +14,7 @@
 // with no content are omitted entirely (no empty headers in the wire).
 
 import { MimetypeBinary } from "../content/index.ts";
+import { renderAddress } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 
 // The SECTION shapes (SystemSection/UserSection) are the JSON boundary — they
@@ -297,7 +298,7 @@ export default class PacketWire {
     static #renderModelUri(scheme: string | null | undefined, pathname: string | null | undefined): string {
         const path = pathname ?? "";
         if (scheme === null || scheme === undefined) return path;
-        return `${scheme}://${path}`;
+        return renderAddress(scheme, path);
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.

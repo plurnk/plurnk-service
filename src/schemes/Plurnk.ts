@@ -8,6 +8,7 @@ import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
+import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 
 // Internal-events scheme. Indexed entries the engine writes for the model
 // to see — currently just prompts at `plurnk:///prompt/<loop_id>`. Future
@@ -17,7 +18,7 @@ import type { FindResult } from "./_entry-find.ts";
 // accept any origin. Path-prefix restrictions live in the edit handler:
 // `plurnk:///prompt/*` rejects model-origin writes (engine/client own those).
 export default class Plurnk {
-    static teach = "Engine-authored events surfaced to you — most notably your active prompt at `plurnk:///prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk:///prompt/*` is engine-owned and rejects your writes.";
+    static teach = "Engine-authored events surfaced to you — most notably your active prompt at `plurnk://prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk://prompt/*` is engine-owned and rejects your writes.";
 
     static manifest: SchemeManifest = {
         name: "plurnk",
@@ -31,9 +32,12 @@ export default class Plurnk {
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        const pathname = statement.target !== null && statement.target.kind === "url"
-            ? statement.target.pathname
-            : statement.target?.raw ?? "";
+        const t = statement.target;
+        // Fold authority→path (plurnk://prompt/<loop> ⇒ /prompt/<loop>) so the engine-owned
+        // prompt namespace stays protected regardless of the addressing form the model used.
+        const pathname = t !== null && t.kind === "url"
+            ? foldAuthorityIntoPath(t.hostname, t.pathname)
+            : t?.raw ?? "";
         if (ctx.writer === "model" && pathname.startsWith("/prompt/")) {
             return { status: 403, entryId: null, channel: null };
         }

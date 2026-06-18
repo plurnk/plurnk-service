@@ -66,7 +66,7 @@ export default class SchemeRegistry {
             // yet, so the link lights up the day plurnk-schemes adds `documentation`, exactly
             // as execs do today). The doc's token cost rides the manifest entry it materializes.
             const example = typeof manifest.example === "string" && manifest.example.length > 0 ? `\nExample: ${manifest.example}` : "";
-            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk:///docs/${name}.md` : "";
+            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk://docs/${name}.md` : "";
             sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.${example}${docLink}`);
         }
         return sections.join("\n\n");

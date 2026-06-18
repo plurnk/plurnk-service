@@ -8,6 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db, PrepMethod } from "./Db.ts";
+import { renderAddress } from "./plurnk-uri.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
 
@@ -114,7 +115,7 @@ export default class ChannelWrite {
     // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
     // file:///.
     static #targetUri(scheme: string | null, pathname: string): string {
-        return `${scheme === null ? "file" : scheme}://${pathname}`;
+        return renderAddress(scheme === null ? "file" : scheme, pathname);
     }
 
     // A stream chunk accumulates into the channel's content (§chunk-accumulation-chunks-accumulate)

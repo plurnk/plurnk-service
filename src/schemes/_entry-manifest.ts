@@ -14,6 +14,7 @@
 // (the same materialization pattern as git membership).
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -28,7 +29,7 @@ export default class EntryManifest {
     static #MANIFEST_PATH = "plurnk:///manifest.json";
 
     static #toPath(scheme: string | null, pathname: string): string {
-        return scheme === null ? pathname : `${scheme}://${pathname}`;
+        return scheme === null ? pathname : renderAddress(scheme, pathname);
     }
 
     static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {

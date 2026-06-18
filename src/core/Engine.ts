@@ -12,6 +12,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
+import { foldAuthorityIntoPath } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
@@ -729,10 +730,10 @@ export default class Engine {
             const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptPath: UrlPath = {
-                    kind: "url", raw: `plurnk:///prompt/${loopId}/${seq}`,
+                    kind: "url", raw: `plurnk://prompt/${loopId}/${seq}`,
                     scheme: "plurnk", username: null, password: null,
-                    hostname: null, port: null,
-                    pathname: `/prompt/${loopId}/${seq}`, params: {}, fragment: null,
+                    hostname: "prompt", port: null,
+                    pathname: `/${loopId}/${seq}`, params: {}, fragment: null,
                 };
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
@@ -1184,7 +1185,7 @@ export default class Engine {
                 if (entry?.example) tools.push(`* ${entry.example}`);
                 // #note12 — link the executor's fuller doc (materialized at plurnk:///docs/<tag>.md);
                 // its token cost rides that manifest entry, so no inline recount here.
-                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk:///docs/${tag}.md`);
+                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk://docs/${tag}.md`);
             }
         }
         return tools;
@@ -2195,9 +2196,14 @@ export default class Engine {
         if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
+        // plurnk uses its authority as a namespace — fold it into the canonical pathname so the
+        // log keys identically to the entry (/prompt/<loop>, /docs/x.md). A web host (http://) is
+        // NOT a namespace: keep it in hostname.
+        const foldNs = scheme === "plurnk";
         return {
             scheme, username: path.username, password: path.password,
-            hostname: path.hostname, port: path.port, pathname: decodePathParens(path.pathname), // #239 item 4
+            hostname: foldNs ? null : path.hostname, port: path.port,
+            pathname: decodePathParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
             params: JSON.stringify(path.params), fragment: path.fragment,
         };
     }
