@@ -33,8 +33,16 @@ import type {
 } from "@plurnk/plurnk-grammar";
 import type { SchemeCtx } from "./ctx.ts";
 import type { SchemeResult } from "./results.ts";
+import type { SchemeManifest } from "./types.ts";
 
 export interface SchemeHandler {
+    // Per-instance manifest. Single-identity schemes (http/file) use the class's
+    // `static manifest` and omit this; a per-tag executor-scheme (instantiated
+    // per tag) supplies it as a `get manifest()` derived from its tag via
+    // SchemeDiscovery/manifestFromRuntime. The consumer reads the instance value
+    // when present, else the static one. (executor-is-a-scheme RFC, schemes#20.)
+    readonly manifest?: SchemeManifest;
+
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;

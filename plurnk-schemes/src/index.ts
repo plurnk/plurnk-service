@@ -24,6 +24,8 @@ export { default as Matcher } from "./matcher.ts";
 export type { MatchResult } from "./matcher.ts";
 export { default as SchemeDiscovery } from "./SchemeDiscovery.ts";
 export type { SchemeInfo, SchemeDiscoveryResult, DiscoverOptions } from "./SchemeDiscovery.ts";
+export { default as Summarize } from "./Summarize.ts";
+export type { OrientIndex } from "./Summarize.ts";
 export { default as Results } from "./results.ts";
 export type {
     EntryResult,
