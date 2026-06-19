@@ -8,3 +8,6 @@ dist/
 llama/src/
 llama/tests/
 llama/PROVENANCE.md
+
+# npm pack output
+*.tgz
