@@ -72,7 +72,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | Term | Meaning |
 |---|---|
 | **packet** | The turn's full exchange shape: `{system, user, assistant, assistantRaw}`. Persisted on `turns.packet`. |
-| **log** | `packet.system.log`. Chronological list of `log_entries` in scope this turn. |
+| **log** | the `log` section. Chronological list of `log_entries` in scope this turn. |
 | **render** | The act of computing the packet from current DB state at turn boundaries. Mimetype handlers fire at render time. |
 
 ### §test-taxonomy Test taxonomy
@@ -206,7 +206,7 @@ Plus immutable identity: `provider.contextSize` (token total, or `null` → "no 
 
 ### §provider-guarantees Engine → provider guarantees
 
-- `messages` is a complete prompt (`system_definition`, `index`, `log`, `prompt`, `telemetry`, `system_requirements` pre-assembled). Provider does not reorder.
+- `messages` is a complete prompt (the section list, pre-assembled into the system + user messages). Provider does not reorder.
 - `signal` is wired to the run's AbortController. {§provider-guarantees-signal-wired}
 - `generate` is single-call per turn. No parallel calls on the same instance. {§provider-guarantees-single-call}
 - `assistantRaw` is opaque to the engine (forensics-only). {§provider-guarantees-assistantraw-opaque}
@@ -306,7 +306,7 @@ Engine → scheme guarantees:
 - `ctx.writer` reflects the actual writer at this dispatch.
 - `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion. {§scheme-surface-writableby-403}
 - `ctx.signal` is wired to the run's AbortController (§provider-guarantees-signal-wired).
-- Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `packet.user.telemetry.errors[]` (§telemetry). {§scheme-surface-exception-500}
+- Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `errors` section (§telemetry). {§scheme-surface-exception-500}
 
 **Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.provider.countTokens` (§tokenomics-tokens-stored-at-write). Raw DB writes bypass tokenization — out of API scope.
 
@@ -562,7 +562,7 @@ A side-effecting op does not execute on dispatch — it **proposes**. The scheme
 
 A caller-supplied `outcome` overrides the default, but `outcome` is **forensics-only** — never in the model-facing `rx`. So a YOLO accept, a human reject, and a timeout are indistinguishable to the model: the action **occurred** (200) or it **didn't** (400/499), nothing about how it was administratively resolved (§telemetry).
 
-**A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from `packet.system.log`; it surfaces only after resolution, carrying its terminal status — the model sees outcomes, never pending proposals. {§proposal-proposed-hidden}
+**A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from the `log` section; it surfaces only after resolution, carrying its terminal status — the model sees outcomes, never pending proposals. {§proposal-proposed-hidden}
 
 ---
 
@@ -586,7 +586,7 @@ SSE event types, WS message types, exec stdout/stderr each map to a named channe
 
 Channels are the source of truth for chunk content. Log captures lifecycle events only: open (102), graceful close (200), cancel (499), errors (5xx), scheme-significant transitions. {§no-chunk-rows-log-captures-lifecycle-only}
 
-Model sees lifecycle events in `packet.system.log[]` per turn.
+Model sees lifecycle events in the `log` section per turn.
 
 ### §deep-slices Deep slices on demand
 
@@ -682,7 +682,7 @@ Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plu
 | `Unknown.ts` | `@plurnk/plurnk-schemes-unknown` | Open questions / decomposition. |
 | `Skill.ts` | `@plurnk/plurnk-schemes-skill` | Skill docs; same shape as known. |
 | `Plurnk.ts` | may stay in-tree | `plurnk:///prompt/<loop_id>` carries each loop's prompt. Model-origin writes to `plurnk:///prompt/*` rejected in-handler. |
-| `Log.ts` | may stay in-tree | Read-only coordinate-addressed (`log:///<L>/<T>/<S>`). Renders as JSON meta line in packet log; status ≥ 400 mirrors to `packet.user.telemetry.errors[]` (§telemetry). |
+| `Log.ts` | may stay in-tree | Read-only coordinate-addressed (`log:///<L>/<T>/<S>`). Renders as a JSON meta line in the `log` section; status ≥ 400 mirrors to the `errors` section (§telemetry). |
 | `File.ts` | `@plurnk/plurnk-schemes-file` | Filesystem-backed. **Model is never trained on `file:///` and never sees it.** Bare paths are model-facing; `file:///` accepted as input, renders bare. |
 | `Exec.ts` | stays in-tree | Dispatches EXEC op to runtime executors registered via [plurnk-execs](https://github.com/plurnk/plurnk-execs). |
 
@@ -998,15 +998,15 @@ Pre-stabilization. Clients track HEAD. No semver until the interface is worth co
 
 Each entry: question, answer, rationale, migration path.
 
-### §packet-assembly Packet assembly: engine-direct, not filter-chain
+### §packet-assembly Packet assembly: engine builds the default list, plugins transform it
 
-**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk assembles directly in `Engine.#buildRequestPacket` (`#buildLog` + the materialized manifest catalog).
+**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `Engine.#buildRequestPacket`, then lets trusted plugins rewrite it.
 
-**Decision.** Engine-direct. Plugin-driven assembly is out of scope.
+**Decision.** Two stages. (1) The engine builds the default section list — the kernel sections `definition`, `tools`, `log` (system slot), then `prompt`, `budget`, `errors`, `git`, `requirements` (user slot). (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
 
-**Rationale.** Channel + mimetype split already extends rendering. Filter chain would add indirection nothing exercises. Schemes-as-URI-handlers + mimetypes-as-renderers earn extensibility through different shapes than rummy's tag-per-plugin pattern.
+**Why a whole-list transform, not a per-section hook.** It is the legible, fork-avoiding seam: a plugin that can reshape the packet to its needs never has a reason to fork the engine (§ecosystem). And it is **strictly in-process and trusted** (behind `PLURNK_PLUGINS_TRUSTED_ONLY`) — the client/RPC wire never reaches the packet, because handing an untrusted connection the model's entire context is exactly the actor-boundary violation the engine exists to prevent. Pure list-in/list-out; no context is handed to plugins.
 
-**Migration path.** If a plugin needs to inject a packet section, grow a single `packet.augment` hook called after `#buildRequestPacket`; plugins return system/user augmentation objects merged into the packet. Additive — engine-direct base stays.
+**Rationale.** The section list is first-class data (not two hardcoded render functions), so the transform is a few lines over the existing registry-pull pattern (the engine already pulls the scheme catalogue and the tools sheet from the registries). The grinder/fold (§grinder) stays engine-owned — a closed build-time concern, never a plugin seam.
 
 ### §tokenomics Tokenomics: real provider tokens, render-weight budget, turn and entry weights
 
@@ -1143,35 +1143,34 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 ## §packet Packet shape
 
-Canonical shape defined by `@plurnk/plurnk-grammar` (`schema/Packet.json`). Engine assembles in `Engine.#buildRequestPacket`; no plugin augmentation (§packet-assembly). This section is plurnk-service's responsibilities under that contract.
+**Service-owned.** grammar 0.67 deleted `Packet.json` — the protocol scoped itself to the grammar, so the packet shape is now entirely plurnk-service's. The engine assembles it in `Engine.#buildRequestPacket` as an **ordered list of sections** that trusted plugins may rewrite (§packet-assembly).
 
 ```ts
+type PacketSection = {
+    name: string;                       // stable id: definition, log, prompt, budget, errors, git, tools, requirements — or a plugin's own
+    slot: "system" | "user";            // the prompt-cache boundary; system-slot sections build the cache-stable system message
+    header: string | null;              // "# Plurnk System X", or null (definition renders verbatim)
+    content: string;                    // rendered markdown — what the model saw
+    tokens: number;                     // measured render-weight
+};
 type Packet = {
     tokens: number;
-    system: {
-        tokens: number;
-        system_definition: string;
-        index: PacketEntry[];               // visible entries (§mimetype / §channels)
-        log: PacketLogRow[];                // chronological action-entries (§stream)
-    };
-    user: {
-        tokens: number;
-        prompt: string;
-        telemetry: { budget: string; errors: object[] };   // §telemetry
-        system_requirements: string;                        // §requirements
-    };
+    sections: PacketSection[];           // the ordered, plugin-overridable list; the wire renders it by slot
+    telemetryErrors: object[];           // structured telemetry events — the `errors` section's source; ephemeral (the packet is their only home, §telemetry)
     assistant: { tokens: number; content: string; ops: PlurnkStatement[]; reasoning: string | null };
     assistantRaw: unknown;
 };
 ```
 
-**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a plurnk-origin `EDIT` against `plurnk:///prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into `packet.user.prompt`; the entry itself stays READ/FOLD-able like any other. The foisted `EDIT`'s **log row is folded by default** (`expanded=0`): the prompt body already lives in `packet.user.prompt`, so the log keeps the action for forensics while collapsing the duplicate body, re-OPENable like any fold (§open-fold). {§prompt-fold}
+The wire projection (`PacketWire.renderSlot`) groups sections by slot into the system + user ChatMessages; the digest re-renders the same stored sections byte-for-byte.
+
+**Prompt as a first-class entry.** Each loop's prompt is written on loop start as a plurnk-origin `EDIT` against `plurnk:///prompt/<loop_id>` (indexable, body channel, text/markdown). At render time the current loop's prompt body materializes into the `prompt` section; the entry itself stays READ/FOLD-able like any other. The foisted `EDIT`'s **log row is folded by default** (`expanded=0`): the prompt body already lives in the `prompt` section, so the log keeps the action for forensics while collapsing the duplicate body, re-OPENable like any fold (§open-fold). {§prompt-fold}
 
 **The entry catalog.** `plurnk:///manifest.json` is a real session entry the model READs to discover what's available — rewritten every turn as a live view of the full entry set. Built in the schemes layer (`_entry-manifest`) and materialized like any entry (the engine only orchestrates the per-turn write — the same pattern as git membership), so it's READable and queryable. Body is `application/json`: a flat, **complete, unranked** array — one item per entry across all schemes, every entry listed in no relevance order, each `{ path, tags?, channels: { <name>: { mimetype, tokens, lines } } }`. `tags` is present only when the entry carries `entry_tags` — its own categorization, surfaced so the model sees it in the directory and can `FIND` by tag without a separate read. The model ranks and filters the catalog itself by querying it (task-aware); the catalog never ranks for it — the instant it did, it would be an index again. `tokens` is the provider's write-time count (budget depth), `lines` the content extent from `Mimetypes.process().totalLines`. The engine counts neither. It does not list itself. {§packet-manifest-catalog}
 
 ### §telemetry user.telemetry — model-facing runtime telemetry
 
-Slot for telemetry the model MUST react to immediately. Rendered at the bottom of the user section. Errors are transient — appear on the turn AFTER the failure, clear once seen. `packet.system.log[]` is the durable audit; `telemetry.errors[]` is the **alert**.
+Telemetry the model MUST react to immediately. Errors render in their own `errors` section (§packet-assembly unbundled them from a single telemetry block) — transient, appearing on the turn AFTER the failure, clearing once seen. The `log` section is the durable audit; the `errors` section (rendered from `packet.telemetryErrors`) is the **alert**.
 
 **Grammar contract:**
 
@@ -1199,7 +1198,7 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 **No `error://` scheme.** Actionless failures route to telemetry, not a queryable scheme namespace.
 
-**Client surface: `telemetry/event` notification.** Every event the engine pushes to the loop's telemetry buffer also broadcasts live via the `telemetry/event` WS notification. Same envelope on both sides — `{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema. The model sees the event on the NEXT packet's `telemetry.errors[]` (drains on read); the client sees it the moment it lands. Client uses cases: render parse errors in a debug panel (the `snippet` field is content the model emitted), surface strike/sudden_death as "loop is degrading" toasts, log everything to a session timeline. Scoped to the loop's session. {§telemetry-telemetry-event-notify}
+**Client surface: `telemetry/event` notification.** Every event the engine pushes to the loop's telemetry buffer also broadcasts live via the `telemetry/event` WS notification. Same envelope on both sides — `{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema. The model sees the event on the NEXT packet's `errors` section (drains on read); the client sees it the moment it lands. Client uses cases: render parse errors in a debug panel (the `snippet` field is content the model emitted), surface strike/sudden_death as "loop is degrading" toasts, log everything to a session timeline. Scoped to the loop's session. {§telemetry-telemetry-event-notify}
 
 **Content-offset snippet rendering.** When telemetry carries `position: { type: "content-offset", line, column }`, plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct (canonical case: the edit-todo demo where a READ body starting with `//` got xpath-dispatched). The snippet field is stripped from the meta JSON so it appears once, in the body block. {§telemetry-content-offset-snippet}
 
@@ -1209,7 +1208,7 @@ A `# Plurnk System Tools` section renders **above** `# Plurnk System Requirement
 
 **Contributors: the wired executor tags.** Each available executor tag injects a line describing its tag and functionality (the boot `ExecutorRegistry` probes availability per tag), retiring the model's blind `<<EXEC[sh]…`. The plan directive does **not** render here: it is a hard requirement gated by `PLURNK_PLAN`, joined to and dropped from the rules list with the flag rather than softly advertised as an optional tool (§requirements-plan-gated).
 
-### §requirements user.system_requirements — static per-turn rules
+### §requirements The requirements section — static per-turn rules
 
 Rendered at the END of the user packet under `# Plurnk System Requirements` {§requirements-requirements-render-last} — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. The header is omitted entirely when the requirements string is empty. {§requirements-requirements-omitted-when-empty} Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`"). The op syntax leads the section, and when `PLURNK_PLAN=1` the plan directive — *YOU MUST begin every response with `<<PLAN:...:PLAN`* — joins the rules: a hard requirement dynamically added to and removed from the list with the flag, never the soft optional-tools sheet. {§requirements-plan-gated}
 
