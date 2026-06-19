@@ -277,7 +277,9 @@ test("baseUrlVar overrides the fixed default", async () => {
 test("every registry entry resolves the chat URL the spec encodes", async () => {
     const envFor = (name: string): NodeJS.ProcessEnv => {
         const spec = STANDARD_PROVIDERS[name];
-        const e: NodeJS.ProcessEnv = { ...baseEnv, [spec.apiKeyVar]: "k" };
+        const e: NodeJS.ProcessEnv = { ...baseEnv };
+        // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
+        if (spec.apiKeyVar !== undefined) e[spec.apiKeyVar] = "k";
         // Entries with no fixed default (openai, bedrock) require their base URL.
         if (spec.baseUrl === undefined && spec.baseUrlVar !== undefined) e[spec.baseUrlVar] = "http://x/v1";
         return e;
