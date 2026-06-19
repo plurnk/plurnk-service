@@ -70,6 +70,14 @@ type StandardProviderSpec = {
     // sampling (SPEC §13). Set for providers that may front a local
     // OpenAI-compat server; cloud endpoints report neither → null / false.
     probeNctx?: boolean;
+    // Whether a probeNctx spec may infer LOCAL llama-server capabilities (grammar
+    // transport → "llamacpp", slot pinning, template reasoning) from the probe's
+    // `meta` fingerprint. Default true. Set FALSE for an endpoint that reports a
+    // window but must be treated as a plain remote OpenAI server — `plurnk` reads
+    // its (server-controlled) window from upstream yet must NEVER be talked into
+    // grammar/slot behavior, so its capabilities can't be flipped by what the
+    // endpoint happens to return.
+    detectLlamaServer?: boolean;
 };
 
 // Frozen so a downstream can't mutate the shared table.
@@ -135,11 +143,18 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
-    // The plurnk hosted model — a llama.cpp endpoint, so it inherits the local
-    // llama-server behavior via the probe (grammar transport, n_ctx, slot
-    // pinning). Base URL defaults to model.plurnk.ai, overridable via
-    // PLURNK_BASE_URL. Two optional credentials: bearer PLURNK_KEY + the
-    // Plurnk-Account header, each sent only when set.
+    // The plurnk hosted model — deliberately the most boring OpenAI-compatible
+    // client we can ship. The open-source ecosystem must not know or care what
+    // sits behind model.plurnk.ai (model, window, grammar, tuning are the
+    // router's business). So: no reasoning param ("none"), an agnostic tokenizer
+    // (heuristic), and NO grammar — the endpoint "doesn't support" GBNF here only
+    // because the router injects its own. It DOES read its context window from
+    // upstream (probeNctx), so a 32k→48k change is a one-line server decision,
+    // never a client release — but `detectLlamaServer: false` keeps it a plain
+    // remote OpenAI server that can't be flipped into grammar/slot behavior.
+    // Base URL defaults to model.plurnk.ai, overridable via PLURNK_BASE_URL. Two
+    // optional credentials: bearer PLURNK_KEY + the Plurnk-Account header, each
+    // sent only when set. firstPartyMetadata forwards attribution/client headers.
     plurnk: {
         baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         headersFromEnv: (env) => {
@@ -150,8 +165,8 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
             if (account.length > 0) h["Plurnk-Account"] = account;
             return h;
         },
-        reasoningStyle: "think", tokenizerDefault: "llama", tokenizerEnvVar: "PLURNK_TOKENIZER",
-        probeNctx: true, firstPartyMetadata: true,
+        reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
+        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true,
     },
 });
 
@@ -246,7 +261,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
     // Grammar shape: a static spec choice (e.g. fireworks → "response_format"),
     // upgraded to "llamacpp" when the probe fingerprints a llama-server. Slot
-    // pinning is llama-server-only, so it keys on that same fingerprint.
+    // pinning is llama-server-only, so it keys on that same fingerprint. A spec
+    // can opt out of the fingerprint entirely (detectLlamaServer: false → plurnk)
+    // to read the window but stay a plain remote OpenAI server.
     let grammarStyle: GrammarStyle = spec.grammarStyle ?? "none";
     let supportsSlotPinning = false;
     let slotCount: number | null = null;
@@ -254,7 +271,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     if (spec.probeNctx === true) {
         const probe = await probeModels(url, headers, wireModel, fetchTimeoutMs);
         contextSize ??= probe.nCtx;
-        if (probe.llamaServer) {
+        if (probe.llamaServer && spec.detectLlamaServer !== false) {
             grammarStyle = "llamacpp";
             supportsSlotPinning = true;
             slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);

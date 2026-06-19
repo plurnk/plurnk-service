@@ -467,15 +467,19 @@ test("plurnk: a 401 is classified unauthorized — terminal, never retried", asy
     mock.restoreAll();
 });
 
-test("plurnk: llama.cpp behavior is inherited — grammar capability + n_ctx from the probe", async () => {
+test("plurnk: reads its window from upstream but stays a plain OpenAI client — no grammar, no slot pinning, despite a meta block", async () => {
+    // The mock's /models returns a meta block (a llama-server fingerprint), yet
+    // detectLlamaServer:false means plurnk reads only the window and refuses every
+    // capability it could otherwise be talked into.
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    assert.equal(p!.contextSize, 49152); // probed n_ctx (the live source)
-    // The probe saw the llama-server meta block, so a caller-supplied grammar
-    // transports on the wire — identical to the local model.
+    assert.equal(p!.contextSize, 49152); // window STILL read from upstream — a 32k→48k change is a server decision
     await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);
-    assert.equal(body.grammar, 'root ::= "ok"');
+    assert.equal("grammar" in body, false);          // never forwards GBNF — the router injects its own
+    assert.equal("response_format" in body, false);
+    assert.equal("id_slot" in body, false);          // never slot-pinned
+    assert.equal("think" in body, false);            // reasoningStyle "none" → no reasoning param leaks
     mock.restoreAll();
 });
 
