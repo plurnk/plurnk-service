@@ -39,7 +39,7 @@ const jsonChoice = { model: "m", choices: [{ message: { content: "x" }, finish_r
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
 // streams its chunks; any other status returns that error (with an optional
 // retry-after header). The last entry repeats once the script runs out.
-type ScriptedResponse = { status: number; chunks?: unknown[]; retryAfter?: number };
+type ScriptedResponse = { status: number; chunks?: unknown[]; retryAfter?: number | string };
 const installFetchScript = (responses: ScriptedResponse[]) => {
     const calls: { url: string; init: RequestInit }[] = [];
     let i = 0;
@@ -289,6 +289,31 @@ test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
+test("slot affinity: a run past the LRU window (slotCount*8) loses its pin; recent runs stay sticky (#11)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
+    for (let i = 0; i < 16; i++) await p.generate({ runId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
+    await p.generate({ runId: "r16", messages: [] });   // call 16: size==cap → evicts the oldest (r0), itself → slot 0
+    await p.generate({ runId: "r0", messages: [] });     // call 17: r0 was evicted → treated as NEW, re-slotted
+    await p.generate({ runId: "r16", messages: [] });    // call 18: r16 still resident → sticky to its slot
+    assert.equal(slotOf(0), 0);    // r0's original pin
+    assert.notEqual(slotOf(17), slotOf(0)); // …lost after eviction (would equal 0 if it had stayed sticky)
+    assert.equal(slotOf(18), slotOf(16)); // r16 kept its slot — recent run survives the window
+});
+
+test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, source: "provider:test" });
+    mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
+    await assert.rejects(() => p.generate({ runId: "r", messages: [] }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "network_failure"); // ≥500 → network_failure
+        assert.equal(err.status, 500);
+        return true;
+    });
+});
+
 test("generate fail-hards on a missing or empty runId", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -362,6 +387,17 @@ test("retry: exhausting the budget surfaces the classified ProviderError", async
         (err: unknown) => { assert.ok(err instanceof ProviderError); assert.equal(err.kind, "rate_limit"); return true; },
     );
     assert.equal(calls.length, 3); // 1 initial + 2 retries
+});
+
+test("retry: a Retry-After HTTP-date is honored — a past date parses to a 0ms wait, then retries", async () => {
+    const calls = installFetchScript([
+        { status: 503, retryAfter: "Wed, 21 Oct 2015 07:28:00 GMT" }, // date form, in the past → max(0, past−now) = 0
+        { status: 200, chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
+    ]);
+    const p = new OpenAICompatProvider({ ...retryCfg, retryAttempts: 1 });
+    const { assistant } = await p.generate({ runId: "r", messages: [] });
+    assert.equal(assistant.content, "ok");
+    assert.equal(calls.length, 2); // initial 503 + one retry, no real wall-clock wait
 });
 
 test("retry: a terminal error (401 unauthorized) is never retried", async () => {

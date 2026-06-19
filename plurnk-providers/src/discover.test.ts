@@ -52,6 +52,20 @@ test("discover: a name claimed by two packages is a fail-hard collision", async 
     await fs.rm(root, { recursive: true, force: true });
 });
 
+test("discover: node_modules entries with no package.json or malformed JSON are skipped, not crashed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "providers-junk-"));
+    const nm = path.join(root, "node_modules");
+    await fs.mkdir(path.join(nm, "no-manifest"), { recursive: true });                  // a dir, no package.json
+    await fs.mkdir(path.join(nm, "broken"), { recursive: true });
+    await fs.writeFile(path.join(nm, "broken", "package.json"), "{ not json", "utf-8");  // malformed
+    const good = path.join(nm, "@plurnk", "plurnk-providers-ollama");
+    await fs.mkdir(good, { recursive: true });
+    await fs.writeFile(path.join(good, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-providers-ollama", plurnk: { kind: "provider", name: "ollama" } }), "utf-8");
+    const { registry } = await discover({ cwd: root });
+    assert.deepEqual([...registry.keys()], ["ollama"]); // only the well-formed provider survives
+    await fs.rm(root, { recursive: true, force: true });
+});
+
 test("discover: missing node_modules yields an empty registry, not an error", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "providers-empty-"));
     const { registry } = await discover({ cwd: root });

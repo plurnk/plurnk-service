@@ -164,6 +164,21 @@ test("instantiateProvider: discovered package without a fromEnv factory throws",
     );
 });
 
+test("instantiateProvider: a discovered package whose import throws fails hard, naming the specifier and preserving the cause", async () => {
+    resetDiscoveryCache();
+    const cause = new Error("ERR_MODULE_NOT_FOUND");
+    await assert.rejects(
+        () => instantiateProvider("foo", { ...fullEnv }, "m",
+            async () => { throw cause; },
+            mapOf({ foo: "@acme/acme-provider-foo" })),
+        (err: Error) => {
+            assert.match(err.message, /provider "foo" resolves to @acme\/acme-provider-foo, but importing it failed/);
+            assert.equal(err.cause, cause); // original error preserved
+            return true;
+        },
+    );
+});
+
 test("loadActiveProvider: resolves the alias cascade end-to-end via the scan", async () => {
     resetDiscoveryCache();
     const env = { ...fullEnv, PLURNK_MODEL: "opus", PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest" } as NodeJS.ProcessEnv;

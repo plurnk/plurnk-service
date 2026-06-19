@@ -106,6 +106,30 @@ test("openai: probe failure degrades to null, never throws", async () => {
     assert.equal(p!.contextSize, null);
 });
 
+test("openai: a probe network error (fetch rejects) degrades to null context and no grammar, never throws", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/models")) throw new TypeError("network down"); // fetch itself rejects
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(p!.contextSize, null);
+    await p!.generate({ runId: "r", messages: [] }); // no fingerprint → no grammar capability, generate still works
+});
+
+test("openai: a slot-probe network error (fetch rejects on /props) degrades slotCount to null, never throws", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+        const u = String(url);
+        if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 4096 } }] }), { status: 200 }); // llama fingerprint → slot probe runs
+        if (u.endsWith("/props")) throw new TypeError("network down"); // the /props slot probe rejects
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        return new Response(body, { status: 200 });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(p!.contextSize, 4096); // meta.n_ctx still resolved despite the slot-probe failure
+    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" }); // grammar still transports; no id_slot (slotCount null)
+});
+
 test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
     const calls = mockEndpoint({ nctx: 99999 });
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
