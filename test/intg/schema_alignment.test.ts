@@ -24,71 +24,17 @@ const json = (column: string): FieldStorage => ({ kind: "json", column });
 const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed", columns });
 const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
 
+// grammar 0.65–0.67 scoped the contract to the PROTOCOL (statements, paths, scheme/provider
+// registration, telemetry, channels) and DROPPED the persistence schemas — Entry, Session,
+// Run, Loop, Turn, LogEntry, Packet, Agent are gone. Those shapes are the SERVICE's now,
+// owned by our migrations + tests, not grammar. So this aligns only the protocol schemas that
+// still map to a table; the persistence tables (sessions/runs/loops/turns/entries/log_entries)
+// are ours and validated elsewhere.
 const MAPPING: Record<string, SchemaMapping> = {
-    Session: {
-        kind: "table", table: "sessions", fields: {
-            id: direct("id"), version: direct("version"), name: direct("name"),
-            created_at: direct("created_at"), cost_pico: direct("cost_pico"),
-            scheme_registry_additions: json("scheme_registry_additions"),
-        },
-    },
-    Run: {
-        kind: "table", table: "runs", fields: {
-            id: direct("id"), version: direct("version"), session_id: direct("session_id"),
-            name: direct("name"),
-            created_at: direct("created_at"), parent_run_id: direct("parent_run_id"),
-            cost_pico: direct("cost_pico"),
-        },
-    },
-    Loop: {
-        kind: "table", table: "loops", fields: {
-            id: direct("id"), version: direct("version"), run_id: direct("run_id"),
-            sequence: direct("sequence"), status: direct("status"), prompt: direct("prompt"),
-        },
-    },
-    Turn: {
-        kind: "table", table: "turns", fields: {
-            id: direct("id"), version: direct("version"), loop_id: direct("loop_id"),
-            sequence: direct("sequence"), timestamp: direct("timestamp"), status: direct("status"),
-            usage: decomposed("usage_prompt", "usage_completion", "usage_cached", "usage_cost_pico"),
-            finish_reason: direct("finish_reason"),
-            model: direct("model"),
-            packet: json("packet"),
-        },
-    },
-    Entry: {
-        kind: "table", table: "entries", fields: {
-            id: direct("id"), version: direct("version"), scope: direct("scope"),
-            session_id: direct("session_id"), scheme: direct("scheme"),
-            username: direct("username"), password: direct("password"),
-            hostname: direct("hostname"), port: direct("port"), pathname: direct("pathname"),
-            params: json("params"), channels: joinTable("entry_channels"),
-            attributes: json("attributes"), tags: joinTable("entry_tags"),
-        },
-    },
     ChannelContent: {
         kind: "embedded", table: "entry_channels", fields: {
             content: direct("content"), mimetype: direct("mimetype"),
             tokens: direct("tokens"), state: direct("state"),
-        },
-    },
-    LogEntry: {
-        kind: "table", table: "log_entries", fields: {
-            id: direct("id"), version: direct("version"),
-            run_id: direct("run_id"), loop_id: direct("loop_id"), turn_id: direct("turn_id"),
-            sequence: direct("sequence"), at: direct("at"), origin: direct("origin"),
-            op: direct("op"), suffix: direct("suffix"), signal: json("signal"),
-            scheme: direct("scheme"), username: direct("username"),
-            password: direct("password"), hostname: direct("hostname"),
-            port: direct("port"), pathname: direct("pathname"),
-            params: json("params"), fragment: direct("fragment"),
-            lineMarker: json("lineMarker"),
-            tx: direct("tx"), mimetype_tx: direct("mimetype_tx"),
-            rx: direct("rx"), mimetype_rx: direct("mimetype_rx"), status_rx: direct("status_rx"),
-            tokens: direct("tokens"),
-            // Added in grammar 0.7.0 (proposal lifecycle); columns added
-            // service-side in migrations 012/013.
-            state: direct("state"), outcome: direct("outcome"),
         },
     },
     SchemeRegistration: {
@@ -112,9 +58,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
-    Packet:          { kind: "skip", reason: "embedded in turns.packet JSON column" },
     TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.user.telemetry.events[] JSON" },
-    Agent:           { kind: "skip", reason: "singleton; not yet a table (no agent-wide persisted state in v0)" },
 };
 
 const TABLE_PREP: Record<string, string> = {
