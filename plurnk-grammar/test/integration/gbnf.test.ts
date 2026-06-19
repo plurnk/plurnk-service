@@ -337,6 +337,23 @@ test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivabl
     assert.equal(derives("statement", "<<PLAN1:nested thought:PLAN1"), false);
 });
 
+test("GBNF: PLAN body is required non-empty — no blank statement of intent", () => {
+    assert.equal(derives("statement", "<<PLAN:x:PLAN"), true);
+    assert.equal(derives("statement", "<<PLAN::PLAN"), false);   // blank plan rejected
+    // also rejected as the mandatory turn anchor
+    assert.equal(derives("root-turn", "<<PLAN::PLAN\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-turn", "<<PLAN:go:PLAN\n<<SEND[200]:done:SEND"), true);
+});
+
+test("GBNF: terminal SEND body is required non-empty — a turn must not end empty-handed", () => {
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:Paris:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]::SEND"), false);          // empty terminal
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]::SEND"), false);          // any terminal code
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](run://parent)::SEND"), false); // targeted, still empty
+    // MID sends stay lax — terse/empty comms allowed before the terminal
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND::SEND\n<<SEND[200]:done:SEND"), true);
+});
+
 test("GBNF: digit-suffixed statement quoting an inner op derives", () => {
     const quoted = "<<EDIT1(known://demo):\nquoted: <<EDIT(known://inner):hello:EDIT\n:EDIT1";
     assert.equal(derives("statement", quoted), true);

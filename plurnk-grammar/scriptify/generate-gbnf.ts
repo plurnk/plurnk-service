@@ -73,6 +73,20 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
     }
 };
 
+// Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume ≥1 char
+// before the close. The two non-ε transitions of state 0 (`:` → b1, any-other → b0) then
+// hand off to the normal automaton, which keeps its epsilon — so the body can still end
+// after that first char. Used for PLAN (no blank statement of intent) and the terminal
+// SEND (a turn must not terminate empty-handed) — a structural quality floor for training
+// data. Whitespace-only bodies still pass (≥1 char, not ≥1 non-WS); that residual is a
+// post-gen sieve's job, not the grammar's.
+const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => {
+    const alts: GRule = [];
+    if (close.length > 1) alts.push([lit(close[0]), ref(`${name}-b1`)]);
+    alts.push([bodyOther(":"), ref(`${name}-b0`)]);
+    model.set(`${name}-b0ne`, alts);
+};
+
 // Free-text preamble before the PLAN anchor: any text completing NO `<<OP` opener
 // (FIND…PLAN…SEND) — an Aho-Corasick complement over the opener trie. Keeping the
 // preamble opener-free preserves L(GBNF) ⊆ L(ANTLR): every preamble char re-lexes as
@@ -188,6 +202,10 @@ export const buildModel = (): GModel => {
                 // Tails are factored behind the shared `<<SEND…` opener trie (no leading
                 // `lit(open)` — the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
+                // MID sends may be empty-bodied (terse comms); the TERMINAL send must carry
+                // a payload — a turn that ends empty-handed is hollow training data.
+                bodyRulesNonEmpty(model, name, close);
+                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 sendMidEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, non-loop status
                     [ref("target"), ...body],                                          // targeted, statusless
@@ -195,16 +213,19 @@ export const buildModel = (): GModel => {
                     [...body],                                                          // pathless, statusless
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
-                    [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...body],
+                    [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
                 opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), ...body]] });
             } else if (op === "PLAN") {
-                // Slotless bare reasoning body. The standalone `plan` rule is the MANDATORY
-                // turn anchor (root-turn references it); PLAN is ALSO an inert mid-op, so it
-                // joins the op-statement trie too. Both share the `plan-b0` body automaton.
-                model.set("plan", [[lit(open), ...body]]);
-                opEntries.push({ literal: open, tails: [[...body]] });
+                // Slotless bare reasoning body, REQUIRED non-empty (no blank statement of
+                // intent). The standalone `plan` rule is the MANDATORY turn anchor (root-turn
+                // references it); PLAN is ALSO an inert mid-op, so it joins the op-statement
+                // trie too. Both share the `plan-b0ne` non-empty body automaton.
+                bodyRulesNonEmpty(model, name, close);
+                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
+                model.set("plan", [[lit(open), ...bodyNE]]);
+                opEntries.push({ literal: open, tails: [[...bodyNE]] });
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
