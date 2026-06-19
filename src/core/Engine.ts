@@ -1099,20 +1099,20 @@ export default class Engine {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
         // The default packet: an ordered list of sections, each addressable state
-        // (§packet-construction). `slot` is the prompt-cache boundary; order within
-        // a slot is the render order (requirements last — the contract closest to
-        // the assistant turn). budget/errors/git are peer sections (unbundled —
-        // each independently overridable). The budget section still carries its
-        // {{tokensFree}} placeholders here; they resolve below once the assembled
-        // total is known.
+        // (§packet-construction). `slot` is the prompt-cache boundary; the STATIC
+        // sections (definition, tools) lead the system slot so they form the cached
+        // prefix, with the dynamic log after. In the user slot, requirements renders
+        // last (the contract closest to the assistant turn); budget/errors/git are
+        // peer sections (unbundled). The budget section carries its {{tokensFree}}
+        // placeholders here; they resolve below once the assembled total is known.
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
+            { name: "tools", slot: "system", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
             { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
-            { name: "tools", slot: "user", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
             { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: requirementsText, tokens: 0 },
         ];
         // Plugin packet control (§packet-construction): trusted schemes rewrite the
