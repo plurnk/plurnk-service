@@ -153,6 +153,7 @@ test/digest/
 # Live-fire / provider scratch — not source (injected during local-model testing).
 scratch-*
 _fw-*
+*.gbnf
 scratch/
 
 # SQLite working files (WAL mode)
