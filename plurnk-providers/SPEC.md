@@ -79,6 +79,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
+- `generate` **verifies enforcement** when it transported a grammar: it validates the returned `content` against that grammar and rejects with a `grammar_unenforced` `ProviderError` if the backend did not actually constrain the output (§13). This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic.
 - **Backend affinity is the provider's internal guarantee, keyed by `runId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `runId` entirely.
 
 ## §3 `fromEnv(env, model)` factory
@@ -214,6 +215,7 @@ A sibling package satisfies the contract when:
 11. No DB access, no imports from `@plurnk/plurnk-service`.
 12. No runtime import of `@plurnk/plurnk-grammar` parser entry points.
 13. `generate` invoked with `grammar` against a backend without grammar support sends no grammar-related wire fields and does not error (§13).
+14. `generate` that transported a grammar and received conforming output resolves; output the grammar rejects (or an incomplete match) rejects with a `grammar_unenforced` `ProviderError` (§13). (Inherited from `OpenAICompatProvider`; bespoke siblings on a non-compat transport implement it.)
 
 Sibling-specific behavioral tests (wire-format compliance, model-family quirks, retry logic) live in each package's own test surface.
 
@@ -262,7 +264,7 @@ Transport failures surface as a `ProviderError` (extends `Error`, so existing ca
 ```
 
 - `source` is `provider:<vendor>` (schema pattern `^[a-z]+(:[a-z][a-z0-9-]*)?$`); standard providers set it from their name, siblings via the `source` config field (default `"provider"`).
-- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.)
+- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded | grammar_unenforced`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.) **`grammar_unenforced`** is response-level too: the provider mints it when a transported grammar was not enforced by the backend (§13); terminal, never retried.
 - `message` is terse and factual (no guidance prose); `position` is `null` (provider failures aren't localizable into prior content).
 - **Caller-initiated abort is NOT telemetry** — an aborted `signal` rethrows the original abort, never a `ProviderError`.
 
@@ -273,7 +275,7 @@ The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structura
 `@plurnk/plurnk-grammar` ships `@plurnk/plurnk-grammar/plurnk.gbnf` — a generated llama.cpp grammar constraining sampling to the canonical plurnk form. Ownership splits three ways:
 
 - **plurnk-grammar** owns the artifact (canonical-form GBNF, `L(GBNF) ⊂ L(ANTLR)` invariant, tests).
-- **This layer** owns capability detection + transport: `generate({ …, grammar })` attaches the string **verbatim** as the `grammar` body field when the backend supports it, and sends no grammar-related field otherwise (cloud APIs reject unknown params). The provider never chooses or modifies the grammar.
+- **This layer** owns capability detection, transport, **and enforcement verification**: `generate({ …, grammar })` attaches the string **verbatim** as the `grammar` body field when the backend supports it, sends no grammar-related field otherwise (cloud APIs reject unknown params), and — when it did transport a grammar — checks that the response actually conforms. The provider never chooses or modifies the grammar.
 - **The consumer** owns policy: whether to constrain a given call, and which root variant to send (e.g. the `root ::= statement` single-statement substitution that forces EOS at the close tag — the shipped `statement+` root never forces EOS, so greedy generation runs to `max_tokens`).
 
 **Sampling guard.** Greedy decoding under hard constraint masks degenerates into repetition loops at `repeat_penalty: 1.0`, so `OpenAICompatProvider` sends a per-request `repeat_penalty: 1.15` floor alongside every attached grammar — never relying on server launch flags. (Probed live on llama.cpp b894 + gemma-4-26B; reference: plurnk-grammar `test/llama/gbnf-live.test.ts`.)
@@ -288,5 +290,10 @@ The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structura
 - **`"none"`** — the grammar is **not sent** (never silently — a constrained consumer must not mistake unconstrained output for enforced).
 
 vLLM/Deepinfra was probed and does **not** expose working GBNF over its OpenAI-compat surface (`guided_grammar` silently ignored; `response_format` accepts only `'text'`) — deliberately left `"none"`. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal.
+
+**Enforcement verification (the response side).** Transporting the grammar is necessary but not sufficient — a backend can silently drop the `grammar` field, mislabel the constrained channel (the Fireworks `reasoning_content` case above), or leak unconstrained prose. So when `generate` *did* transport a grammar (`grammarStyle !== "none"`), it validates the returned `content` against that grammar with **`@plurnk/gbnf`** — a zero-dependency, faithful TypeScript port of llama.cpp's own grammar engine, differentially tested against the compiled C validator, hence authoritative for the `llamacpp` path. (This is `@plurnk/gbnf`, the generic GBNF *validator* — **not** `@plurnk/plurnk-grammar`, the plurnk artifact + parser the framework still never depends on; §11.) The check is a grammar-**conformance** test against a string the provider already holds, carrying zero plurnk-DSL semantics, so it does not breach §7/§8 (no `content`→`PlurnkStatement[]` parse).
+
+- **Strict.** Any non-`accept` verdict fails hard with a `grammar_unenforced` `ProviderError` (§12): a `reject` (a code point the grammar forbids — the constraint was not applied) *and* an `incomplete` (a valid prefix that never reached a terminal state — truncated or leaked output). The message names the diverging code point / what the grammar expected.
+- **Verify gap is non-fatal.** If the validator cannot even parse the grammar the backend accepted (a port-vs-llama.cpp divergence), `generate` does **not** fail a transport that may have worked — it skips the check and emits a `process` warning (`code: "PLURNK_GRAMMAR_UNVERIFIABLE"`). That gap is a validator bug to fix, not a backend failure.
 
 Zero grammar dependency (§11) is preserved: the GBNF string arrives per call; this package never imports the artifact.

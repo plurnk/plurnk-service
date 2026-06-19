@@ -174,9 +174,9 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
 test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal(body.grammar, "root ::= statement");
+    assert.equal(body.grammar, 'root ::= "x"');
     assert.equal(body.repeat_penalty, 1.15);
     assert.equal("response_format" in body, false);
 });
@@ -184,9 +184,9 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
 test("grammar transport 'response_format': response_format.grammar, no top-level grammar (Fireworks)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
     const calls = installFetchJson(jsonChoice);   // response_format grammar demotes off SSE
-    await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.response_format, { type: "grammar", grammar: "root ::= statement" });
+    assert.deepEqual(body.response_format, { type: "grammar", grammar: 'root ::= "x"' });
     assert.equal("grammar" in body, false);          // not the llama.cpp shape
     assert.equal("repeat_penalty" in body, false);
 });
@@ -198,7 +198,7 @@ test("grammar transport 'response_format': response_format.grammar, no top-level
 test("response_format grammar demotes THIS request off SSE; grammarless calls still stream", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
     const jsonCalls = installFetchJson(jsonChoice);
-    await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal("stream" in JSON.parse(jsonCalls[0].init.body as string), false);   // no SSE flag
     mock.restoreAll();
     const sseCalls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -213,6 +213,76 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
     assert.equal("response_format" in body, false);
+});
+
+// — grammar ENFORCEMENT verification (SPEC §13): the backend must have honored
+//   the grammar we transported; strict — any non-accept verdict fails hard —
+
+const grammarProvider = () => new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
+const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
+
+test("enforcement: conforming output passes through unchanged", async () => {
+    const p = grammarProvider();
+    streamingContent("ok");
+    const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(assistant.content, "ok");
+});
+
+test("enforcement: output the grammar REJECTS fails hard as grammar_unenforced, naming the divergence", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const p = grammarProvider();
+    streamingContent("no");
+    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "grammar_unenforced");
+        assert.equal(err.source, "provider:test");
+        assert.match(err.message, /grammar not enforced: output rejected .* at code point 0/);
+        assert.deepEqual(err.toTelemetryEvent(), { source: "provider:test", kind: "grammar_unenforced", message: err.message, position: null });
+        return true;
+    });
+});
+
+test("enforcement: STRICT — an incomplete (valid prefix, never terminated) also fails", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const p = grammarProvider();
+    streamingContent("ok");
+    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok" "!"' }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "grammar_unenforced");
+        assert.match(err.message, /incomplete match .* never terminated/);
+        return true;
+    });
+});
+
+test("enforcement: empty content under a non-empty grammar fails (the 'content never arrives' leak)", async () => {
+    const { ProviderError } = await import("./telemetry.ts");
+    const p = grammarProvider();
+    installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]); // no content delta → ""
+    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }), (err: unknown) => {
+        assert.ok(err instanceof ProviderError);
+        assert.equal(err.kind, "grammar_unenforced");
+        return true;
+    });
+});
+
+test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 }); // grammarStyle defaults to "none"
+    streamingContent("anything goes");
+    const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }); // grammar passed but never transported
+    assert.equal(assistant.content, "anything goes"); // no enforcement check
+});
+
+test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap — warn, return content", async () => {
+    const p = grammarProvider();
+    streamingContent("whatever");
+    const warnings: Error[] = [];
+    const onWarn = (w: Error) => warnings.push(w);
+    process.on("warning", onWarn);
+    const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }); // no `root` rule → validateGbnf throws
+    await flush();
+    process.off("warning", onWarn);
+    assert.equal(assistant.content, "whatever"); // transport not failed
+    assert.ok(warnings.some((w) => (w as Error & { code?: string }).code === "PLURNK_GRAMMAR_UNVERIFIABLE"), "emitted the verify-gap warning");
 });
 
 // — first-party telemetry headers (attribution + client, SPEC §5) —

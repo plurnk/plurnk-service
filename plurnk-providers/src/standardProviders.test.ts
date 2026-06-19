@@ -127,7 +127,7 @@ test("openai: a slot-probe network error (fetch rejects on /props) degrades slot
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextSize, 4096); // meta.n_ctx still resolved despite the slot-probe failure
-    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" }); // grammar still transports; no id_slot (slotCount null)
+    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "x"?' }); // grammar still transports; no id_slot (slotCount null)
 });
 
 test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
@@ -175,9 +175,9 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "x"?' });
     const sent = JSON.parse(bodies[0]);
-    assert.equal(sent.grammar, "root ::= statement");
+    assert.equal(sent.grammar, 'root ::= "x"?');
     assert.equal(sent.repeat_penalty, 1.15);
     assert.equal(sent.id_slot, 0); // fingerprint wires internal slot affinity too
 });

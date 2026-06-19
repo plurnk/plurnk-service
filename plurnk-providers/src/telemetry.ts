@@ -25,7 +25,11 @@ export type ProviderTelemetryKind =
     | "model_refused"
     | "invalid_response"
     | "unauthorized"
-    | "quota_exceeded";
+    | "quota_exceeded"
+    // The transported grammar was not enforced — the backend returned output that
+    // does not conform to the GBNF we sent (silently ignored/mislabeled it). The
+    // provider verifies enforcement and mints this directly (SPEC §13); terminal.
+    | "grammar_unenforced";
 
 // Build a provider source label (`provider:<vendor>`), schema-pattern-valid.
 export const providerSource = (vendor: string): string => `provider:${vendor}`;

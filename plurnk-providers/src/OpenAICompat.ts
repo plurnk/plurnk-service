@@ -11,7 +11,8 @@
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
-import { toProviderError, classifyProviderError } from "./telemetry.ts";
+import { toProviderError, classifyProviderError, ProviderError } from "./telemetry.ts";
+import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
 // How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
 // -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4):
@@ -111,6 +112,20 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
 };
 
 const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 4));
+
+// Render a non-accept verdict into a terse, factual grammar_unenforced message
+// (SPEC §12 message policy: no guidance prose). `reject` names the diverging code
+// point + what the grammar would have accepted; `incomplete` names the valid-prefix
+// length that never reached a terminal state.
+const describeUnenforced = (v: Exclude<Verdict, { status: "accept" }>): string => {
+    if (v.status === "reject") {
+        const expected = v.expected.length > 0
+            ? v.expected.map((e) => `${e.rule} accepts ${e.accepts}`).join(", ")
+            : "end of input";
+        return `grammar not enforced: output rejected by the transported grammar at code point ${v.pos} (${JSON.stringify(v.char)}); expected ${expected}`;
+    }
+    return `grammar not enforced: output is an incomplete match of the transported grammar — a valid prefix of ${v.pos} code points that never terminated`;
+};
 
 export default class OpenAICompatProvider implements Provider {
     #model: string;
@@ -228,6 +243,31 @@ export default class OpenAICompatProvider implements Provider {
         return h;
     }
 
+    // Enforcement verification (SPEC §13). When a grammar was actually transported
+    // (grammarStyle !== "none"), the backend MUST have constrained the output;
+    // some silently drop the grammar field or mislabel the channel, and without
+    // this check we would return unconstrained output as if enforced. STRICT: any
+    // non-accept verdict (reject, or an incomplete/never-terminated match) is a
+    // grammar_unenforced failure. A grammar our own validator can't parse — even
+    // though the backend accepted it (a port-vs-llama.cpp gap) — is a non-fatal
+    // verify gap: warn, don't fail a transport that may have worked. This is a
+    // conformance check against the grammar we already hold, NOT a plurnk-DSL
+    // parse (§8) — it stays grammar-generic and backend-agnostic.
+    #verifyGrammarEnforced(grammar: string, content: string): void {
+        let verdict: Verdict;
+        try {
+            verdict = validateGbnf(grammar, content);
+        } catch (cause) {
+            process.emitWarning(
+                `${this.#source}: could not verify grammar enforcement — the transported grammar did not parse in @plurnk/gbnf (${(cause as Error).message})`,
+                { code: "PLURNK_GRAMMAR_UNVERIFIABLE" },
+            );
+            return;
+        }
+        if (verdict.status === "accept") return;
+        throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict));
+    }
+
     async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
@@ -276,6 +316,10 @@ export default class OpenAICompatProvider implements Provider {
                 await sleepWithAbort(retryAfter ?? RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
             }
         }
+
+        // Verify the backend honored the grammar we transported (§13) before the
+        // content reaches the consumer — only when we actually sent one.
+        if (grammar !== undefined && this.#grammarStyle !== "none") this.#verifyGrammarEnforced(grammar, raw.content);
 
         return {
             assistant: {
