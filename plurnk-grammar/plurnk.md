@@ -26,7 +26,6 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for entries. Do not attempt to edit log items.
-SEND broadcasts to uri when a path is included and messages the user when no path is included.
 EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc.).
 
 ## Context

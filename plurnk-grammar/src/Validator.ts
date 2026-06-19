@@ -9,28 +9,11 @@ import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import entrySchema from "../schema/Entry.json" with { type: "json" };
 import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
-import logEntrySchema from "../schema/LogEntry.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
-import turnSchema from "../schema/Turn.json" with { type: "json" };
 import loopSchema from "../schema/Loop.json" with { type: "json" };
-import runSchema from "../schema/Run.json" with { type: "json" };
-import sessionSchema from "../schema/Session.json" with { type: "json" };
-import agentSchema from "../schema/Agent.json" with { type: "json" };
-import packetSchema from "../schema/Packet.json" with { type: "json" };
 import telemetryEventSchema from "../schema/TelemetryEvent.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
-
-// All foundational schemas — handy when a top-level shape transitively references many others.
-const FOUNDATIONAL = [
-    positionSchema, lineMarkerSchema, paramsSchema, channelContentSchema,
-    parsedPathSchema, matcherBodySchema, sendBodySchema,
-    plurnkStatementSchema,
-    entrySchema, logEntrySchema,
-    schemeRegistrationSchema, providerDeclarationSchema,
-    telemetryEventSchema,
-    packetSchema,
-];
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -43,17 +26,11 @@ export default class Validator {
     static #entry = Validator.#buildWithRefs(entrySchema, [paramsSchema, channelContentSchema]);
     static #schemeRegistration = new CfValidator(schemeRegistrationSchema as Schema, "2020-12");
     static #providerDeclaration = new CfValidator(providerDeclarationSchema as Schema, "2020-12");
-    static #logEntry = Validator.#buildWithRefs(logEntrySchema, [paramsSchema, lineMarkerSchema]);
     static #plurnkStatement = Validator.#buildWithRefs(
         plurnkStatementSchema,
         [positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
     );
-    static #turn = Validator.#buildWithRefs(turnSchema, FOUNDATIONAL);
     static #loop = new CfValidator(loopSchema as Schema, "2020-12");
-    static #run = new CfValidator(runSchema as Schema, "2020-12");
-    static #session = Validator.#buildWithRefs(sessionSchema, [schemeRegistrationSchema]);
-    static #agent = Validator.#buildWithRefs(agentSchema, [providerDeclarationSchema, schemeRegistrationSchema]);
-    static #packet = Validator.#buildWithRefs(packetSchema, FOUNDATIONAL);
     static #telemetryEvent = new CfValidator(telemetryEventSchema as Schema, "2020-12");
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
@@ -77,14 +54,8 @@ export default class Validator {
     static validateEntry(obj: unknown): ValidationResult { return Validator.#run_(Validator.#entry, obj); }
     static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#schemeRegistration, obj); }
     static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#providerDeclaration, obj); }
-    static validateLogEntry(obj: unknown): ValidationResult { return Validator.#run_(Validator.#logEntry, obj); }
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#plurnkStatement, obj); }
-    static validateTurn(obj: unknown): ValidationResult { return Validator.#run_(Validator.#turn, obj); }
     static validateLoop(obj: unknown): ValidationResult { return Validator.#run_(Validator.#loop, obj); }
-    static validateRun(obj: unknown): ValidationResult { return Validator.#run_(Validator.#run, obj); }
-    static validateSession(obj: unknown): ValidationResult { return Validator.#run_(Validator.#session, obj); }
-    static validateAgent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#agent, obj); }
-    static validatePacket(obj: unknown): ValidationResult { return Validator.#run_(Validator.#packet, obj); }
     static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#telemetryEvent, obj); }
 
     static #run_(validator: CfValidator, obj: unknown): ValidationResult {
