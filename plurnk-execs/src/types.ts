@@ -54,8 +54,15 @@ export interface ExecArgs {
     env?: NodeJS.ProcessEnv;
     // Cancellation. Executors must abort in-flight work when this fires.
     signal: AbortSignal;
-    // Write a chunk to one of the executor's declared channels.
-    write: (channel: string, chunk: string) => void;
+    // Write a chunk to one of the executor's declared channels. The optional
+    // `mimetype` stamps the channel with the REAL per-call output type
+    // (`application/json`, `text/markdown`, …); the consumer retypes the channel
+    // to it — the channel's declared mimetype is only the pre-fetch seed. The
+    // consumer's output-stream index/slicer (service#240) dispatches on this, so
+    // an executor whose output type is known or varies per call (sqlite → JSON,
+    // an MCP tool → whatever it returns) stamps it; omit it and the channel keeps
+    // its declared seed.
+    write: (channel: string, chunk: string, mimetype?: string) => void;
     // Transition a declared channel's lifecycle state.
     setState: (channel: string, state: ChannelState) => void;
     // Emit a telemetry/error event. The scheme routes it to the engine's

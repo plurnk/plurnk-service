@@ -19,7 +19,7 @@ class EchoExecutor extends BaseExecutor {
 
 // Capture the sinks the scheme would provide.
 const harness = () => {
-    const writes: { channel: string; chunk: string }[] = [];
+    const writes: { channel: string; chunk: string; mimetype?: string }[] = [];
     const states: { channel: string; state: string }[] = [];
     const events: TelemetryEvent[] = [];
     const args = (overrides: Partial<ExecArgs> = {}): ExecArgs => ({
@@ -27,7 +27,7 @@ const harness = () => {
         command: "pie recipes",
         cwd: null,
         signal: new AbortController().signal,
-        write: (channel, chunk) => writes.push({ channel, chunk }),
+        write: (channel, chunk, mimetype) => writes.push({ channel, chunk, ...(mimetype !== undefined ? { mimetype } : {}) }),
         setState: (channel, state) => states.push({ channel, state }),
         emit: (event) => events.push(event),
         ...overrides,
@@ -105,4 +105,26 @@ test("BaseExecutor: defaultChannel is the first declared channel, overridable", 
 
     class Custom extends Subproc { override get defaultChannel(): string { return "stderr"; } }
     assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
+});
+
+test("ExecArgs.write: an executor stamps the real per-call output mimetype (service#240)", async () => {
+    class TypedExec extends BaseExecutor {
+        get channels(): Readonly<Record<string, ChannelDecl>> {
+            return { results: { mimetype: "application/json" } };
+        }
+        async run(args: ExecArgs): Promise<ExecResult> {
+            args.write("results", "[1,2,3]", "application/json");
+            args.setState("results", "closed");
+            return { status: 200 };
+        }
+    }
+    const h = harness();
+    await new TypedExec({ runtime: "sqlite", glyph: "🗃" }).run(h.args());
+    assert.deepEqual(h.writes[0], { channel: "results", chunk: "[1,2,3]", mimetype: "application/json" });
+});
+
+test("ExecArgs.write: mimetype is optional — omitting it leaves no stamp (back-compat)", async () => {
+    const h = harness();
+    await new EchoExecutor({ runtime: "x", glyph: "" }).run(h.args());
+    assert.equal(h.writes[0].mimetype, undefined);
 });
