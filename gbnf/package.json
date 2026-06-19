@@ -8,6 +8,8 @@
     "node": ">=25"
   },
   "scripts": {
-    "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh"
+    "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh",
+    "build:llama": "scripts/buildLlama.sh",
+    "build": "npm run build:fetchLlamaGrammar && npm run build:llama"
   }
 }

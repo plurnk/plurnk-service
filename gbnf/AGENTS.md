@@ -125,7 +125,10 @@ gbnf/
 ├── test/
 │   ├── intg/             # integration: our modules wired together (no C binary)
 │   └── e2e/              # differential: our impl vs the compiled llama-gbnf oracle
-├── llama/                # llama.cpp GBNF C, copied verbatim, adapted to llama-gbnf.c — §10
+├── llama/                # the C reference oracle — §10
+│   ├── src/              #   llama.cpp GBNF engine + unicode (verbatim, fetched)
+│   ├── tests/            #   no-model validator harness (verbatim, fetched)
+│   └── shim/             #   hand-written stubs for the llama.cpp/ggml stack (committed)
 ├── build/                # compiled llama-gbnf oracle (gitignored) — `npm run build:llama`
 ├── scripts/              # shell scripts (fetchLlamaGrammar.sh, …), camelCase.sh — §10, §11
 └── scriptify/            # one-off Node scripts (coverage check, etc.) — never build steps
@@ -261,8 +264,16 @@ Two stages, both shell-driven via npm scripts, neither touching any TS/JS:
   that cost on us. Re-pinning is a conscious step: review, bump `LLAMA_SHA`, re-run, re-verify.
   CI runs this gate (it needs only `curl`, no toolchain) so upstream movement turns CI red
   promptly.
-- **`build:llama` compiles `build/llama-gbnf`** from `llama/` using the standard Ubuntu
-  `build-essential` toolchain (Charter §7). `build/` is gitignored.
+- **`build:llama` → `scripts/buildLlama.sh`** compiles `build/llama-gbnf` with the standard
+  Ubuntu `build-essential` toolchain (Charter §7). It links the **verbatim** `llama/src`
+  engine + `llama/tests` harness against the hand-written `llama/shim` headers, which stand in
+  for the full llama.cpp/ggml stack on the null-vocab validator path (the only symbols
+  `llama-grammar.cpp` needs externally: `GGML_ASSERT`/`GGML_ABORT`, two `LLAMA_LOG_*` macros,
+  a `llama_vocab` with three never-reached token methods, and `llama_token`/
+  `llama_token_data_array`). The vendored sources are **never edited** — all adaptation lives
+  in `llama/shim`, which `fetch` never overwrites, so the drift gate keeps diffing cleanly.
+  `build/` is gitignored. The binary takes `<grammar.gbnf> <input>` and reports accept/reject
+  plus error position — no model involved.
 - **`build` orchestrates** fetch-then-compile. These are the only builds in the repo and they
   touch no TS/JS.
 - The binary exists solely as the **oracle** for `test/e2e` differential testing (Charter §9)
