@@ -46,7 +46,7 @@ try {
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
 
     const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-grammar");
-    for (const gbnf of ["plurnk.gbnf", "plurnk-free.gbnf"]) {
+    for (const gbnf of ["plurnk.gbnf"]) {
         const shipped = await readFile(join(installedRoot, "dist", gbnf), "utf8");
         const local = await readFile(join(grammarDir, "dist", gbnf), "utf8");
         if (shipped !== local) throw new Error(`shipped dist/${gbnf} diverges from the local build`);

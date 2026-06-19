@@ -166,15 +166,21 @@ const sample = (entry: string, rng: () => number): string => {
 };
 
 // -------------------------------------------------------------------------
-// Corpus: plurnk.md examples derive from root
+// Corpus: plurnk.md examples derive from statement
 // -------------------------------------------------------------------------
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
-// The root encodes the turn shape (#29): ops closed by exactly one SEND. The
-// teaching corpus is not a turn (it ends with three SEND variants), so corpus
-// derivability is asserted per-statement; the turn shape is asserted separately.
+// The provider GUARANTEES reasoning is separated from content before the parser runs:
+// the parser only ever sees the post-`</think>` content. Mirror that split here when
+// feeding sampled raw turns (which may carry a `<think>` preamble) to PlurnkParser.
+const content = (turn: string): string => turn.replace(/^<think>[\s\S]*?<\/think>/, "");
+
+// The root encodes the turn shape: an optional <think> preamble, then ops closed by
+// exactly one terminal SEND. The teaching corpus is not a turn (it ends with three
+// SEND variants), so corpus derivability is asserted per-statement; the turn shape is
+// asserted separately.
 test("GBNF: every plurnk.md example derives from statement", () => {
     const headingMatch = /^## Examples\s*$/m.exec(plurnkMd);
     assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
@@ -197,79 +203,120 @@ test("GBNF: every plurnk.md example derives from statement", () => {
     }
 });
 
-test("GBNF: root accepts a PLAN-led batch closed by a final status SEND", () => {
-    const batch = "<<PLAN:decompose the prompt:PLAN\n<<EDIT[france](known://capital.md):Paris:EDIT\n\n<<FOLD(log://**/get)<1,10>::FOLD\n<<SEND[200]:Paris:SEND\n";
-    assert.equal(derives("root-plan", batch), true);
+// -------------------------------------------------------------------------
+// Turn shape: think-optional root (think? sep batch-step* send-final-any sep)
+// -------------------------------------------------------------------------
+
+test("GBNF: think-optional root — PLAN inert, op-first allowed, SEND-closed", () => {
+    // No PLAN mandate: an op-first turn is a valid turn.
+    assert.equal(derives("root-think", "<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
+    // A bare terminal SEND is a valid turn.
+    assert.equal(derives("root-think", "<<SEND[200]:done:SEND"), true);
+    // PLAN is allowed but inert — a PLAN-led turn still derives.
+    assert.equal(derives("root-think", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
+    // Still strict: no free prose between ops.
+    assert.equal(derives("root-think", "<<READ(known:///x)::READ\nstray prose\n<<SEND[200]:x:SEND"), false);
+    // Still SEND-closed: ops alone are not a turn.
+    assert.equal(derives("root-think", "<<READ(known:///x)::READ"), false);
+    // PLAN alone is not a turn.
+    assert.equal(derives("root-think", "<<PLAN:think:PLAN"), false);
 });
 
-test("GBNF: root accepts a minimal PLAN-then-status-SEND turn", () => {
-    assert.equal(derives("root-plan", "<<PLAN:think:PLAN\n<<SEND[102]:still working:SEND"), true);
+test("GBNF: optional <think> preamble — present, absent, and opaque to the grammar", () => {
+    // present, then ops + terminal
+    assert.equal(derives("root-think", "<think>let me reason</think>\n<<SEND[200]:done:SEND"), true);
+    // absent — non-reasoning model skips straight to ops
+    assert.equal(derives("root-think", "<<SEND[200]:done:SEND"), true);
+    // the body may REHEARSE complete ops AND terminals — opaque to the grammar, and the
+    // provider strips it from content before the parser ever sees it
+    assert.equal(derives("root-think", "<think>draft: <<SEND[200]:Paris:SEND — yes</think><<SEND[200]:Paris:SEND"), true);
+    // the body may carry `</` that is not the close (a crude `<`-then-`[^/]` rule fails this)
+    assert.equal(derives("root-think", "<think>compare </div> with </b></think><<SEND[200]:x:SEND"), true);
+    // think opens a turn only — it cannot appear mid-batch
+    assert.equal(derives("root-think", "<<READ(known:///x)::READ<think>late</think><<SEND[200]:x:SEND"), false);
+    // an unclosed think is not a turn (no </think>, no terminal SEND outside it)
+    assert.equal(derives("root-think", "<think>reasoning with no close <<SEND[200]:x:SEND"), false);
 });
+
+test("GBNF: <think> body excludes only </think> — the first close is the boundary", () => {
+    // openers, partial close tags, lone `<` — all admissible inside reasoning
+    assert.equal(derives("thinkbody", "anything goes <<EDIT </thin <not-close <"), true);
+    // ...but a complete </think> is not — it terminates the block
+    assert.equal(derives("thinkbody", "before </think> after"), false);
+});
+
+// -------------------------------------------------------------------------
+// SEND disposition codes (terminal vs mid)
+// -------------------------------------------------------------------------
 
 test("GBNF: SEND[202] (parked) is a pathless terminator, not a mid status", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked until the fork reports:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[202]:parked until the fork reports:SEND"), true);
     // a pathless 202 closes the turn — it can't sit mid-batch ahead of another SEND
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
 test("GBNF: SEND[499] (give-up) is a terminal disposition; 500 (engine verdict) is not emittable as a terminal", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499]:giving up:SEND"), true);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499](run://parent):aborting:SEND"), true); // terminate-and-report give-up
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[499]:abort:SEND\n<<SEND[200]:done:SEND"), false); // 499 is terminal-only
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[499]:giving up:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[499](run://parent):aborting:SEND"), true); // terminate-and-report give-up
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[499]:abort:SEND\n<<SEND[200]:done:SEND"), false); // 499 is terminal-only
     // 500 is an engine verdict, never a model terminal — only usable as a mid message code
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND"), false); // 500 not a terminal
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[200]:done:SEND"), true); // 500 ok as a mid code
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND"), false); // 500 not a terminal
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[200]:done:SEND"), true); // 500 ok as a mid code
 });
 
 test("GBNF: SEND[300] (user-question) is an allowed terminal, reserved from mid (untaught in canon)", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[300]:Which sources do you trust?:SEND"), true);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[300](agent://user):clarify?:SEND"), true); // terminate-and-ask
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[300]:q:SEND\n<<SEND[200]:done:SEND"), false); // 300 is terminal-only
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[300]:Which sources do you trust?:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[300](agent://user):clarify?:SEND"), true); // terminate-and-ask
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[300]:q:SEND\n<<SEND[200]:done:SEND"), false); // 300 is terminal-only
 });
 
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, non-loop status) before the final", () => {
     // mid SENDs must NOT carry a loop code (102/202/200) — those are terminal-always.
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
-    assert.equal(derives("root-plan", batch), true);
+    assert.equal(derives("root-think", batch), true);
     // a loop code on a mid (non-final) SEND is rejected — it would end the turn early
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[102](agent://supervisor):progress:SEND\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[102](agent://supervisor):progress:SEND\n<<SEND[200]:done:SEND"), false);
 });
 
 test("GBNF: root rejects a batch with no final status SEND", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<EDIT(known://a.md):x:EDIT"), false);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<EDIT(known://a.md):x:EDIT"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<EDIT(known://a.md):x:EDIT\n<<SEND[400]:err:SEND"), false);
 });
 
 test("GBNF: root accepts a targeted terminal SEND (terminate-and-report)", () => {
     // The terminal is path-agnostic: a loop code closes the turn with or without a target.
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND"), true);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), true);
     // ...but a targeted terminal still terminates — nothing may follow it.
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND\n<<SEND[200]:again:SEND"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND\n<<SEND[200]:again:SEND"), false);
 });
 
 test("GBNF: root rejects any statement after the final status SEND", () => {
     const after = "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known://a.md):x:EDIT\n<<SEND[200]:again:SEND";
-    assert.equal(derives("root-plan", after), false);
+    assert.equal(derives("root-think", after), false);
 });
+
+test("GBNF: root rejects two consecutive status SENDs", () => {
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
+});
+
+// -------------------------------------------------------------------------
+// Statement layer: per-op shapes and canon boundaries
+// -------------------------------------------------------------------------
 
 test("GBNF: PLAN derives bare (slotless) at the statement layer", () => {
     assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), true);
     assert.equal(derives("statement", "<<PLAN[tagged]:thoughts:PLAN"), false); // dictated form is slotless
 });
 
-test("GBNF: root rejects two consecutive status SENDs", () => {
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND[102]:a:SEND\n<<SEND[200]:b:SEND"), false);
+test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivable", () => {
+    assert.equal(derives("statement", "<<PLAN1:nested thought:PLAN1"), false);
 });
 
 test("GBNF: digit-suffixed statement quoting an inner op derives", () => {
     const quoted = "<<EDIT1(known://demo):\nquoted: <<EDIT(known://inner):hello:EDIT\n:EDIT1";
     assert.equal(derives("statement", quoted), true);
 });
-
-// -------------------------------------------------------------------------
-// Canon boundaries: parse-side-only forms must NOT derive
-// -------------------------------------------------------------------------
 
 test("GBNF: word suffix is parse-side only — not derivable", () => {
     assert.equal(derives("statement", "<<EDITouter(known://demo):x:EDITouter"), false);
@@ -283,8 +330,8 @@ test("GBNF: statusless SEND is a valid mid-batch message (pathless or targeted)"
     assert.equal(derives("statement", "<<SEND:just a message:SEND"), true);
     assert.equal(derives("statement", "<<SEND(agent://supervisor):heads up:SEND"), true);
     // ...but a statusless SEND is NOT a terminator — the turn still needs a status SEND.
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND:done:SEND"), false);
-    assert.equal(derives("root-plan", "<<PLAN:p:PLAN\n<<SEND:note:SEND\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND:done:SEND"), false);
+    assert.equal(derives("root-think", "<<PLAN:p:PLAN\n<<SEND:note:SEND\n<<SEND[200]:done:SEND"), true);
 });
 
 test("GBNF: SEND signal must be three digits", () => {
@@ -301,6 +348,44 @@ test("GBNF: unsuffixed body cannot contain its own close literal", () => {
     assert.equal(derives("statement", collision), false);
 });
 
+test("GBNF: decimal line markers derive — insert-between, threshold, mixed", () => {
+    assert.equal(derives("statement", "<<EDIT(known://plan)<2.5>:x:EDIT"), true);
+    assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
+    assert.equal(derives("statement", "<<FIND(known://**)<0.7,20>:~q:FIND"), true);
+    assert.equal(derives("statement", "<<FIND(known://**)<0.7,10,20>:~q:FIND"), true); // thresholded triple
+    assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
+});
+
+// -------------------------------------------------------------------------
+// Separator + glued-output round-trip
+// -------------------------------------------------------------------------
+
+test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected", () => {
+    const lead = "<<PLAN:p:PLAN";
+    // glued — zero separator between ops
+    assert.equal(derives("root-think", lead + "<<READ(known:///x)::READ<<SEND[200]:done:SEND"), true);
+    // mixed whitespace separator (CRLF blank line + indent, within 7)
+    assert.equal(derives("root-think", lead + "\n<<READ(known:///x)::READ \t\n  <<SEND[200]:done:SEND"), true);
+    // exactly 7 whitespace chars between ops — ok
+    assert.equal(derives("root-think", lead + "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[200]:done:SEND"), true);
+    // 8 whitespace chars — over the cap, rejected (no unbounded stall)
+    assert.equal(derives("root-think", lead + "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[200]:done:SEND"), false);
+    // leading + trailing whitespace (within cap)
+    assert.equal(derives("root-think", "  \n<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n  "), true);
+    // still no non-whitespace text between ops
+    assert.equal(derives("root-think", lead + "<<READ(known:///x)::READ prose <<SEND[200]:done:SEND"), false);
+});
+
+test("GBNF: glued output round-trips through the parser (subset invariant)", () => {
+    const turn = "<<READ(known:///x)::READ<<EDIT(known:///y):z:EDIT<<SEND[200]:done:SEND";
+    const result = PlurnkParser.parse(turn);
+    const errors = result.items.filter((item) => item.kind === "error");
+    const statements = result.items.filter((item) => item.kind === "statement");
+    assert.equal(errors.length, 0, `glued turn produced parse errors: ${JSON.stringify(turn)}`);
+    assert.equal(statements.length, 3, "expected 3 glued statements");
+    assert.equal(result.unparsedTail, undefined);
+});
+
 // -------------------------------------------------------------------------
 // Fuzz: L(GBNF) ⊂ L(ANTLR)
 // -------------------------------------------------------------------------
@@ -308,8 +393,9 @@ test("GBNF: unsuffixed body cannot contain its own close literal", () => {
 test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () => {
     const rng = mulberry32(7);
     for (let i = 0; i < 100; i++) {
-        const turn = sample("root-plan", rng);
-        const result = PlurnkParser.parse(turn);
+        const turn = sample("root-think", rng);
+        // the parser sees post-</think> content, per the provider's separation guarantee
+        const result = PlurnkParser.parse(content(turn));
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 0, `batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
@@ -319,7 +405,7 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
         assert.ok(last.kind === "statement", `batch ${i} last item is not a statement`);
         if (last.kind !== "statement") continue;
         assert.equal(last.statement.op, "SEND", `batch ${i} does not end in SEND\nbatch: ${JSON.stringify(turn)}`);
-        // terminal is path-agnostic now — target may be present or null; the loop code is what closes the turn
+        // terminal is path-agnostic — target may be present or null; the loop code closes the turn
         assert.ok(
             [102, 200, 202, 300, 499].includes(last.statement.signal as number),
             `batch ${i} final SEND signal is ${last.statement.signal}, not 102/200/202/300/499\nbatch: ${JSON.stringify(turn)}`,
@@ -347,100 +433,9 @@ test("GBNF: 300 seeded random derivations all parse cleanly", () => {
 // Serialization sanity
 // -------------------------------------------------------------------------
 
-test("GBNF: decimal line markers derive — insert-between, threshold, mixed", () => {
-    assert.equal(derives("statement", "<<EDIT(known://plan)<2.5>:x:EDIT"), true);
-    assert.equal(derives("statement", "<<FIND(known://**)<0.7>:~q:FIND"), true);
-    assert.equal(derives("statement", "<<FIND(known://**)<0.7,20>:~q:FIND"), true);
-    assert.equal(derives("statement", "<<FIND(known://**)<0.7,10,20>:~q:FIND"), true); // thresholded triple
-    assert.equal(derives("statement", "<<READ(a.md)<2.>::READ"), false); // bare trailing dot is not a decimal
-});
-
-test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected", () => {
-    const lead = "<<PLAN:p:PLAN";
-    // glued — zero separator between ops
-    assert.equal(derives("root-plan", lead + "<<READ(known:///x)::READ<<SEND[200]:done:SEND"), true);
-    // mixed whitespace separator (CRLF blank line + indent, within 7)
-    assert.equal(derives("root-plan", lead + "\n<<READ(known:///x)::READ \t\n  <<SEND[200]:done:SEND"), true);
-    // exactly 7 whitespace chars between ops — ok
-    assert.equal(derives("root-plan", lead + "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[200]:done:SEND"), true);
-    // 8 whitespace chars — over the cap, rejected (no unbounded stall)
-    assert.equal(derives("root-plan", lead + "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[200]:done:SEND"), false);
-    // leading + trailing whitespace (within cap)
-    assert.equal(derives("root-plan", "  \n<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n  "), true);
-    // still no non-whitespace text between ops
-    assert.equal(derives("root-plan", lead + "<<READ(known:///x)::READ prose <<SEND[200]:done:SEND"), false);
-});
-
-test("GBNF: glued output round-trips through the parser (subset invariant)", () => {
-    const turn = "<<READ(known:///x)::READ<<EDIT(known:///y):z:EDIT<<SEND[200]:done:SEND";
-    const result = PlurnkParser.parse(turn);
-    const errors = result.items.filter((item) => item.kind === "error");
-    const statements = result.items.filter((item) => item.kind === "statement");
-    assert.equal(errors.length, 0, `glued turn produced parse errors: ${JSON.stringify(turn)}`);
-    assert.equal(statements.length, 3, "expected 3 glued statements");
-    assert.equal(result.unparsedTail, undefined);
-});
-
-test("GBNF: plan root — strict, but the turn must open with a PLAN", () => {
-    // PLAN-led, ops in the middle, closed by the status SEND.
-    assert.equal(derives("root-plan", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
-    // Bare minimum: PLAN then the closing SEND.
-    assert.equal(derives("root-plan", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), true);
-    // Must start with PLAN — an op-first turn is rejected.
-    assert.equal(derives("root-plan", "<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), false);
-    // Must start with PLAN — a SEND-only turn is rejected.
-    assert.equal(derives("root-plan", "<<SEND[200]:done:SEND"), false);
-    // Still strict: no free text between ops.
-    assert.equal(derives("root-plan", "<<PLAN:think:PLAN\nstray prose\n<<SEND[200]:x:SEND"), false);
-    // Still SEND-closed: PLAN alone is not a turn.
-    assert.equal(derives("root-plan", "<<PLAN:think:PLAN"), false);
-});
-
-// -------------------------------------------------------------------------
-// Free root (plurnk-free.gbnf): permissive — text interleaves, no PLAN/SEND rule
-// -------------------------------------------------------------------------
-
-test("GBNF: free root accepts text and statements interleaved, EOS at any boundary", () => {
-    assert.equal(derives("root-open", "just musing, no operations yet"), true);
-    assert.equal(derives("root-open", "<<EDIT(known://a.md):x:EDIT"), true);
-    assert.equal(derives("root-open", "think first\n<<READ(known://a.md)::READ\nstill thinking, not concluding"), true);
-    // a complete `<<OP` opener in prose must resolve to a statement, not stay text
-    assert.equal(derives("root-open", "discussing <<EDIT without closing it"), false);
-    // a non-keyword `<<RANDOM` stays inert text
-    assert.equal(derives("root-open", "mentioning <<RANDOM in prose"), true);
-});
-
-test("GBNF: free root enforces neither PLAN-first nor a terminal SEND", () => {
-    assert.equal(derives("root-open", "<<READ(known://a.md)::READ"), true);          // op-first, no PLAN
-    assert.equal(derives("root-open", "<<EDIT(known://a.md):x:EDIT"), true);         // no closing SEND
-    assert.equal(derives("root-open", "<<SEND[200]:done:SEND\nafterthought"), true); // statements after a status SEND
-    assert.equal(derives("root-open", "<<SEND[200]:a:SEND<<SEND[200]:b:SEND"), true); // two terminal SENDs, fine here
-    // contrast: the plan root rejects all of the above
-    assert.equal(derives("root-plan", "<<READ(known://a.md)::READ"), false);
-});
-
-test("GBNF: free-root text automaton can't swallow a complete opener or end on a lone `<`", () => {
-    assert.equal(derives("text", "thinking about <<EDIT here"), false);
-    assert.equal(derives("text", "thinking about <EDIT and << here"), true);
-    assert.equal(derives("text", "abc<"), false);
-    assert.equal(derives("text", "abc<<"), true);
-});
-
-test("GBNF: 100 seeded random free-root turns parse cleanly", () => {
-    const rng = mulberry32(23);
-    for (let i = 0; i < 100; i++) {
-        const turn = sample("root-open", rng);
-        const result = PlurnkParser.parse(turn);
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 0, `free turn ${i} produced parse errors\nturn: ${JSON.stringify(turn)}`);
-        assert.equal(result.unparsedTail, undefined, `free turn ${i} left an unparsed tail\nturn: ${JSON.stringify(turn)}`);
-    }
-});
-
 test("GBNF: serialized grammar has a root rule and every ref is defined", () => {
-    const text = serializeGbnf(model, "root-plan");
-    assert.match(text, /^root ::= root-plan$/m);
-    assert.match(serializeGbnf(model, "root-open"), /^root ::= root-open$/m);
+    const text = serializeGbnf(model, "root-think");
+    assert.match(text, /^root ::= root-think$/m);
     const collectRefs = (item: GItem): string[] => {
         if (item.kind === "ref") return [item.name];
         if (item.kind === "rep") return collectRefs(item.item);

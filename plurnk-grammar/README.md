@@ -199,16 +199,14 @@ Errors are JSON-serializable. Shape: `{ line, column, source, message }` where `
 
 ## gbnf
 
-Two generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammars ship for llama.cpp constrained sampling:
+One generated [GBNF](https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md) grammar ships for llama.cpp constrained sampling, calibrated for the Fireworks/DeepSeek backend:
 
-- **`plurnk.gbnf` (plan root, strict)** — a turn opens with a `<<PLAN:` op (a forced reasoning step), proceeds strict (ops only, bounded `WS{0,7}` separators, no free text between), and closes on exactly one terminal `SEND[102|200|202|499]` — structural termination (forced EOS), not an optional stop a near-greedy decoder can sail past.
-- **`plurnk-free.gbnf` (free root, permissive)** — free reasoning text and statements interleave, `<<` escapable to text; no PLAN-first and no terminal-SEND enforcement. The fallback for models that need to think between ops without the strict rail.
+- **`plurnk.gbnf` (think-optional root)** — `root ::= think? sep batch-step* send-final-any sep`. An optional `<think>…</think>` reasoning preamble (a reasoning model fills it natively; a non-reasoning model skips straight to ops — one grammar serves both), then a strict ops-only batch (bounded `WS{0,7}` separators, no free prose between), closed by exactly one terminal `SEND[102|200|202|300|499]` — structural termination (forced EOS), not an optional stop a near-greedy decoder can sail past. `PLAN` is allowed but inert (bare, never forced).
 
-The parser remains the permissive contract — everything either grammar can generate, the parser accepts (and much it doesn't: word suffixes, richer slot internals).
+The grammar masks the **raw** token stream, reasoning included (the `reasoning_content`/`content` split is post-hoc and sampler-invisible), so `<think>` lives in the grammar to give the model's native reasoning tokens somewhere to go. Its body excludes only `</think>`, so the model may rehearse anything inside — complete ops and terminals included — because the provider separates reasoning from content before the parser runs. The parser remains the permissive contract over that `content`: everything the grammar can generate, the parser accepts (and much it doesn't: word suffixes, richer slot internals).
 
 ```ts
 import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")
-import.meta.resolve("@plurnk/plurnk-grammar/plurnk-free.gbnf")
 ```
 
 `npm run test:llama` validates the grammar against a live llama-server (`PLURNK_LLAMA_URL`, default `http://127.0.0.1:11435`) and demos constrained emission end-to-end. Opt-in; not part of `test:all`.

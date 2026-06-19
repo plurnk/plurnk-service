@@ -9,9 +9,11 @@
  * Sampling notes (probed against gemma-4-26B-A4B, llama.cpp b894):
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
- * - Native thinking MUST be disabled when a grammar is attached: llama.cpp's
- *   grammar filter sits below the reasoning/content split, so the think channel
- *   would consume the grammar. PLAN bodies are the in-grammar reasoning chamber.
+ * - The grammar masks the RAW token stream (reasoning_content/content is a post-hoc
+ *   split, invisible to the sampler), so reasoning must live IN the grammar: the
+ *   optional `<think>…</think>` preamble is that in-grammar reasoning chamber. Native
+ *   thinking via the chat template is therefore disabled here; the model reasons inside
+ *   the grammar-admitted `<think>` block instead.
  */
 
 import test from "node:test";
@@ -57,17 +59,19 @@ test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () =
     assert.equal(typeof content, "string");
 });
 
-test("plan root: constrained emission is a clean PLAN-led turn (force-stops on a terminal SEND, or rambles to the max_tokens backstop)", async () => {
+test("think-optional root: constrained emission is a clean turn (force-stops on a terminal SEND, or rambles to the max_tokens backstop)", async () => {
     const { content, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer.",
         384,
     );
-    const result = PlurnkParser.parse(content);
+    // The provider separates reasoning from content before the parser runs; this local
+    // backend doesn't, so mirror the split — strip the optional <think> preamble (which
+    // may rehearse openers) so the parser sees only the post-</think> content.
+    const body = content.replace(/^<think>[\s\S]*?<\/think>/, "");
+    const result = PlurnkParser.parse(body);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
-    assert.ok(statements.length >= 1, `expected at least a PLAN: ${JSON.stringify(content)}`);
-    const first = statements[0];
-    assert.ok(first.kind === "statement" && first.statement.op === "PLAN", `turn did not open with PLAN: ${JSON.stringify(content)}`);
+    assert.ok(statements.length >= 1, `expected at least one statement: ${JSON.stringify(content)}`);
 
     if (finishReason === "stop") {
         // Forced EOS fired: a clean turn ending in a terminal SEND.

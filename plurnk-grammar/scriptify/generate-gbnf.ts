@@ -69,18 +69,20 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
     }
 };
 
-// Free text for the permissive (free) root: any characters that never contain a
-// complete open literal (`<<FIND` … `<<PLAN`). Aho-Corasick complement over the
-// literal trie — state = longest literal prefix matched by the current suffix.
-// Completing a literal has no transition (the text interpretation dies; the parallel
-// statement interpretation takes over). One consistency constraint with the ANTLR
-// TEXT rule: text may not END with an ODD run of trailing `<` — `text<` + `<<OP`
-// merges into `<<<OP`, which the lexer treats as all text, and the two layers would
-// disagree about where the statement starts. The `<<` trie state therefore splits by
-// run parity (even may end, odd may not). Reachable only from root-open, so it is
-// pruned out of the plan-root artifact (plurnk.gbnf).
-const textRules = (model: GModel): void => {
-    const literals = OPS.map((op) => `<<${op}`);
+// Complement automaton over a SET of forbidden substrings (Aho-Corasick of the
+// prefix trie, complemented): admits any string that never COMPLETES one of
+// `literals`. Used for the <think> preamble — reasoning text that contains neither a
+// real `<<OP` opener (which ANTLR's TEXT rule would otherwise lex as a statement,
+// breaking L(GBNF) ⊆ L(ANTLR)) nor the `</think>` close (so the FIRST `</think>`
+// terminates the block). State = the longest current input suffix that is a proper
+// prefix of some literal; completing a literal has NO transition (forbidden); any
+// other char falls back to the longest suffix-that-is-still-a-prefix (the
+// Aho-Corasick failure link). Every literal here begins with `<`, so `<` is the only
+// non-trivial restart char. Every state may end (the body is unanchored) — no
+// trailing-`<` parity constraint is needed because the body is always followed by the
+// literal `</think>` (whose leading `<` merges harmlessly into TEXT), never a real
+// `<<OP` opener.
+const forbidRules = (model: GModel, name: string, literals: string[]): void => {
     const states: string[] = [""];
     for (const literal of literals) {
         for (let k = 1; k < literal.length; k++) {
@@ -88,39 +90,34 @@ const textRules = (model: GModel): void => {
             if (!states.includes(prefix)) states.push(prefix);
         }
     }
-    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
-    states.push(ODD);
-    const ruleOf = (state: string): string => `text-s${states.indexOf(state)}`;
+    const ruleOf = (state: string): string => `${name}-s${states.indexOf(state)}`;
     const longestSuffixState = (candidate: string): string => {
-        for (let i = 1; i < candidate.length; i++) {
+        for (let i = 1; i <= candidate.length; i++) {
             if (states.includes(candidate.slice(i))) return candidate.slice(i);
         }
         return "";
     };
     for (const state of states) {
-        const trieState = state === ODD ? "<<" : state;
         const alts: GRule = [];
         const consumed = new Set<string>();
         for (const literal of literals) {
-            if (!literal.startsWith(trieState)) continue;
-            const next = literal[trieState.length];
+            if (!literal.startsWith(state)) continue;
+            const next = literal[state.length];
             if (consumed.has(next)) continue;
             consumed.add(next);
-            const candidate = trieState + next;
-            // Completing a literal is forbidden — no transition at all.
-            if (candidate === literal) continue;
+            const candidate = state + next;
+            if (candidate === literal) continue; // completing a literal is forbidden — no transition
             alts.push([lit(next), ref(ruleOf(candidate))]);
         }
         if (!consumed.has("<")) {
             consumed.add("<");
-            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
-            alts.push([lit("<"), ref(ruleOf(target))]);
+            alts.push([lit("<"), ref(ruleOf(longestSuffixState(state + "<")))]);
         }
         alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
-        if (state !== "<" && state !== ODD) alts.push([]);
+        alts.push([]); // unanchored: the body may end at any state
         model.set(ruleOf(state), alts);
     }
-    model.set("text", [[ref(ruleOf(""))]]);
+    model.set(name, [[ref(ruleOf(""))]]);
 };
 
 export const buildModel = (): GModel => {
@@ -128,10 +125,13 @@ export const buildModel = (): GModel => {
     const opAlts: GRule = [];
     const sendMidAlts: GRule = [];
     const sendFinalAlts: GRule = [];
-    const planAlts: GRule = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
+            // PLAN is allowed but inert: bare `<<PLAN` only, no numeric suffix (a suffix
+            // would let a model emit the malformed `<<PLAN1`). Reasoning lives in the
+            // <think> preamble now, not a mandated or depth-nested PLAN.
+            if (op === "PLAN" && suffix !== "") continue;
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
             const open = `<<${op}${suffix}`;
             const close = `:${op}${suffix}`;
@@ -157,8 +157,8 @@ export const buildModel = (): GModel => {
             } else if (op === "EXEC") {
                 model.set(name, [[lit(open), opt(ref("exec-sig")), opt(ref("target")), ...body]]);
             } else if (op === "PLAN") {
-                // Dictated form is slotless: bare reasoning body. Mid-batch only via
-                // op-statement placement — a turn still closes with the status SEND.
+                // Slotless bare reasoning body. Allowed but inert — placed via
+                // op-statement like any op, never forced, never pinned first.
                 model.set(name, [[lit(open), ...body]]);
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
@@ -167,49 +167,51 @@ export const buildModel = (): GModel => {
                 model.set(name, [[lit(open), opt(ref("tags")), ref("target"), opt(ref("line")), ...body]]);
             }
             if (op !== "SEND") opAlts.push([ref(name)]);
-            if (op === "PLAN") planAlts.push([ref(name)]);
         }
     }
 
-    // Turn shape (#29). The single shipped grammar (plurnk.gbnf) is the plan root:
-    // a turn opens with a PLAN op (a forced reasoning step), proceeds strict (ops
-    // only, whitespace-separated, no free text between), and closes on exactly one
-    // terminal status SEND (102/202/200/500, path-agnostic) — after which nothing is
-    // admissible.
-    // Termination is structural (forced EOS), not an optional stop a near-greedy
-    // decoder can sail past. Degeneration *inside* a body remains unboundable
-    // (content is content); the consumer max_tokens cap is the backstop.
+    // Turn shape. The single shipped grammar (plurnk.gbnf) is the think-optional root,
+    // calibrated for the Fireworks/DeepSeek backend:
     //
-    // Inter-op separator is up to 7 whitespace chars, including none (`WS{0,7}`):
-    // ops may be glued or split by any spaces/tabs/newlines the model favors
-    // (CRLF blank lines, single-level indent, etc.) — but bounded, so a degenerate
-    // decoder can't stall in an unbounded whitespace run. No non-whitespace text
-    // intrudes. The cap also restores forced-EOS after the final SEND.
+    //   root-think ::= think? sep batch-step* send-final-any sep
+    //
+    // An OPTIONAL `<think>…</think>` reasoning preamble (a reasoning model fills it
+    // natively; a non-reasoning model skips straight to ops — one grammar serves both),
+    // then a strict ops-only batch (whitespace-separated, no prose between), closed by
+    // exactly one terminal status SEND (102/202/200/300/499, path-agnostic).
+    //
+    // Why <think> is IN the grammar: the sampler constrains the RAW token stream,
+    // reasoning included — the reasoning_content/content split is a post-hoc, sampler-
+    // invisible step. If the grammar gave the model's native <think> tokens nowhere to
+    // go they would collide with the constraint and degenerate. The body is maximally
+    // permissive (excludes ONLY `</think>`, so the FIRST close ends it): the model may
+    // rehearse anything inside — complete ops and terminals included — because the
+    // provider GUARANTEES reasoning is separated from content before the parser ever
+    // runs. The parser only ever sees post-`</think>` content; the grammar's only job
+    // here is to keep that one boundary singular and clean.
+    //
+    // Termination is structural (forced EOS after the final SEND), not an optional stop
+    // a near-greedy decoder can sail past. Degeneration *inside* a body remains
+    // unboundable (content is content); the consumer max_tokens cap is the backstop.
+    //
+    // Inter-op separator is up to 7 whitespace chars, including none (`WS{0,7}`): ops
+    // may be glued or split by any spaces/tabs/newlines the model favors — but bounded,
+    // so a degenerate decoder can't stall in an unbounded whitespace run.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     model.set("batch-step", [[ref("mid-statement"), ref("sep")]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
-    // root-plan: the turn MUST open with a PLAN op, then proceed strict — ops only,
-    // whitespace-separated, closed by the final pathless status SEND.
-    model.set("root-plan", [[ref("sep"), ref("plan-batch-step"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
-    model.set("plan-batch-step", [[ref("plan-statement"), ref("sep")]]);
-    model.set("plan-statement", planAlts);
+    // think: the optional reasoning preamble. Its body completes no `</think>`, so the
+    // single literal close is unambiguous; everything else is admissible (see above).
+    forbidRules(model, "thinkbody", ["</think>"]);
+    model.set("think", [[lit("<think>"), ref("thinkbody"), lit("</think>")]]);
+    model.set("root-think", [[opt(ref("think")), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     model.set("op-statement", opAlts);
     model.set("send-mid-any", sendMidAlts);
     model.set("send-final-any", sendFinalAlts);
+    // statement / send-statement: single-statement entries used only by the corpus and
+    // fuzz tests; unreachable from root-think, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-
-    // root-open (plurnk-free.gbnf): the PERMISSIVE variant. Free reasoning text and
-    // statements interleave, `<<` escapable to text, EOS at any boundary. No PLAN-first
-    // and no terminal-SEND enforcement — any op and any SEND (any status, any position)
-    // appear freely; the turn shape is NOT imposed. The text automaton excludes only
-    // complete `<<OP` openers, so prose can carry a lone `<` or an opener-lookalike
-    // that never finishes a keyword. (text* rules are reachable only from here, so
-    // serializing root-plan prunes them — plurnk.gbnf is unaffected.)
-    model.set("root-open", [[ref("text"), star(ref("open-step"))]]);
-    model.set("open-step", [[ref("statement"), opt(ref("text-after"))]]);
-    model.set("text-after", [[lit("\n"), ref("text")]]);
-    textRules(model);
     // status-final: model-emittable turn-closers — 102 continue, 202 parked,
     // 200 done (success), 499 give-up (HTTP 499 client-closed), and 300 = a question
     // for the user (awaiting input). 300 is ALLOWED/emittable but UNTAUGHT in canon (no
@@ -331,7 +333,6 @@ export const serializeGbnf = (model: GModel, rootName: string): string => {
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
-    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-plan"));
-    await writeFile("dist/plurnk-free.gbnf", serializeGbnf(model, "root-open"));
-    process.stderr.write("Generated dist/plurnk.gbnf (plan root) + dist/plurnk-free.gbnf (free root)\n");
+    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-think"));
+    process.stderr.write("Generated dist/plurnk.gbnf (think-optional root)\n");
 }

@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|KILL|EXEC|SEND).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|KILL|EXEC|SEND).
 
 ## Syntax
 
@@ -12,7 +12,6 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
-| PLAN | -           | -          | -                   | plan / reasoning |
 | FIND | filter tags | required   | results `N,M`       | matcher          |
 | READ | filter tags | required   | lines `N,M`         | matcher          |
 | EDIT | tags        | required   | lines `N,M`         | content          |
@@ -75,10 +74,10 @@ Escape `#` inside a regex pattern as `\#`. XPath body begins with `//`. Semantic
 
 URI-shaped: `[scheme://]rest`.
 
-* Bare paths (no scheme) default to local relative project file paths (leading `/` for absolute path).
-* Glob metacharacters (`*`, `**`, `?`, `[...]`) match within path segments; a standalone `#pattern#flags` matches the whole target by regex.
-* Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype; absent suffix defers to scheme default.
-* A literal `)` closes the target; percent-encode parens in a path as `%28`/`%29` (e.g. `Mercury_%28planet%29`).
+* Bare paths (no scheme) default to local relative project file paths.
+* Glob metacharacters match within path segments; a standalone `#pattern#flags` matches the whole target by regex.
+* Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
+* A literal `)` closes the target — percent-encode parens in a path (`%28`/`%29`).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
 ## Suffix
@@ -157,7 +156,7 @@ YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degr
 YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
 YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
 YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
-YOU SHOULD terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
-YOU SHOULD terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
-YOU SHOULD terminate a parked/waiting loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
-YOU SHOULD terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up — cannot identify the capital from available sources.:SEND
+YOU MUST terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
+YOU MUST terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
+YOU MUST terminate a parked/waiting loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
+YOU MUST terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up — cannot identify the capital from available sources.:SEND
