@@ -1120,7 +1120,7 @@ export default class Engine {
             ? scratch.user.telemetry.budget
             : scratch.user.telemetry.budget
                 .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
-                .replace(TOKEN_PERCENT_PLACEHOLDER, String(percent))
+                .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
         const system = { tokens: 0, system_definition, log };
         const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, tools: scratch.user.tools, system_requirements: requirementsText };
