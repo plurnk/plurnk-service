@@ -39,8 +39,11 @@ interface Provider {
     // grammar-constrained sampling (§13) — attached verbatim by capable
     // backends, ignored by all others. `maxTokens` is the consumer's per-call
     // output ceiling (wire `max_tokens`); absent means the server default,
-    // which is typically UNBOUNDED.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number }): Promise<ProviderResponse>;
+    // which is typically UNBOUNDED. `attributions`/`client` are optional
+    // first-party metadata, forwarded as `Plurnk-*` headers ONLY by a provider
+    // configured with `firstPartyMetadata` (the plurnk endpoint) and dropped by
+    // every other — structurally unable to reach a third-party backend (§11).
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -236,7 +239,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 
   The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The run→slot mapping lives inside `OpenAICompatProvider`: sticky per `runId`, round-robin across new runs, LRU-bounded.
 
-- **`chatCompletionStream` / `OpenAiHttpError` / `StreamResponse`** — the SSE client. One shared copy.
+- **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
 - **`normalizeUsage(raw)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles both reasoning-reporting conventions) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`tokenizerFor(family)` / `tokenizerByPublisher(model, table, index)` / `parseTokenizerFamily(...)`** — synchronous tokenizer strategies (`heuristic` | `cl100k` | `llama`) and per-publisher dispatch for relay providers.
