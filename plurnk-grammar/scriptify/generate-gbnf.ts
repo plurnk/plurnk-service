@@ -30,15 +30,19 @@ const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(c
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN"] as const;
-// ε plus 1..9. IRREDUCIBLE, do not "optimize" to `[1-9]*`: the close tag must MATCH
-// the open suffix (`<<EDITk … :EDITk`) AND the body automaton must exclude that exact
-// close literal — both context-sensitive, which a CFG (GBNF, no backrefs) cannot
-// express for a general suffix. The only encoding that honors matching + exclusion is
-// a bounded, enumerated set, one production per value. This is the source of most of
-// the artifact's bulk, and it is the price of reliable same-op nesting up to depth 9
-// (single digit). ANTLR parses any suffix (`[A-Za-z0-9_]+`); the GBNF dictates a
-// single digit and canon teaches `1`.
-const SUFFIXES = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+// ε, 1, 2 — same-op nesting depth 1 (a credible edge case) and 2 (a possible corner
+// case). Beyond depth 2 an emission is about as likely to be degenerate as legitimate,
+// so the constrained subset stops there; a consumer with a genuinely deeper recursive
+// case supplies its own GBNF or bypasses constrained sampling. ANTLR still PARSES any
+// suffix (`[A-Za-z0-9_]+`), so L(GBNF) ⊆ L(ANTLR) holds — this only narrows what the
+// grammar DICTATES, and canon teaches `1`.
+//
+// IRREDUCIBLE form, do not "optimize" to `[1-2]*`: the close tag must MATCH the open
+// suffix (`<<EDITk … :EDITk`) AND the body automaton must exclude that exact close
+// literal — both context-sensitive, which a CFG (GBNF, no backrefs) cannot express for
+// a general suffix. The only encoding that honors matching + exclusion is a bounded,
+// enumerated set, one production per value.
+const SUFFIXES = ["", "1", "2"] as const;
 
 const DIGIT = cls([R("0", "9")]);
 const WS = cls(C(" \t\r\n")); // one whitespace char; `star(WS)` is the strict/plan inter-op separator
