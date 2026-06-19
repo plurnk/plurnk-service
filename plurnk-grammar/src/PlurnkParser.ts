@@ -9,6 +9,15 @@ import type { ParseItem, ParseResult, Position } from "./types.ts";
 
 export default class PlurnkParser {
     static parse(input: string): ParseResult {
+        // A Plurnk turn is a `*:PLAN:OPS:SEND[N]` sandwich: the model's private reasoning
+        // (any format — native channel, prose, nothing) precedes the first `<<PLAN`, which
+        // anchors the actionable turn. Discard that preamble before lexing — the turn
+        // begins at `<<PLAN`. Provider-separated content already starts there (no-op);
+        // this also rescues un-separated raw content and prevents the lexer from
+        // mis-tokenizing op-lookalikes a model may rehearse inside its reasoning. No
+        // `<<PLAN` present ⇒ parse as-is (e.g. a statement list or the examples block).
+        const planIdx = input.indexOf("<<PLAN");
+        if (planIdx > 0) input = input.slice(planIdx);
         const lexer = new plurnkLexer(CharStream.fromString(input));
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();

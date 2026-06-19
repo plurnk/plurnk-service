@@ -9,11 +9,10 @@
  * Sampling notes (probed against gemma-4-26B-A4B, llama.cpp b894):
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
- * - The grammar masks the RAW token stream (reasoning_content/content is a post-hoc
- *   split, invisible to the sampler), so reasoning must live IN the grammar: the
- *   optional `<think>…</think>` preamble is that in-grammar reasoning chamber. Native
- *   thinking via the chat template is therefore disabled here; the model reasons inside
- *   the grammar-admitted `<think>` block instead.
+ * - The grammar is the `*:PLAN:OPS:SEND[N]` sandwich: a FREE reasoning preamble (any
+ *   format — the grammar names no reasoning delimiter, so the model's native reasoning
+ *   token is never masked), then a mandatory `<<PLAN` anchors the strict turn. The model
+ *   reasons naturally; PlurnkParser discards everything before the first `<<PLAN`.
  */
 
 import test from "node:test";
@@ -45,7 +44,6 @@ const complete = async (userPrompt: string, maxTokens: number): Promise<Completi
             seed: 42,
             repeat_penalty: 1.15,
             grammar,
-            chat_template_kwargs: { enable_thinking: false },
         }),
     });
     const json = await response.json() as { error?: unknown; choices: Array<{ message: { content: string }; finish_reason: string }> };
@@ -59,24 +57,24 @@ test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () =
     assert.equal(typeof content, "string");
 });
 
-test("think-optional root: constrained emission is a clean turn (force-stops on a terminal SEND, or rambles to the max_tokens backstop)", async () => {
+test("PLAN-anchored turn: constrained emission opens with PLAN and closes on a terminal SEND (or rambles in the preamble to the max_tokens backstop)", async () => {
     const { content, finishReason } = await complete(
         "What is the capital of France? Record the fact as a known entry, then deliver the answer.",
         384,
     );
-    // The provider separates reasoning from content before the parser runs; this local
-    // backend doesn't, so mirror the split — strip the optional <think> preamble (which
-    // may rehearse openers) so the parser sees only the post-</think> content.
-    const body = content.replace(/^<think>[\s\S]*?<\/think>/, "");
-    const result = PlurnkParser.parse(body);
+    // PlurnkParser discards the pre-<<PLAN preamble (the turn sandwich), so feed it the
+    // raw content directly — the parse begins at the first <<PLAN anchor.
+    const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
     assert.ok(statements.length >= 1, `expected at least one statement: ${JSON.stringify(content)}`);
 
     if (finishReason === "stop") {
-        // Forced EOS fired: a clean turn ending in a terminal SEND.
+        // Forced EOS fired: a clean turn opening with PLAN and closing on a terminal SEND.
         assert.equal(errors.length, 0, `constrained output produced parse errors: ${JSON.stringify(content)}`);
         assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
+        const first = statements[0];
+        assert.ok(first.kind === "statement" && first.statement.op === "PLAN", `turn did not open with PLAN: ${JSON.stringify(content)}`);
         const last = statements.at(-1)!;
         assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
         if (last.kind !== "statement") return;
@@ -86,9 +84,9 @@ test("think-optional root: constrained emission is a clean turn (force-stops on 
         );
         return;
     }
-    // finish_reason "length": the model rambled past the optional terminal without
-    // emitting a status SEND — the #30-accepted residual (the grammar does NOT force
-    // termination within a bounded op count; max_tokens is the backstop). Not a
+    // finish_reason "length": the model rambled in the free preamble (or a body) and never
+    // reached `<<PLAN`/the terminal — the #30-accepted residual (the grammar does NOT
+    // force termination within a bounded token count; max_tokens is the backstop). Not a
     // grammar failure; the parseable prefix before the truncation must still be clean.
     assert.equal(finishReason, "length", `unexpected finish reason: ${finishReason}`);
     const trailing = result.items.at(-1);

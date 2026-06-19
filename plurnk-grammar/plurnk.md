@@ -1,6 +1,6 @@
 # Plurnk System Grammar
 
-YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|KILL|EXEC|SEND).
+YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|KILL|EXEC|SEND).
 
 ## Syntax
 
@@ -12,6 +12,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
+| PLAN | -           | -          | -                   | plan / reasoning |
 | FIND | filter tags | required   | results `N,M`       | matcher          |
 | READ | filter tags | required   | lines `N,M`         | matcher          |
 | EDIT | tags        | required   | lines `N,M`         | content          |
@@ -147,8 +148,9 @@ chmod +x ./example.sh
 
 ## Imperatives
 
+YOU MUST begin the turn with <<PLAN:...:PLAN
 YOU MUST ONLY use EXEC commands for actions that can't be performed with Extended HEREDOC Plurnk Operations.
-YOU MUST ONLY communicate with SEND, not with free text between operations.
+YOU MUST NOT emit free text between operations.
 YOU SHOULD NOT leak internal resource information when SENDing user messages.
 YOU MUST document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown entries.
 YOU MUST ONLY populate known entries with source entry information, never with model training.

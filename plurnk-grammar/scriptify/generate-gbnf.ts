@@ -170,46 +170,41 @@ export const buildModel = (): GModel => {
         }
     }
 
-    // Turn shape. The single shipped grammar (plurnk.gbnf) is the think-optional root,
-    // calibrated for the Fireworks/DeepSeek backend:
+    // Turn shape — the PLAN-anchored sandwich `*:PLAN:OPS:SEND[N]`:
     //
-    //   root-think ::= think? sep batch-step* send-final-any sep
+    //   root-turn ::= preplan plan sep batch-step* send-final-any sep
     //
-    // An OPTIONAL `<think>…</think>` reasoning preamble (a reasoning model fills it
-    // natively; a non-reasoning model skips straight to ops — one grammar serves both),
-    // then a strict ops-only batch (whitespace-separated, no prose between), closed by
-    // exactly one terminal status SEND (102/202/200/300/499, path-agnostic).
+    // `preplan` is a FREE reasoning prefix — any text up to the first `<<PLAN`. The
+    // grammar names NO reasoning delimiter, so it is format-agnostic: a reasoning model
+    // emits its native channel here (the provider separates it into reasoning_content); a
+    // non-reasoning model emits nothing. Either way, because the prefix forbids no token
+    // but the `<<PLAN` literal, it does NOT mask the model's native reasoning token (the
+    // failure mode of a delimiter-specific grammar) — reasoning flows and separates. The
+    // parser discards everything before the first `<<PLAN`.
     //
-    // Why <think> is IN the grammar: the sampler constrains the RAW token stream,
-    // reasoning included — the reasoning_content/content split is a post-hoc, sampler-
-    // invisible step. If the grammar gave the model's native <think> tokens nowhere to
-    // go they would collide with the constraint and degenerate. The body is maximally
-    // permissive (excludes ONLY `</think>`, so the FIRST close ends it): the model may
-    // rehearse anything inside — complete ops and terminals included — because the
-    // provider GUARANTEES reasoning is separated from content before the parser ever
-    // runs. The parser only ever sees post-`</think>` content; the grammar's only job
-    // here is to keep that one boundary singular and clean.
+    // A MANDATORY `<<PLAN` then anchors strict enforcement. It is the model's PUBLIC
+    // statement of intent: a reasoning model distills its private CoT into it; a
+    // non-reasoning model reasons in it. After PLAN: ops only, whitespace-separated, no
+    // prose, closed by exactly one terminal status SEND (102/202/200/300/499).
     //
-    // Termination is structural (forced EOS after the final SEND), not an optional stop
-    // a near-greedy decoder can sail past. Degeneration *inside* a body remains
+    // Termination is structural (forced EOS after the final SEND). Degeneration *inside*
+    // a body — or an unbounded `preplan` ramble that never reaches `<<PLAN` — remains
     // unboundable (content is content); the consumer max_tokens cap is the backstop.
     //
-    // Inter-op separator is up to 7 whitespace chars, including none (`WS{0,7}`): ops
-    // may be glued or split by any spaces/tabs/newlines the model favors — but bounded,
-    // so a degenerate decoder can't stall in an unbounded whitespace run.
+    // Inter-op separator is up to 7 whitespace chars (`WS{0,7}`): glued or split, but
+    // bounded, so a degenerate decoder can't stall in an unbounded whitespace run.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     model.set("batch-step", [[ref("mid-statement"), ref("sep")]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
-    // think: the optional reasoning preamble. Its body completes no `</think>`, so the
-    // single literal close is unambiguous; everything else is admissible (see above).
-    forbidRules(model, "thinkbody", ["</think>"]);
-    model.set("think", [[lit("<think>"), ref("thinkbody"), lit("</think>")]]);
-    model.set("root-think", [[opt(ref("think")), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
+    // preplan: the free reasoning prefix — any text completing no `<<PLAN`, so the FIRST
+    // `<<PLAN` is the unambiguous anchor.
+    forbidRules(model, "preplan", ["<<PLAN"]);
+    model.set("root-turn", [[ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     model.set("op-statement", opAlts);
     model.set("send-mid-any", sendMidAlts);
     model.set("send-final-any", sendFinalAlts);
     // statement / send-statement: single-statement entries used only by the corpus and
-    // fuzz tests; unreachable from root-think, so pruned from the shipped artifact.
+    // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
     // status-final: model-emittable turn-closers — 102 continue, 202 parked,
@@ -333,6 +328,6 @@ export const serializeGbnf = (model: GModel, rootName: string): string => {
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
-    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-think"));
-    process.stderr.write("Generated dist/plurnk.gbnf (think-optional root)\n");
+    await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-turn"));
+    process.stderr.write("Generated dist/plurnk.gbnf (PLAN-anchored turn: *:PLAN:OPS:SEND)\n");
 }
