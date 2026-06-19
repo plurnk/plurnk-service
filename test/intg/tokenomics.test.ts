@@ -4,7 +4,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import type { EditStatement, UrlPath, PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
 
@@ -96,7 +96,7 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
         const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const budget = (JSON.parse(row!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const budget = packetSection(JSON.parse(row!.packet), "budget");
         const m = budget.match(/ceiling (\d+) · usage (\d+) \(\d+%\) · free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
@@ -117,7 +117,7 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
         assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
         assert.match(budget, /\| 1\/1 \|/, "turn 1/1 row present");
         assert.match(budget, /\| 1\/2 \|/, "turn 1/2 row present");
@@ -137,7 +137,7 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(2);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Heaviest items:\n\| item \| tokens \|/, "heaviest-items table present");
         // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
         const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
@@ -159,7 +159,7 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/ceiling (\d+) · usage (\d+) \((\d+)%\) · free (\d+)/);
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const percent = Number(m![3]);
@@ -177,7 +177,7 @@ test("[§tokenomics-over-budget-floor] over budget, free floors at 0 and percent
         // Tiny window → ceiling 9; the packet's own scaffolding alone blows past it.
         const provider = new Mock({ contextSize: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = (JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { user: { telemetry: { budget: string } } }).user.telemetry.budget;
+        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/ceiling (\d+) · usage (\d+) \((\d+)%\) · free (\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
         const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);

@@ -24,7 +24,7 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertSession, insertRun, insertLoop, insertTurn,
-    seedEnvelope, DEFAULT_MIMETYPES,
+    seedEnvelope, DEFAULT_MIMETYPES, logEntries,
 } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
@@ -336,8 +336,8 @@ test("[§membership-emi-divergence-signal] out-of-band change to a member surfac
         const t2 = await engine.runTurn({ provider, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         if (row === undefined) throw new Error("turn packet not found");
-        const packet = JSON.parse(row.packet) as { system: { log: Array<{ origin?: string }> } };
-        const signalled = packet.system.log.some((r) => r.origin === "plurnk" && JSON.stringify(r).includes(trackedPath));
+        const log = logEntries(JSON.parse(row.packet));
+        const signalled = log.some((r) => r.origin === "plurnk" && JSON.stringify(r).includes(trackedPath));
         assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
     });
 });

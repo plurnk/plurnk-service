@@ -124,8 +124,8 @@ test("[§grinder-event-model-terms] the overflow event names hidden entries by s
         await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const t3 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
-        const packet = JSON.parse(row!.packet) as { user: { telemetry: { errors: Array<Record<string, unknown>> } } };
-        const evt = packet.user.telemetry.errors.find((e) => e.kind === "budget_overflow");
+        const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<Record<string, unknown>> };
+        const evt = packet.telemetryErrors.find((e) => e.kind === "budget_overflow");
         assert.ok(evt, "budget_overflow event surfaced to the model");
         assert.ok(Array.isArray(evt!.folded), "carries folded-by-scheme facts");
         assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");

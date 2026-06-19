@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 test("scheme education: the turn packet's system_definition carries the scheme catalogue after plurnk.md", async () => {
@@ -28,7 +28,7 @@ test("scheme education: the turn packet's system_definition carries the scheme c
         });
 
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
-        const system_definition = (JSON.parse(row!.packet) as { system: { system_definition: string } }).system.system_definition;
+        const system_definition = packetSection(JSON.parse(row!.packet), "definition");
 
         assert.match(system_definition, /## Schemes/, "system_definition carries the scheme catalogue heading");
         assert.match(system_definition, /### `known:\/\/\//, "the catalogue teaches the `known` scheme");

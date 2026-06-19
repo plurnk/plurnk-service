@@ -19,7 +19,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
             rx: "{\"status\":200}",
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
 
@@ -36,7 +36,7 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
             rx: { content: "hello\nworld", mimetype: "text/markdown", startLine: 1 },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     // Line-navigable mimetype → `N:\t` prefix per line.
     assert.match(out, /<<:::\/notes\.md\n1:\thello\n2:\tworld\n:::\/notes\.md/);
 });
@@ -54,7 +54,7 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
             rx: { content: '[\n  {"line":1,"matched":"hello"}\n]', mimetype: "application/json" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
     assert.match(out, /<<:::\/notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::\/notes\.md/);
     assert.doesNotMatch(out, /<<:::\/notes\.md\n1:\t/);
@@ -86,7 +86,7 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     // Body has no leading/trailing whitespace; render is single-line — no
     // `\n` padding added on the way back. Character-perfect mirror of tx.
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
@@ -113,7 +113,7 @@ test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
             rx: { status: 201, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Alice"\}\]:EDIT/);
 });
 
@@ -140,7 +140,7 @@ test("log render: EDIT with multi-line body — body's own newlines decide shape
             rx: { status: 201, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<EDIT\(known:\/\/\/plan\):\n- \[ \] step a\n- \[ \] step b\n:EDIT/);
 });
 
@@ -157,7 +157,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.doesNotMatch(out, /<<EDIT\(/);
 });
 
@@ -181,7 +181,7 @@ test("log render: EDIT with line marker — heredoc carries the marker", () => {
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<EDIT\(known:\/\/\/notes\)<5>:revised:EDIT/);
 });
 
@@ -205,7 +205,7 @@ test("log render: EDIT with tags and range marker — heredoc carries both", () 
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<EDIT\[alpha,beta\]\(known:\/\/\/x\)<3,7>:body:EDIT/);
 });
 
@@ -229,25 +229,27 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
             rx: { status: 200, entryId: 5, channel: "preview" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<EDIT\(known:\/\/\/x#preview\):summary:EDIT/);
 });
 
-test("measureBudgetSections: per-section render tokens + assembled total (log only)", () => {
+test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from the structured log", () => {
     const tk = (s: string) => s.length; // deterministic: one token per char
-    const packet = {
-        system: {
-            system_definition: "SD",
-            log: [],
-        },
-        user: { prompt: "go", telemetry: { budget: "{{tokensFree}}", errors: [] }, system_requirements: "" },
-    };
-    const m = PacketWire.measureBudgetSections(packet, tk);
-    assert.equal(m.log.entries, 0);
-    assert.equal(m.log.tokens, 0, "no log section → zero tokens");
-    // total is the real assembled wire (placeholder budget included), proving
-    // it measures the render rather than a serialized stand-in.
-    assert.equal(m.total, PacketWire.renderSystemContent(packet.system).length + PacketWire.renderUserContent(packet.user).length);
+    const empty = PacketWire.measureLogBudget([], tk);
+    assert.equal(empty.entries, 0);
+    assert.equal(empty.tokens, 0, "no log entries → zero tokens");
+    assert.deepEqual(empty.byTurn, []);
+    assert.deepEqual(empty.largest, []);
+    // One entry: tokens are the headed-log render-weight; byTurn keys on loop/turn;
+    // largest names the entry by its log:/// handle.
+    const one = PacketWire.measureLogBudget(
+        [{ coordinate: "1/1/1", op: "EDIT", origin: "model", status: 200, target: { scheme: null, pathname: "/x" } }],
+        tk,
+    );
+    assert.equal(one.entries, 1);
+    assert.ok(one.tokens > 0, "a log entry has render-weight");
+    assert.equal(one.byTurn[0].turn, "1/1");
+    assert.equal(one.largest[0].path, "log:///1/1/1/EDIT");
 });
 
 test("telemetry render: parse_error with snippet → meta line followed by N:\\t-prefixed snippet body", () => {
@@ -265,7 +267,7 @@ test("telemetry render: parse_error with snippet → meta line followed by N:\\t
             }],
         },
     };
-    const out = PacketWire.renderUserContent(user);
+    const out = PacketWire.renderErrors(user.telemetry.errors);
     // Meta line lists structured fields but NOT `snippet` (it's broken
     // out into the body block instead). canonicalJson sorts top-level
     // keys; nested objects keep insertion order.
@@ -283,18 +285,20 @@ test("telemetry render: telemetry without snippet → meta-only (no fence)", () 
             errors: [{ kind: "action_failure", coordinate: "1/1/2", op: "EDIT", status: 403, target: "log:///x", error: "writer 'model' denied on scheme 'log'" }],
         },
     };
-    const out = PacketWire.renderUserContent(user);
+    const out = PacketWire.renderErrors(user.telemetry.errors);
     assert.match(out, /\* \{"coordinate":"1\/1\/2","error":"writer 'model' denied on scheme 'log'","kind":"action_failure","op":"EDIT","status":403,"target":"log:\/\/\/x"\}/);
     assert.doesNotMatch(out, /<<error:\/\//);
 });
 
-test("[§requirements-requirements-render-last] system_requirements renders LAST in the user packet, under its own header", () => {
-    const user = {
-        prompt: "Reply with just the number.",
-        telemetry: { budget: "5000 free", errors: [{ kind: "no_ops", coordinate: "1/1/1" }] },
-        system_requirements: "Conclude the loop with <<SEND[200]:answer:SEND",
-    };
-    const out = PacketWire.renderUserContent(user);
+test("[§requirements-requirements-render-last] requirements renders LAST in the user slot, under its own header", () => {
+    // The default packet orders the user slot prompt → budget → errors → … →
+    // requirements; renderSlot preserves that order, so requirements lands last.
+    const out = PacketWire.renderSlot([
+        { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: "Reply with just the number.", tokens: 0 },
+        { name: "budget", slot: "user", header: "Plurnk System Budget", content: "5000 free", tokens: 0 },
+        { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors([{ kind: "no_ops", coordinate: "1/1/1" }]), tokens: 0 },
+        { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
+    ], "user");
     // §requirements: requirements is the contract that must win conflicts with the
     // natural-language prompt, so it renders closest to the assistant turn —
     // after the prompt, budget, and errors, with nothing following it.
@@ -302,15 +306,16 @@ test("[§requirements-requirements-render-last] system_requirements renders LAST
         "requirements renders LAST under its own header, nothing after it");
     const reqIdx = out.indexOf("# Plurnk System Requirements");
     assert.ok(reqIdx > out.indexOf("# Plurnk System User Prompt"), "requirements follows the prompt");
-    const teleIdx = out.indexOf("# Plurnk System Telemetry");
-    assert.ok(teleIdx > 0 && reqIdx > teleIdx, "requirements follows the telemetry block");
-    assert.ok(reqIdx > out.indexOf("## Budget"), "requirements follows the budget subsection");
-    assert.ok(reqIdx > out.indexOf("## Errors"), "requirements follows the errors subsection");
+    assert.ok(reqIdx > out.indexOf("# Plurnk System Budget"), "requirements follows the budget section");
+    assert.ok(reqIdx > out.indexOf("# Plurnk System Errors"), "requirements follows the errors section");
 });
 
-test("[§requirements-requirements-omitted-when-empty] empty system_requirements emits no header", () => {
-    const out = PacketWire.renderUserContent({ prompt: "P", telemetry: { budget: "", errors: [] }, system_requirements: "" });
-    assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the string is empty");
+test("[§requirements-requirements-omitted-when-empty] empty requirements section emits no header", () => {
+    const out = PacketWire.renderSlot([
+        { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: "P", tokens: 0 },
+        { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: "", tokens: 0 },
+    ], "user");
+    assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the content is empty");
 });
 
 
@@ -328,7 +333,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
             rx: { content: "<h1>Hi</h1>", mimetype: "text/html" },
         }],
     };
-    const out = PacketWire.renderSystemContent(system);
+    const out = PacketWire.renderLog(system.log);
     assert.match(out, /<<:::\/page\.html\n<h1>Hi<\/h1>\n:::\/page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });

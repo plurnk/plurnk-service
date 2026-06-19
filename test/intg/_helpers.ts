@@ -6,6 +6,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -107,8 +108,9 @@ export const insertLoop = async (db: Db, runId: number, sequence: number, prompt
 };
 
 const MIN_PACKET = JSON.stringify({
-    system: { tokens: 0, system_definition: "", index: [], log: [] },
-    user: { tokens: 0, prompt: "", telemetry: { budget: "", errors: [] }, system_requirements: "" },
+    tokens: 0,
+    sections: [],
+    telemetryErrors: [],
     assistant: {
         content: "", ops: [], reasoning: null,
         usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
@@ -116,6 +118,20 @@ const MIN_PACKET = JSON.stringify({
     },
     assistantRaw: null,
 });
+
+// Read one section's rendered content off a stored (parsed) packet by name —
+// the test-side mirror of the wire/digest read path (PacketWire.sectionContent).
+export const packetSection = (packet: unknown, name: string): string =>
+    PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
+
+// Parse the rendered log section's meta lines (`* {json}`) back into structured
+// records — lets tests assert on the model's actual log VIEW with field
+// precision (coordinate via `path`, the model-facing `target` URI, op, status,
+// origin). Test-only: assumes entry bodies carry no `* `-prefixed lines.
+export const logEntries = (packet: unknown): Array<Record<string, unknown>> =>
+    packetSection(packet, "log").split("\n")
+        .filter((l) => l.startsWith("* "))
+        .map((l) => JSON.parse(l.slice(2)) as Record<string, unknown>);
 
 export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {
     const row = await (db.test_insert_turn as PrepMethod).get<{ id: number }>({

@@ -7,8 +7,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 export default class ClientTurn {
     static #CLIENT_TURN_PACKET = JSON.stringify({
         tokens: 0,
-        system: { tokens: 0, system_definition: "", log: [] },
-        user: { tokens: 0, prompt: "", telemetry: { budget: "", errors: [] }, system_requirements: "" },
+        sections: [],
         assistant: { tokens: 0, content: "", ops: [], reasoning: null },
         assistantRaw: null,
     });

@@ -199,11 +199,12 @@ export default class Digest {
         const written: string[] = [];
         for (const t of m.turns) {
             const packet = Digest.#parseJson(t.packet, {}) as {
-                system?: unknown; user?: unknown; assistant?: { content?: unknown }; assistantRaw?: unknown;
+                sections?: unknown; assistant?: { content?: unknown }; assistantRaw?: unknown;
             };
             const padded = String(t.id).padStart(3, "0");
-            const systemMd = PacketWire.renderSystemContent((packet.system ?? { system_definition: "" }) as Parameters<typeof PacketWire.renderSystemContent>[0]);
-            const userMd = PacketWire.renderUserContent((packet.user ?? {}) as Parameters<typeof PacketWire.renderUserContent>[0]);
+            const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
+            const systemMd = PacketWire.renderSlot(sections, "system");
+            const userMd = PacketWire.renderSlot(sections, "user");
             const assistantText = typeof packet.assistant?.content === "string" ? packet.assistant.content : "";
             const assistantRawJson = JSON.stringify(packet.assistantRaw ?? null, null, 2);
             const files: Array<[string, string]> = [

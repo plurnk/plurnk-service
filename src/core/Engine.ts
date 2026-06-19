@@ -31,7 +31,7 @@ import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-import PacketWire from "./packet-wire.ts";
+import PacketWire, { type PacketSection } from "./packet-wire.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -97,28 +97,22 @@ type PacketAssistant = {
     reasoning: string | null;
 };
 
-// Spec'd packet (Packet.json) sans the assistant + assistantRaw fields,
-// which aren't known until the provider responds. Engine builds this
-// before the call (so the wire projection has a source) and completes
-// it with the response section after. Two consumers: serialized to
-// ChatMessage[] via #packetToWireMessages, and stored in turns.packet
-// (via #completePacket) as the canonical record of the exchange.
+// The request half of the packet — an ordered list of sections — sans the
+// assistant + assistantRaw fields, which aren't known until the provider
+// responds. Engine builds this before the call (so the wire projection has a
+// source) and completes it with the response after. Two consumers: serialized
+// to ChatMessage[] via #packetToWireMessages, and stored in turns.packet (via
+// #completePacket) as the canonical record of the exchange.
 type RequestPacket = {
-    system: {
-        tokens: number;
-        system_definition: string;
-        log: object[];
-    };
-    user: {
-        tokens: number;
-        prompt: string;
-        telemetry: { budget: string; errors: object[] };
-        // Static per-turn rules block, rendered at the bottom of the user
-        // packet as `# Plurnk System Requirements`. Caller sources from
-        // Paths.defaultRequirements (PLURNK_REQUIREMENTS env override →
-        // requirements.md package default).
-        system_requirements: string;
-    };
+    tokens: number;
+    sections: PacketSection[];
+    // The turn's structured telemetry events (parse errors, budget_overflow,
+    // strikes, …) — the engine's alert record, ALSO stored on the completed
+    // packet (packet.telemetryErrors). The buffer is ephemeral (drains on read),
+    // so the packet is their only persistent home; the `errors` SECTION is their
+    // rendered, model-facing view. The grinder threads them through its rebuild
+    // so a destructive re-drain can't swallow them.
+    telemetryErrors: object[];
 };
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -508,9 +502,9 @@ export default class Engine {
     }: {
         provider: Provider;
         messages: ChatMessage[];
-        // packet.user.system_requirements content. Rendered at the end of
-        // the user packet under `# Plurnk System Requirements`. Caller
-        // sources from Paths.defaultRequirements.
+        // The requirements section content. Rendered at the end of the user
+        // slot under `# Plurnk System Requirements`. Caller sources from
+        // Paths.defaultRequirements.
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
         maxTurns?: number;
@@ -746,9 +740,9 @@ export default class Engine {
                     sequence: nextActionIndex, origin: "plurnk",
                     onDispatch: (id) => { promptLogId = id; onDispatch?.(id); },
                 });
-                // §prompt-fold (User Note 6): the prompt EDIT duplicates
-                // packet.user.prompt (its own section), so fold it — logged for
-                // forensics, collapsed in the model's log, re-OPENable.
+                // §prompt-fold (User Note 6): the prompt EDIT duplicates the
+                // prompt section, so fold it — logged for forensics, collapsed
+                // in the model's log, re-OPENable.
                 if (promptLogId !== undefined) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: promptLogId });
                 nextActionIndex++;
             }
@@ -856,7 +850,7 @@ export default class Engine {
         // grammar can't bound degeneration *inside* a statement body — this caps the
         // decode at the free window so a runaway can't reach the context wall.
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
-        const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.system.tokens - requestPacket.user.tokens);
+        const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.tokens);
         const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
 
         // Engine splits wire-level response: emission (content, reasoning,
@@ -1071,7 +1065,7 @@ export default class Engine {
         // scheme-agnostic, so the service teaches what schemes exist + what they do
         // at packet-time (grammar#239 item 7). SchemeRegistry.teach() assembles it.
         const system_definition = `${byRole("system")}\n\n${this.#schemes.teach()}`;
-        // user.prompt sources from the loop's most recent prompt entry first
+        // the prompt section sources from the loop's most recent prompt entry first
         // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
@@ -1093,40 +1087,51 @@ export default class Engine {
         const requirementsText = `Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix\n\n${planDirective}${baseRequirements}`;
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
-        // Per-section render-cost subtotals via provider's tokenizer.
-        // Engine approximates each section by tokenizing its serialized
-        // form — wire-payload tokens may differ slightly because chat-
-        // template scaffolding adds bytes, but the subtotal tracks "what
-        // the model has to process" closely enough for budget diagnostics.
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
-        // Budget readout (SPEC.md §tokenomics). Two-pass: measure the wire-rendered
-        // index/log sections (budget-independent), install the readout with a
-        // tokensFree placeholder, measure the assembled total, resolve free,
-        // substitute. Subtotals come from the real render — meta and fences
-        // included — not a serialized approximation. ceiling is the provider's
-        // window × PLURNK_BUDGET_CEILING (null when no window is reported →
-        // headline omitted, section lines still shown).
+        const tools = this.#collectTools();
+        // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
+        // the structured log's subtotals with a {{tokensFree}} placeholder, build
+        // the section list, measure the assembled total, resolve free, substitute.
+        // Subtotals come from the real log render — meta and fences included — not
+        // a serialized approximation. ceiling is the provider's window ×
+        // PLURNK_BUDGET_CEILING (null when no window is reported → headline
+        // omitted, section lines still shown). §tokenomics-render-weight-budget
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
-        const scratch = {
-            system: { system_definition, log },
-            user: { prompt, telemetry: { budget: "", errors: telemetryErrors, git: gitStatus }, tools: this.#collectTools(), system_requirements: requirementsText },
-        };
-        const sections = PacketWire.measureBudgetSections(scratch, countTokens);
-        scratch.user.telemetry.budget = this.#renderBudget(sections, ceiling);
-        const total = countTokens(PacketWire.renderSystemContent(scratch.system)) + countTokens(PacketWire.renderUserContent(scratch.user));
+        const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
+        // The default packet: an ordered list of sections, each addressable state
+        // (§packet-construction). `slot` is the prompt-cache boundary; order within
+        // a slot is the render order (requirements last — the contract closest to
+        // the assistant turn). budget/errors/git are peer sections (unbundled —
+        // each independently overridable). The budget section still carries its
+        // {{tokensFree}} placeholders here; they resolve below once the assembled
+        // total is known.
+        const sections: PacketSection[] = [
+            { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
+            { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
+            { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
+            { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
+            { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "tools", slot: "user", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
+            { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: requirementsText, tokens: 0 },
+        ];
+        // Pass 1: measure the assembled total with the placeholder budget in
+        // place, resolve free/percent, substitute into the budget section.
+        const total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
         const percent = ceiling === null ? null : Math.round((total / ceiling) * 100); // usage as % of the ceiling — §tokenomics-context-percent
-        const budget = tokensFree === null
-            ? scratch.user.telemetry.budget
-            : scratch.user.telemetry.budget
+        if (tokensFree !== null) {
+            const budgetSec = sections.find((s) => s.name === "budget")!; // the budget section is always built above — fail-hard if not
+            budgetSec.content = budgetSec.content
                 .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                 .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
                 .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-        const system = { tokens: 0, system_definition, log };
-        const user = { tokens: 0, prompt, telemetry: { budget, errors: telemetryErrors, git: gitStatus }, tools: scratch.user.tools, system_requirements: requirementsText };
-        system.tokens = countTokens(PacketWire.renderSystemContent(system));
-        user.tokens = countTokens(PacketWire.renderUserContent(user));
-        return { system, user };
+        }
+        // Pass 2: per-section render-weight + the assembled packet total (post
+        // substitution — the placeholder/number length delta is negligible).
+        for (const s of sections) s.tokens = countTokens(PacketWire.renderSection(s));
+        const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
+        return { tokens: packetTokens, sections, telemetryErrors };
     }
 
     // Budget readout body, rendered into the `# Plurnk System Budget` section.
@@ -1134,32 +1139,30 @@ export default class Engine {
     // curatable index/log weight the model can FOLD back. tokensFree is a
     // placeholder here — buildSystem substitutes it after measuring the packet.
     #renderBudget(
-        sections: {
-            log: {
-                entries: number; tokens: number;
-                byTurn: Array<{ turn: string; tokens: number }>;
-                largest: Array<{ path: string; tokens: number }>;
-            };
+        log: {
+            entries: number; tokens: number;
+            byTurn: Array<{ turn: string; tokens: number }>;
+            largest: Array<{ path: string; tokens: number }>;
         },
         ceiling: number | null,
     ): string {
         const lines: string[] = [];
         if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · free ${TOKENS_FREE_PLACEHOLDER}`);
-        if (sections.log.entries > 0) {
-            lines.push(`Log entries: ${sections.log.entries} entries, ${sections.log.tokens} tokens`);
+        if (log.entries > 0) {
+            lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
             // Per-turn weight — the grinder's rollback unit, oldest first: the
             // model sees what's first to go (§tokenomics {§tokenomics-turn-totals}).
-            if (sections.log.byTurn.length > 0) {
+            if (log.byTurn.length > 0) {
                 lines.push("Turns:", "| turn | tokens |", "|---|--:|");
-                for (const t of sections.log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
+                for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
             }
             // The heaviest individual log items — the FOLD targets behind the weight
             // (§tokenomics {§tokenomics-largest-entries}). "items", not "entries": the readout
             // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
             // is only for entries. Do not attempt to edit log items.").
-            if (sections.log.largest.length > 0) {
+            if (log.largest.length > 0) {
                 lines.push("Heaviest items:", "| item | tokens |", "|---|--:|");
-                for (const e of sections.log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
+                for (const e of log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
             }
         }
         return lines.join("\n");
@@ -1218,7 +1221,7 @@ export default class Engine {
         turnNumber: number; rebuild: (telemetryErrors: object[]) => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
-        const measure = (p: RequestPacket): number => p.system.tokens + p.user.tokens;
+        const measure = (p: RequestPacket): number => p.tokens;
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
         const folded = new Map<string, number>();
@@ -1229,7 +1232,7 @@ export default class Engine {
         const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId }); // prior-turn rollback folds the latest emissions — §grinder-layer1-rollback
         for (const le of priorLogs) note(le.scheme ?? "log");
         if (priorLogs.length > 0) await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
-        const errors = packet.user.telemetry.errors;
+        const errors = packet.telemetryErrors;
         let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
         if (measure(current) <= ceiling) {
             this.#emitBudgetOverflow(sessionId, loopId, folded);
@@ -1269,9 +1272,9 @@ export default class Engine {
     #completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
         const assistantTokens = provider.countTokens(assistant.content);
         return {
-            tokens: requestPacket.system.tokens + requestPacket.user.tokens + assistantTokens,
-            system: requestPacket.system,
-            user: requestPacket.user,
+            tokens: requestPacket.tokens + assistantTokens,
+            sections: requestPacket.sections,
+            telemetryErrors: requestPacket.telemetryErrors,
             assistant,
             assistantRaw,
         };
@@ -1313,7 +1316,7 @@ export default class Engine {
         return [...this.#drainTelemetry(loopId), ...actionFailures];
     }
 
-    // SPEC §packet packet.system.log — chronological action-entries for the loop.
+    // SPEC §packet the log section — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
@@ -1650,8 +1653,8 @@ export default class Engine {
     }
 
     // Inject a prompt into the run's currently-executing loop. Writes a
-    // plurnk:///prompt/<loop_id>/<next-turn> entry whose body becomes
-    // packet.user.prompt at the next turn boundary. Last-wins: if two
+    // plurnk:///prompt/<loop_id>/<next-turn> entry whose body becomes the
+    // prompt section at the next turn boundary. Last-wins: if two
     // injects target the same next-turn slot, the second overwrites the
     // first.
     //

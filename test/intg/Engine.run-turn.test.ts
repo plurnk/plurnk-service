@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -155,13 +155,14 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
-        const packet = JSON.parse(row.packet) as { system: { system_definition: string }; user: { prompt: string }; assistant: unknown };
-        // system_definition is the system message body THEN the scheme-education
-        // catalogue (always appended at packet-time; grammar#239). The message
+        const packet = JSON.parse(row.packet) as { assistant: unknown };
+        // The definition section is the system message body THEN the scheme-
+        // education catalogue (always appended at packet-time; grammar#239). The
         // body leads; the prompt-foist fallback is the assertion's real subject.
-        assert.ok(packet.system.system_definition.startsWith("system prompt body"), "system message body leads system_definition");
-        assert.match(packet.system.system_definition, /## Schemes/, "scheme catalogue is appended after the system message body");
-        assert.equal(packet.user.prompt, "first user msg\n\nsecond user msg");
+        const definition = packetSection(packet, "definition");
+        assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
+        assert.match(definition, /## Schemes/, "scheme catalogue is appended after the system message body");
+        assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
 });
@@ -247,10 +248,10 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string }> } };
+            telemetryErrors: Array<{ kind: string }>;
         };
-        assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "no_ops").length, 0);
-        assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "strike").length, 0);
+        assert.equal(packet.telemetryErrors.filter((e) => e.kind === "no_ops").length, 0);
+        assert.equal(packet.telemetryErrors.filter((e) => e.kind === "strike").length, 0);
     } finally { await db.close(); }
 });
 
@@ -295,11 +296,11 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
             const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                user: { telemetry: { errors: Array<{
+                telemetryErrors: Array<{
                     kind: string; source?: string; emitted?: number; dropped?: number;
-                }> } };
+                }>;
             };
-            const capErrors = packet.user.telemetry.errors.filter((e) => e.kind === "max_commands_exceeded");
+            const capErrors = packet.telemetryErrors.filter((e) => e.kind === "max_commands_exceeded");
             assert.equal(capErrors.length, 1, "exactly one max_commands_exceeded entry from turn 1");
             assert.equal(capErrors[0].source, "engine:rail");
             assert.equal(capErrors[0].emitted, 5);
@@ -335,9 +336,9 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
         const turnHadSuddenDeath = await Promise.all(result.turnIds.map(async (id) => {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                user: { telemetry: { errors: Array<{ kind: string }> } };
+                telemetryErrors: Array<{ kind: string }>;
             };
-            return packet.user.telemetry.errors.some((e) => e.kind === "sudden_death");
+            return packet.telemetryErrors.some((e) => e.kind === "sudden_death");
         }));
         // Zero turns should carry sudden_death telemetry under gamification policy.
         assert.deepEqual(turnHadSuddenDeath, [false, false, false, false, false]);
@@ -478,8 +479,8 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
         });
         assert.equal(result.finalStatus, 200);
         const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
-        const t2packet = JSON.parse(t2?.packet ?? "{}") as { user: { telemetry: { errors: Array<{ kind: string }> } } };
-        const errors = t2packet.user.telemetry.errors;
+        const t2packet = JSON.parse(t2?.packet ?? "{}") as { telemetryErrors: Array<{ kind: string }> };
+        const errors = t2packet.telemetryErrors;
         // The 403 action_failure DOES surface (real error that happened).
         assert.ok(errors.find((e) => e.kind === "action_failure"), "action_failure surfaces the 403");
         // The strike count does NOT (engine bookkeeping).
@@ -577,11 +578,11 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
         });
         const t4 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[3] });
         const packet = JSON.parse(t4?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string }> } };
+            telemetryErrors: Array<{ kind: string }>;
         };
         // None of the engine-bookkeeping kinds surface.
         for (const kind of ["cycle", "strike", "sudden_death", "no_ops"]) {
-            assert.equal(packet.user.telemetry.errors.find((e) => e.kind === kind), undefined,
+            assert.equal(packet.telemetryErrors.find((e) => e.kind === kind), undefined,
                 `${kind} is engine bookkeeping per gamification policy`);
         }
     } finally { await db.close(); }
@@ -608,9 +609,9 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
         for (const id of result.turnIds) {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                user: { telemetry: { errors: Array<{ kind: string }> } };
+                telemetryErrors: Array<{ kind: string }>;
             };
-            assert.equal(packet.user.telemetry.errors.filter((e) => e.kind === "sudden_death").length, 0);
+            assert.equal(packet.telemetryErrors.filter((e) => e.kind === "sudden_death").length, 0);
         }
     } finally { await db.close(); }
 });
@@ -639,9 +640,9 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const getErrors = async (turnId: number): Promise<string[]> => {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                user: { telemetry: { errors: Array<{ kind: string }> } };
+                telemetryErrors: Array<{ kind: string }>;
             };
-            return packet.user.telemetry.errors.map((e) => e.kind);
+            return packet.telemetryErrors.map((e) => e.kind);
         };
         // T1's packet: no errors yet (failures from T1 surface on T2).
         assert.deepEqual((await getErrors(t1.turnId)).filter((k) => k === "action_failure"), []);
@@ -725,13 +726,16 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ coordinate: string; op: string; origin: string; target?: { scheme: string | null; pathname: string | null } }> } };
-        assert.equal(packet.system.log.length, 1);
-        assert.equal(packet.system.log[0].coordinate, "1/1/1");
-        assert.equal(packet.system.log[0].op, "EDIT");
-        assert.equal(packet.system.log[0].origin, "plurnk");
-        assert.equal(packet.system.log[0].target?.scheme, "plurnk");
-        assert.equal(packet.system.log[0].target?.pathname, `/prompt/${loopId}/1`);
+        const log = logEntries(JSON.parse(row?.packet ?? "{}"));
+        // The prompt foist is the loop's opening EDIT at 1/1/1 (plurnk-origin). Found
+        // by its stable path/identity — robust to a turn-0 manifest-preview READ that
+        // may also be present (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview),
+        // which shifts later coordinates but never the prompt's.
+        const prompt = log.find((e) => e.path === "log:///1/1/1/EDIT");
+        assert.ok(prompt, "prompt entry logged at 1/1/1");
+        assert.equal(prompt.op, "EDIT");
+        assert.equal(prompt.origin, "plurnk");
+        assert.equal(prompt.target, `plurnk://prompt/${loopId}/1`);
     } finally { await db.close(); }
 });
 
@@ -748,23 +752,19 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as {
-            system: { log: Array<{ coordinate: string; op: string; status: number; target: { scheme: string | null; pathname: string | null }; origin: string }> };
-        };
-        // Turn 2 packet sees: prompt at 1/1/1 (plurnk:///) + 2 model ops at 1/1/2 + 1/1/3
-        assert.equal(packet.system.log.length, 3);
-        assert.equal(packet.system.log[0].coordinate, "1/1/1");
-        assert.equal(packet.system.log[0].op, "EDIT");
-        assert.equal(packet.system.log[0].origin, "plurnk");
-        assert.equal(packet.system.log[0].target.scheme, "plurnk");
-        assert.equal(packet.system.log[1].coordinate, "1/1/2");
-        assert.equal(packet.system.log[1].op, "EDIT");
-        assert.equal(packet.system.log[1].status, 201);
-        assert.equal(packet.system.log[1].target.scheme, "known");
-        assert.equal(packet.system.log[1].target.pathname, "/a");
-        assert.equal(packet.system.log[2].coordinate, "1/1/3");
-        assert.equal(packet.system.log[2].op, "SEND");
-        assert.equal(packet.system.log[2].status, 102);
+        const log = logEntries(JSON.parse(row?.packet ?? "{}"));
+        // Turn 2 packet sees the prompt foist + the prior turn's 2 model ops (an
+        // EDIT and a SEND). Found by identity (origin + op + target), robust to a
+        // turn-0 manifest-preview foist (§actor-boundary-manifest-preview) that may
+        // shift coordinates between the prompt and the model's ops.
+        assert.ok(log.find((e) => e.path === "log:///1/1/1/EDIT" && e.origin === "plurnk"), "prompt foist logged at 1/1/1");
+        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        assert.ok(edit, "model EDIT logged");
+        assert.equal(edit.status, 201);
+        assert.equal(edit.target, "known:///a");
+        const send = log.find((e) => e.origin === "model" && e.op === "SEND");
+        assert.ok(send, "model SEND logged");
+        assert.equal(send.status, 102);
     } finally { await db.close(); }
 });
 
@@ -781,13 +781,16 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system: { log: Array<{ op: string; rx: { status?: number; entryId?: number } | string }> } };
-        // index 0 = prompt EDIT (plurnk:///); index 1 = first model EDIT
-        const firstEdit = packet.system.log[1];
-        assert.equal(firstEdit.op, "EDIT");
-        const rx = firstEdit.rx as { status: number; entryId?: number };
-        assert.equal(rx.status, 201);
-        assert.ok(typeof rx.entryId === "number", "entryId hydrated from parsed JSON rx");
+        const packet = JSON.parse(row?.packet ?? "{}");
+        const log = logEntries(packet);
+        // Found by identity, robust to a turn-0 manifest-preview foist.
+        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        assert.ok(edit, "model EDIT logged");
+        assert.equal(edit.status, 201);
+        // The EDIT's result span renders (line-numbered) under its target fence —
+        // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
+        // rx.span, so the render would fall back to the statement heredoc instead.
+        assert.match(packetSection(packet, "log"), /<<:::known:\/\/\/x\n1:\tv\n:::known:\/\/\/x/);
     } finally { await db.close(); }
 });
 
@@ -803,8 +806,8 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
-        assert.deepEqual(packet.user.telemetry.errors, []);
+        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
+        assert.deepEqual(packet.telemetryErrors, []);
     } finally { await db.close(); }
 });
 
@@ -828,10 +831,10 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            user: { telemetry: { errors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; error: string }> } };
+            telemetryErrors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; error: string }>;
         };
-        assert.equal(packet.user.telemetry.errors.length, 1, "1 failure mirrored from turn 1");
-        const [err] = packet.user.telemetry.errors;
+        assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
+        const [err] = packet.telemetryErrors;
         assert.equal(err.kind, "action_failure");
         // Turn-as-container, 1-based: prompt at 1/1/1; model's EDIT shifts to 1/1/2.
         assert.equal(err.coordinate, "1/1/2");
@@ -863,8 +866,8 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });   // t2: clean
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
-        const packet = JSON.parse(row?.packet ?? "{}") as { user: { telemetry: { errors: object[] } } };
-        assert.deepEqual(packet.user.telemetry.errors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
+        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
+        assert.deepEqual(packet.telemetryErrors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
     } finally { await db.close(); }
 });
 

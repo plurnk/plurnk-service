@@ -58,7 +58,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     MatcherBody:     { kind: "skip", reason: "AST shape; not persisted" },
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
-    TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.user.telemetry.events[] JSON" },
+    TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.telemetryErrors[] JSON" },
 };
 
 const TABLE_PREP: Record<string, string> = {

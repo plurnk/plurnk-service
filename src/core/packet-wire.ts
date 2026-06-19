@@ -1,5 +1,5 @@
 // Packet → wire markdown projection. Single source of truth for how the
-// spec'd Packet.json (system/user sections) renders to ChatMessage.content
+// Packet's ordered list of sections renders to ChatMessage.content
 // strings the LLM receives. Engine imports this for the wire payload; the
 // digest tool imports it to write byte-identical packetNNN.{system,user}.md
 // files. No second implementation, no drift.
@@ -17,12 +17,11 @@ import { MimetypeBinary } from "../content/index.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 
-// The SECTION shapes (SystemSection/UserSection) are the JSON boundary — they
-// arrive both from Engine's in-memory packet AND from `turns.packet` re-parsed
-// by the digest, so leaf fields are typed loose (`unknown` / small unions) and
-// the runtime `typeof` narrowing below validates them (boundaries validate).
-// The full Packet is Engine-only and contract-guaranteed (RequestPacket), so it
-// is typed strict — no system/user defaulting.
+// PacketSection is the canonical packet shape: an ordered list of named,
+// slotted sections (defined below). Sections arrive both from Engine's
+// in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
+// leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
+// checks below (boundaries validate). Engine's RequestPacket is strict.
 interface ActionTarget { scheme?: string | null; pathname?: string | null }
 interface StatementTx {
     op?: unknown;
@@ -45,112 +44,109 @@ interface LogEntryView {
     source?: unknown;
 }
 interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
-interface SystemSection {
-    system_definition: string;
-    log?: unknown;
-    tokens?: number;
+// One packet section: a named, slotted, ordered unit of rendered content. The
+// stored section holds RENDERED markdown + a measured `tokens` weight — exactly
+// what the digest re-parses and what the model saw. `slot` is the prompt-cache
+// boundary (system = the cache-stable prefix; user = the per-turn tail); order
+// within a slot is the render order. Empty `content` ⇒ the section is omitted.
+export interface PacketSection {
+    name: string;
+    slot: "system" | "user";
+    header: string | null;
+    content: string;
+    tokens: number;
 }
-interface UserSection {
-    prompt?: unknown;
-    telemetry?: { budget?: unknown; errors?: unknown; git?: unknown };
-    tools?: unknown;
-    system_requirements?: unknown;
-    tokens?: number;
-}
-interface Packet { system: SystemSection; user: UserSection }
+// Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
+interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; tokens?: unknown }
+interface Packet { sections?: SectionView[] }
 type CountTokens = (text: string) => number;
 
 export default class PacketWire {
-    // Render packet.system → system message content (markdown string).
-    //   {system_definition verbatim}
-    //   # Plurnk System Log            (log entries — only when present)
-    static renderSystemContent(system: SystemSection): string {
-        const parts: string[] = [system.system_definition];
-        if (Array.isArray(system.log) && system.log.length > 0) {
-            parts.push(`# Plurnk System Log\n\n${PacketWire.#renderLogEntries(system.log)}`);
-        }
-        return parts.map((p) => p.replace(/\n+$/, "")).join("\n\n");
+    // Render the sections in `slot` to one ChatMessage.content string. Sections
+    // render in list order; empties are omitted (no empty headers on the wire);
+    // each is `# {header}\n\n{content}` (or bare content when header is null),
+    // trailing newlines stripped, joined with a blank line.
+    static renderSlot(sections: SectionView[], slot: "system" | "user"): string {
+        return sections
+            .filter((s) => s.slot === slot)
+            .map((s) => PacketWire.renderSection(s))
+            .filter((p) => p.length > 0)
+            .join("\n\n");
     }
 
-    // Render packet.user → user message content (markdown string).
-    //   # Plurnk System User Prompt
-    //   # Plurnk System Telemetry      (## Budget / ## Errors / ## Git Status — when present)
-    //   # Plurnk System Requirements   (static per-turn rules)
-    // Requirements renders LAST so the contract the model has to honor is the
-    // most recent thing in the user message — closest to the assistant turn.
-    // PLURNK_PROMPT_PREVIEW_CHARS caps the prompt body rendered in user.prompt — a fat prompt
-    // replays every turn, so show the first `cap` chars + a pointer to the full body (always
-    // READable at its own entry, never lost). cap < 0 = no cap (full prompt).
+    // One section → its markdown block (`# {header}\n\n{content}`, or bare
+    // content when header is null/empty), trailing newlines stripped. Empty
+    // content renders to "" so renderSlot drops it. This is the unit the
+    // per-section `tokens` weight is measured over.
+    static renderSection(s: SectionView): string {
+        if (typeof s.content !== "string" || s.content.length === 0) return "";
+        const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
+        return (header ? `# ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
+    }
+
+    // PLURNK_PROMPT_PREVIEW_CHARS caps the prompt body rendered in the prompt
+    // section — a fat prompt replays every turn, so show the first `cap` chars +
+    // a pointer to the full body (always READable at its own entry, never lost).
+    // cap < 0 = no cap (full prompt).
     static previewPrompt(content: string, fullAddr: string, cap: number): string {
         if (cap < 0 || content.length <= cap) return content;
         return `${content.slice(0, cap)}\n\n…(prompt preview — full body READable at ${fullAddr})`;
     }
 
-    static renderUserContent(user: UserSection): string {
-        const parts: string[] = [];
-        if (typeof user.prompt === "string" && user.prompt.length > 0) {
-            parts.push(`# Plurnk System User Prompt\n\n${user.prompt}`);
-        }
-        // Telemetry groups Budget / Errors / Git Status as ## subsections under one
-        // # Plurnk System Telemetry header, rendered only when something is present.
-        const telemetry = user.telemetry ?? { budget: "", errors: [], git: undefined };
-        const tele: string[] = [];
-        if (typeof telemetry.budget === "string" && telemetry.budget.length > 0) {
-            tele.push(`## Budget\n\n${telemetry.budget}`);
-        }
-        if (Array.isArray(telemetry.errors) && telemetry.errors.length > 0) {
-            tele.push(`## Errors\n\n${PacketWire.#renderTelemetryErrors(telemetry.errors)}`);
-        }
-        if (telemetry.git !== undefined && telemetry.git !== null) {
-            tele.push(`## Git Status\n\n${PacketWire.#renderGitState(telemetry.git as GitStatus)}`);
-        }
-        if (tele.length > 0) {
-            parts.push(`# Plurnk System Telemetry\n\n${tele.join("\n\n")}`);
-        }
-        // Capability sheet — enabled tools (PLAN, wired executor tags), injected
-        // above Requirements so the model sees what it can do before the rules.
-        if (Array.isArray(user.tools) && user.tools.length > 0) {
-            parts.push(`# Plurnk System Tools\n\n${(user.tools as string[]).join("\n")}`);
-        }
-        if (typeof user.system_requirements === "string" && user.system_requirements.length > 0) { // omitted when empty; appended last in the user packet — §requirements-requirements-omitted-when-empty §requirements-requirements-render-last
-            parts.push(`# Plurnk System Requirements\n\n${user.system_requirements}`);
-        }
-        return parts.map((p) => p.replace(/\n+$/, "")).join("\n\n");
+    // The errors section content: the structured telemetry events rendered to
+    // meta lines (+ snippet blocks). "" when empty (the section is omitted). The
+    // events are ALSO kept structured on the packet (packet.telemetryErrors) —
+    // ephemeral (the buffer drains on read), so the packet is their only home.
+    static renderErrors(errors: unknown): string {
+        const events = Array.isArray(errors) ? (errors as TelemetryError[]) : [];
+        return events.length > 0 ? PacketWire.#renderTelemetryErrors(events) : "";
     }
 
-    // Project the full request half of a packet to ChatMessage[] for the wire.
-    // Engine calls this directly; the result is what provider.generate receives.
+    // The git section content: the working-tree summary. "" when absent.
+    static renderGit(git: unknown): string {
+        return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
+    }
+
+    // The log section's content: the model's curated rows rendered to markdown
+    // (the same #renderLogEntries the wire ships). Empty log → "" (omitted).
+    static renderLog(entries: unknown): string {
+        const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
+        return log.length > 0 ? PacketWire.#renderLogEntries(log) : "";
+    }
+
+    // Read one section's content by name off a packet (Engine's or re-parsed).
+    // The legible accessor — consumers name the section they want instead of
+    // indexing a fixed shape. Missing section / non-string content → "".
+    static sectionContent(packet: Packet, name: string): string {
+        const s = packet.sections?.find((x) => x.name === name);
+        return typeof s?.content === "string" ? s.content : "";
+    }
+
+    // Project a packet to the request ChatMessage[] for the wire: one message
+    // per slot. Engine calls this directly; the result is what provider.generate
+    // receives. The digest calls renderSlot for byte-identical packetNNN files.
     static packetToWireMessages(packet: Packet): Array<{ role: string; content: string }> {
+        const sections = packet.sections ?? [];
         return [
-            { role: "system", content: PacketWire.renderSystemContent(packet.system) },
-            { role: "user", content: PacketWire.renderUserContent(packet.user) },
+            { role: "system", content: PacketWire.renderSlot(sections, "system") },
+            { role: "user", content: PacketWire.renderSlot(sections, "user") },
         ];
     }
 
-    // Measure the wire-rendered token cost of the curatable log section plus
-    // the assembled total, using the provider's tokenizer. The budget
-    // readout uses this so its subtotals match what actually ships — meta lines
-    // and fences included — not a serialized approximation. `total` is measured
-    // over whatever the packet currently holds, so the caller renders the budget
-    // with a `{{tokensFree}}` placeholder, measures, then substitutes (the
-    // placeholder/number length delta is negligible).
-    // The budget is render-weight — measured from the assembled packet, not stored depth. §tokenomics-render-weight-budget
-    static measureBudgetSections(packet: Packet, countTokens: CountTokens): {
-        log: {
-            entries: number; tokens: number;
-            byTurn: Array<{ turn: string; tokens: number }>;
-            largest: Array<{ path: string; tokens: number }>;
-        };
-        total: number;
+    // Measure the curatable log section's budget subtotals from the STRUCTURED
+    // log (the foldable unit), using the provider's tokenizer — meta lines and
+    // fences included, matching what ships. Feeds the grinder's rollback unit
+    // (per-turn rollup, oldest-first) and the FOLD unit (heaviest entries) — the
+    // two budget levers the model can pull (§tokenomics {§tokenomics-turn-totals},
+    // {§tokenomics-largest-entries}). Build-time only; the stored log section is
+    // the rendered result. §tokenomics-render-weight-budget
+    static measureLogBudget(entries: unknown, countTokens: CountTokens): {
+        entries: number; tokens: number;
+        byTurn: Array<{ turn: string; tokens: number }>;
+        largest: Array<{ path: string; tokens: number }>;
     } {
-        const system: SystemSection = packet.system;
-        const user: UserSection = packet.user;
-        const logEntries: LogEntryView[] = Array.isArray(system.log) ? system.log : [];
+        const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
-        // One pass: each entry's render-weight feeds the per-turn rollup (the
-        // grinder's rollback unit, oldest-first) and the heaviest-entries list
-        // (the FOLD unit) — the two budget levers the model can actually pull
-        // (§tokenomics {§tokenomics-turn-totals}, {§tokenomics-largest-entries}).
         const HEAVIEST_COUNT = 10;
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
@@ -168,19 +164,16 @@ export default class PacketWire {
             if (path !== null) perEntry.push({ path, tokens: weight });
         }
         return {
-            log: {
-                entries: logEntries.length,
-                tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
-                byTurn: [...byTurn.entries()]
-                    .map(([turn, tokens]) => ({ turn, tokens }))
-                    .toSorted((a, b) => {
-                        const [al, at] = a.turn.split("/").map(Number);
-                        const [bl, bt] = b.turn.split("/").map(Number);
-                        return al - bl || at - bt;
-                    }),
-                largest: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, HEAVIEST_COUNT),
-            },
-            total: countTokens(PacketWire.renderSystemContent(system)) + countTokens(PacketWire.renderUserContent(user)),
+            entries: logEntries.length,
+            tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
+            byTurn: [...byTurn.entries()]
+                .map(([turn, tokens]) => ({ turn, tokens }))
+                .toSorted((a, b) => {
+                    const [al, at] = a.turn.split("/").map(Number);
+                    const [bl, bt] = b.turn.split("/").map(Number);
+                    return al - bl || at - bt;
+                }),
+            largest: perEntry.toSorted((a, b) => b.tokens - a.tokens).slice(0, HEAVIEST_COUNT),
         };
     }
 

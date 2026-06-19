@@ -4,8 +4,9 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
-    system: { tokens: 0, system_definition: "", index: [], log: [] },
-    user: { tokens: 0, prompt: "", telemetry: { budget: "", errors: [] }, system_requirements: "" },
+    tokens: 0,
+    sections: [],
+    telemetryErrors: [],
     assistant: {
         content: "", ops: [], reasoning: null,
         usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },

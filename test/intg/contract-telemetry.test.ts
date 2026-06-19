@@ -62,7 +62,8 @@ const setup = async () => {
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
     const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
     return JSON.parse(row?.packet ?? "{}") as {
-        user: { prompt: string; telemetry: { budget: string; errors: Array<Record<string, unknown>> } };
+        telemetryErrors: Array<Record<string, unknown>>;
+        sections: Array<Record<string, unknown>>;
     };
 };
 
@@ -80,7 +81,7 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const p2 = await getPacket(db, t2.turnId);
-        const parseErr = p2.user.telemetry.errors.find((e) => e.kind === "parse_error");
+        const parseErr = p2.telemetryErrors.find((e) => e.kind === "parse_error");
         assert.ok(parseErr !== undefined, "parse_error surfaced on the next packet");
         // Real content-offset position from the grammar visitor (1:0).
         assert.deepEqual(parseErr.position, { type: "content-offset", line: 1, column: 7 });
@@ -92,8 +93,8 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
         // Render the wire the model actually receives and assert the layout:
         // meta line (no snippet key) immediately followed by the error://<line>
         // fence wrapping the N:\t snippet.
-        const wire = PacketWire.renderUserContent(p2.user);
-        assert.match(wire, /# Plurnk System Telemetry[\s\S]*## Errors/);
+        const wire = PacketWire.renderSlot(p2.sections, "user");
+        assert.match(wire, /# Plurnk System Errors/);
         // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
         // error://1 fence carrying the verbatim N:\t snippet, line 1, immediately after meta.
@@ -122,7 +123,7 @@ test("[§telemetry-drain-on-read] telemetry buffer drains — parse_error appear
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const kindsOf = async (turnId: number) =>
-            (await getPacket(db, turnId)).user.telemetry.errors
+            (await getPacket(db, turnId)).telemetryErrors
                 .filter((e) => e.kind === "parse_error").length;
 
         // Turn 1's own packet predates the failure → no parse_error yet.
@@ -150,7 +151,7 @@ test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry
         // The failure IS surfaced — as telemetry, the actionless alert channel.
         const p2 = await getPacket(db, t2.turnId);
         assert.ok(
-            p2.user.telemetry.errors.some((e) => e.kind === "parse_error"),
+            p2.telemetryErrors.some((e) => e.kind === "parse_error"),
             "actionless failure routed to telemetry.errors[]",
         );
 
@@ -163,7 +164,7 @@ test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry
 
         // The only `error://` token the model ever sees is the snippet-fence
         // LOCATOR in the rendered telemetry, not an entry it can address.
-        const wire = PacketWire.renderUserContent(p2.user);
+        const wire = PacketWire.renderSlot(p2.sections, "user");
         assert.ok(wire.includes("error://1"), "error://<line> is render-time locator context only");
     } finally { await db.close(); }
 });
@@ -208,7 +209,7 @@ test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live wi
         // telemetry.errors[]. Same source/kind/message/position on both sides.
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        const drained = p2.user.telemetry.errors.find((e) => e.kind === "parse_error");
+        const drained = p2.telemetryErrors.find((e) => e.kind === "parse_error");
         assert.ok(drained !== undefined, "same event drains onto the model's next packet");
         assert.equal(drained.source, liveEvent.source, "source matches on both sides");
         assert.equal(drained.message, liveEvent.message, "message matches on both sides");

@@ -9,7 +9,7 @@ import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { Paths } from "../../src/index.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "../intg/_helpers.ts";
 
 // Tests that bypass Daemon construct Mimetypes directly. Discovery scans
 // installed @plurnk/plurnk-mimetypes-* packages — none installed in this
@@ -132,10 +132,10 @@ test("live OpenAI: runTurn single-shot smoke", async () => {
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
         assert.ok((logCount ?? 0) > 0, "at least one op was dispatched");
 
-        const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string; ops: unknown[] }; system: { system_definition: string }; user: { prompt: string } };
+        const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string; ops: unknown[] } };
         assert.ok(packet.assistant.content.length > 0, "model emitted non-empty content");
         assert.equal(packet.assistant.ops.length, result.statuses.length, "ops count matches dispatched statuses");
-        assert.equal(packet.system.system_definition, SYSTEM_PROMPT);
+        assert.ok(packetSection(packet, "definition").startsWith(SYSTEM_PROMPT), "definition section leads with the system prompt");
 
         console.log("---\nmodel emitted:");
         console.log(packet.assistant.content);

@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 test("[prompt-preview] a fat prompt renders capped in the packet but stays whole at its entry", async () => {
@@ -30,7 +30,7 @@ test("[prompt-preview] a fat prompt renders capped in the packet but stays whole
         });
 
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
-        const userPrompt = (JSON.parse(row!.packet) as { user: { prompt: string } }).user.prompt;
+        const userPrompt = packetSection(JSON.parse(row!.packet), "prompt");
 
         assert.ok(userPrompt.length < fullPrompt.length, "the rendered prompt is capped below the full body");
         assert.equal(userPrompt.slice(0, 50), fullPrompt.slice(0, 50), "the first cap chars are preserved verbatim");

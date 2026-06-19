@@ -23,7 +23,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, logEntries } from "../intg/_helpers.ts";
 
 const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
     const m = new Mimetypes();
@@ -91,16 +91,10 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
         if (result.finalStatus !== 200 || !expected.test(lastContent)) {
             for (const turnId of result.turnIds) {
                 const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
-                const packet = JSON.parse(row?.packet ?? "{}") as {
-                    assistant?: { content?: string };
-                    system?: { log?: Array<{ op?: string; status?: number; target?: { scheme?: string | null; pathname?: string } | null }> };
-                };
+                const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`turn ${turnId} status=${row?.status}`);
                 console.error(`  emission: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
-                console.error(`  log: ${(packet.system?.log ?? []).map((e) => {
-                    const t = e.target;
-                    return `${e.op ?? "?"}[${e.status ?? "?"}]${t ? ` ${t.scheme}://${t.pathname}` : ""}`;
-                }).join("; ")}`);
+                console.error(`  log: ${logEntries(packet).map((e) => `${e.op ?? "?"}[${e.status ?? "?"}]${e.target ? ` ${e.target}` : ""}`).join("; ")}`);
             }
         }
         assert.equal(result.finalStatus, 200, "loop terminated on SEND[200]");

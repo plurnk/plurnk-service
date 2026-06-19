@@ -145,7 +145,7 @@ test("proposal: attrs from scheme persist into log_entries.attrs JSON", async ()
     } finally { await db.close(); }
 });
 
-test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows hidden from packet.system.log render", async () => {
+test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows hidden from the log section render", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);

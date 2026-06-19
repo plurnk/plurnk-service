@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 
 test("computeCeiling: dual-mode — <=1 is a window ratio, >1 an absolute wall capped at the window", () => {
     assert.equal(Engine.computeCeiling(1000, 0.9), 900, "ratio");
@@ -41,12 +41,12 @@ test("Engine.runTurn: budget readout — ratio-derived ceiling, free reconciles 
         });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
-        const packet = JSON.parse(row.packet) as { system: { tokens: number }; user: { tokens: number; telemetry: { budget: string } } };
-        const budget = packet.user.telemetry.budget;
+        const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
+        const budget = packetSection(packet, "budget");
         // default ratio 0.9 → floor(4000 × 0.9) = 3600
         assert.match(budget, /ceiling 3600 · usage \d+ \(\d+%\) · free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
         const free = Number(/free (\d+)/.exec(budget)?.[1]);
-        const total = packet.system.tokens + packet.user.tokens;
+        const total = packet.sections.reduce((n, s) => n + s.tokens, 0); // summed per-section render-weights (the assembled request size, inter-section joins aside)
         assert.ok(free > 0 && free < 3600, `free ${free} within (0, 3600)`);
         // Reconciles to ceiling − assembled total, within the placeholder/number
         // substitution delta (tokensFree's own digits change the packet's size).

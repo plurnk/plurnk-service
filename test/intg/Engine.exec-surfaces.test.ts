@@ -14,7 +14,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, testExecutors, logEntries } from "./_helpers.ts";
 import { readFile } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
 
@@ -60,8 +60,7 @@ test("regression: a model's EXEC result surfaces in the NEXT turn's log, not jus
         assert.ok(result.turnIds.length >= 2, `expected at least 2 turns; got ${result.turnIds.length}`);
         const turn2 = result.turnIds[1];
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { log?: Array<{ target?: { scheme?: string | null; pathname?: string } | null }> } };
-        const targets = (packet.system?.log ?? []).map((e) => `${e.target?.scheme}://${e.target?.pathname}`);
+        const targets = logEntries(JSON.parse(row?.packet ?? "{}")).map((e) => String(e.target ?? ""));
         assert.ok(
             targets.some((t) => t.startsWith("exec:///")),
             `turn-2 log must reference the exec result so the model can READ it; got ${JSON.stringify(targets)}`,
@@ -96,8 +95,7 @@ test("regression-replica: under the FULL base context (sysprompt + requirements)
 
         const turn2 = result.turnIds[1];
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
-        const packet = JSON.parse(row?.packet ?? "{}") as { system?: { log?: Array<{ target?: { scheme?: string | null; pathname?: string } | null }> } };
-        const targets = (packet.system?.log ?? []).map((e) => `${e.target?.scheme}://${e.target?.pathname}`);
+        const targets = logEntries(JSON.parse(row?.packet ?? "{}")).map((e) => String(e.target ?? ""));
         assert.ok(
             targets.some((t) => t.startsWith("exec:///")),
             `demo-replica: exec result must surface in the log under full base context; got ${JSON.stringify(targets)}`,
