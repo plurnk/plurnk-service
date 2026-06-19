@@ -3,117 +3,6 @@ import assert from "node:assert/strict";
 import Validator from "../../src/Validator.ts";
 
 // -------------------------------------------------------------------------
-// Entry
-// -------------------------------------------------------------------------
-
-const minimalAgentEntry = () => ({
-    id: 1,
-    version: 0,
-    scope: "agent" as const,
-    session_id: null,
-    scheme: "wiki",
-    username: null,
-    password: null,
-    hostname: "Paris",
-    port: null,
-    pathname: "",
-    params: {},
-    channels: {
-        body: { content: "Paris is the capital of France.", mimetype: "text/markdown", tokens: 9 },
-    },
-    attributes: {},
-    tags: ["wikipedia", "geography"],
-});
-
-const minimalSessionEntry = () => ({
-    ...minimalAgentEntry(),
-    scope: "session" as const,
-    session_id: 42,
-});
-
-test("Validator: Entry accepts minimal agent-scoped row", () => {
-    const { valid, errors } = Validator.validateEntry(minimalAgentEntry());
-    assert.equal(valid, true, JSON.stringify(errors));
-});
-
-test("Validator: Entry accepts minimal session-scoped row", () => {
-    const { valid, errors } = Validator.validateEntry(minimalSessionEntry());
-    assert.equal(valid, true, JSON.stringify(errors));
-});
-
-test("Validator: Entry accepts local path (scheme=null)", () => {
-    const entry = { ...minimalAgentEntry(), scheme: null, hostname: null, pathname: "config/foo.xml" };
-    const { valid, errors } = Validator.validateEntry(entry);
-    assert.equal(valid, true, JSON.stringify(errors));
-});
-
-test("Validator: Entry rejects session scope with null session_id", () => {
-    const entry = { ...minimalSessionEntry(), session_id: null };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects agent scope with non-null session_id", () => {
-    const entry = { ...minimalAgentEntry(), session_id: 5 };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects missing channels field", () => {
-    const entry: any = minimalAgentEntry();
-    delete entry.channels;
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects empty channels map", () => {
-    const entry: any = minimalAgentEntry();
-    entry.channels = {};
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry accepts multi-channel exec-style row", () => {
-    const entry: any = {
-        ...minimalAgentEntry(),
-        scheme: "exec",
-        hostname: "run-tests",
-        channels: {
-            stdout: { content: "ok\n", mimetype: "text/plain", tokens: 1 },
-            stderr: { content: "warning: deprecated\n", mimetype: "text/plain", tokens: 3 },
-        },
-    };
-    const { valid, errors } = Validator.validateEntry(entry);
-    assert.equal(valid, true, JSON.stringify(errors));
-});
-
-test("Validator: Entry rejects channel name with uppercase", () => {
-    const entry: any = minimalAgentEntry();
-    entry.channels = { Body: { content: "x", mimetype: "text/plain", tokens: 0 } };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects channel with missing mimetype", () => {
-    const entry: any = minimalAgentEntry();
-    entry.channels = { body: { content: "x", tokens: 0 } };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects port > 65535", () => {
-    const entry = { ...minimalAgentEntry(), port: 70000 };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-test("Validator: Entry rejects extra property", () => {
-    const entry: any = { ...minimalAgentEntry(), surprise: "field" };
-    const { valid } = Validator.validateEntry(entry);
-    assert.equal(valid, false);
-});
-
-// -------------------------------------------------------------------------
 // SchemeRegistration
 // -------------------------------------------------------------------------
 
@@ -131,6 +20,16 @@ const minimalSchemeReg = () => ({
 test("Validator: SchemeRegistration accepts minimal row", () => {
     const { valid, errors } = Validator.validateSchemeRegistration(minimalSchemeReg());
     assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration accepts run-scoped default", () => {
+    const { valid, errors } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), name: "run", default_scope: "run" });
+    assert.equal(valid, true, JSON.stringify(errors));
+});
+
+test("Validator: SchemeRegistration rejects retired agent scope", () => {
+    const { valid } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), default_scope: "agent" });
+    assert.equal(valid, false);
 });
 
 test("Validator: SchemeRegistration accepts null handler (core scheme)", () => {
@@ -267,29 +166,6 @@ test("Validator: ProviderDeclaration rejects zero contextSize", () => {
         currency: "USD",
     });
     assert.equal(valid, false);
-});
-
-test("Validator: Entry params via $ref to Params.json validates multi-value", () => {
-    const entry = {
-        id: 1,
-        version: 0,
-        scope: "agent" as const,
-        session_id: null,
-        scheme: "https",
-        username: null,
-        password: null,
-        hostname: "example.com",
-        port: null,
-        pathname: "/api",
-        params: { q: ["a", "b"], page: "2" },
-        channels: {
-            body: { content: "", mimetype: "application/json", tokens: 0 },
-        },
-        attributes: {},
-        tags: [],
-    };
-    const { valid, errors } = Validator.validateEntry(entry);
-    assert.equal(valid, true, JSON.stringify(errors));
 });
 
 // -------------------------------------------------------------------------

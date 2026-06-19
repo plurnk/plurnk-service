@@ -6,11 +6,9 @@ import channelContentSchema from "../schema/ChannelContent.json" with { type: "j
 import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
 import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
 import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
-import entrySchema from "../schema/Entry.json" with { type: "json" };
 import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
-import loopSchema from "../schema/Loop.json" with { type: "json" };
 import telemetryEventSchema from "../schema/TelemetryEvent.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -23,14 +21,12 @@ export default class Validator {
     static #parsedPath = Validator.#buildWithRefs(parsedPathSchema, [paramsSchema]);
     static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
     static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
-    static #entry = Validator.#buildWithRefs(entrySchema, [paramsSchema, channelContentSchema]);
     static #schemeRegistration = new CfValidator(schemeRegistrationSchema as Schema, "2020-12");
     static #providerDeclaration = new CfValidator(providerDeclarationSchema as Schema, "2020-12");
     static #plurnkStatement = Validator.#buildWithRefs(
         plurnkStatementSchema,
         [positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
     );
-    static #loop = new CfValidator(loopSchema as Schema, "2020-12");
     static #telemetryEvent = new CfValidator(telemetryEventSchema as Schema, "2020-12");
 
     static #buildWithRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
@@ -51,11 +47,9 @@ export default class Validator {
     static validateParsedPath(obj: unknown): ValidationResult { return Validator.#run_(Validator.#parsedPath, obj); }
     static validateMatcherBody(obj: unknown): ValidationResult { return Validator.#run_(Validator.#matcherBody, obj); }
     static validateSendBody(obj: unknown): ValidationResult { return Validator.#run_(Validator.#sendBody, obj); }
-    static validateEntry(obj: unknown): ValidationResult { return Validator.#run_(Validator.#entry, obj); }
     static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#schemeRegistration, obj); }
     static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#providerDeclaration, obj); }
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#plurnkStatement, obj); }
-    static validateLoop(obj: unknown): ValidationResult { return Validator.#run_(Validator.#loop, obj); }
     static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#telemetryEvent, obj); }
 
     static #run_(validator: CfValidator, obj: unknown): ValidationResult {
