@@ -9,6 +9,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeRunNotify, InjectRunNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type { TelemetryEvent } from "./results.ts";
+import type { PacketSection } from "./packet-wire.ts";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -83,4 +84,14 @@ export interface PlurnkSchemeContext {
     // user.telemetry.errors[] AND the live `telemetry/event` client
     // notification. SPEC §telemetry.
     readonly pushTelemetry?: (event: TelemetryEvent) => void;
+}
+
+// Optional packet hook (§packet-construction). A scheme implements this to rewrite
+// the engine's default section list — add, remove, reorder — by returning a new
+// list. The trusted, in-process seam for plugin packet control: list in, list
+// out, applied in registration order after the kernel builds its defaults. The
+// client wire never reaches the packet; this does. No context by design — pure
+// list surgery; a plugin that needs live state writes a normal op.
+export interface PacketSectionTransformer {
+    transformSections(sections: PacketSection[]): PacketSection[] | Promise<PacketSection[]>;
 }

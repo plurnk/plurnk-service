@@ -1105,7 +1105,7 @@ export default class Engine {
         // each independently overridable). The budget section still carries its
         // {{tokensFree}} placeholders here; they resolve below once the assembled
         // total is known.
-        const sections: PacketSection[] = [
+        const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
@@ -1115,17 +1115,22 @@ export default class Engine {
             { name: "tools", slot: "user", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
             { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: requirementsText, tokens: 0 },
         ];
+        // Plugin packet control (§packet-construction): trusted schemes rewrite the
+        // default list — add, remove, reorder — in-process, before measurement.
+        const sections = await this.#schemes.transformSections(defaults);
         // Pass 1: measure the assembled total with the placeholder budget in
         // place, resolve free/percent, substitute into the budget section.
         const total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
         const percent = ceiling === null ? null : Math.round((total / ceiling) * 100); // usage as % of the ceiling — §tokenomics-context-percent
         if (tokensFree !== null) {
-            const budgetSec = sections.find((s) => s.name === "budget")!; // the budget section is always built above — fail-hard if not
-            budgetSec.content = budgetSec.content
-                .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
-                .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
-                .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
+            const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
+            if (budgetSec) {
+                budgetSec.content = budgetSec.content
+                    .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
+                    .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
+                    .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
+            }
         }
         // Pass 2: per-section render-weight + the assembled packet total (post
         // substitution — the placeholder/number length delta is negligible).

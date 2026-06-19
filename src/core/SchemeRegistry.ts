@@ -9,6 +9,8 @@ import Run from "../schemes/Run.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
 import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { PacketSection } from "./packet-wire.ts";
+import type { PacketSectionTransformer } from "./scheme-types.ts";
 
 export default class SchemeRegistry {
     // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
@@ -81,6 +83,20 @@ export default class SchemeRegistry {
             if (typeof doc === "string" && doc.length > 0) out.push({ name, content: doc });
         }
         return out;
+    }
+
+    // Plugin packet control (§packet-construction): pipe the engine's default
+    // section list through every registered scheme that implements
+    // transformSections, in registration order. A scheme returns whatever list it
+    // wants — add, remove, reorder. The trusted in-process seam; the client wire
+    // never touches the packet. In-tree + external handlers both, duck-typed.
+    async transformSections(sections: PacketSection[]): Promise<PacketSection[]> {
+        let current = sections;
+        for (const handler of this.#handlers.values()) {
+            const transform = (handler as Partial<PacketSectionTransformer>).transformSections;
+            if (typeof transform === "function") current = await transform.call(handler, current);
+        }
+        return current;
     }
 
     // Discover external scheme siblings — delegated to the framework's SchemeDiscovery
