@@ -120,11 +120,47 @@ const preplanRules = (model: GModel): void => {
     model.set("preplan", [[ref(ruleOf(""))]]);
 };
 
+// Left-factor a set of opener literals into a shared-prefix trie. The flat form lists one
+// full-literal alternative per op variant (`"<<FIND"`, `"<<FIND1"`, … `"<<KILL9"`), so the
+// instant `<<` is consumed EVERY variant's parse stack is live in parallel — ~141 stacks at
+// the single hottest decision in the grammar, the per-token cost driver in llama.cpp. The
+// trie shares `<<` and the op-name prefix, so after `<<` only the distinct first letters are
+// live (~8) and the count narrows as letters are consumed. Pure left-factoring: each entry's
+// `tails` are the alternatives that follow its literal, re-attached at the leaf; a literal
+// that is a prefix of another (`<<SEND` ⊂ `<<SEND1`) keeps its tails at the interior node
+// alongside the deeper branch. L(trie) = L(flat alternation), proven via the @plurnk/gbnf
+// differential oracle. The per-suffix body automata are untouched — they are 1 stack each,
+// off the hot path, and remain the artifact's bulk (see SUFFIXES).
+const trieRules = (model: GModel, rootName: string, entries: Array<{ literal: string; tails: GSeq[] }>): void => {
+    type Node = { children: Map<string, Node>; tails: GSeq[] };
+    const newNode = (): Node => ({ children: new Map(), tails: [] });
+    const root = newNode();
+    for (const { literal, tails } of entries) {
+        let node = root;
+        for (const ch of literal) {
+            if (!node.children.has(ch)) node.children.set(ch, newNode());
+            node = node.children.get(ch)!;
+        }
+        node.tails.push(...tails);
+    }
+    let counter = 0;
+    const build = (node: Node, name: string): void => {
+        const alts: GRule = [...node.tails];
+        for (const ch of [...node.children.keys()].toSorted()) {
+            const childName = `${rootName}-${counter++}`;
+            build(node.children.get(ch)!, childName);
+            alts.push([lit(ch), ref(childName)]);
+        }
+        model.set(name, alts);
+    };
+    build(root, rootName);
+};
+
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    const opAlts: GRule = [];
-    const sendMidAlts: GRule = [];
-    const sendFinalAlts: GRule = [];
+    const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -145,28 +181,32 @@ export const buildModel = (): GModel => {
                 // turn can terminate-and-report in one op (e.g. a child reporting its result
                 // to its parent run). Every mid SEND is communication, not loop control:
                 // non-loop status (status-mid) or none, targeted or pathless.
-                model.set(`${name}-mid`, [
-                    [lit(open), lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, non-loop status
-                    [lit(open), ref("target"), ...body],                                          // targeted, statusless
-                    [lit(open), lit("["), ref("status-mid"), lit("]"), ...body],                 // pathless, non-loop status
-                    [lit(open), ...body],                                                         // pathless, statusless
-                ]);
-                model.set(`${name}-final`, [[lit(open), lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...body]]);
-                sendMidAlts.push([ref(`${name}-mid`)]);
-                sendFinalAlts.push([ref(`${name}-final`)]);
+                // Tails are factored behind the shared `<<SEND…` opener trie (no leading
+                // `lit(open)` — the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
+                // its tails sit at the interior trie node beside the digit branch.
+                sendMidEntries.push({ literal: open, tails: [
+                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, non-loop status
+                    [ref("target"), ...body],                                          // targeted, statusless
+                    [lit("["), ref("status-mid"), lit("]"), ...body],                  // pathless, non-loop status
+                    [...body],                                                          // pathless, statusless
+                ] });
+                sendFinalEntries.push({ literal: open, tails: [
+                    [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...body],
+                ] });
             } else if (op === "EXEC") {
-                model.set(name, [[lit(open), opt(ref("exec-sig")), opt(ref("target")), ...body]]);
+                opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), ...body]] });
             } else if (op === "PLAN") {
-                // Slotless bare reasoning body. Allowed but inert — placed via
-                // op-statement like any op, never forced, never pinned first.
-                model.set(name, [[lit(open), ...body]]);
+                // Slotless bare reasoning body. The standalone `plan` rule is the MANDATORY
+                // turn anchor (root-turn references it); PLAN is ALSO an inert mid-op, so it
+                // joins the op-statement trie too. Both share the `plan-b0` body automaton.
+                model.set("plan", [[lit(open), ...body]]);
+                opEntries.push({ literal: open, tails: [[...body]] });
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
-                model.set(name, [[lit(open), opt(ref("kill-sig")), ref("target"), ...body]]);
+                opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else {
-                model.set(name, [[lit(open), opt(ref("tags")), ref("target"), opt(ref("line")), ...body]]);
+                opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), opt(ref("line")), ...body]] });
             }
-            if (op !== "SEND") opAlts.push([ref(name)]);
         }
     }
 
@@ -200,9 +240,9 @@ export const buildModel = (): GModel => {
     // first `<<PLAN` is the unambiguous anchor and the preamble re-lexes as pure TEXT.
     preplanRules(model);
     model.set("root-turn", [[ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
-    model.set("op-statement", opAlts);
-    model.set("send-mid-any", sendMidAlts);
-    model.set("send-final-any", sendFinalAlts);
+    trieRules(model, "op-statement", opEntries);
+    trieRules(model, "send-mid-any", sendMidEntries);
+    trieRules(model, "send-final-any", sendFinalEntries);
     // statement / send-statement: single-statement entries used only by the corpus and
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
