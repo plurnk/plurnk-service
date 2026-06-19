@@ -24,7 +24,10 @@ export interface SchemeManifest {
     // data: entry-bearing content. logging: log:// rows. control: addresses
     // sister processes/runs and owns no entries (run://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
-    readonly scope: "agent" | "session";
+    // Matches grammar's SchemeRegistration.default_scope enum (0.67: `agent`
+    // dropped — nothing used it — `run` added for per-run scratch backing
+    // `run://`). New schemes default `session`; opt into `run` only for per-run.
+    readonly scope: "session" | "run";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;

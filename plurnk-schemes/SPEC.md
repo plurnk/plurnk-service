@@ -37,7 +37,7 @@ class Known {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel name targeted when path has no `#fragment`. Empty when channels is empty. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister processes/runs, owns no entries — e.g. `run://`). |
-| `scope` | `"agent"` \| `"session"`. |
+| `scope` | `"session"` \| `"run"` (grammar 0.67 `default_scope`; `run` = per-run scratch backing `run://`). |
 | `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
