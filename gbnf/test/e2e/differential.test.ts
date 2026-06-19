@@ -32,7 +32,7 @@ for (const c of CORPUS) {
 //    A tautology with one validator; a real TS-vs-oracle cross-check once a second
 //    engine is registered. Surfaced explicitly so the single-validator state is never
 //    a silent pass.
-test("differential: every validator agrees on every corpus case", () => {
+test("[§oracle_fidelity] differential: every validator agrees on every corpus case", () => {
     if (VALIDATORS.length < 2) {
         assert.equal(VALIDATORS[0]?.name, "oracle", "the oracle must be the reference validator");
         return;

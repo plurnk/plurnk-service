@@ -66,7 +66,7 @@ const fuzzCase = (grammar: string, input: string): string | null => {
     return null;
 };
 
-test("fuzz differential: TS matches the oracle on random + plurnk-shaped inputs", () => {
+test("[§oracle_fidelity] fuzz differential: TS matches the oracle on random + plurnk-shaped inputs", () => {
     if (VALIDATORS.length < 2) return; // nothing to differentiate yet
     const r = rng(0x9e3779b9);
     const disagreements: string[] = [];

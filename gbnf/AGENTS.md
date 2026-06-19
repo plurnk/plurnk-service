@@ -136,7 +136,10 @@ gbnf/
 │   ├── types.ts          #   GRETYPE + element/stack/Verdict types
 │   └── *.test.ts         # unit tests live alongside the file they cover
 ├── test/
-│   ├── intg/             # integration: our modules wired together (no C binary)
+│   ├── intg/             # integration: engine + CLI contracts, no C binary
+│   │   ├── engine.test.ts        #   [§verdict_*], [§grammar_*] via validateGbnf
+│   │   ├── cli.test.ts           #   [§cli_*] by spawning bin/gbnf.ts
+│   │   └── spec-coverage.test.ts #   enforces the SPEC ↔ test anchor bijection
 │   └── e2e/              # differential harness vs the compiled llama-gbnf oracle
 │       ├── _oracle.ts    #   wraps build/llama-gbnf → tri-state Verdict
 │       ├── _corpus.ts    #   labeled (grammar, input, expectation) cases
@@ -150,7 +153,8 @@ gbnf/
 │   └── shim/             #   hand-written stubs for the llama.cpp/ggml stack (committed)
 ├── build/                # compiled llama-gbnf oracle (gitignored) — `npm run build:llama`
 ├── scripts/              # shell scripts (fetchLlamaGrammar.sh, …), camelCase.sh — §10, §11
-└── scriptify/            # one-off Node scripts (coverage check, etc.) — never build steps
+└── scriptify/            # one-off Node scripts — never build steps
+    └── spec-coverage.ts  #   extracts §anchors from SPEC + tests for the bijection check
 ```
 
 - **One class per file.** File name = class name, PascalCase: `GbnfParser.ts` →

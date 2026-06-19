@@ -18,8 +18,9 @@
     "build:llama": "scripts/buildLlama.sh",
     "build": "npm run build:fetchLlamaGrammar && npm run build:llama",
     "test:lint": "tsc --noEmit",
+    "test:intg": "node --test test/intg/*.test.ts",
     "test:e2e": "node --test test/e2e/*.test.ts",
-    "test:all": "npm run test:lint && npm run test:e2e"
+    "test:all": "npm run test:lint && npm run test:intg && npm run test:e2e"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
