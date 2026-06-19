@@ -1,10 +1,18 @@
-# AGENTS.md — plurnk/gbnf
+# AGENTS.md — gbnf
 
-`plurnk/gbnf` is a **Node-native GBNF grammar utility**. It exists as its own repo so it
-can pursue GBNF goals independently of the rest of the plurnk ecosystem. This file imports
-the ecosystem's *conventions* (how plurnk code looks, feels, and smells) without importing
-its *prerogatives* (the database, the daemon, the schema-codegen pipeline, the env-config
-doctrine). When in doubt: match the ecosystem's style, ignore the ecosystem's machinery.
+`gbnf` is a **general, Node-native GBNF grammar utility**. It happens to live in the plurnk
+organization, but it is *not* a plurnk component: it imports the ecosystem's *conventions*
+(how the code looks, feels, and smells) without importing its *prerogatives* (the database,
+the daemon, the schema-codegen pipeline, the env-config doctrine). When in doubt: match the
+ecosystem's style, ignore the ecosystem's machinery.
+
+**Identity rule — the tool must never identify as "plurnk."** The package name (`gbnf`), the
+CLI (`gbnf`), the public API, and all shipped code in `src/` and `bin/` carry no plurnk
+branding; anyone can `import … from "gbnf"` with no trace of the org. The plurnk ecosystem
+appears only as (a) the documented *source* of conventions in this file and (b) real-world
+*test-domain* data in `test/e2e/` (the `plurnk.gbnf` fixture and the digest-derived corpus —
+exempt, since that is exactly the live situation the tool is measured against). Never let
+plurnk identity leak into the importable artifact.
 
 ---
 
@@ -15,7 +23,7 @@ These are the original, non-negotiable project rules. Everything below serves th
 1. Obey the plurnk coding conventions (Node 25+, `export default class`, node-native
    testing under `test/intg` and `test/e2e`, etc.).
 2. **Zero runtime dependencies.** The `dependencies` field stays empty.
-3. **npx-friendly.** `npx plurnk-gbnf …` must work with nothing compiled and nothing but
+3. **npx-friendly.** `npx gbnf …` must work with nothing compiled and nothing but
    Node installed.
 4. **No build step for the TS/JS.** Node 25 strips types at runtime; `bin/` runs `.ts`
    directly from `src/`. There is no `dist/`, no bundler, no `tsconfig.build.json`. (The
@@ -120,6 +128,7 @@ gbnf/
 ├── tsconfig.json
 ├── .gitignore
 ├── bin/                  # executable TS entrypoints (#!/usr/bin/env node) — §8
+│   └── gbnf.ts           #   the `gbnf` CLI: validate input vs grammar → JSON verdict
 ├── src/                  # the native, zero-dep TS GBNF engine (port of llama-grammar.cpp)
 │   ├── index.ts          #   validateGbnf(grammar, input) → tri-state Verdict
 │   ├── GbnfParser.ts     #   byte-faithful GBNF text → rule table
@@ -211,10 +220,11 @@ The ecosystem's defining trait. Adopt it fully:
 - **CLI parsing via `parseArgs` from `node:util`** — never yargs/commander.
 - Emit JSON to stdout (pretty, 2-space) for machine consumption; diagnostics to stderr.
 - **Exit codes**, matching the ecosystem: `0` success, `1` runtime/parse error, `64` usage
-  error, `78` config error.
-- `package.json` `"bin"` maps the command name to the `.ts` entrypoint:
+  error, `66` input/file not readable, `78` config/invalid-grammar error. `gbnf` overloads
+  `0`/`1` as the verdict: `0` = accepted, `1` = rejected or incomplete.
+- `package.json` `"bin"` maps the command name to the `.ts` entrypoint (no plurnk branding):
   ```json
-  "bin": { "plurnk-gbnf": "./bin/plurnk-gbnf.ts" }
+  "bin": { "gbnf": "./bin/gbnf.ts" }
   ```
 
 ---
