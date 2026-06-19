@@ -10,6 +10,7 @@
   "scripts": {
     "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh",
     "build:llama": "scripts/buildLlama.sh",
-    "build": "npm run build:fetchLlamaGrammar && npm run build:llama"
+    "build": "npm run build:fetchLlamaGrammar && npm run build:llama",
+    "test:e2e": "node --test test/e2e/*.test.ts"
   }
 }

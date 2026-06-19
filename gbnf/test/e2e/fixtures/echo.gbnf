@@ -1,0 +1,1 @@
+root ::= "<<ECHO:" [a-z]* ":ECHO"

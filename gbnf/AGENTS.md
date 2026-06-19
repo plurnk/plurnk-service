@@ -124,7 +124,12 @@ gbnf/
 │   └── *.test.ts         # unit tests live alongside the file they cover
 ├── test/
 │   ├── intg/             # integration: our modules wired together (no C binary)
-│   └── e2e/              # differential: our impl vs the compiled llama-gbnf oracle
+│   └── e2e/              # differential harness vs the compiled llama-gbnf oracle
+│       ├── _oracle.ts    #   wraps build/llama-gbnf → tri-state Verdict
+│       ├── _corpus.ts    #   labeled (grammar, input, expectation) cases
+│       ├── _harness.ts   #   validator registry + agreement engine
+│       ├── differential.test.ts
+│       └── fixtures/     #   echo.gbnf (controlled) + plurnk.gbnf (real snapshot)
 ├── llama/                # the C reference oracle — §10
 │   ├── src/              #   llama.cpp GBNF engine + unicode (verbatim, fetched)
 │   ├── tests/            #   no-model validator harness (verbatim, fetched)
@@ -222,9 +227,16 @@ Three tiers (Charter §1, §8):
 | **intg** | `test/intg/*.test.ts` | none | our modules wired together |
 | **e2e** | `test/e2e/*.test.ts` | compiled `llama-gbnf` C binary | our TS impl matches llama.cpp byte-for-byte |
 
-- **e2e is differential.** The `build/llama-gbnf` oracle and our TS implementation are run on
-  the same inputs and asserted equal. e2e presumes the binary is already compiled (Charter
-  §8); a missing binary is a hard failure, not a skip.
+- **e2e is differential.** A `Validator` answers `(grammarPath, input)` with a tri-state
+  `Verdict` — `accept` / `incomplete` (valid prefix, premature EOF) / `reject` (bad char at a
+  position). The harness asserts every validator in `VALIDATORS` agrees with the labeled
+  corpus *and* with every other validator. Today the registry holds only the `oracle`, so it
+  checks the oracle against a real-world corpus (the live `plurnk.gbnf` snapshot + real digest
+  packets, plus a controlled grammar that pins the trichotomy); registering the native TS
+  engine turns the same corpus into a true TS-vs-oracle cross-check with no new test code.
+  Corpus expectations are justified by external truth, never by what the oracle happens to
+  emit. e2e presumes the binary is already compiled (Charter §8); a missing binary is a hard
+  failure, not a skip.
 - **Assertions are specific.** `assert.equal(actual, expected, msg)`,
   `assert.throws(fn, GbnfParseError, msg)`. Never a bare `assert.ok(result)` or a
   type-less `assert.throws(fn)` — assert the *correct outcome* and the *specific* error.
