@@ -31,9 +31,7 @@ import type {
     IntOpModifiersContext,
     KillStatementContext,
     MoveStatementContext,
-    PlanStatementContext,
     ReadStatementContext,
-    SendStatementContext,
     OpenStatementContext,
     StatementContext,
     TagOpModifiersContext,
@@ -42,6 +40,8 @@ import {
     IdentSignalContext,
     IntSignalContext,
     LineMarkerContext,
+    PlanStatementContext,
+    SendStatementContext,
     TargetContext,
     TagSignalContext,
 } from "./generated/plurnkParser.ts";
@@ -61,7 +61,11 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null };
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
-    static build(ctx: StatementContext): PlurnkStatement {
+    static build(ctx: StatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
+        // The strict turn root attaches the leading PLAN and the terminal SEND as direct
+        // children (not wrapped in `statement`), so dispatch those by type first.
+        if (ctx instanceof PlanStatementContext) return AstBuilder.#buildPlan(ctx);
+        if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
         const find = ctx.findStatement(); if (find) return AstBuilder.#buildFind(find);
         const read = ctx.readStatement(); if (read) return AstBuilder.#buildRead(read);
         const edit = ctx.editStatement(); if (edit) return AstBuilder.#buildEdit(edit);

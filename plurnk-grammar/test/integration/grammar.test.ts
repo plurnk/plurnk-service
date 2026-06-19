@@ -71,21 +71,23 @@ test("two statements in sequence", () => {
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("interstatement whitespace captured as text", () => {
+test("interstatement whitespace is hidden, not captured as text", () => {
     const input = "<<EDIT(p)::EDIT\n\n<<READ(q)::READ";
     const result = PlurnkParser.parse(input);
-    const texts = result.items.filter((i) => i.kind === "text");
-    assert.ok(texts.length >= 1);
-    assert.ok(texts.some((t) => t.kind === "text" && t.text.includes("\n")));
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
+    // whitespace is a hidden token now — pure inter-op whitespace surfaces no text items
+    assert.equal(result.items.filter((i) => i.kind === "text").length, 0);
 });
 
-test("interstatement prose captured as text", () => {
+test("interstatement prose captured as text (whitespace-split fragments)", () => {
     const input = "Let me first check the path.\n<<READ(p)::READ\nNow editing it.\n<<EDIT(p):body:EDIT";
     const result = PlurnkParser.parse(input);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
+    // prose between ops is TEXT, but whitespace is hidden, so it surfaces as per-run
+    // fragments rather than one blob.
     const texts = textsOf(input);
-    assert.ok(texts.some((t) => t.includes("Let me first check")));
-    assert.ok(texts.some((t) => t.includes("Now editing")));
+    assert.ok(texts.some((t) => t.includes("Let")) && texts.some((t) => t.includes("path.")));
+    assert.ok(texts.some((t) => t.includes("Now")) && texts.some((t) => t.includes("it.")));
 });
 
 test("stray <<FOOBAR (unrecognized OP) is captured as text, not an error", () => {

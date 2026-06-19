@@ -1,4 +1,4 @@
-import { CharStream, CommonTokenStream } from "antlr4ng";
+import { CharStream, CommonTokenStream, type ParserRuleContext } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
@@ -7,17 +7,30 @@ import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import type { ParseItem, ParseResult, Position } from "./types.ts";
 
+// The strict turn root attaches PLAN, ops, and the terminal SEND as direct children;
+// all three are statement-bearing contexts the extraction builds into items.
+const STATEMENT_RULES = new Set<number>([
+    plurnkParser.RULE_statement,
+    plurnkParser.RULE_planStatement,
+    plurnkParser.RULE_sendStatement,
+]);
+
 export default class PlurnkParser {
+    // Permissive parse — a statement/text sequence (teaching examples, single ops, partial
+    // input). NOT turn-shaped; imposes no PLAN/SEND requirement.
     static parse(input: string): ParseResult {
-        // A Plurnk turn is a `*:PLAN:OPS:SEND[N]` sandwich: the model's private reasoning
-        // (any format — native channel, prose, nothing) precedes the first `<<PLAN`, which
-        // anchors the actionable turn. Discard that preamble before lexing — the turn
-        // begins at `<<PLAN`. Provider-separated content already starts there (no-op);
-        // this also rescues un-separated raw content and prevents the lexer from
-        // mis-tokenizing op-lookalikes a model may rehearse inside its reasoning. No
-        // `<<PLAN` present ⇒ parse as-is (e.g. a statement list or the examples block).
-        const planIdx = input.indexOf("<<PLAN");
-        if (planIdx > 0) input = input.slice(planIdx);
+        return PlurnkParser.#run(input, (parser) => parser.document());
+    }
+
+    // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
+    // grammar's `turn` rule: free text before PLAN, a required PLAN, ops separated by
+    // nothing but (hidden) whitespace, and a required terminal SEND. A packet without a
+    // PLAN and a closing SEND does NOT parse — it surfaces as error items.
+    static parseTurn(input: string): ParseResult {
+        return PlurnkParser.#run(input, (parser) => parser.turn());
+    }
+
+    static #run(input: string, parseFn: (parser: plurnkParser) => ParserRuleContext): ParseResult {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
@@ -29,7 +42,7 @@ export default class PlurnkParser {
         parser.addErrorListener(new RecordingListener("parser", errors));
         parser.errorHandler = new PlurnkErrorStrategy();
 
-        const tree = parser.document();
+        const tree = parseFn(parser);
 
         const items: ParseItem[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
@@ -40,7 +53,7 @@ export default class PlurnkParser {
             const stop = ctx.stop ?? ctx.symbol;
             if (!start) continue;
 
-            if (ctx.ruleIndex === plurnkParser.RULE_statement) {
+            if (ctx.ruleIndex !== undefined && STATEMENT_RULES.has(ctx.ruleIndex)) {
                 const errForStatement = errors.find(
                     (e) => !consumedErrors.has(e) && PlurnkParser.#errorInRange(e, start, stop ?? start),
                 );
@@ -51,11 +64,13 @@ export default class PlurnkParser {
                     try {
                         items.push({ kind: "statement", statement: AstBuilder.build(ctx) });
                     } catch (e) {
-                        if (e instanceof PlurnkParseError) {
-                            items.push({ kind: "error", error: e });
-                        } else {
-                            throw e;
-                        }
+                        // A malformed context from error recovery (e.g. a phantom PLAN with
+                        // no open token, synthesized when a non-turn is parsed as a turn)
+                        // can't build — surface it as an error item, never crash.
+                        const err = e instanceof PlurnkParseError
+                            ? e
+                            : new PlurnkParseError(start.line, start.column, "parser", e instanceof Error ? e.message : String(e));
+                        items.push({ kind: "error", error: err });
                     }
                 }
             } else if (ctx.symbol?.type === plurnkLexer.TEXT) {

@@ -69,20 +69,16 @@ const bodyRules = (model: GModel, name: string, close: string): void => {
     }
 };
 
-// Complement automaton over a SET of forbidden substrings (Aho-Corasick of the
-// prefix trie, complemented): admits any string that never COMPLETES one of
-// `literals`. Used for the <think> preamble — reasoning text that contains neither a
-// real `<<OP` opener (which ANTLR's TEXT rule would otherwise lex as a statement,
-// breaking L(GBNF) ⊆ L(ANTLR)) nor the `</think>` close (so the FIRST `</think>`
-// terminates the block). State = the longest current input suffix that is a proper
-// prefix of some literal; completing a literal has NO transition (forbidden); any
-// other char falls back to the longest suffix-that-is-still-a-prefix (the
-// Aho-Corasick failure link). Every literal here begins with `<`, so `<` is the only
-// non-trivial restart char. Every state may end (the body is unanchored) — no
-// trailing-`<` parity constraint is needed because the body is always followed by the
-// literal `</think>` (whose leading `<` merges harmlessly into TEXT), never a real
-// `<<OP` opener.
-const forbidRules = (model: GModel, name: string, literals: string[]): void => {
+// Free-text preamble before the PLAN anchor: any text completing NO `<<OP` opener
+// (FIND…PLAN…SEND) — an Aho-Corasick complement over the opener trie. Keeping the
+// preamble opener-free preserves L(GBNF) ⊆ L(ANTLR): every preamble char re-lexes as
+// TEXT, never a statement opener, so the ANTLR `turn` rule's `TEXT*` preamble accepts it.
+// Plus the `<<`-run parity the ANTLR TEXT rule demands: the preamble is followed by the
+// `<<PLAN` literal, so it must NOT end on an ODD run of trailing `<` (else `…<` + `<<PLAN`
+// merges into `<<<PLAN` and the opener is lost). The `<<` trie state splits by run parity
+// (even may end, odd may not); the lone-`<` state may not end either.
+const preplanRules = (model: GModel): void => {
+    const literals = OPS.map((op) => `<<${op}`);
     const states: string[] = [""];
     for (const literal of literals) {
         for (let k = 1; k < literal.length; k++) {
@@ -90,34 +86,38 @@ const forbidRules = (model: GModel, name: string, literals: string[]): void => {
             if (!states.includes(prefix)) states.push(prefix);
         }
     }
-    const ruleOf = (state: string): string => `${name}-s${states.indexOf(state)}`;
+    const ODD = "<<{odd-run}"; // suffix is `<<` but the trailing `<` run is odd
+    states.push(ODD);
+    const ruleOf = (state: string): string => `preplan-s${states.indexOf(state)}`;
     const longestSuffixState = (candidate: string): string => {
-        for (let i = 1; i <= candidate.length; i++) {
+        for (let i = 1; i < candidate.length; i++) {
             if (states.includes(candidate.slice(i))) return candidate.slice(i);
         }
         return "";
     };
     for (const state of states) {
+        const trieState = state === ODD ? "<<" : state;
         const alts: GRule = [];
         const consumed = new Set<string>();
         for (const literal of literals) {
-            if (!literal.startsWith(state)) continue;
-            const next = literal[state.length];
+            if (!literal.startsWith(trieState)) continue;
+            const next = literal[trieState.length];
             if (consumed.has(next)) continue;
             consumed.add(next);
-            const candidate = state + next;
-            if (candidate === literal) continue; // completing a literal is forbidden — no transition
+            const candidate = trieState + next;
+            if (candidate === literal) continue; // completing an opener is forbidden — no transition
             alts.push([lit(next), ref(ruleOf(candidate))]);
         }
         if (!consumed.has("<")) {
             consumed.add("<");
-            alts.push([lit("<"), ref(ruleOf(longestSuffixState(state + "<")))]);
+            const target = trieState === "<<" ? (state === ODD ? "<<" : ODD) : longestSuffixState(trieState + "<");
+            alts.push([lit("<"), ref(ruleOf(target))]);
         }
         alts.push([bodyOther([...consumed].join("")), ref(ruleOf(""))]);
-        alts.push([]); // unanchored: the body may end at any state
+        if (state !== "<" && state !== ODD) alts.push([]); // odd trailing-`<` runs may not end
         model.set(ruleOf(state), alts);
     }
-    model.set(name, [[ref(ruleOf(""))]]);
+    model.set("preplan", [[ref(ruleOf(""))]]);
 };
 
 export const buildModel = (): GModel => {
@@ -196,9 +196,9 @@ export const buildModel = (): GModel => {
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     model.set("batch-step", [[ref("mid-statement"), ref("sep")]]);
     model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
-    // preplan: the free reasoning prefix — any text completing no `<<PLAN`, so the FIRST
-    // `<<PLAN` is the unambiguous anchor.
-    forbidRules(model, "preplan", ["<<PLAN"]);
+    // preplan: the free reasoning prefix — any text completing no `<<OP` opener, so the
+    // first `<<PLAN` is the unambiguous anchor and the preamble re-lexes as pure TEXT.
+    preplanRules(model);
     model.set("root-turn", [[ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     model.set("op-statement", opAlts);
     model.set("send-mid-any", sendMidAlts);

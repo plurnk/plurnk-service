@@ -98,7 +98,11 @@ OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_KILL : '<<KILL' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_PLAN : '<<PLAN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
-TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[<])+ ;
+// Default-mode whitespace is a hidden token (not folded into TEXT) so the parser can
+// require "nothing but WS" between/after ops in a turn: WS is invisible to rules, while
+// any non-WS TEXT between ops makes the turn invalid.
+WS   : [ \t\r\n]+ -> channel(HIDDEN) ;
+TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[< \t\r\n])+ ;
 
 // ============================================================================
 // SLOTS — after open tag. Accepts any slot opener (`[`, `(`, `<L>`) in any

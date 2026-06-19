@@ -218,35 +218,55 @@ test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\nstray prose\n<<SEND[200]:x:SEND"), false);
 });
 
-test("GBNF: free reasoning preamble before PLAN — any format, no named delimiter", () => {
+test("GBNF: free reasoning preamble before PLAN — any format, but op-free", () => {
     // the preamble is free text up to the first <<PLAN — any reasoning format works
     assert.equal(derives("root-turn", "<think>reasoning</think>\n<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND"), true);
     assert.equal(derives("root-turn", "<|channel>thought blah<channel|>\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
-    // the preamble may even contain op-lookalikes the model rehearses
-    assert.equal(derives("root-turn", "draft <<EDIT and <<SEND musings\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
     // absent preamble — straight to PLAN
     assert.equal(derives("root-turn", "<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
+    // the preamble is OP-FREE: a rehearsed `<<OP` opener in it is not derivable (it would
+    // break L(GBNF) ⊆ L(ANTLR), where the turn preamble re-lexes as pure TEXT)
+    assert.equal(derives("root-turn", "draft <<EDIT musings\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
     // no <<PLAN anywhere → not a turn
     assert.equal(derives("root-turn", "just reasoning, never plans\n<<SEND[200]:x:SEND"), false);
 });
 
-test("GBNF: preplan excludes only <<PLAN — the first <<PLAN is the anchor", () => {
-    // openers, partial anchors, lone `<` — all admissible in the preamble
-    assert.equal(derives("preplan", "anything <<EDIT <<SEN <<PLA not-quite <"), true);
-    // ...but a complete <<PLAN is not — it ends the preamble
+test("GBNF: preplan is op-free free text and may not end on a lone `<`", () => {
+    // free text with partial (incomplete) openers is fine
+    assert.equal(derives("preplan", "anything goes <<SEN <<PLA not-quite"), true);
+    // a complete `<<OP` opener is not — the preamble must stay opener-free
+    assert.equal(derives("preplan", "before <<EDIT after"), false);
     assert.equal(derives("preplan", "before <<PLAN after"), false);
+    // may not END on a lone `<` (odd run) — it would merge with the following `<<PLAN`
+    assert.equal(derives("preplan", "trailing <"), false);
+    assert.equal(derives("preplan", "trailing <<"), true);
 });
 
-test("PlurnkParser discards the pre-<<PLAN preamble (turn sandwich)", () => {
-    const turn = "<think>private reasoning, even <<EDIT rehearsal</think>\n<<PLAN:do the thing:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND";
-    const r = PlurnkParser.parse(turn);
+test("PlurnkParser.parseTurn discards the pre-<<PLAN preamble (turn sandwich)", () => {
+    const turn = "plain reasoning, no op lookalikes\n<<PLAN:do the thing:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND";
+    const r = PlurnkParser.parseTurn(turn);
     const stmts = r.items.filter((i) => i.kind === "statement");
     const errs = r.items.filter((i) => i.kind === "error");
     assert.equal(errs.length, 0, JSON.stringify(r.items));
-    assert.ok(stmts[0]?.kind === "statement" && stmts[0].statement.op === "PLAN", "first parsed op should be PLAN (preamble discarded)");
+    assert.ok(stmts[0]?.kind === "statement" && stmts[0].statement.op === "PLAN", "first parsed op should be PLAN");
     const last = stmts.at(-1);
     assert.ok(last?.kind === "statement" && last.statement.op === "SEND", "turn closes with SEND");
     assert.equal(r.unparsedTail, undefined);
+});
+
+test("PlurnkParser.parseTurn rejects non-turns — no PLAN and SEND[N] ⇒ invalid", () => {
+    const invalid = (s: string): boolean => {
+        const r = PlurnkParser.parseTurn(s);
+        return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
+    };
+    // prose with no PLAN and no SEND — The Gettysburg Address is not a plurnk turn
+    assert.equal(invalid("Four score and seven years ago our fathers brought forth a new nation."), true);
+    assert.equal(invalid("<<PLAN:I will answer:PLAN"), true);                        // PLAN, no terminal SEND
+    assert.equal(invalid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);  // ops + SEND, but no PLAN
+    // ...a full sandwich is valid
+    const ok = PlurnkParser.parseTurn("<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND");
+    assert.equal(ok.items.some((i) => i.kind === "error"), false);
+    assert.equal(ok.unparsedTail, undefined);
 });
 
 // -------------------------------------------------------------------------
@@ -398,13 +418,14 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
     const rng = mulberry32(7);
     for (let i = 0; i < 100; i++) {
         const turn = sample("root-turn", rng);
-        // PlurnkParser discards the pre-<<PLAN preamble (the turn sandwich), so a sampled
-        // turn — free preamble + PLAN + ops + SEND — parses to the actionable batch.
-        const result = PlurnkParser.parse(turn);
+        // parseTurn enforces the `turn` rule — the real subset check: a GBNF-sampled turn
+        // (op-free preamble + PLAN + ops + SEND) must parse as a valid ANTLR turn.
+        const result = PlurnkParser.parseTurn(turn);
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 0, `batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
         assert.ok(statements.length >= 1, `batch ${i} produced no statements`);
+        assert.ok(statements[0].kind === "statement" && statements[0].statement.op === "PLAN", `batch ${i} did not open with PLAN`);
         assert.equal(result.unparsedTail, undefined, `batch ${i} left an unparsed tail`);
         const last = statements.at(-1)!;
         assert.ok(last.kind === "statement", `batch ${i} last item is not a statement`);

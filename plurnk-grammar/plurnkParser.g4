@@ -2,8 +2,18 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
+// Permissive parse — a statement/text sequence (PlurnkParser.parse): teaching examples,
+// single ops, partial input. NOT turn-shaped; the default entry.
 document
     : (statement | TEXT)* EOF
+    ;
+
+// A Plurnk TURN — the `*:PLAN:OPS:SEND[N]` sandwich (PlurnkParser.parseTurn). The free
+// reasoning preamble is stripped before parsing (slice to the first `<<PLAN`), so the turn
+// the grammar sees opens with a PLAN, runs ops, and closes on a SEND. Prose, a PLAN with
+// no closing SEND, or ops with no PLAN do NOT parse as a turn — they fail.
+turn
+    : TEXT* planStatement statement* sendStatement EOF
     ;
 
 statement

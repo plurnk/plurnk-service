@@ -477,10 +477,16 @@ not source-shaped. To leave a self-documenting breadcrumb, use
 
 ## 12. Public API
 
-The entry point is `PlurnkParser.parse(input: string): ParseResult`, alongside the AST type union and a top-level `parsePath` helper. The full surface area:
+The entry points are `PlurnkParser.parse` (permissive) and `PlurnkParser.parseTurn` (strict turn), alongside the AST type union and a top-level `parsePath` helper. The full surface area:
 
 ```typescript
+// Permissive parse — a statement/text sequence (collections, single ops, partial input).
 PlurnkParser.parse(input: string): ParseResult
+
+// Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced by the grammar:
+// free text before PLAN, a required PLAN, nothing but whitespace between/after ops, and a
+// required terminal SEND. A packet without a PLAN and a terminal SEND is invalid.
+PlurnkParser.parseTurn(input: string): ParseResult
 
 // Parse a path/URI string into a ParsedPath — the exact decomposition the parser
 // applies to every (target) slot. The top-level helper to reach for (no need to
