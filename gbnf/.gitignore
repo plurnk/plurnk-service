@@ -1,5 +1,6 @@
 node_modules/
 build/
+dist/
 
 # Fetched from the llama.cpp distro by `npm run build:fetchLlamaGrammar` — build
 # artifacts, not source. Regenerate them; don't commit them. Only llama/shim/ (our

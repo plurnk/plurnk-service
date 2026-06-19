@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/gbnf",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Node-native, zero-dependency GBNF grammar validator",
   "type": "module",
   "license": "MIT",
@@ -8,14 +8,16 @@
     "node": ">=25"
   },
   "bin": {
-    "gbnf": "./bin/gbnf.ts"
+    "gbnf": "./dist/bin/gbnf.js"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
   },
   "files": [
-    "src",
-    "bin"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
@@ -39,12 +41,13 @@
     "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh",
     "build:llama": "scripts/buildLlama.sh",
     "build": "npm run build:fetchLlamaGrammar && npm run build:llama",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
     "test:lint": "tsc --noEmit",
     "test:intg": "node --test test/intg/*.test.ts",
     "test:e2e": "node --test test/e2e/*.test.ts",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 test/intg/*.test.ts",
     "test:all": "npm run test:lint && npm run test:coverage && npm run test:e2e",
-    "prepublishOnly": "npm run test:lint && npm run test:intg"
+    "prepublishOnly": "npm run test:lint && npm run test:intg && npm run build:dist"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

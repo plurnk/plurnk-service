@@ -25,9 +25,14 @@ These are the original, non-negotiable project rules. Everything below serves th
 2. **Zero runtime dependencies.** The `dependencies` field stays empty.
 3. **npx-friendly.** `npx gbnf …` must work with nothing compiled and nothing but
    Node installed.
-4. **No build step for the TS/JS.** Node 25 strips types at runtime; `bin/` runs `.ts`
-   directly from `src/`. There is no `dist/`, no bundler, no `tsconfig.build.json`. (The
-   only thing `npm run build` compiles is the C reference oracle — see §10.)
+4. **Build-free dev; compiled publish.** *Development* needs no build: Node 25 strips types,
+   so source `.ts` runs directly and tests run against `src/`. *Publishing* must compile to
+   `dist/` (JS + `.d.ts`), because Node refuses to type-strip files under `node_modules`
+   (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`) — so a `.ts`-only package is a working CLI
+   but **not importable as a dependency** (issue #2). `build:dist` (tsc → `dist/`, gitignored)
+   produces the published artifact; `package.json` `exports`/`bin` point at `dist/`. (Amended
+   from the original "no build / ship `.ts`": that goal is simply incompatible with being an
+   importable npm library; consumability wins.) `npm run build` still refers to the C oracle (§10).
 5. **`SPEC.md` is anchored and bidirectionally covered.** Each contract promise carries a
    **markdown link** whose target is a **squiggle anchor** — e.g. a heading `### Rule
    Alternation` is bound with the link `[§rule_alternation](#rule-alternation)` (the markdown
@@ -152,6 +157,7 @@ gbnf/
 │   ├── tests/            #   no-model validator harness (fetched, GITIGNORED)
 │   └── shim/             #   hand-written stubs for the llama.cpp/ggml stack (committed)
 ├── build/                # compiled llama-gbnf oracle (gitignored) — `npm run build:llama`
+├── dist/                 # compiled publish artifact JS + .d.ts (gitignored) — `npm run build:dist`
 ├── scripts/              # shell scripts (fetchLlamaGrammar.sh, …), camelCase.sh — §10, §11
 └── scriptify/            # one-off Node scripts — never build steps
     └── spec-coverage.ts  #   extracts §anchors from SPEC + tests for the bijection check
@@ -226,10 +232,12 @@ The ecosystem's defining trait. Adopt it fully:
 - **Exit codes**, matching the ecosystem: `0` success, `1` runtime/parse error, `64` usage
   error, `66` input/file not readable, `78` config/invalid-grammar error. `gbnf` overloads
   `0`/`1` as the verdict: `0` = accepted, `1` = rejected or incomplete.
-- `package.json` `"bin"` maps the command name to the `.ts` entrypoint (no plurnk branding):
+- Source is `bin/gbnf.ts` (run directly in dev). `package.json` `"bin"` points at the
+  **compiled** entrypoint so the published CLI runs on any consumer (no plurnk branding):
   ```json
-  "bin": { "gbnf": "./bin/gbnf.ts" }
+  "bin": { "gbnf": "./dist/bin/gbnf.js" }
   ```
+  `tsc` preserves the `#!/usr/bin/env node` shebang into `dist/bin/gbnf.js`.
 
 ---
 
@@ -367,10 +375,12 @@ There is no `plurnk.md` here (§2).
   put real logic in `package.json` scripts, not in workflow YAML. Reach for an Actions
   workflow only for things npm genuinely cannot do locally.
 - **Published as `@plurnk/gbnf`** (the npm coordinate is scoped; the code/CLI/API stay
-  plurnk-free per §2). Ships **`.ts` only** — `files: ["src","bin"]`, `exports` → `src/index.ts`,
-  `bin` → `bin/gbnf.ts`, `publishConfig.access: "public"`, `engines.node >= 25` (consumers run
-  the TypeScript natively; no `dist/`, Charter §4). `prepublishOnly` gates on `test:lint` +
-  `test:intg` (no C oracle needed). `npm publish` is run by the user (irreversible, outward).
+  plurnk-free per §2). Ships **compiled `dist/`** (Charter §4): `files: ["dist"]`, `exports` →
+  `dist/src/index.{js,d.ts}`, `bin` → `dist/bin/gbnf.js`, `publishConfig.access: "public"`,
+  `engines.node >= 25`. `prepublishOnly` runs `test:lint` + `test:intg` + `build:dist`. Verify a
+  release by packing and importing it from a *real* (non-symlinked) install — a `file:` install
+  symlinks to the source and masks the `node_modules` type-strip restriction. `npm publish` is
+  run by the user (irreversible, outward).
 
 ---
 
@@ -378,8 +388,8 @@ There is no `plurnk.md` here (§2).
 
 A change "smells like plurnk" when it is:
 
-1. Zero new runtime deps; npx still works with nothing built. (Charter §2, §3)
-2. No TS build artifact; `bin/` runs `.ts` directly. (Charter §4)
+1. Zero new runtime deps. (Charter §2)
+2. Dev runs `.ts` directly (no build); the published package is compiled `dist/`. (Charter §4)
 3. `export default class`, one per file, `#private` fields, `const`-first, `node:` imports.
 4. Fail-hard: contract violations crash with `Error.cause`, no fallbacks.
 5. `node --test` + `assert/strict`, specific assertions, `[§anchor]`-named where it covers a
