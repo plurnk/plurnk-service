@@ -51,26 +51,28 @@ static manifest: SchemeManifest = {
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,
-  glyph: "🦊",                              // display icon; omit → the name is shown
-  example: "READ(foo://thing/42) — read entry 42" // usage + short explanation, shown verbatim
+  glyph: "🦊",                          // display icon; omit → the name is shown
+  example: "READ(foo://thing/42)",      // terse hot-path one-liner, rendered every turn
+  documentation: "# foo\n\nOps, channels, edge cases…" // deep doc, pulled at plurnk://docs/foo.md
 };
 ```
 
-- **`example`** — a single self-documenting usage line, surfaced **verbatim** in the model's tools listing (like an execs runtime's `example`). May carry a short trailing explanation after the snippet. Omit it and your scheme isn't advertised with a usage line.
+- **`example`** — the scheme's terse **hot-path** one-liner, rendered in the live catalogue every turn (like an execs runtime's `example`). Keep it to one canonical usage line; depth goes in `documentation`. Omit → not advertised.
+- **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `plurnk://docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`.
 - **`glyph`** — a display icon (emoji / nerdfont). Omit it and the scheme `name` is rendered in its place.
 
-### 4. Ship deep docs (beyond the one-liner)
+### 4. Self-doc: terse pushes, depth pulls
 
-The `example` is the teaser. For real documentation — every op, channel, status code, and gotcha — author a **markdown doc the model reads on demand at `plurnk://schemes/<name>.md`**, which the consumer serves. Keep it model-facing prose; the manifest stays a one-liner, the doc carries the depth. (See plurnk-service for where to place the file in your package.)
+`example`/`glyph` render every turn — keep them terse. `documentation` is the deep prose; the consumer materializes it at `plurnk://docs/<name>.md` for the model to READ on demand. Don't dump prose into `example` (it floods the hot path) — put it in `documentation`.
 
-That's the whole contract: declare, `implements SchemeHandler`, manifest with self-doc, optional deep doc. Publish, install, discovered.
+That's the whole contract: declare, `implements SchemeHandler`, manifest with self-doc. Publish, install, discovered.
 
 ## Exports
 
 ### Types
 
-- Manifest/flags: `SchemeManifest` (incl. `example` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
-- Behavior contract: `SchemeHandler` + the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
+- Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
+- Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Result families: `SchemeResult` / `EntryResult` / `ProposalResult` / `PassthroughResult` / `SchemeResultBase` / `TelemetryEvent`.
 - Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware`.
 

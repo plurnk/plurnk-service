@@ -42,12 +42,13 @@ class Known {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `flags?` | Optional `SchemeFlagAffinity`. |
-| `example?` | One self-documenting usage line, surfaced verbatim in the model's packet listing; may carry a short trailing explanation (e.g. `"READ(foo://thing/42) — read entry 42"`). Omit → not advertised with a usage line. Deep docs do NOT live here — see below. |
+| `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
+| `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `plurnk://docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation` (schemes#25). |
 | `glyph?` | Display icon (emoji / nerdfont). Omit → consumer renders the `name` (`glyph ?? name`). |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up (schemes#20/service#240). Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Resolution: `storedScheme === undefined ? name : storedScheme`. Absent → defaults to `name` (additive; existing manifests unchanged). Explicit `null` → persists BARE (e.g. File: bare paths, `entries.scheme` NULL, routing name `"file"`). |
 
-**Self-doc split.** The manifest carries only the terse listing (`example` + `glyph`). Detailed documentation — every op, channel, status code, gotcha — is a markdown the model reads on demand at **`plurnk://schemes/<name>.md`** (the consumer serves it), bypassing the manifest. Keep the manifest a one-liner; the deep doc carries the prose.
+**Self-doc split (terse pushes, depth pulls).** `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`plurnk://docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
 
 ## §2 Interface
 

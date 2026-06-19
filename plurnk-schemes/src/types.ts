@@ -39,18 +39,20 @@ export interface SchemeManifest {
     // (service#240). Absent/false → first-class ranked (every existing scheme).
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
-    // Self-doc for the model's packet listing. Terse by design — DEEP docs do
-    // NOT live here; they are a markdown the model reads on demand at
-    // `plurnk://schemes/<name>.md` (the consumer serves it). Keep the manifest a
-    // one-line teaser; the prose lives in the doc.
-    //   example — one self-documenting usage line, surfaced verbatim, MAY carry
-    //     a short trailing explanation after the snippet (e.g.
-    //     "READ(https://example.com/page) — fetch a URL; HTML is rendered to its
-    //     final DOM"); omit it and the scheme isn't advertised with a usage
-    //     line. Mirrors an execs runtime's `example`.
+    // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
+    //   example — the scheme's terse, HOT-PATH one-liner: it renders in the live
+    //     scheme catalogue every turn, so keep it to one canonical line of usage
+    //     (e.g. "READ(https://example.com/page)"). Omit → not advertised with a
+    //     usage line. Mirrors an execs runtime's `example`.
+    //   documentation — the DEEP doc (semantics, channels, edge cases). The
+    //     consumer materializes it as a pull-able `plurnk://docs/<name>.md`
+    //     entry the model READs on demand; it never hits the hot path. Keep the
+    //     hot path terse (example) and let the depth pull (documentation).
+    //     Mirrors `ExecInfo.documentation`.
     //   glyph — a display icon (emoji / nerdfont). Omit it and the consumer
     //     renders the scheme `name` in its place (glyph ?? name).
     readonly example?: string;
+    readonly documentation?: string;
     readonly glyph?: string;
     // The value persisted to `entries.scheme` for this scheme's rows, which can
     // legitimately differ from the addressing `name`. Resolution:
