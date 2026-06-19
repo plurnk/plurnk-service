@@ -1,0 +1,13 @@
+{
+  "name": "@plurnk/gbnf",
+  "version": "0.0.0",
+  "description": "A Node-native GBNF grammar utility",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=25"
+  },
+  "scripts": {
+    "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh"
+  }
+}
