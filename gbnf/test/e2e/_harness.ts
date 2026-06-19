@@ -7,7 +7,9 @@
 // here, the SAME corpus becomes a true TS-vs-oracle differential with no new test code.
 // That is the whole point of the oracle's existence (AGENTS.md §9, §10).
 
+import { readFileSync } from "node:fs";
 import { runOracle, type Verdict } from "./_oracle.ts";
+import { validateGbnf } from "../../src/index.ts";
 
 export type Validator = {
     name: string;
@@ -16,7 +18,7 @@ export type Validator = {
 
 export const VALIDATORS: Validator[] = [
     { name: "oracle", validate: runOracle },
-    // { name: "ts", validate: validateGbnf },  // ← native engine drops in here
+    { name: "ts", validate: (grammarPath, input) => validateGbnf(readFileSync(grammarPath, "utf8"), input) },
 ];
 
 export const sameVerdict = (a: Verdict, b: Verdict): boolean => {

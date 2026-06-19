@@ -120,7 +120,11 @@ gbnf/
 ├── tsconfig.json
 ├── .gitignore
 ├── bin/                  # executable TS entrypoints (#!/usr/bin/env node) — §8
-├── src/                  # library: one class per file, PascalCase.ts
+├── src/                  # the native, zero-dep TS GBNF engine (port of llama-grammar.cpp)
+│   ├── index.ts          #   validateGbnf(grammar, input) → tri-state Verdict
+│   ├── GbnfParser.ts     #   byte-faithful GBNF text → rule table
+│   ├── GbnfMatcher.ts    #   pushdown-stack matcher (init + accept)
+│   ├── types.ts          #   GRETYPE + element/stack/Verdict types
 │   └── *.test.ts         # unit tests live alongside the file they cover
 ├── test/
 │   ├── intg/             # integration: our modules wired together (no C binary)
@@ -128,7 +132,8 @@ gbnf/
 │       ├── _oracle.ts    #   wraps build/llama-gbnf → tri-state Verdict
 │       ├── _corpus.ts    #   labeled (grammar, input, expectation) cases
 │       ├── _harness.ts   #   validator registry + agreement engine
-│       ├── differential.test.ts
+│       ├── differential.test.ts   #   corpus: TS vs oracle, position-exact
+│       ├── fuzz.test.ts           #   seeded random + plurnk-shaped: TS vs oracle
 │       └── fixtures/     #   echo.gbnf (controlled) + plurnk.gbnf (real snapshot)
 ├── llama/                # the C reference oracle — §10
 │   ├── src/              #   llama.cpp GBNF engine + unicode (verbatim, fetched)
@@ -230,13 +235,12 @@ Three tiers (Charter §1, §8):
 - **e2e is differential.** A `Validator` answers `(grammarPath, input)` with a tri-state
   `Verdict` — `accept` / `incomplete` (valid prefix, premature EOF) / `reject` (bad char at a
   position). The harness asserts every validator in `VALIDATORS` agrees with the labeled
-  corpus *and* with every other validator. Today the registry holds only the `oracle`, so it
-  checks the oracle against a real-world corpus (the live `plurnk.gbnf` snapshot + real digest
-  packets, plus a controlled grammar that pins the trichotomy); registering the native TS
-  engine turns the same corpus into a true TS-vs-oracle cross-check with no new test code.
-  Corpus expectations are justified by external truth, never by what the oracle happens to
-  emit. e2e presumes the binary is already compiled (Charter §8); a missing binary is a hard
-  failure, not a skip.
+  corpus *and* with every other validator. The registry holds both the `oracle` and the
+  native `ts` engine (`src/index.ts`), so the corpus is a live TS-vs-oracle cross-check;
+  `fuzz.test.ts` extends it with seeded random + plurnk-shaped inputs (the oracle is ground
+  truth, so no labels are needed). Corpus expectations are justified by external truth, never
+  by what the oracle happens to emit. e2e presumes the binary is already compiled (Charter
+  §8); a missing binary is a hard failure, not a skip.
 - **Assertions are specific.** `assert.equal(actual, expected, msg)`,
   `assert.throws(fn, GbnfParseError, msg)`. Never a bare `assert.ok(result)` or a
   type-less `assert.throws(fn)` — assert the *correct outcome* and the *specific* error.
