@@ -64,7 +64,7 @@ test("PLAN-anchored turn: constrained emission opens with PLAN and closes on a t
     );
     // PlurnkParser discards the pre-<<PLAN preamble (the turn sandwich), so feed it the
     // raw content directly — the parse begins at the first <<PLAN anchor.
-    const result = PlurnkParser.parseTurn(content);
+    const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");
 

@@ -26,7 +26,7 @@ const exampleBlock = (() => {
 })();
 
 test("plurnk.md examples block parses with no errors and no unparsed tail", () => {
-    const result = PlurnkParser.parse(exampleBlock);
+    const result = PlurnkParser.parseStatements(exampleBlock);
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(
         errors.length,
@@ -38,14 +38,14 @@ test("plurnk.md examples block parses with no errors and no unparsed tail", () =
 });
 
 test("plurnk.md examples block contains the expected statement count", () => {
-    const result = PlurnkParser.parse(exampleBlock);
+    const result = PlurnkParser.parseStatements(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
     assert.equal(statements.length, 36, `expected 36 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {
-    const result = PlurnkParser.parse(exampleBlock);
+    const result = PlurnkParser.parseStatements(exampleBlock);
     const ops = new Set(
         result.items
             .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")

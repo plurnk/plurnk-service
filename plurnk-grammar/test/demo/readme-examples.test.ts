@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
 
 const expectOneClean = (input: string) => {
-    const result = PlurnkParser.parse(input);
+    const result = PlurnkParser.parseStatements(input);
     const statements = result.items.filter((i) => i.kind === "statement");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(statements.length, 1, `expected 1 statement, got ${statements.length}`);

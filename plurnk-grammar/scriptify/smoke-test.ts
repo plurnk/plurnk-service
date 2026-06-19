@@ -57,7 +57,7 @@ try {
 import { PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
 
 // 1. Parse a simple plurnk statement.
-const result = PlurnkParser.parse("<<EDIT(known://foo):body content:EDIT");
+const result = PlurnkParser.parseStatements("<<EDIT(known://foo):body content:EDIT");
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
 if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);

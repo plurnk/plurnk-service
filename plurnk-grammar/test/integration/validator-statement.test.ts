@@ -4,7 +4,7 @@ import Validator from "../../src/Validator.ts";
 import { PlurnkParser } from "../../src/index.ts";
 
 const validateRoundTrip = (input: string) => {
-    const result = PlurnkParser.parse(input);
+    const result = PlurnkParser.parseStatements(input);
     const item = result.items[0];
     assert.equal(item.kind, "statement", `parser did not return a statement for: ${input}`);
     if (item.kind !== "statement") return null;

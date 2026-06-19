@@ -16,18 +16,20 @@ const STATEMENT_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    // Permissive parse — a statement/text sequence (teaching examples, single ops, partial
-    // input). NOT turn-shaped; imposes no PLAN/SEND requirement.
+    // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
+    // grammar's `document` rule: free text before PLAN, a required PLAN, ops separated by
+    // nothing but (hidden) whitespace, and a required terminal SEND. A packet without a
+    // PLAN and a closing SEND does NOT parse — it surfaces as error items. This is THE
+    // parse: a Plurnk packet IS a turn. There is no permissive fallback.
     static parse(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.document());
     }
 
-    // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
-    // grammar's `turn` rule: free text before PLAN, a required PLAN, ops separated by
-    // nothing but (hidden) whitespace, and a required terminal SEND. A packet without a
-    // PLAN and a closing SEND does NOT parse — it surfaces as error items.
-    static parseTurn(input: string): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.turn());
+    // Parse a bare sequence of statements — teaching-example collections, single ops,
+    // documentation snippets. Strict: statements only (whitespace is hidden), no prose,
+    // no turn shape. Not for model output; use `parse` for that.
+    static parseStatements(input: string): ParseResult {
+        return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
     static #run(input: string, parseFn: (parser: plurnkParser) => ParserRuleContext): ParseResult {

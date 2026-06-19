@@ -184,7 +184,7 @@ test("GBNF: every plurnk.md example derives from statement", () => {
     const nextHeading = /^## /m.exec(rest);
     const block = rest.substring(0, nextHeading ? nextHeading.index : rest.length).trim();
 
-    const result = PlurnkParser.parse(block);
+    const result = PlurnkParser.parseStatements(block);
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.ok(statements.length > 0, "no statements extracted from the examples block");
     const lines = block.split("\n");
@@ -242,9 +242,9 @@ test("GBNF: preplan is op-free free text and may not end on a lone `<`", () => {
     assert.equal(derives("preplan", "trailing <<"), true);
 });
 
-test("PlurnkParser.parseTurn discards the pre-<<PLAN preamble (turn sandwich)", () => {
+test("PlurnkParser.parse discards the pre-<<PLAN preamble (turn sandwich)", () => {
     const turn = "plain reasoning, no op lookalikes\n<<PLAN:do the thing:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND";
-    const r = PlurnkParser.parseTurn(turn);
+    const r = PlurnkParser.parse(turn);
     const stmts = r.items.filter((i) => i.kind === "statement");
     const errs = r.items.filter((i) => i.kind === "error");
     assert.equal(errs.length, 0, JSON.stringify(r.items));
@@ -254,9 +254,9 @@ test("PlurnkParser.parseTurn discards the pre-<<PLAN preamble (turn sandwich)", 
     assert.equal(r.unparsedTail, undefined);
 });
 
-test("PlurnkParser.parseTurn rejects non-turns — no PLAN and SEND[N] ⇒ invalid", () => {
+test("PlurnkParser.parse rejects non-turns — no PLAN and SEND[N] ⇒ invalid", () => {
     const invalid = (s: string): boolean => {
-        const r = PlurnkParser.parseTurn(s);
+        const r = PlurnkParser.parse(s);
         return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
     };
     // prose with no PLAN and no SEND — The Gettysburg Address is not a plurnk turn
@@ -264,7 +264,7 @@ test("PlurnkParser.parseTurn rejects non-turns — no PLAN and SEND[N] ⇒ inval
     assert.equal(invalid("<<PLAN:I will answer:PLAN"), true);                        // PLAN, no terminal SEND
     assert.equal(invalid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);  // ops + SEND, but no PLAN
     // ...a full sandwich is valid
-    const ok = PlurnkParser.parseTurn("<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND");
+    const ok = PlurnkParser.parse("<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND");
     assert.equal(ok.items.some((i) => i.kind === "error"), false);
     assert.equal(ok.unparsedTail, undefined);
 });
@@ -402,7 +402,7 @@ test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected"
 
 test("GBNF: glued output round-trips through the parser (subset invariant)", () => {
     const turn = "<<READ(known:///x)::READ<<EDIT(known:///y):z:EDIT<<SEND[200]:done:SEND";
-    const result = PlurnkParser.parse(turn);
+    const result = PlurnkParser.parseStatements(turn);
     const errors = result.items.filter((item) => item.kind === "error");
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(errors.length, 0, `glued turn produced parse errors: ${JSON.stringify(turn)}`);
@@ -418,9 +418,9 @@ test("GBNF: 100 seeded random turn batches parse cleanly and end in SEND", () =>
     const rng = mulberry32(7);
     for (let i = 0; i < 100; i++) {
         const turn = sample("root-turn", rng);
-        // parseTurn enforces the `turn` rule — the real subset check: a GBNF-sampled turn
-        // (op-free preamble + PLAN + ops + SEND) must parse as a valid ANTLR turn.
-        const result = PlurnkParser.parseTurn(turn);
+        // parse enforces the turn `document` rule — the real subset check: a GBNF-sampled
+        // turn (op-free preamble + PLAN + ops + SEND) must parse as a valid ANTLR turn.
+        const result = PlurnkParser.parse(turn);
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 0, `batch ${i} produced parse errors\nbatch: ${JSON.stringify(turn)}`);
@@ -443,7 +443,7 @@ test("GBNF: 300 seeded random derivations all parse cleanly", () => {
     const rng = mulberry32(42);
     for (let i = 0; i < 300; i++) {
         const sentence = sample("statement", rng);
-        const result = PlurnkParser.parse(sentence);
+        const result = PlurnkParser.parseStatements(sentence);
         const statements = result.items.filter((item) => item.kind === "statement");
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(
