@@ -3,16 +3,17 @@ import assert from "node:assert/strict";
 import type { Db, PrepMethod, ExecMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession } from "./_helpers.ts";
 
-const insertAgentEntry = async (db: Db, scheme: string | null, pathname: string): Promise<number> => {
-    const row = await (db.test_entries_insert_agent as PrepMethod).get<{ id: number }>({ scheme, pathname });
-    if (row === undefined) throw new Error("agent entry insert returned no row");
-    return row.id;
-};
-
 const insertSessionEntry = async (db: Db, sessionId: number, scheme: string | null, pathname: string): Promise<number> => {
     const row = await (db.test_entries_insert_session as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
     if (row === undefined) throw new Error("session entry insert returned no row");
     return row.id;
+};
+
+// Convenience for tests that just need "an entry" — agent-scope (the old sessionless shortcut)
+// is gone, so this gives a session-scope entry on its own fresh session.
+const insertEntry = async (db: Db, scheme: string | null, pathname: string): Promise<number> => {
+    const sessionId = await insertSession(db, `ws-entry-${crypto.randomUUID()}`);
+    return insertSessionEntry(db, sessionId, scheme, pathname);
 };
 
 test("entries: table is STRICT", async () => {
@@ -20,23 +21,6 @@ test("entries: table is STRICT", async () => {
     try {
         const row = await (db.test_entries_table_sql as PrepMethod).get<{ sql: string }>({ name: "entries" });
         assert.match(row?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
-test("entries: agent-scoped insert — session_id null, defaults populate", async () => {
-    const db = await openMigrated();
-    try {
-        await insertAgentEntry(db, "known", "philosophy/meaning");
-        const row = await (db.test_entries_get_first as PrepMethod).get<{
-            id: number; version: number; scope: string; session_id: number | null;
-            scheme: string | null; pathname: string; attributes: string;
-        }>();
-        assert.equal(row?.scope, "agent");
-        assert.equal(row?.session_id, null);
-        assert.equal(row?.version, 0);
-        assert.equal(row?.scheme, "known");
-        assert.equal(row?.pathname, "philosophy/meaning");
-        assert.equal(row?.attributes, "{}");
     } finally { await db.close(); }
 });
 
@@ -48,17 +32,6 @@ test("entries: session-scoped insert — session_id required", async () => {
         const row = await (db.test_entries_get_first_scope_session as PrepMethod).get<{ scope: string; session_id: number }>();
         assert.equal(row?.scope, "session");
         assert.equal(row?.session_id, sessionId);
-    } finally { await db.close(); }
-});
-
-test("entries: scope='agent' with non-null session_id rejected", async () => {
-    const db = await openMigrated();
-    try {
-        const sessionId = await insertSession(db, "ws-entries-badagent");
-        await assert.rejects(
-            () => (db.test_entries_insert_bad_agent_with_session as PrepMethod).run({ session_id: sessionId, pathname: "/x" }),
-            /CHECK constraint failed/,
-        );
     } finally { await db.close(); }
 });
 
@@ -82,17 +55,6 @@ test("entries: scope value outside enum rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: agent-scope identity UNIQUE — duplicate rejected", async () => {
-    const db = await openMigrated();
-    try {
-        await insertAgentEntry(db, "known", "france");
-        await assert.rejects(
-            () => insertAgentEntry(db, "known", "france"),
-            /UNIQUE constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
 test("entries: session-scope identity UNIQUE — duplicate rejected", async () => {
     const db = await openMigrated();
     try {
@@ -102,17 +64,6 @@ test("entries: session-scope identity UNIQUE — duplicate rejected", async () =
             () => insertSessionEntry(db, sessionId, "known", "france"),
             /UNIQUE constraint failed/,
         );
-    } finally { await db.close(); }
-});
-
-test("entries: cross-scope same (scheme, pathname) is allowed", async () => {
-    const db = await openMigrated();
-    try {
-        const sessionId = await insertSession(db, "ws-entries-crossscope");
-        await insertAgentEntry(db, "known", "france");
-        await insertSessionEntry(db, sessionId, "known", "france");
-        const count = (await (db.test_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
-        assert.equal(count, 2);
     } finally { await db.close(); }
 });
 
@@ -144,7 +95,7 @@ test("entries: ON DELETE CASCADE via session", async () => {
         const sessionId = await insertSession(db, "ws-entries-cascade");
         await insertSessionEntry(db, sessionId, "known", "a");
         await insertSessionEntry(db, sessionId, "known", "b");
-        await insertAgentEntry(db, "known", "c");
+        await insertEntry(db, "known", "c");
         await (db.test_sessions_delete as PrepMethod).run({ id: sessionId });
         const remaining = (await (db.test_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 1);
@@ -154,7 +105,7 @@ test("entries: ON DELETE CASCADE via session", async () => {
 test("entries: scheme can be null", async () => {
     const db = await openMigrated();
     try {
-        await insertAgentEntry(db, null, "config/foo.json");
+        await insertEntry(db, null, "config/foo.json");
         const row = await (db.test_entries_get_scheme as PrepMethod).get<{ scheme: string | null }>();
         assert.equal(row?.scheme, null);
     } finally { await db.close(); }
@@ -163,6 +114,7 @@ test("entries: scheme can be null", async () => {
 test("entries: empty scheme string rejected", async () => {
     const db = await openMigrated();
     try {
+        await insertSession(db, "ws-empty-scheme");
         await assert.rejects(
             () => (db.test_entries_insert_empty_scheme as ExecMethod)(),
             /CHECK constraint failed/,
@@ -173,6 +125,7 @@ test("entries: empty scheme string rejected", async () => {
 test("entries: port range CHECK", async () => {
     const db = await openMigrated();
     try {
+        await insertSession(db, "ws-port");
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 443, pathname: "/x" });
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 0, pathname: "/y" });
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 65535, pathname: "/z" });
@@ -190,6 +143,7 @@ test("entries: port range CHECK", async () => {
 test("entries: params null/well-formed accepted; invalid JSON rejected", async () => {
     const db = await openMigrated();
     try {
+        await insertSession(db, "ws-params");
         await (db.test_entries_insert_with_params as PrepMethod).run({ pathname: "/a", params: null });
         await (db.test_entries_insert_with_params as PrepMethod).run({ pathname: "/b", params: '{"q":["x"],"page":"2"}' });
         await assert.rejects(
@@ -202,7 +156,7 @@ test("entries: params null/well-formed accepted; invalid JSON rejected", async (
 test("entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
     const db = await openMigrated();
     try {
-        await insertAgentEntry(db, "known", "a");
+        await insertEntry(db, "known", "a");
         const row = await (db.test_entries_get_attributes as PrepMethod).get<{ attributes: string }>();
         assert.equal(row?.attributes, "{}");
         await assert.rejects(
@@ -215,6 +169,7 @@ test("entries: attributes defaults to '{}' and rejects invalid JSON", async () =
 test("entries: pathname NOT NULL", async () => {
     const db = await openMigrated();
     try {
+        await insertSession(db, "ws-no-pathname");
         await assert.rejects(
             () => (db.test_entries_insert_no_pathname as ExecMethod)(),
             /NOT NULL constraint failed: entries\.pathname/,
@@ -225,7 +180,7 @@ test("entries: pathname NOT NULL", async () => {
 test("entries: pathname empty string allowed", async () => {
     const db = await openMigrated();
     try {
-        await insertAgentEntry(db, "known", "");
+        await insertEntry(db, "known", "");
         const row = await (db.test_entries_get_pathname as PrepMethod).get<{ pathname: string }>();
         assert.equal(row?.pathname, "");
     } finally { await db.close(); }
@@ -236,9 +191,9 @@ test("entries: partial indexes exist", async () => {
     try {
         const indexes = await (db.test_entries_partial_indexes as PrepMethod).all<{ name: string; sql: string }>();
         const names = indexes.map((i) => i.name).sort();
-        assert.deepEqual(names, ["entries_agent_identity", "entries_session_identity"]);
+        assert.deepEqual(names, ["entries_session_identity"]);
         for (const idx of indexes) {
-            assert.match(idx.sql, /WHERE scope = '(agent|session)'/);
+            assert.match(idx.sql, /WHERE scope = 'session'/);
             assert.match(idx.sql, /UNIQUE/);
         }
     } finally { await db.close(); }
@@ -256,7 +211,7 @@ test("entry_channels: table is STRICT and WITHOUT ROWID", async () => {
 test("entry_channels: insert channel — defaults populate", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "france");
+        const entryId = await insertEntry(db, "known", "france");
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "body", content: "Paris is the capital.", mimetype: "text/markdown" });
         const row = await (db.test_entry_channels_get_first as PrepMethod).get<{ name: string; content: string; mimetype: string; tokens: number; state: string }>({ entry_id: entryId });
         assert.equal(row?.name, "body");
@@ -270,7 +225,7 @@ test("entry_channels: insert channel — defaults populate", async () => {
 test("entry_channels: (entry_id, name) UNIQUE", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "exec", "ls");
+        const entryId = await insertEntry(db, "exec", "ls");
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
         await assert.rejects(
             () => (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stdout", content: "b", mimetype: "text/plain" }),
@@ -282,7 +237,7 @@ test("entry_channels: (entry_id, name) UNIQUE", async () => {
 test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §stream-constraints)", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "big");
+        const entryId = await insertEntry(db, "known", "big");
         // Just-under the cap (100 MiB = 104857600 chars) succeeds.
         const justUnder = "a".repeat(104857600);
         await (db.test_entry_channels_insert_default as PrepMethod).run({
@@ -302,7 +257,7 @@ test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §str
 test("entry_channels: state enum CHECK", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "sse", "feed");
+        const entryId = await insertEntry(db, "sse", "feed");
         for (const state of ["static", "active", "closed", "errored"]) {
             await (db.test_entry_channels_insert_with_state as PrepMethod).run({ entry_id: entryId, name: `ch_${state}`, content: "", mimetype: "text/plain", state });
         }
@@ -316,7 +271,7 @@ test("entry_channels: state enum CHECK", async () => {
 test("entry_channels: NOT NULL on name, content, mimetype", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "x");
+        const entryId = await insertEntry(db, "known", "x");
         await assert.rejects(
             () => (db.test_entry_channels_insert_missing_name as PrepMethod).run({ entry_id: entryId }),
             /NOT NULL constraint failed: entry_channels\.name/,
@@ -335,7 +290,7 @@ test("entry_channels: NOT NULL on name, content, mimetype", async () => {
 test("entry_channels: empty name or mimetype rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "y");
+        const entryId = await insertEntry(db, "known", "y");
         await assert.rejects(
             () => (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "", content: "", mimetype: "text/plain" }),
             /CHECK constraint failed/,
@@ -350,7 +305,7 @@ test("entry_channels: empty name or mimetype rejected by CHECK", async () => {
 test("entry_channels: tokens negative rejected", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "z");
+        const entryId = await insertEntry(db, "known", "z");
         await assert.rejects(
             () => (db.test_entry_channels_insert_with_tokens as PrepMethod).run({ entry_id: entryId, name: "body", content: "", mimetype: "text/plain", tokens: -1 }),
             /CHECK constraint failed/,
@@ -361,7 +316,7 @@ test("entry_channels: tokens negative rejected", async () => {
 test("entry_channels: ON DELETE CASCADE via entry", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "exec", "ls");
+        const entryId = await insertEntry(db, "exec", "ls");
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "stderr", content: "b", mimetype: "text/plain" });
         await (db.test_delete_entry as PrepMethod).run({ id: entryId });
@@ -394,7 +349,7 @@ test("entry_tags: table is STRICT and WITHOUT ROWID", async () => {
 test("entry_tags: (entry_id, tag) UNIQUE", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "france");
+        const entryId = await insertEntry(db, "known", "france");
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "geography" });
         await assert.rejects(
             () => (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "geography" }),
@@ -406,8 +361,8 @@ test("entry_tags: (entry_id, tag) UNIQUE", async () => {
 test("entry_tags: same tag on different entries is fine", async () => {
     const db = await openMigrated();
     try {
-        const a = await insertAgentEntry(db, "known", "france");
-        const b = await insertAgentEntry(db, "known", "germany");
+        const a = await insertEntry(db, "known", "france");
+        const b = await insertEntry(db, "known", "germany");
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: a, tag: "geography" });
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: b, tag: "geography" });
         const count = (await (db.test_entry_tags_count_all as PrepMethod).get<{ n: number }>())?.n;
@@ -418,7 +373,7 @@ test("entry_tags: same tag on different entries is fine", async () => {
 test("entry_tags: empty tag rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "france");
+        const entryId = await insertEntry(db, "known", "france");
         await assert.rejects(
             () => (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "" }),
             /CHECK constraint failed/,
@@ -429,7 +384,7 @@ test("entry_tags: empty tag rejected by CHECK", async () => {
 test("entry_tags: ON DELETE CASCADE via entry", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertAgentEntry(db, "known", "france");
+        const entryId = await insertEntry(db, "known", "france");
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "geography" });
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: entryId, tag: "europe" });
         await (db.test_delete_entry as PrepMethod).run({ id: entryId });
@@ -441,9 +396,9 @@ test("entry_tags: ON DELETE CASCADE via entry", async () => {
 test("entry_tags: index entry_tags_tag enables tag-filter lookups", async () => {
     const db = await openMigrated();
     try {
-        const a = await insertAgentEntry(db, "known", "france");
-        const b = await insertAgentEntry(db, "known", "germany");
-        const c = await insertAgentEntry(db, "known", "japan");
+        const a = await insertEntry(db, "known", "france");
+        const b = await insertEntry(db, "known", "germany");
+        const c = await insertEntry(db, "known", "japan");
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: a, tag: "europe" });
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: b, tag: "europe" });
         await (db.test_entry_tags_insert as PrepMethod).run({ entry_id: c, tag: "asia" });

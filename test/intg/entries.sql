@@ -1,9 +1,6 @@
 -- PREP: test_entries_table_sql
 SELECT sql FROM sqlite_master WHERE name = $name;
 
--- PREP: test_entries_insert_agent
-INSERT INTO entries (scope, scheme, pathname) VALUES ('agent', $scheme, $pathname) RETURNING id;
-
 -- PREP: test_entries_insert_session
 INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', $session_id, $scheme, $pathname) RETURNING id;
 
@@ -13,20 +10,17 @@ SELECT id, version, scope, session_id, scheme, pathname, attributes FROM entries
 -- PREP: test_entries_get_first_scope_session
 SELECT scope, session_id FROM entries LIMIT 1;
 
--- PREP: test_entries_insert_bad_agent_with_session
-INSERT INTO entries (scope, session_id, pathname) VALUES ('agent', $session_id, $pathname);
-
 -- PREP: test_entries_insert_with_session_id_only
 INSERT INTO entries (scope, session_id, pathname) VALUES ('session', $session_id, $pathname);
 
 -- PREP: test_entries_insert_with_port
-INSERT INTO entries (scope, scheme, hostname, port, pathname) VALUES ('agent', $scheme, $hostname, $port, $pathname);
+INSERT INTO entries (scope, session_id, scheme, hostname, port, pathname) VALUES ('session', (SELECT id FROM sessions ORDER BY id LIMIT 1), $scheme, $hostname, $port, $pathname);
 
 -- PREP: test_entries_insert_with_params
-INSERT INTO entries (scope, pathname, params) VALUES ('agent', $pathname, $params);
+INSERT INTO entries (scope, session_id, pathname, params) VALUES ('session', (SELECT id FROM sessions ORDER BY id LIMIT 1), $pathname, $params);
 
 -- PREP: test_entries_insert_with_attributes
-INSERT INTO entries (scope, pathname, attributes) VALUES ('agent', $pathname, $attributes);
+INSERT INTO entries (scope, session_id, pathname, attributes) VALUES ('session', (SELECT id FROM sessions ORDER BY id LIMIT 1), $pathname, $attributes);
 
 -- PREP: test_entries_count_all
 SELECT COUNT(*) AS n FROM entries;
@@ -77,10 +71,10 @@ INSERT INTO entries (scope, pathname) VALUES ('session', '/x');
 INSERT INTO entries (scope, pathname) VALUES ('global', '/x');
 
 -- EXEC: test_entries_insert_empty_scheme
-INSERT INTO entries (scope, scheme, pathname) VALUES ('agent', '', '/x');
+INSERT INTO entries (scope, session_id, scheme, pathname) VALUES ('session', (SELECT id FROM sessions ORDER BY id LIMIT 1), '', '/x');
 
 -- EXEC: test_entries_insert_no_pathname
-INSERT INTO entries (scope) VALUES ('agent');
+INSERT INTO entries (scope, session_id) VALUES ('session', (SELECT id FROM sessions ORDER BY id LIMIT 1));
 
 -- PREP: test_entry_channels_insert_missing_name
 INSERT INTO entry_channels (entry_id, content, mimetype) VALUES ($entry_id, '', 'text/plain');

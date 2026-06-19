@@ -103,7 +103,7 @@ CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    scope      TEXT    NOT NULL             CHECK (scope IN ('agent', 'session')),
+    scope      TEXT    NOT NULL             CHECK (scope IN ('session')),
     session_id INTEGER,
     scheme     TEXT                         CHECK (scheme IS NULL OR length(scheme) > 0),
     username   TEXT,
@@ -133,12 +133,10 @@ CREATE TABLE IF NOT EXISTS entries (
     -- channel write by entries_touch_on_channel_write; engine_list_session_entries orders
     -- the catalog by it ASC so dormant entries hold the stable prompt-cache prefix.
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    CHECK ((scope = 'agent'   AND session_id IS NULL)
-        OR (scope = 'session' AND session_id IS NOT NULL)),
+    CHECK (session_id IS NOT NULL),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS entries_agent_identity   ON entries (scheme, pathname)             WHERE scope = 'agent';
 CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
@@ -325,7 +323,7 @@ CREATE TABLE IF NOT EXISTS schemes (
     name                 TEXT    NOT NULL PRIMARY KEY CHECK (length(name) > 0),
     model_visible        INTEGER NOT NULL             CHECK (model_visible IN (0, 1)),
     category             TEXT    NOT NULL             CHECK (length(category) > 0),
-    default_scope        TEXT    NOT NULL             CHECK (default_scope IN ('agent', 'session')),
+    default_scope        TEXT    NOT NULL             CHECK (default_scope IN ('session')),
     default_channel      TEXT    NOT NULL             CHECK (length(default_channel) > 0),
     channel_orientations TEXT                         CHECK (channel_orientations IS NULL OR json_valid(channel_orientations)),
     writable_by          TEXT    NOT NULL             CHECK (json_valid(writable_by)),

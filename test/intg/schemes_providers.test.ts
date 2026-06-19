@@ -70,7 +70,6 @@ test("schemes: model_visible + volatile CHECK 0/1", async () => {
 test("schemes: default_scope enum", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_schemes_insert_full as PrepMethod).run({ name: "a", model_visible: 1, category: "c", default_scope: "agent", default_channel: "body", writable_by: "[]", volatile: 0 });
         await (db.test_schemes_insert_full as PrepMethod).run({ name: "b", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0 });
         await assert.rejects(
             () => (db.test_schemes_insert_full as PrepMethod).run({ name: "c", model_visible: 1, category: "c", default_scope: "run", default_channel: "body", writable_by: "[]", volatile: 0 }),
