@@ -62,6 +62,7 @@ export type {
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
 export type { SchemeHandler } from "./handler.ts";
+export type { PacketSection, PacketSectionTransformer } from "./packet.ts";
 export type {
     PlurnkStatement,
     FindStatement,
