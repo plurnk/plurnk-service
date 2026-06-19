@@ -14,7 +14,7 @@ gbnf <grammar.gbnf> [input-file]      # input from stdin when omitted
 echo '<input>' | gbnf grammar.gbnf
 gbnf -r <rule> grammar.gbnf           # start rule (default: root)
 
-npx gbnf grammar.gbnf input.txt       # once published
+npx @plurnk/gbnf grammar.gbnf input.txt         # once published
 npx github:plurnk/gbnf grammar.gbnf input.txt   # straight from the repo
 ```
 
@@ -24,7 +24,7 @@ Prints a JSON verdict to stdout. Exit codes: `0` accept · `1` reject/incomplete
 ## Library
 
 ```ts
-import { validateGbnf, type Verdict } from "gbnf";
+import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
 validateGbnf(grammar: string, input: string, root = "root"): Verdict
 

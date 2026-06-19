@@ -148,8 +148,8 @@ gbnf/
 │       ├── fuzz.test.ts           #   seeded random + plurnk-shaped: TS vs oracle
 │       └── fixtures/     #   echo.gbnf (controlled) + plurnk.gbnf (real snapshot)
 ├── llama/                # the C reference oracle — §10
-│   ├── src/              #   llama.cpp GBNF engine + unicode (verbatim, fetched)
-│   ├── tests/            #   no-model validator harness (verbatim, fetched)
+│   ├── src/              #   llama.cpp GBNF engine + unicode (fetched, GITIGNORED)
+│   ├── tests/            #   no-model validator harness (fetched, GITIGNORED)
 │   └── shim/             #   hand-written stubs for the llama.cpp/ggml stack (committed)
 ├── build/                # compiled llama-gbnf oracle (gitignored) — `npm run build:llama`
 ├── scripts/              # shell scripts (fetchLlamaGrammar.sh, …), camelCase.sh — §10, §11
@@ -287,10 +287,11 @@ Tiers (Charter §1, §8):
 Two stages, both shell-driven via npm scripts, neither touching any TS/JS:
 
 - **`build:fetchLlamaGrammar` → `scripts/fetchLlamaGrammar.sh`** copies llama.cpp's GBNF
-  source into `llama/` **verbatim, from a single pinned upstream commit (`LLAMA_SHA`), never
-  confabulated** (Charter §6). It records provenance (upstream repo URL + pinned SHA + sha256
-  per file) so any divergence we later introduce while adapting toward `llama-gbnf.c` is
-  auditable.
+  source into `llama/src` + `llama/tests` **verbatim, from a single pinned upstream commit
+  (`LLAMA_SHA`), never confabulated** (Charter §6), recording provenance (repo + pinned SHA +
+  sha256 per file). **The fetched C is a build artifact, not source: it is gitignored and
+  regenerated, never committed.** The pin (`LLAMA_SHA`) + the drift gate are the reproducibility
+  mechanism; the only tracked thing under `llama/` is the hand-written `llama/shim`.
 - **Drift is a forcing function, not something to paper over.** The fetch first reads
   upstream `master`'s HEAD and **fails hard if it has moved past our pin.** We pin
   deliberately and re-pin deliberately — reviewing the upstream diff each time — rather than
@@ -358,15 +359,18 @@ There is no `plurnk.md` here (§2).
 - Conventional-commit subjects: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`,
   with an em-dash description, e.g. `feat: — translate llama char-range rule lowering`.
 - Branch before committing to `main`.
-- `.gitignore` covers `node_modules`, `build/`. `AGENTS.md`, `SPEC.md`, `scripts/`, and
-  `llama/` are committed.
+- `.gitignore` covers `node_modules`, `build/`, and the **fetched** `llama/src` + `llama/tests`
+  + `llama/PROVENANCE.md` (build artifacts of `build:fetchLlamaGrammar` — §10). Committed:
+  `AGENTS.md`, `SPEC.md`, `scripts/`, `scriptify/`, `llama/shim/`, and the e2e fixtures.
 - **npm scripts are preferred to GitHub Actions whenever possible.** CI should be a thin
   wrapper that runs `npm run test:all` (and `npm run build` where a C toolchain is available);
   put real logic in `package.json` scripts, not in workflow YAML. Reach for an Actions
   workflow only for things npm genuinely cannot do locally.
-- **Not published to npm yet.** Publishing is deferred; do not add `prepublishOnly`/`prepare`
-  publish hooks or a `files` allowlist tuned for release until we decide to ship. npx-friendly
-  (Charter §3) is a design property, not a present npm listing.
+- **Published as `@plurnk/gbnf`** (the npm coordinate is scoped; the code/CLI/API stay
+  plurnk-free per §2). Ships **`.ts` only** — `files: ["src","bin"]`, `exports` → `src/index.ts`,
+  `bin` → `bin/gbnf.ts`, `publishConfig.access: "public"`, `engines.node >= 25` (consumers run
+  the TypeScript natively; no `dist/`, Charter §4). `prepublishOnly` gates on `test:lint` +
+  `test:intg` (no C oracle needed). `npm publish` is run by the user (irreversible, outward).
 
 ---
 

@@ -1,2 +1,9 @@
 node_modules/
 build/
+
+# Fetched from the llama.cpp distro by `npm run build:fetchLlamaGrammar` — build
+# artifacts, not source. Regenerate them; don't commit them. Only llama/shim/ (our
+# hand-written stubs) is tracked.
+llama/src/
+llama/tests/
+llama/PROVENANCE.md
