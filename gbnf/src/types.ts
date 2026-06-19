@@ -22,11 +22,18 @@ export type GrammarRule = GrammarElement[];
 export type StackRef = { rule: number; pos: number };
 export type Stack = StackRef[];
 
-// Tri-state outcome, identical in shape to the oracle's verdict (see test/e2e/_oracle.ts):
+// What the grammar would have accepted at a reject position: a rendered char-class
+// (`'a'`, `'a'-'z'`, `one of 'a' 'b'`, `none of 'x'`, `.`) and the rule it sits in.
+export type Expected = { rule: string; accepts: string };
+
+// Tri-state outcome. The first three fields of `reject` mirror the oracle's verdict
+// (see test/e2e/_oracle.ts) and are what the differential compares; `expected` is
+// TS-only diagnostic enrichment the C oracle does not emit. An empty `expected` means
+// the grammar expected end-of-input here.
 //   accept     — the whole input is a complete sentence
 //   incomplete — a valid prefix; EOF arrived before any stack could close
 //   reject     — a code point at `pos` cannot extend any stack
 export type Verdict =
     | { status: "accept" }
     | { status: "incomplete"; pos: number }
-    | { status: "reject"; pos: number; char: string };
+    | { status: "reject"; pos: number; char: string; expected: Expected[] };

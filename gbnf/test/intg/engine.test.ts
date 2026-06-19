@@ -4,14 +4,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateGbnf } from "../../src/index.ts";
+import type { Verdict } from "../../src/index.ts";
+
+// project a verdict to the oracle-comparable core (drops TS-only `expected`)
+const core = (v: Verdict) => (v.status === "reject" ? { status: v.status, pos: v.pos, char: v.char } : v);
+const expectedOf = (v: Verdict) => {
+    if (v.status !== "reject") throw new Error(`expected a reject, got ${v.status}`);
+    return v.expected;
+};
 
 test("[§verdict_accept] a complete sentence is accepted", () => {
     assert.deepEqual(validateGbnf('root ::= "hi"', "hi"), { status: "accept" });
 });
 
 test("[§verdict_reject] the first unextendable code point is rejected with its position", () => {
-    assert.deepEqual(validateGbnf('root ::= "hi"', "ho"), { status: "reject", pos: 1, char: "o" });
-    assert.deepEqual(validateGbnf('root ::= "hi"', "xi"), { status: "reject", pos: 0, char: "x" });
+    assert.deepEqual(core(validateGbnf('root ::= "hi"', "ho")), { status: "reject", pos: 1, char: "o" });
+    assert.deepEqual(core(validateGbnf('root ::= "hi"', "xi")), { status: "reject", pos: 0, char: "x" });
 });
 
 test("[§verdict_incomplete] a valid prefix that cannot close is incomplete at end-of-input", () => {
@@ -21,8 +29,24 @@ test("[§verdict_incomplete] a valid prefix that cannot close is incomplete at e
 
 test("[§position_codepoint] positions count code points, not bytes", () => {
     // 'é' is two UTF-8 bytes; the reject must report code-point index 1, not byte 2.
-    assert.deepEqual(validateGbnf('root ::= "é" "!"', "éx"), { status: "reject", pos: 1, char: "x" });
+    assert.deepEqual(core(validateGbnf('root ::= "é" "!"', "éx")), { status: "reject", pos: 1, char: "x" });
     assert.deepEqual(validateGbnf('root ::= "é" "!"', "é!"), { status: "accept" });
+});
+
+test("[§diagnose_expected] reject reports what the grammar would have accepted", () => {
+    assert.deepEqual(
+        expectedOf(validateGbnf("root ::= [a-z]", "1")),
+        [{ rule: "root", accepts: "'a'-'z'" }],
+    );
+    // two live alternates → two expectations (rule names are synthesised for the group)
+    assert.deepEqual(
+        expectedOf(validateGbnf('root ::= "a" ("b" | "c")', "ax")).map((e) => e.accepts).sort(),
+        ["'b'", "'c'"],
+    );
+    // negation and any-char render distinctly
+    assert.equal(expectedOf(validateGbnf("root ::= [^x]", "x"))[0].accepts, "none of 'x'");
+    // over-long input: nothing more was acceptable → empty set means "expected end of input"
+    assert.deepEqual(expectedOf(validateGbnf('root ::= "a"{2}', "aaa")), []);
 });
 
 test("[§grammar_literals] quoted literals match exactly, with escapes", () => {
@@ -47,13 +71,13 @@ test("[§grammar_repetition] *, +, ?, and {m,n}", () => {
     assert.equal(validateGbnf('root ::= "a"?', "a").status, "accept");
     assert.equal(validateGbnf('root ::= "a"{2,3}', "aa").status, "accept");
     assert.equal(validateGbnf('root ::= "a"{2,3}', "a").status, "incomplete");
-    assert.deepEqual(validateGbnf('root ::= "a"{2,3}', "aaaa"), { status: "reject", pos: 3, char: "a" });
+    assert.deepEqual(core(validateGbnf('root ::= "a"{2,3}', "aaaa")), { status: "reject", pos: 3, char: "a" });
 });
 
 test("[§grammar_grouping] parenthesised groups and alternation", () => {
     assert.equal(validateGbnf('root ::= ("a" | "b") "c"', "ac").status, "accept");
     assert.equal(validateGbnf('root ::= ("a" | "b") "c"', "bc").status, "accept");
-    assert.deepEqual(validateGbnf('root ::= ("a" | "b") "c"', "cc"), { status: "reject", pos: 0, char: "c" });
+    assert.deepEqual(core(validateGbnf('root ::= ("a" | "b") "c"', "cc")), { status: "reject", pos: 0, char: "c" });
 });
 
 test("[§grammar_ruleref] references resolve and may recurse", () => {

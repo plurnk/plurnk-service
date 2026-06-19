@@ -28,6 +28,11 @@ how the pushdown grammar stacks behave when fed the input's Unicode code points:
   [§verdict_incomplete](#verdict)
 - All positions are **code-point indices**, not byte offsets; multibyte input is counted one
   code point at a time. [§position_codepoint](#verdict)
+- A `reject` verdict carries an `expected` set: for each live parse stack at the failure
+  point, the rendered char-class it would have accepted (`'a'`, `'a'-'z'`, `one of …`,
+  `none of …`, `.`) and the rule it belongs to. An empty set means end-of-input was expected.
+  This is diagnostic enrichment unique to the TS engine, outside the oracle differential.
+  [§diagnose_expected](#verdict)
 
 ## Grammar
 
