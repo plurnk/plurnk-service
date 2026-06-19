@@ -235,16 +235,21 @@ The ecosystem's defining trait. Adopt it fully:
 
 ## 9. Testing
 
-Native only: **`node --test` + `node:assert/strict`.** No mocha/jest/chai. Coverage via
-`node --test --experimental-test-coverage`, floor **50% / 50% / 50%** (lines/branches/funcs).
+Native only: **`node --test` + `node:assert/strict`.** No mocha/jest/chai. `test:all` runs
+`lint → coverage → e2e`; `test:coverage` is the intg tier under
+`--experimental-test-coverage`, **gated at the 50/50/50 floor** (lines/branches/funcs) over
+`src/**` via `--test-coverage-{lines,branches,functions}=50` — below floor fails the run. The
+contract + differential + fuzz tiers already cover `src/` well above that (≈95/90/95), so a
+separate `src/**/*.test.ts` unit tier is omitted as redundant; add one only when a module
+grows logic the higher tiers cannot reach. Coverage is scoped to `src/` because the CLI runs
+as a spawned subprocess (not instrumented in-process).
 
-Three tiers (Charter §1, §8):
+Tiers (Charter §1, §8):
 
 | Tier | Location | Oracle | What it proves |
 |------|----------|--------|----------------|
-| **unit** | `src/**/*.test.ts` | none | isolated logic of one module |
-| **intg** | `test/intg/*.test.ts` | none | our modules wired together |
-| **e2e** | `test/e2e/*.test.ts` | compiled `llama-gbnf` C binary | our TS impl matches llama.cpp byte-for-byte |
+| **intg** | `test/intg/*.test.ts` | none | engine + CLI contracts (`[§…]`), SPEC bijection |
+| **e2e** | `test/e2e/*.test.ts` | compiled `llama-gbnf` C binary | TS verdict == llama.cpp, position-exact |
 
 - **e2e is differential.** A `Validator` answers `(grammarPath, input)` with a tri-state
   `Verdict` — `accept` / `incomplete` (valid prefix, premature EOF) / `reject` (bad char at a
@@ -266,13 +271,13 @@ Three tiers (Charter §1, §8):
   A `scriptify/` script (run as a test, e.g. `test/intg/spec-coverage.test.ts`) extracts the
   `§…` squiggles from `SPEC.md`'s markdown links and from test names and enforces the
   bidirectional mapping, failing on any orphan or gap.
-- Suggested scripts:
+- Scripts:
   ```json
-  "test:lint": "tsc --noEmit",
-  "test:unit": "node --test src/**/*.test.ts",
-  "test:intg": "node --test test/intg/*.test.ts",
-  "test:e2e":  "node --test test/e2e/*.test.ts",
-  "test:all":  "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:e2e"
+  "test:lint":     "tsc --noEmit",
+  "test:intg":     "node --test test/intg/*.test.ts",
+  "test:e2e":      "node --test test/e2e/*.test.ts",
+  "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 test/intg/*.test.ts",
+  "test:all":      "npm run test:lint && npm run test:coverage && npm run test:e2e"
   ```
 
 ---
