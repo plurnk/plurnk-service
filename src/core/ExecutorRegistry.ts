@@ -48,13 +48,14 @@ export default class ExecutorRegistry {
     // unions these across plugin families onto the generate() `attributions` wire).
     attributions(): string[] { return [...this.#attributions]; }
 
-    static async build({ defaultRuntime = null, probeTimeoutMs = 3000, discoverFn = discover, load = (name: string): Promise<unknown> => import(name) }: {
+    static async build({ defaultRuntime = null, probeTimeoutMs = 3000, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
+        cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{ registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; documentation?: string; packageName: string }>; skipped?: string[] }>;
         load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
-        const { registry: discovered, skipped = [] } = await discoverFn();
+        const { registry: discovered, skipped = [] } = await (discoverFn ?? (() => discover({ cwd })))();
 
         // #229 trust gate: discover() skips untrusted third-party packages
         // (PLURNK_PLUGINS_TRUSTED_ONLY) and reports them here — note each, mirror

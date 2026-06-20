@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
@@ -36,6 +37,17 @@ export default class Service {
     static #expandHome(p: string): string {
         if (p === "~") return homedir();
         return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
+    }
+
+    // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
+    // package-relative so a global install finds them regardless of run-CWD. Falls back to CWD.
+    static #pluginsNodeModules(): string {
+        try {
+            const execs = createRequire(import.meta.url).resolve("@plurnk/plurnk-execs/package.json");
+            return resolve(dirname(execs), "..", "..");
+        } catch {
+            return resolve(process.cwd(), "node_modules");
+        }
     }
 
     static #die(code: number, message: string): never {
@@ -113,7 +125,7 @@ export default class Service {
         const db = await Service.#openDb(dbPath);
         const alias = resolveActiveAlias();
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
-        const daemon = new Daemon({ db, provider });
+        const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
         const addr = await daemon.start({ host, port });
         if (await daemon.mimetypes.embedderInfo() === null) {
             process.stderr.write("plurnk-service: embedder inactive — semantic search (FIND) is degraded. Install @plurnk/plurnk-mimetypes-embeddings, or see README.md#semantic-search\n");

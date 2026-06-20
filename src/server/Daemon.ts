@@ -5,7 +5,7 @@
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import ChannelWrite, { type WakeRunPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
@@ -71,6 +71,7 @@ export default class Daemon {
     #provider: Provider | null;
     #registry: MethodRegistry;
     #nodeModulesPath: string;
+    #discoveryCwd: string;
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
 
@@ -104,15 +105,17 @@ export default class Daemon {
         this.#db = db;
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#provider = provider ?? null;
-        // Mimetypes owns discovery, detection, handler instantiation, and
-        // budget-truncated preview rendering. plurnk-service stays mimetype-
-        // illiterate — we just inject the tokenize function (sourced from the
-        // active provider's countTokens) and configure text/markdown as the
-        // default mimetype (LLM output is overwhelmingly markdown; the
-        // text-markdown handler is a hard dep so the default actually
-        // resolves at runtime).
+        // Plugin discovery resolves from the SERVICE's node_modules (its exec/scheme/mimetype
+        // deps), NOT process.cwd() — else a globally-installed daemon started from a project dir
+        // finds no plugins. The bin passes the package-relative path; cwd default holds for
+        // in-repo tests. discover() takes a cwd and joins node_modules, so derive the parent.
+        this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
+        this.#discoveryCwd = dirname(this.#nodeModulesPath);
+        // Mimetypes owns discovery + detection; we inject the tokenize fn (from the provider's
+        // countTokens) and default to text/markdown.
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
+            discoverOptions: { cwd: this.#discoveryCwd },
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
@@ -140,7 +143,6 @@ export default class Daemon {
             cancelRun: (runId) => this.cancelDrain(runId, "killed via run:// KILL"),
             telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),
         });
-        this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#registry = new MethodRegistry();
         this.#registerBuiltins();
         this.#registerNotifications();
@@ -188,12 +190,12 @@ export default class Daemon {
         // Discover + probe the installed executor siblings, then hand the
         // registry to the engine for exec dispatch (plurnk-service#181). The
         // shell is the default runtime, so its executor must boot usable.
-        const executors = await ExecutorRegistry.build({ defaultRuntime: "sh" });
+        const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
-        await this.#schemes.discoverExternal();
+        await this.#schemes.discoverExternal(this.#discoveryCwd);
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
