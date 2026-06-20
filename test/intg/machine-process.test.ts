@@ -110,3 +110,33 @@ test("[§machine-processes-no-fork-session] a session cannot be forked; the fork
         assert.equal(lineage!.parent_run_id, runId, "the branch's lineage points at the parent run");
     } finally { db.close(); }
 });
+
+test("#254 — a fork inherits the log but spends no new money: session cost is not double-counted, the branch starts at 0", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        // Give the parent turn a real cost — the rollup triggers carry it to run + session.
+        await (db.engine_close_turn as PrepMethod).run({
+            id: turnId, status: 200, packet: "{}",
+            usage_prompt: 100, usage_completion: 50, usage_cached: 0, usage_cost_pico: 1000,
+            finish_reason: null, model: "mock",
+        });
+        const sessionCost = async () =>
+            (await (db.envelope_list_sessions as PrepMethod).all<{ id: number; cost_pico: number }>({})).find((s) => s.id === sessionId)?.cost_pico;
+        const runCost = async (rid: number) =>
+            (await (db.envelope_list_runs_for_session as PrepMethod).all<{ id: number; cost_pico: number }>({ session_id: sessionId })).find((r) => r.id === rid)?.cost_pico;
+
+        assert.equal(await sessionCost(), 1000, "baseline: the parent turn's cost rolled up to the session");
+        assert.equal(await runCost(runId), 1000, "baseline: and to the parent run");
+
+        const branchRunId = await Fork.fork(db, runId);
+
+        // The fork copied the log (history) but charged nothing — no new generation happened.
+        assert.equal(await sessionCost(), 1000, "session cost is NOT double-counted by the fork — true lifetime spend");
+        assert.equal(await runCost(branchRunId), 0, "the branch's cost_pico starts at 0 — it accrues only what IT generates");
+        assert.equal(await runCost(runId), 1000, "the parent run's cost is untouched");
+    } finally { db.close(); }
+});

@@ -34,7 +34,14 @@ export default class Fork {
         const turns = await (db.fork_get_turns as PrepMethod).all<{ id: number; loop_id: number; [k: string]: unknown }>({ run_id: parentRunId });
         const turnMap = new Map<number, number>();
         for (const { id, loop_id, ...rest } of turns) {
-            const nt = await (db.fork_insert_turn as PrepMethod).get<{ id: number }>({ ...rest, loop_id: loopMap.get(loop_id) });
+            // #254 — a fork inherits the parent's log for context but spends no new money:
+            // the copied turns are history, not fresh generations. Zero their usage so the
+            // cost-rollup triggers add nothing — the session total stays true lifetime spend
+            // (no double-count) and the branch's cost_pico accrues only what IT generates.
+            const nt = await (db.fork_insert_turn as PrepMethod).get<{ id: number }>({
+                ...rest, usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
+                loop_id: loopMap.get(loop_id),
+            });
             if (nt === undefined) throw new Error("fork: turn insert returned no row");
             turnMap.set(id, nt.id);
         }
