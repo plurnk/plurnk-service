@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
@@ -19,6 +20,23 @@ export default class Service {
     static #codeDir = dirname(fileURLToPath(import.meta.url));
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+    static #homeDir = resolve(homedir(), ".plurnk");
+
+    // First-run bootstrap — run-time, NOT an install script: seed ~/.plurnk so a global
+    // install has a stable home for config + the DB. Idempotent (only acts when absent).
+    static #ensureHome(): void {
+        if (existsSync(Service.#homeDir)) return;
+        mkdirSync(Service.#homeDir, { recursive: true });
+        const shipped = resolve(Service.#projectRoot, ".env.example");
+        if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
+        writeFileSync(resolve(Service.#homeDir, ".env"), "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
+        process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
+    }
+
+    static #expandHome(p: string): string {
+        if (p === "~") return homedir();
+        return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
+    }
 
     static #die(code: number, message: string): never {
         process.stderr.write(`${message}\n`);
@@ -70,6 +88,7 @@ export default class Service {
             const v = Service.#sqliteKnob(env);
             if (v !== undefined) tuning[opt] = v;
         }
+        mkdirSync(dirname(dbPath), { recursive: true });
         const db = await SqlRite.open({
             path: dbPath,
             dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
@@ -80,14 +99,14 @@ export default class Service {
     }
 
     static async #migrate(): Promise<void> {
-        const dbPath = Service.#requireEnv("PLURNK_DB_PATH");
+        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_DB_PATH"));
         const db = await Service.#openDb(dbPath);
         try { process.stdout.write(`migrated: ${dbPath}\n`); }
         finally { await db.close(); }
     }
 
     static async #start(): Promise<void> {
-        const dbPath = Service.#requireEnv("PLURNK_DB_PATH");
+        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
@@ -99,6 +118,9 @@ export default class Service {
         if (await daemon.mimetypes.embedderInfo() === null) {
             process.stderr.write("plurnk-service: embedder inactive — semantic search (FIND) is degraded. Install @plurnk/plurnk-mimetypes-embeddings, or see README.md#semantic-search\n");
         }
+        if (alias === null) {
+            process.stderr.write(`plurnk-service: no model configured — set PLURNK_MODEL in ${resolve(Service.#homeDir, ".env")} (e.g. PLURNK_MODEL=gemma). Bring your own provider; the hosted default isn't live yet.\n`);
+        }
         const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
         process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} db=${dbPath} ${aliasStr}\n`);
 
@@ -108,8 +130,10 @@ export default class Service {
     }
 
     static async main(): Promise<void> {
-        // Env cascade, first write wins (loadEnvFile is set-if-unset): --env-file(s) < --config
-        // < .env < .env.example, all outranked by shell env, then by the --<knob> CLI flags.
+        if (!process.argv.includes("--help") && !process.argv.includes("-h")) Service.#ensureHome();
+        // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
+        // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
+        // ~/.plurnk/.env > ~/.plurnk/.env.example > package .env.example (the floor).
         for (const { path: envFile, required } of Service.#envFileArgs()) Service.#loadEnv(envFile, required);
 
         const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
@@ -122,6 +146,8 @@ export default class Service {
 
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(".env", false);
+        Service.#loadEnv(resolve(Service.#homeDir, ".env"), false);
+        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);
         Service.#loadEnv(resolve(Service.#projectRoot, ".env.example"), false);
 
         const flagDescriptors = await EnvFlags.parseEnvExample(resolve(Service.#projectRoot, ".env.example"));

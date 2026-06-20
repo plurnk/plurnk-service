@@ -13,7 +13,7 @@ const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 
 const runBin = (args, env = {}) => {
     try {
-        const stdout = execFileSync(bin, args, { cwd: sandbox, encoding: "utf8", env: { ...process.env, ...env } });
+        const stdout = execFileSync(bin, args, { cwd: sandbox, encoding: "utf8", env: { ...process.env, HOME: sandbox, ...env } });
         return { code: 0, stdout };
     } catch (e) {
         return { code: e.status ?? 1, stdout: e.stdout?.toString() ?? "", stderr: e.stderr?.toString() ?? "" };
@@ -21,7 +21,7 @@ const runBin = (args, env = {}) => {
 };
 
 const bootStart = (env = {}) => new Promise((res) => {
-    const child = spawn(bin, ["start"], { cwd: sandbox, env: { ...process.env, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
+    const child = spawn(bin, ["start"], { cwd: sandbox, env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
     let stdout = "", stderr = "", listening = false;
     // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
     // embedder notice rides stderr and races the stdout startup line otherwise.
@@ -46,6 +46,12 @@ ok(help.code === 0 && /usage: plurnk-service/.test(help.stdout), "`--help` print
 
 const mig = runBin(["migrate"], { PLURNK_DB_PATH: resolve(sandbox, "test.db") });
 ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (SQL + cosine load)");
+
+// first-run bootstrap: ~/.plurnk seeded with config (HOME → sandbox), no PLURNK_DB_PATH so it homes the DB
+const home = runBin(["migrate"], {});
+ok(existsSync(resolve(sandbox, ".plurnk", ".env")) && existsSync(resolve(sandbox, ".plurnk", "plurnk.db")),
+    "first run bootstraps ~/.plurnk (.env seeded + DB homed there, not CWD)");
+void home;
 
 const boot = await bootStart({ PLURNK_DB_PATH: resolve(sandbox, "start.db") });
 ok(boot.listening === true, "`start` boots the daemon (WebSocket listening)");

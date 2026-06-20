@@ -32,7 +32,7 @@ npm install -g @plurnk/plurnk-service
 plurnk-service start      # daemon (`migrate` initializes the DB)
 ```
 
-Config: `.env.example` (layer with `--env-file` / `--config`); point `PLURNK_MODEL` at any provider. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config + state live in `~/.plurnk/` (created on first run): set `PLURNK_MODEL` and friends in `~/.plurnk/.env`; the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. Full override cascade (`~/.plurnk` < `./.env` < `--env-file` < shell < `--flags`) is documented at the top of `.env.example`. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
 
 ## Contract & siblings
 
