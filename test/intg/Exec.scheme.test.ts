@@ -1,8 +1,8 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
 //   <<EXEC[runtime](cwd):command:EXEC
-// Auto-generates an `exec:///<runtime>/<loop>/<turn>/<seq>` entry; spawns the
-// subprocess; streams stdout/stderr into channels; closes subscription +
-// transitions channel state at exit.
+// Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
+// authority); spawns the subprocess; streams stdout/stderr into channels; closes
+// subscription + transitions channel state at exit.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -83,8 +83,8 @@ test("EXEC[sh](known:///script) empty body → resolves the scheme content as th
 
         const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname });
-        assert.ok(entryRow, "exec entry exists");
+        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
+        assert.ok(entryRow, "sh entry exists");
         const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script's content was resolved into the command and run");
     });
@@ -107,10 +107,10 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, null);
         assert.equal(attrs.command, "echo hello");
-        // Executor-domain + coordinate pathname: the stream entry at
-        // exec:///<runtime>/<loop_seq>/<turn_seq>/<sequence> leads with the
-        // runtime, then the coordinate it shares with the log row.
-        assert.match(attrs.pathname, /^\/[a-z0-9]+\/\d+\/\d+\/\d+$/, "pathname is runtime + log coordinate");
+        // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
+        // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
+        // coordinate it shares with the log row.
+        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+$/, "pathname is the log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;
@@ -142,9 +142,9 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
         assert.equal(log?.outcome, "started", "dispatch outcome reflects when applyResolution returned");
 
         const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname,
+            scheme: "sh", pathname,
         });
-        assert.ok(entryRow, `exec:///${pathname} entry exists`);
+        assert.ok(entryRow, `sh://${pathname} entry exists`);
         const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
             entry_id: entryRow.id, name: "stdout",
         });
@@ -176,7 +176,7 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
 
         const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname,
+            scheme: "sh", pathname,
         });
         assert.ok(entryRow);
         const stderr = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
@@ -243,7 +243,7 @@ test("EXEC[node]: runs node code via -e and captures stdout", async () => {
         const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname,
+            scheme: "node", pathname,
         });
         assert.ok(entryRow);
         const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({
@@ -288,7 +288,7 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
 
         // Subscription row exists and is closed at 200.
         const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname: chunkEvents.length > 0
+            scheme: "sh", pathname: chunkEvents.length > 0
                 ? (await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: chunkEvents[0].entryId }))!.pathname
                 : "",
         });

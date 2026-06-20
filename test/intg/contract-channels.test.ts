@@ -122,7 +122,7 @@ test("[§channel-state-schemes-own-state-transitions] the exec scheme transition
         // Wait for the spawned subprocess + queued state writes to drain.
         await exec.idle();
 
-        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname }))?.id;
+        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname }))?.id;
         assert.notEqual(entryId, undefined);
         const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryId, name: "stdout" });
         // Scheme-owned transition: a clean exit closes the stdout channel.

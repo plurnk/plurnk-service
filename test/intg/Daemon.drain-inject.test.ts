@@ -64,7 +64,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
             // opened (the flake this replaces — the kill path itself is sound).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -76,10 +76,10 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
             // The kill actually happened — promptly, not 30s later.
             const conc = await waitFor(
                 () => concluded() as Array<{ scheme: string; closeStatus: number }>,
-                (cs) => cs.some((c) => c.scheme === "exec" && c.closeStatus === 499),
+                (cs) => cs.some((c) => c.scheme === "sh" && c.closeStatus === 499),
                 { timeoutMs: 5000 },
             );
-            assert.ok(conc.some((c) => c.scheme === "exec" && c.closeStatus === 499),
+            assert.ok(conc.some((c) => c.scheme === "sh" && c.closeStatus === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
             // #204 contract: loop.cancel RESOLVES the pending loop.run with a
@@ -135,7 +135,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
             // running exec, deterministically; otherwise it fires into the spawn gap and the
             // sleep leaks (the failure this replaces).
             await waitForDb(
-                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -277,7 +277,7 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
             // The exec is live + registered open.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -286,10 +286,10 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
 
             // The registry reap closed the subscription — open→0, deterministically.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 0,
             );
-            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ session_id: sessionId, scheme: "exec" }))?.close_status;
+            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ session_id: sessionId, scheme: "sh" }))?.close_status;
             assert.equal(closeStatus, 499, "the reaped exec subscription is closed at 499 in the registry");
         } finally { ws.close(); }
     });
@@ -317,7 +317,7 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -328,10 +328,10 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
             // The exec's conclusion lands — and is a SKIP, not an opened loop.
             const conc = await waitFor(
                 () => concluded() as Array<{ scheme: string; wakeAction: string }>,
-                (cs) => cs.some((c) => c.scheme === "exec"),
+                (cs) => cs.some((c) => c.scheme === "sh"),
                 { timeoutMs: 5000 },
             );
-            const wake = conc.find((c) => c.scheme === "exec");
+            const wake = conc.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 

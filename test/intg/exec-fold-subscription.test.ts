@@ -48,7 +48,7 @@ test("[§subscriptions-fold-keeps-subscription] FOLD on a streaming exec's log r
 
         const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname });
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
 
         // Mid-stream: FOLD the exec's log row (log:///1/1/1) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));

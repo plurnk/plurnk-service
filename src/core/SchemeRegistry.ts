@@ -20,6 +20,10 @@ export default class SchemeRegistry {
     #handlers = new Map<string, object>();
     #external = new Set<string>();
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
+    // §exec — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
+    // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
+    // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
+    #runtimeSchemes = new Set<string>();
 
     constructor() {
         this.register("plurnk",  new Plurnk());
@@ -35,6 +39,20 @@ export default class SchemeRegistry {
     register(name: string, handler: object): void {
         if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
         this.#handlers.set(name, handler);
+    }
+
+    // §exec — exec OUTPUT entries address by their runtime TAG as authority (sh:///l/t/s).
+    // Register each discovered runtime tag as a scheme routing to the one Exec handler
+    // (already registered as "exec" for the EXEC op dispatch). Minted from the boot
+    // ExecutorRegistry; idempotent; fail-hard if a tag shadows a content scheme.
+    registerRuntimeSchemes(tags: readonly string[]): void {
+        const exec = this.#handlers.get("exec");
+        if (exec === undefined) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
+        for (const tag of tags) {
+            if (tag === "exec" || this.#handlers.get(tag) === exec) continue;
+            this.register(tag, exec);
+            this.#runtimeSchemes.add(tag);
+        }
     }
 
     get(name: string): object | undefined { return this.#handlers.get(name); }
@@ -59,6 +77,7 @@ export default class SchemeRegistry {
     teach(): string {
         const lines: string[] = [];
         for (const [name, handler] of this.#handlers) {
+            if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases route, but exec is taught once
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
@@ -73,6 +92,7 @@ export default class SchemeRegistry {
     docs(): Array<{ name: string; content: string }> {
         const out: Array<{ name: string; content: string }> = [];
         for (const [name, handler] of this.#handlers) {
+            if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
             const doc = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
             if (typeof doc === "string" && doc.length > 0) out.push({ name, content: doc });
         }

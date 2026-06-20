@@ -1,6 +1,6 @@
 // Regression guard for the live/demo exec failure: a model runs an EXEC,
 // the entry is created in the DB — but its result must also surface in the
-// NEXT turn's LOG (the EXEC log row's target is exec:///<coord>), or the model
+// NEXT turn's LOG (the EXEC log row's target is <runtime>:///<coord>), or the model
 // is blind to its own output and loops forever. The bug hid because it only
 // manifested in the e2e tier (model-in-loop); this reproduces it determin-
 // istically with a Mock model so it runs in the normal intg suite.
@@ -62,7 +62,7 @@ test("regression: a model's EXEC result surfaces in the NEXT turn's log, not jus
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
         const targets = logEntries(JSON.parse(row?.packet ?? "{}")).map((e) => String(e.target ?? ""));
         assert.ok(
-            targets.some((t) => t.startsWith("exec:///")),
+            targets.some((t) => t.startsWith("sh:///")),
             `turn-2 log must reference the exec result so the model can READ it; got ${JSON.stringify(targets)}`,
         );
     } finally { await db.close(); }
@@ -97,7 +97,7 @@ test("regression-replica: under the FULL base context (sysprompt + requirements)
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
         const targets = logEntries(JSON.parse(row?.packet ?? "{}")).map((e) => String(e.target ?? ""));
         assert.ok(
-            targets.some((t) => t.startsWith("exec:///")),
+            targets.some((t) => t.startsWith("sh:///")),
             `demo-replica: exec result must surface in the log under full base context; got ${JSON.stringify(targets)}`,
         );
     } finally { await db.close(); }

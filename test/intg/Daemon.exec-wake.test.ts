@@ -61,7 +61,7 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon
             await waitFor(
                 () => terminatedEvents() as Array<{ loopId: number; finalStatus: number }>,
                 (ts) => {
-                    const wake = (concludedEvents() as Array<{ scheme: string; wakeLoopId?: number }>).find((c) => c.scheme === "exec");
+                    const wake = (concludedEvents() as Array<{ scheme: string; wakeLoopId?: number }>).find((c) => c.scheme === "sh");
                     return wake?.wakeLoopId !== undefined && ts.some((t) => t.loopId === wake.wakeLoopId && t.finalStatus === 200);
                 },
                 { timeoutMs: 6000 },
@@ -73,21 +73,21 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon
                 loop_seq?: number; turn_seq?: number; sequence?: number;
             }>;
             assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
-            const wake = concluded.find((c) => c.scheme === "exec");
+            const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.closeStatus, 200);
-            assert.match(wake.target, /^exec:\/\/\//, "stream/concluded carries the exec target URI (#179)");
-            assert.match(wake.summary, /^exec:\/\/\/[a-z0-9]+\/\d+\/\d+\/\d+ completed \(exit 0\)/,
-                "summary references the executor-domain exec:///<runtime>/<loop>/<turn>/<seq> path");
+            assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the tag-authority target URI (#179)");
+            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+ completed \(exit 0\)/,
+                "summary references the tag-authority <runtime>:///<loop>/<turn>/<seq> path");
             assert.equal(wake.wakeAction, "opened-loop", "daemon opened a new loop because the original ended first");
             assert.ok(typeof wake.wakeLoopId === "number", "wakeLoopId is reported");
 
             // #224 — the coordinate the waterfall TUI used to parse out of the
             // exec URI is now explicit fields; assert they agree with the URI.
-            const seg = wake.target.replace(/^exec:\/\/\//, "").split("/");  // [runtime, loop, turn, seq]
-            assert.equal(wake.loop_seq, Number(seg[1]), "stream/concluded carries loop_seq as a field matching the URI (#224)");
-            assert.equal(wake.turn_seq, Number(seg[2]), "carries turn_seq");
-            assert.equal(wake.sequence, Number(seg[3]), "carries sequence");
+            const seg = wake.target.replace(/^sh:\/\/\//, "").split("/");  // [loop, turn, seq]
+            assert.equal(wake.loop_seq, Number(seg[0]), "stream/concluded carries loop_seq as a field matching the URI (#224)");
+            assert.equal(wake.turn_seq, Number(seg[1]), "carries turn_seq");
+            assert.equal(wake.sequence, Number(seg[2]), "carries sequence");
 
             // Wake-opened loop terminated too (mock's second response was SEND[200]).
             const terminated = terminatedEvents() as Array<{ loopId: number; finalStatus: number }>;
@@ -125,12 +125,12 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             // still emitting SEND[102] continuations), not a fixed sleep racing the spawn.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "exec"),
+                (cs) => cs.some((c) => c.scheme === "sh"),
                 { timeoutMs: 5000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; wakeAction: string }>;
-            const wake = concluded.find((c) => c.scheme === "exec");
+            const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.wakeAction, "no-op-active-loop",
                 "wake declined to open a new loop because the original was still active");
@@ -176,14 +176,14 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             // wake to fire, not a fixed sleep that flakes if the spawn runs long under load.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string; closeStatus: number }>,
-                (cs) => cs.some((c) => c.scheme === "exec" && c.closeStatus === 200),
+                (cs) => cs.some((c) => c.scheme === "sh" && c.closeStatus === 200),
                 { timeoutMs: 8000 },
             );
 
             const concluded = concludedEvents() as Array<{
                 scheme: string; closeStatus: number; summary: string; wakeAction: string;
             }>;
-            const wake = concluded.find((c) => c.scheme === "exec" && c.closeStatus === 200);
+            const wake = concluded.find((c) => c.scheme === "sh" && c.closeStatus === 200);
             assert.ok(wake, "exec stream concluded");
             // The KEY assertion: summary has the FULL byte count, not
             // whatever happened to be in the channel when loop ended.
@@ -217,7 +217,7 @@ test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spa
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn (the flake this replaces).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -227,12 +227,12 @@ test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spa
             // Event-driven: wait for the exec's 499 conclusion to broadcast.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "exec"),
+                (cs) => cs.some((c) => c.scheme === "sh"),
                 { timeoutMs: 5000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; wakeAction: string }>;
-            const wake = concluded.find((c) => c.scheme === "exec");
+            const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.closeStatus, 499);
             assert.equal(wake.wakeAction, "skipped-aborted",
@@ -277,12 +277,12 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
 
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "exec"),
+                (cs) => cs.some((c) => c.scheme === "sh"),
                 { timeoutMs: 4000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; summary: string }>;
-            const wake = concluded.find((c) => c.scheme === "exec");
+            const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.closeStatus, 499, "deliberate cancel concludes at 499");
             assert.match(wake.summary, /stdout=4 bytes/,

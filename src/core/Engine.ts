@@ -1985,10 +1985,12 @@ export default class Engine {
         const schemeName = this.#schemeNameOf(path);
         if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
         if (schemeName === "log") return { status: 405, error: "log:/// is append-only; KILL must bounce" };
-        if (schemeName === "exec") {
-            const execHandler = this.#schemes.get("exec") as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
-            if (execHandler === undefined || typeof execHandler.kill !== "function") return { status: 501 };
-            return await execHandler.kill(pathnameFromPath(path), ctx);
+        // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
+        // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
+        // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
+        if (killable !== undefined && typeof killable.kill === "function") {
+            return await killable.kill(pathnameFromPath(path), ctx);
         }
         if (schemeName === "run") {
             // terminate — abort any run by address; whoever holds it may end it.
@@ -2178,23 +2180,21 @@ export default class Engine {
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
-        // EXEC pathname is executor-domain + coordinate: the stream entry
-        // lives at exec:///<runtime>/<loop_seq>/<turn_seq>/<sequence> (e.g.
-        // exec:///sh/1/1/2). The runtime leads — domain-aware, the executor
-        // as authority — and the coordinate that follows is already unique
-        // per statement, so no slug is injected. The log row's target points
-        // at this same address; its log:/// coordinate shares the trailing
-        // <loop>/<turn>/<seq>, so the model correlates op to stream output.
-        // Runtime comes from statement.signal (EXEC's runtime slot) so it's
-        // resolvable for failed execs too; empty/absent = the default shell.
+        // EXEC stream entry addresses by RUNTIME TAG as authority (§exec): it lives at
+        // <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2) — the runtime tag
+        // is the scheme, the coordinate already unique per statement. The log row's target
+        // points at this same address; its log:/// coordinate shares the trailing
+        // <loop>/<turn>/<seq>, so the model correlates op to stream output. Runtime comes
+        // from statement.signal (EXEC's runtime slot) so it's resolvable for failed execs
+        // too; empty/absent = the default shell.
         if (statement.op === "EXEC") {
             const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId, turn_id: turnId,
             });
             if (seqs === undefined) throw new Error(`Engine.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
             const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const coordPathname = `/${runtime}/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
-            target.scheme = "exec";
+            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
+            target.scheme = runtime;
             target.pathname = coordPathname;
             attrsObj.pathname = coordPathname;
             // Mutate the in-memory result.attrs too: the dispatch path

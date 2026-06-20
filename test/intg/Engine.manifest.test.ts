@@ -127,13 +127,13 @@ test("[#21] manifest stamps live seconds= on an active stream, absent for static
 
         // A static entry (no subscription) + an exec entry with an open stream.
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/static/note", channel: "body", content: "x", mimetype: "text/markdown" });
-        const execId = await seedEntryWithChannel(db, { sessionId, runId, scheme: "exec", pathname: "/sh/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
-        await ChannelWrite.openSubscription(db, { runId, entryId: execId, scheme: "exec", handle: "sh: sleep 30" });
+        const execId = await seedEntryWithChannel(db, { sessionId, runId, scheme: "sh", pathname: "/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
+        await ChannelWrite.openSubscription(db, { runId, entryId: execId, scheme: "sh", handle: "sh: sleep 30" });
 
         const body = await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId }));
         const catalog = JSON.parse(body) as Array<{ path: string; seconds?: number; channels: object }>;
 
-        const stream = catalog.find((e) => e.path === "exec:///sh/1/1/1");
+        const stream = catalog.find((e) => e.path === "sh:///1/1/1");
         const stat = catalog.find((e) => e.path === "known:///static/note");
         assert.ok(stream !== undefined && stat !== undefined, "both entries listed");
         assert.equal(typeof stream.seconds, "number", "active stream carries a live seconds= clock");

@@ -237,11 +237,13 @@ export default class Exec {
             };
         }
         const seed: EntryData = { channels: seedChannels, tags: [] };
-        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, "exec");
+        // §exec — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
+        // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
+        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, runtime);
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
         const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
-            runId: ctx.runId, entryId, scheme: "exec",
+            runId: ctx.runId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
         });
 
@@ -271,10 +273,10 @@ export default class Exec {
 
         // read/pure (inline): await the run + return its output in the EXEC
         // result — the model gets it THIS turn, not a turn later. host streams:
-        // fire-and-forget; the model READs exec:///<pathname> on a later turn.
+        // fire-and-forget; the model READs <runtime>:///<pathname> on a later turn.
         if (attrs.inline === true) {
             const closeStatus = await tail;
-            const read = await EntryCrud.readEntry(pathname, ctx, "exec");
+            const read = await EntryCrud.readEntry(pathname, ctx, runtime);
             const body = read.entry === null ? ""
                 : Object.values(read.entry.channels).map((c) => c.content).filter((c) => c.length > 0).join("\n");
             return { status: closeStatus, body };
@@ -353,9 +355,9 @@ export default class Exec {
             if (!inline && ctx.wakeRunNotify !== undefined) {
                 ctx.wakeRunNotify({
                     sessionId: ctx.sessionId, runId: ctx.runId,
-                    entryId, target: `exec://${pathname}`, subscriptionId, closeStatus,
-                    scheme: "exec",
-                    summary: `exec://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
+                    entryId, target: `${runtime}://${pathname}`, subscriptionId, closeStatus,
+                    scheme: runtime,
+                    summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                     ...coordinate,
                 });
             }

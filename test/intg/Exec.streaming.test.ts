@@ -67,7 +67,7 @@ test("[§chunk-accumulation-chunks-accumulate] streaming exec: chunks land in th
         const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname,
+            scheme: "sh", pathname,
         });
         assert.ok(entryRow, "exec entry was created at proposal-time, before any output");
 
@@ -146,7 +146,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
         const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-            scheme: "exec", pathname,
+            scheme: "sh", pathname,
         });
 
         // Mid-stream: subscription is still open (closed_at IS NULL).
@@ -204,7 +204,7 @@ test("streaming exec: the session catalog picks up partial channel content betwe
                 channel: string; content: string;
             }>({ session_id: sessionId });
             return rows
-                .filter((r) => r.scheme === "exec" && r.channel === "stdout")
+                .filter((r) => r.scheme === "sh" && r.channel === "stdout")
                 .map((r) => ({ scheme: r.scheme, pathname: r.pathname, content: r.content }));
         };
 

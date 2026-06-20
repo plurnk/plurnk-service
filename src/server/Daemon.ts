@@ -192,6 +192,9 @@ export default class Daemon {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
+        // §exec — mint a scheme per runtime tag so exec output entries address by tag
+        // authority (sh:///l/t/s). The "exec" scheme stays for the EXEC op dispatch.
+        this.#schemes.registerRuntimeSchemes(executors.availableRuntimes());
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).

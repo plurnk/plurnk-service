@@ -49,7 +49,7 @@ test(
 
             const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "exec", pathname });
+            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
             const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry!.id, name: "stdout" });
             assert.doesNotMatch(stdout?.content ?? "", /do-not-leak-to-subprocess/, "plurnk's own env must not reach the EXEC subprocess");
         } finally {
