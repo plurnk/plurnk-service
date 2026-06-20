@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { countTokens, dimension, embed, maxTokens, model } from "./index.js";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { countTokens, dimension, dispose, embed, maxTokens, model } from "./index.js";
 
 function toVector(bytes) {
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -74,6 +76,31 @@ describe("embedder duck surface", () => {
         // TRUE count, not a clamp at maxTokens, or the chunker can't tile it.
         const n = await countTokens("database connection retry ".repeat(400));
         assert.ok(n > maxTokens, `expected overflow count > ${maxTokens}, got ${n}`);
+    });
+
+    it("dispose() is idempotent and re-lazy-inits (#36)", async () => {
+        await dispose(); // before any use — no-op, must not throw
+        await embed("warm");
+        await dispose();
+        // after disposal, the pipeline re-initializes transparently
+        const again = await embed("again");
+        assert.equal(again.length, 4 * dimension);
+    });
+
+    it("a process that embeds then dispose()s exits on its own — no leaked native handles (#36)", () => {
+        // The deliverable: without dispose() the embedder's onnxruntime threads
+        // keep the event loop alive and the process hangs at exit. With it, the
+        // process must drain and exit. Run as a child with a hard timeout — a
+        // hang makes execFileSync throw, failing the test.
+        const indexPath = path.join(import.meta.dirname, "index.js");
+        const src = `import { embed, dispose } from ${JSON.stringify(indexPath)};\n`
+            + `await embed("hello");\n`
+            + `await dispose();\n`;
+        // Throws on timeout (hang) or non-zero exit; returning = clean self-exit.
+        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+            timeout: 60000,
+            stdio: "ignore",
+        });
     });
 
     it("cosine sanity — semantic neighbors beat unrelated text", async () => {

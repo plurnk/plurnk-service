@@ -72,3 +72,25 @@ export async function countTokens(text) {
     const { input_ids } = await tokenizer(text);
     return input_ids.dims.at(-1);
 }
+
+// Release the embedder's native runtime — the onnxruntime worker pool / libuv
+// async handles the pipeline holds. Without this, a process that loaded the
+// embedder won't drain its event loop at exit: the N-API threads stay
+// active+referenced and keep the loop alive after all work finishes
+// (plurnk-mimetypes#36). Disposing the pipeline releases its inference
+// session(s). Idempotent, and the caches re-lazy-init if embed()/countTokens()
+// is called again afterward.
+export async function dispose() {
+    if (pipelinePromise) {
+        const pending = pipelinePromise;
+        pipelinePromise = null;
+        try {
+            const extractor = await pending;
+            await extractor?.dispose?.();
+        } catch {
+            // pipeline never finished loading — nothing to release.
+        }
+    }
+    // The tokenizer is pure JS (no native runtime); dropping the ref is enough.
+    tokenizerPromise = null;
+}
