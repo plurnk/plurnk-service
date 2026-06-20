@@ -24,6 +24,18 @@ Author-facing contracts hosted in their own repos. plurnk-service is the consume
 | [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) | Content interpreters | SPEC §mimetype-surface |
 | [plurnk-execs](https://github.com/plurnk/plurnk-execs) | Runtime executors (EXEC dispatch) | SPEC §bundled-set |
 
+## Semantic search
+
+`FIND` ranks entries semantically via an embedder, packaged as the optional peer dependency `@plurnk/plurnk-mimetypes-embeddings`. It is **not installed by default** — its native dependencies (`onnxruntime`, `sharp`) are heavy, platform-specific, and run install scripts, so the base install stays lean and portable.
+
+Without the embedder, `plurnk-service start` prints `embedder inactive — semantic search (FIND) is degraded`, and `FIND` returns entries without embedding-ranked relevance. To enable full semantic search:
+
+```
+npm i @plurnk/plurnk-mimetypes-embeddings
+```
+
+A lightweight FTS fallback for the no-embedder case is planned.
+
 ## Tests
 
-Tiers per SPEC §test-taxonomy. Scripts: `test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`.
+Tiers per SPEC §test-taxonomy. Scripts: `test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`. An off-hot-path `test:installation` verifies a clean global + local install of the built package.

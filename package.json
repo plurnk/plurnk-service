@@ -15,11 +15,10 @@
         "./package.json": "./package.json"
     },
     "bin": {
-        "plurnk-service": "./bin/plurnk-service.ts"
+        "plurnk-service": "./dist/service.js"
     },
     "files": [
         ".env.example",
-        "bin/plurnk-service.ts",
         "dist/**/*",
         "migrations/**/*.sql",
         "requirements.md",
@@ -30,7 +29,7 @@
         "access": "public"
     },
     "scripts": {
-        "start": "node bin/plurnk-service.ts",
+        "start": "node src/service.ts",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-timeout=30000 src/**/*.test.ts",
         "test:intg": "npm run test:clean-tmp && PLURNK_MANIFEST_ITEMS=0 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-timeout=30000 test/intg/*.test.ts",
@@ -40,8 +39,15 @@
         "test:digest": "node bin/digest.ts",
         "test:clean-tmp": "rm -rf test/intg/.tmp",
         "dev:digest": "node bin/digest.ts",
+        "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:dist",
+        "build:sql": "node scripts/copy-sql.mjs",
+        "build": "npm run build:clean && npm run build:dist && npm run build:sql",
+        "build:global:install": "npm run build && npm install -g .",
+        "build:global:uninstall": "npm uninstall -g @plurnk/plurnk-service",
+        "build:local:install": "node scripts/install-sandbox.mjs install",
+        "build:local:uninstall": "node scripts/install-sandbox.mjs uninstall",
+        "test:installation": "node scripts/test-installation.mjs",
         "prepare": "npm run build"
     },
     "dependencies": {
@@ -50,7 +56,6 @@
         "@plurnk/plurnk-grammar": "0.70.0",
         "@plurnk/plurnk-mimetypes": "0.15.20",
         "@plurnk/plurnk-mimetypes-all": "0.5.0",
-        "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@plurnk/plurnk-providers": "0.13.0",
         "@plurnk/plurnk-providers-all": "0.8.0",
         "@plurnk/plurnk-schemes": "0.27.0",
@@ -60,9 +65,18 @@
         "ws": "^8.20.1"
     },
     "devDependencies": {
+        "@plurnk/plurnk-mimetypes-embeddings": "0.2.0",
         "@types/diff": "^7.0.2",
         "@types/node": "^25.8.0",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes-embeddings": "0.2.0"
+    },
+    "peerDependenciesMeta": {
+        "@plurnk/plurnk-mimetypes-embeddings": {
+            "optional": true
+        }
     }
 }

@@ -1,9 +1,9 @@
-// Smoke coverage for bin/plurnk-service.ts. Lint and intg exercise the
-// in-tree Daemon class directly; nothing today catches rot in the bin
-// entrypoint (config cascade, env→arg mapping, signal handlers, the
-// dynamic provider load path, the startup-line stdout format clients
-// may parse). This test spawns the actual binary, waits for it to
-// listen, sends one `discover` RPC, and ensures clean SIGTERM shutdown.
+// Smoke coverage for src/service.ts (the plurnk-service launcher). Lint and intg
+// exercise the in-tree Daemon class directly; nothing else catches rot in the
+// entrypoint (config cascade, env→arg mapping, signal handlers, the dynamic
+// provider load path, the startup-line stdout format clients may parse). This test
+// spawns the actual entry, waits for it to listen, sends one `discover` RPC, and
+// ensures clean SIGTERM shutdown.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { WebSocket } from "ws";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const BIN_PATH = resolve(here, "../../bin/plurnk-service.ts");
+const BIN_PATH = resolve(here, "../../src/service.ts");
 
 interface BootedDaemon {
     child: ChildProcess;
