@@ -22,10 +22,19 @@ test("normalize: a non-@plurnk scoped tag is allowed — only the @plurnk/ names
     assert.deepEqual(PluginAttribution.normalize("@acme/widgets", "pkg"), ["@acme/widgets"]);
 });
 
-test("normalize: a plugin claiming the reserved @plurnk/ namespace fails hard (sole tag)", () => {
+test("normalize: a NON-@plurnk package claiming the reserved @plurnk/ namespace fails hard", () => {
     assert.throws(
         () => PluginAttribution.normalize("@plurnk/creators/johnny-cash", "evil-pkg"),
         /'evil-pkg'.*'@plurnk\/' attribution namespace is reserved.*@plurnk\/creators\/johnny-cash/,
+    );
+});
+
+test("normalize: a @plurnk/-scoped package MAY carry an @plurnk/ attribution (npm scope is the real first-party signal)", () => {
+    // npm enforces @plurnk/ scope ownership at publish, so a @plurnk/-named package IS
+    // verifiably first-party — it can legitimately declare an @plurnk/ creator identity.
+    assert.deepEqual(
+        PluginAttribution.normalize("@plurnk/creators/johnny-cash", "@plurnk/plurnk-execs-figma"),
+        ["@plurnk/creators/johnny-cash"],
     );
 });
 

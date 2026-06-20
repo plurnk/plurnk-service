@@ -231,11 +231,11 @@ A plugin declares an opaque attribution tag in its `package.json` so the creator
 { "plurnk": { "attribution": "@acme/widgets" } }   // a string, or string[]
 ```
 
-The engine unions the declared tags of the active plugin families (schemes, execs) — deduped + stable — onto `generate({ attributions })`. **Only the plurnk provider forwards them** (as a first-party header); every other provider drops them, so first-party metadata stays first-party by construction. The service does not interpret a tag — an npm-style handle is the natural form; richer creator identities (`@plurnk/creators/<name>`) ride the same namespace later.
+The tags ride `generate({ attributions })` **per turn** (sent on every call); only the plurnk provider forwards them (as a first-party header), every other provider drops them, so first-party metadata stays first-party by construction. The service does not interpret a tag — an npm-style handle is the natural form; richer creator identities (`@plurnk/creators/<name>`) ride the same namespace later. The wire's *value* is the deferred part (below).
 
-**The `@plurnk/` namespace is reserved.** A plugin declaring an `@plurnk/`-prefixed tag fails hard at discovery — a day-one reservation so the first-party creator namespace can't be squatted before it is lit up. {§attribution-plurnk-namespace-reserved}
+**The `@plurnk/` namespace is reserved, grounded in npm scope.** A package may carry an `@plurnk/` attribution only if it is itself `@plurnk/`-scoped — npm enforces scope ownership at publish, so a `@plurnk/…` package name is a real first-party signal, not a self-claim. A non-`@plurnk/` package claiming `@plurnk/` fails hard. This is an honest-author guardrail, NOT anti-spoofing: an open-source service can be forked and patched, so **authoritative ownership is enforced backend-side** (`model.plurnk.ai` validates the bearer account owns the claimed identity). {§attribution-plurnk-namespace-reserved}
 
-Deferred (the rigor, not the credible statement): grounding tags in real per-turn dispatch, token-weighting by value contributed, the content/authorship door (entry-level attribution), and the self-identified `client` id. Native surfacing of the field in each framework's `discover()` (delegate-upstream) supersedes the service-side manifest read.
+Deferred (the rigor — "working well," not the wire shape): grounding the value in real per-turn value flow — the dispatched code AND consumed content of *this* turn, not the static active-plugin placeholder — token-weighting by contribution, the content/authorship door (entry-level attribution for non-developer creators), and the self-identified `client` id (needs a client→service protocol change). Native surfacing of the field in each framework's `discover()` (delegate-upstream) supersedes the service-side manifest read, and extends collection to mimetype + provider plugins.
 
 ### §provider-instantiation Provider instantiation
 

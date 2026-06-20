@@ -58,13 +58,20 @@ test("#249 — no declared attribution → the wire field is omitted (undefined)
     assert.equal(captured, undefined, "a session with no attributing plugins sends no attributions field");
 });
 
-test("[§attribution-plurnk-namespace-reserved] a plugin claiming the reserved @plurnk/ namespace fails hard", () => {
-    // The day-one reservation: @plurnk/ is first-party-only, enforced at the read/normalize
-    // seam every discovery path funnels through. (Exhaustive normalize cases live in the
-    // unit test src/core/plugin-attribution.test.ts; this carries the SPEC anchor.)
+test("[§attribution-plurnk-namespace-reserved] @plurnk/ is reserved, grounded in npm scope", () => {
+    // The day-one reservation, enforced at the read/normalize seam every discovery path
+    // funnels through. Grounded in npm scope ownership, NOT client-side security (an
+    // open-source service is patchable; the backend is authoritative). Exhaustive cases live
+    // in the unit test src/core/plugin-attribution.test.ts; this carries the SPEC anchor.
     assert.throws(
         () => PluginAttribution.normalize("@plurnk/creators/johnny-cash", "squatter-pkg"),
-        /reserved for first-party creators/,
+        /reserved for first-party/,
+        "a non-@plurnk/ package cannot claim @plurnk/",
     );
-    assert.deepEqual(PluginAttribution.normalize("@acme/widgets", "ok-pkg"), ["@acme/widgets"], "a non-@plurnk scoped tag is allowed");
+    assert.deepEqual(
+        PluginAttribution.normalize("@plurnk/creators/johnny-cash", "@plurnk/plurnk-execs-figma"),
+        ["@plurnk/creators/johnny-cash"],
+        "a @plurnk/-scoped package (npm-verified first-party) may carry an @plurnk/ attribution",
+    );
+    assert.deepEqual(PluginAttribution.normalize("@acme/widgets", "ok-pkg"), ["@acme/widgets"], "a non-@plurnk scoped tag is always allowed");
 });
