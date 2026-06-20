@@ -27,6 +27,27 @@ test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin
     });
 });
 
+test("op.edit: log/entry notification precedes the RPC response on the wire (#253)", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "notify-order" });
+            // Record inbound messages in arrival order, after the session is up — so we capture
+            // only the op.edit exchange: the log/entry notification must land before response#2.
+            const order: string[] = [];
+            ws.on("message", (data) => {
+                const m = JSON.parse(typeof data === "string" ? data : (data as Buffer).toString("utf8")) as { method?: string; id?: number };
+                order.push(m.method ?? `response#${m.id}`);
+            });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "hi" });
+            const notifyIdx = order.indexOf("log/entry");
+            const respIdx = order.indexOf("response#2");
+            assert.ok(notifyIdx !== -1, `log/entry should have fired (order: ${order.join(", ")})`);
+            assert.ok(respIdx !== -1 && notifyIdx < respIdx, `#253: log/entry must precede the op response (order: ${order.join(", ")})`);
+        } finally { ws.close(); }
+    });
+});
+
 test("op.read fetches an entry's body", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

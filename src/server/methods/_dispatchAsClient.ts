@@ -26,6 +26,12 @@ export default class DispatchAsClient {
         }
         const clientLoopId = ctx.session.clientLoopId;
         const turnId = await ClientTurn.insertClientTurn(ctx.db, clientLoopId);
+        // #253 — the log/entry notification(s) MUST reach the client before the RPC
+        // response, per the §methods sequence. The old fire-and-forget IIFE let the
+        // response win the race (the un-awaited fetch deferred the notify past the
+        // return). Collect the ids synchronously during dispatch, then fetch + notify
+        // — awaited — before returning, so the entry precedes the reply in dispatch order.
+        const entryIds: number[] = [];
         const result = await ctx.engine.dispatch({
             statement,
             sessionId,
@@ -34,13 +40,12 @@ export default class DispatchAsClient {
             turnId,
             sequence: 1,
             origin: "client",
-            onDispatch: (logEntryId) => {
-                void (async () => {
-                    const entry = await LogEntry.fetchLogEntry(ctx.db, logEntryId);
-                    ctx.notify({ sessionId }, "log/entry", { entry });
-                })();
-            },
+            onDispatch: (logEntryId) => { entryIds.push(logEntryId); },
         });
+        for (const logEntryId of entryIds) {
+            const entry = await LogEntry.fetchLogEntry(ctx.db, logEntryId);
+            ctx.notify({ sessionId }, "log/entry", { entry });
+        }
         return result as DispatchAsClientResult;
     }
 }
