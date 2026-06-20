@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -136,6 +136,49 @@ test("[§telemetry-drain-on-read] telemetry buffer drains — parse_error appear
         assert.equal(await kindsOf(t2.turnId), 1, "parse_error drained exactly once on read");
         // Turn 3: buffer was emptied at the drain — the error does NOT replay.
         assert.equal(await kindsOf(t3.turnId), 0, "drained error does not reappear on subsequent packets");
+    } finally { await db.close(); }
+});
+
+test("#256 — grammar_unenforced provider error surfaces as telemetry on the next packet + an empty no-op turn, not a loop crash", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // The one provider error the MODEL can recover from: the backend failed to
+        // enforce the transported GBNF, so generate() throws ProviderError. The engine
+        // must catch it, surface telemetry, and fall through as an empty no-op turn —
+        // NOT propagate (which would terminate the loop). Turn 2 is a clean Mock turn
+        // that drains the telemetry buffer onto its packet.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [opsResponse([...okEdit, ...sendDone])], // consumed by turn 2 only
+        });
+        const realGenerate = provider.generate.bind(provider);
+        let threw = false;
+        provider.generate = async (req) => {
+            if (threw) return realGenerate(req);
+            threw = true;
+            throw new ProviderError("mock", "grammar_unenforced", "backend did not enforce the transported grammar");
+        };
+
+        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        // Turn 1 did not crash: zero ops dispatched, and it took the no-ops strike (422),
+        // so the strike rail gives the model maxStrikes chances to recover.
+        assert.deepEqual(t1.statuses, [], "grammar_unenforced → no ops dispatched (empty no-op turn)");
+        assert.equal(t1.status, 422, "no real ops, no terminal SEND → the 422 no-op strike, not a terminal error");
+
+        // Negative control: the failure is NOT on the turn that produced it (predates the drain)...
+        const p1 = await getPacket(db, t1.turnId);
+        assert.equal(
+            p1.telemetryErrors.filter((e) => e.kind === "grammar_unenforced").length, 0,
+            "failure not visible on the turn that produced it",
+        );
+        // ...it surfaces on turn 2's packet — the model's next view — exactly once.
+        const p2 = await getPacket(db, t2.turnId);
+        const ge = p2.telemetryErrors.filter((e) => e.kind === "grammar_unenforced");
+        assert.equal(ge.length, 1, "grammar_unenforced drained exactly once onto the next packet");
+        assert.equal(ge[0].source, "provider", "attributed to the provider, not the grammar/scheme");
+        assert.match(String(ge[0].message), /grammar/i, "carries the provider's own diagnostic");
     } finally { await db.close(); }
 });
 

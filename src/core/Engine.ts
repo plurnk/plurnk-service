@@ -87,6 +87,7 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider, ProviderResponse, ProviderAssistant, ProviderUsage } from "@plurnk/plurnk-providers";
+import { ProviderError } from "@plurnk/plurnk-providers";
 
 // packet.assistant shape per plurnk-grammar 0.6.0 Packet.json. Wire-level
 // call-metadata (usage, finishReason, model) is NOT here — those are
@@ -851,7 +852,26 @@ export default class Engine {
         // decode at the free window so a runaway can't reach the context wall.
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.tokens);
-        const response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
+        let response: ProviderResponse;
+        try {
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
+        } catch (err) {
+            // #256 — grammar_unenforced is the one provider error the MODEL can recover from:
+            // the backend didn't constrain the GBNF, so this turn's output was rejected, but a
+            // conforming emission next turn is accepted. Surface it as telemetry (the model's
+            // next packet shows it) and fall through as an empty no-op turn, so the strike rail
+            // gives it maxStrikes chances before terminating — unlike infra errors (rate_limit,
+            // network_failure, unauthorized), which propagate and end the loop.
+            if (err instanceof ProviderError && err.kind === "grammar_unenforced") {
+                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: "grammar_unenforced", message: err.message });
+                response = {
+                    assistant: { content: "", reasoning: null, usage: { prompt: requestPacket.tokens, completion: 0, reasoning: 0, cached: 0, total: requestPacket.tokens }, finishReason: null, model: provider.model },
+                    assistantRaw: null,
+                };
+            } else {
+                throw err;
+            }
+        }
 
         // Engine splits wire-level response: emission (content, reasoning,
         // parsed ops) → packet.assistant per Packet.json §assistant;
