@@ -113,9 +113,18 @@ export const withDaemon = async <T>(
 // Parse plurnk DSL into statement ops. Used to build mock provider responses.
 export const parseDsl = (text: string): PlurnkStatement[] => {
     const result = PlurnkParser.parse(text);
-    return result.items
+    const statements = result.items
         .filter((i) => i.kind === "statement")
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+    // Fail-hard ONLY when nothing parsed: zero statements alongside an error means the input
+    // didn't parse at all (e.g. a bare statement with no PLAN lead — grammar 0.70 requires
+    // PLAN-first), which silently returned [] and let callers build phantom-empty turns. A
+    // trailing "incomplete turn" error WITH real statements (a partial turn — PLAN + ops, no
+    // terminal SEND) is a legitimate fixture; return the statements.
+    if (statements.length === 0 && result.items.some((i) => i.kind === "error")) {
+        throw new Error(`parseDsl: DSL produced no statements — it did not parse (grammar 0.70 requires a PLAN lead): ${JSON.stringify(text)}`);
+    }
+    return statements;
 };
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {

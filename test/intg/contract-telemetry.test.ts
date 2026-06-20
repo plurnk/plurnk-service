@@ -19,7 +19,6 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
-import { parseDsl } from "./_rpc.ts";
 
 // Response from pre-parsed ops (clean turn) — mirrors the production wire
 // where the provider hands the engine already-parsed statements.
@@ -44,9 +43,11 @@ const contentResponse = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-const okEdit = parseDsl("<<EDIT(known:///ok):v:EDIT");
-const sendDone = parseDsl("<<SEND[200]:done:SEND");
-const sendGoing = parseDsl("<<SEND[102]:going:SEND");
+// A no-op draining turn — its only job is to RUN so the model's NEXT packet drains the
+// telemetry buffer on read. These tests assert the drain, never a dispatch; the former
+// bare-statement op builders (no PLAN lead) silently parsed to [] anyway — same effect,
+// now explicit (and parseDsl no longer hides that parse error — see _rpc.ts).
+const drainTurn = opsResponse([]);
 
 // Actionless malformation: a SEND with a non-integer signal — the lexer
 // rejects 'x' in the signal slot at 1:7. (The former `//`-xpath trigger now
@@ -77,7 +78,7 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
             contextSize: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                 // turn 1: real parse_error
-                opsResponse([...okEdit, ...sendDone]),        // turn 2: clean — drains the buffer
+                drainTurn,        // turn 2: clean — drains the buffer
             ],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -118,8 +119,8 @@ test("[§telemetry-drain-on-read] telemetry buffer drains — parse_error appear
             contextSize: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed to buffer
-                opsResponse([...okEdit, ...sendGoing]),       // turn 2: reads (drains) the buffer
-                opsResponse([...okEdit, ...sendDone]),        // turn 3: buffer already empty
+                drainTurn,       // turn 2: reads (drains) the buffer
+                drainTurn,        // turn 3: buffer already empty
             ],
         });
         const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -149,7 +150,7 @@ test("#256 — grammar_unenforced provider error surfaces as telemetry on the ne
         // that drains the telemetry buffer onto its packet.
         const provider = new Mock({
             contextSize: 100000,
-            responses: [opsResponse([...okEdit, ...sendDone])], // consumed by turn 2 only
+            responses: [drainTurn], // consumed by turn 2 only
         });
         const realGenerate = provider.generate.bind(provider);
         let threw = false;
@@ -189,7 +190,7 @@ test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry
             contextSize: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                 // actionless failure (no op dispatched)
-                opsResponse([...okEdit, ...sendDone]),
+                drainTurn,
             ],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -236,7 +237,7 @@ test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live wi
             contextSize: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed + broadcast live
-                opsResponse([...okEdit, ...sendDone]),        // turn 2: model drains it on read
+                drainTurn,        // turn 2: model drains it on read
             ],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
