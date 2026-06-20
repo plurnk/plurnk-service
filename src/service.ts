@@ -26,12 +26,19 @@ export default class Service {
     // First-run bootstrap — run-time, NOT an install script: seed ~/.plurnk so a global
     // install has a stable home for config + the DB. Idempotent (only acts when absent).
     static #ensureHome(): void {
-        if (existsSync(Service.#homeDir)) return;
+        const fresh = !existsSync(Service.#homeDir);
         mkdirSync(Service.#homeDir, { recursive: true });
-        const shipped = resolve(Service.#projectRoot, ".env.example");
-        if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
-        writeFileSync(resolve(Service.#homeDir, ".env"), "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
-        process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
+        // ~/.plurnk/.env.example is the cascade FLOOR — the user's visible, editable legend.
+        // Re-seeded from the shipped copy only when absent, so the node_modules copy is the
+        // seed (+ CLI-flag source), never a hidden runtime layer.
+        const homeExample = resolve(Service.#homeDir, ".env.example");
+        if (!existsSync(homeExample)) {
+            const shipped = resolve(Service.#projectRoot, ".env.example");
+            if (existsSync(shipped)) copyFileSync(shipped, homeExample);
+        }
+        const homeEnv = resolve(Service.#homeDir, ".env");
+        if (!existsSync(homeEnv)) writeFileSync(homeEnv, "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
+        if (fresh) process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${homeEnv}\n`);
     }
 
     static #expandHome(p: string): string {
@@ -159,8 +166,7 @@ export default class Service {
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(".env", false);
         Service.#loadEnv(resolve(Service.#homeDir, ".env"), false);
-        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);
-        Service.#loadEnv(resolve(Service.#projectRoot, ".env.example"), false);
+        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);   // the cascade floor (NOT the node_modules copy)
 
         const flagDescriptors = await EnvFlags.parseEnvExample(resolve(Service.#projectRoot, ".env.example"));
         const flagOptions: Record<string, { type: "string" }> = {};
