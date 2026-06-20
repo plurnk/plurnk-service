@@ -202,7 +202,7 @@ test("xpath: //element/@attr extracts attribute values", async () => {
     } finally { await db.close(); }
 });
 
-test("xpath: //element node selection serializes XML into the value", { todo: "blocked on plurnk-mimetypes#12 — deepXml line/endLine bookkeeping pollutes serialization" }, async () => {
+test("xpath: //element node selection serializes XML into the value", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/page.html",
@@ -213,14 +213,18 @@ test("xpath: //element node selection serializes XML into the value", { todo: "b
         );
 
         assert.equal(r.status, 200);
-        // todo (plurnk-mimetypes#12): the deepXml's inline line/endLine bookkeeping
-        // pollutes element serialization, so the value is currently
-        // `<user line="1" endLine="1">Alice</user>`. We assert the clean intended
-        // form — stripping the bookkeeping is the daughter's job, not ours.
+        // plurnk-mimetypes#12 (CLOSED) resolved the bookkeeping collision by NAMESPACING the
+        // deep-xml source-position attrs (xmlns:pk + pk:line/pk:endLine) rather than stripping
+        // them — so node selection now serializes each element as VALID XML carrying its source
+        // position as intentional metadata, e.g.
+        //   <user xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1">Alice</user>.
+        // The contract this asserts: //element selects the ELEMENT node (tag present, not bare
+        // text()), content intact, attribute-tolerant. The pk: position metadata is the daughter's
+        // by design; we don't string-strip another module's serialization.
         const values = rxValues(r.content);
         assert.equal(values.length, 2);
-        assert.match(values[0], /<user>Alice<\/user>/);
-        assert.match(values[1], /<user>Bob<\/user>/);
+        assert.match(values[0], /^<user\b[^>]*>Alice<\/user>$/);
+        assert.match(values[1], /^<user\b[^>]*>Bob<\/user>$/);
     } finally { await db.close(); }
 });
 
