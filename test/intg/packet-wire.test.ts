@@ -318,6 +318,19 @@ test("[§requirements-requirements-omitted-when-empty] empty requirements sectio
     assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the content is empty");
 });
 
+test("renderCatalog: per-scheme tally — counts + tokens, null scheme → file, count is pluralized", () => {
+    const out = PacketWire.renderCatalog([
+        { scheme: "known", entries: 5, tokens: 1240 },
+        { scheme: null, entries: 1, tokens: 80 },
+    ]);
+    assert.equal(out, "known — 5 entries, 1240 tokens\nfile — 1 entry, 80 tokens");
+});
+
+test("renderCatalog: empty/non-array → '' so the section is omitted, never throws", () => {
+    assert.equal(PacketWire.renderCatalog([]), "", "no schemes → no catalog section");
+    assert.equal(PacketWire.renderCatalog(undefined), "", "non-array tolerated as empty");
+});
+
 
 
 test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {

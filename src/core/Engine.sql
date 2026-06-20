@@ -118,6 +118,22 @@ WHERE e.scope = 'session' AND e.session_id = $session_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
+-- PREP: engine_scheme_catalog_summary
+-- Per-scheme tally for the # Plurnk System Catalog section: distinct entry count + summed
+-- stored token weight, so the model sees which schemes hold content (and roughly how much)
+-- without probing e.g. FIND(known://**) every turn. Same session-scope set as the manifest
+-- above; tokens are the write-time snapshot (a size gauge, not the manifest's live recount).
+-- The self-referential manifest entry is excluded — its weight balloons as the catalog grows.
+SELECT e.scheme AS scheme,
+    COUNT(DISTINCT e.id) AS entries,
+    COALESCE(SUM(ec.tokens), 0) AS tokens
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.scope = 'session' AND e.session_id = $session_id
+  AND NOT (e.scheme = 'plurnk' AND e.pathname = '/manifest.json')
+GROUP BY e.scheme
+ORDER BY e.scheme;
+
 -- PREP: engine_run_prior_turn_time
 -- §env-delta — timestamp of this run's most recent turn BEFORE the current one
 -- (the "since I last looked" boundary). NULL on the run's first turn → no deltas.

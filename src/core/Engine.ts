@@ -846,14 +846,14 @@ export default class Engine {
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#buildRequestPacket({
-            initialMessages: messages, requirements, runId, loopId,
+            initialMessages: messages, requirements, sessionId, runId, loopId,
             currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#enforceBudget({
             packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
             rebuild: (telemetryErrors) => this.#buildRequestPacket({
-                initialMessages: messages, requirements, runId, loopId,
+                initialMessages: messages, requirements, sessionId, runId, loopId,
                 currentTurnSeq: seq, provider, telemetryErrors, gitStatus,
             }),
         });
@@ -1084,14 +1084,14 @@ export default class Engine {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async #buildRequestPacket({
-        initialMessages, requirements, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
     }: {
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
         // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
         requirements: string;
         gitStatus: GitStatus | null;
-        runId: number; loopId: number;
+        sessionId: number; runId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries
         // (e.g. telemetry errors).
         currentTurnSeq: number;
@@ -1140,6 +1140,9 @@ export default class Engine {
         // omitted, section lines still shown). §tokenomics-render-weight-budget
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
+        // Per-scheme tally (§packet) so the model sees which schemes hold content without
+        // probing e.g. FIND(known://**) every turn. "" when empty → the section is omitted.
+        const catalogSummary = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number; tokens: number }>({ session_id: sessionId });
         // The default packet: an ordered list of sections, each addressable state
         // (§packet-construction). `slot` is the prompt-cache boundary; the STATIC
         // sections (definition, tools) lead the system slot so they form the cached
@@ -1156,6 +1159,7 @@ export default class Engine {
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "catalog", slot: "user", header: "Plurnk System Catalog", content: PacketWire.renderCatalog(catalogSummary), tokens: 0 },
             { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: requirementsText, tokens: 0 },
         ];
         // Plugin packet control (§packet-construction): trusted schemes rewrite the
