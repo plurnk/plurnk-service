@@ -157,6 +157,24 @@ test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () =>
     } finally { await story.cleanup(); }
 });
 
+test("story: self-audit — the model critiques its own packet for errors and ambiguities", { timeout: TIMEOUT }, async () => {
+    // Meta-prompt (owner request): the model audits the packet it was handed, surfacing
+    // instruction errors / inconsistencies / ambiguities neither the author nor the operator
+    // sees from inside. Diagnostic, not pass/fail — the findings ARE the deliverable, so they
+    // are always dumped to the test log for review.
+    const story = await runStory({
+        label: "packet-audit",
+        prompt: "I am evaluating my agent interface. Please evaluate the instructions and information in this packet for errors, issues, inconsistencies, and ambiguities and list your findings numerically.",
+    });
+    try {
+        console.error("\n===== PACKET SELF-AUDIT FINDINGS =====");
+        console.error(story.lastContent);
+        console.error("===== END SELF-AUDIT =====\n");
+        assert.equal(story.finalStatus, 200, "the audit loop concludes cleanly");
+        assert.ok(story.lastContent.trim().length > 0, "the model returned findings");
+    } finally { await story.cleanup(); }
+});
+
 test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () => {
     // app.js has `// TODO: add error handling`. Model replaces it with
     // an exact-text replacement and we verify on disk.
