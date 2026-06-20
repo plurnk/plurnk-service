@@ -319,6 +319,21 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
 // window before maxTurns. Soft: no strike, no loop-status change.
 
+test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Every turn continues (SEND[102], never terminal), so the turn ceiling is what stops it.
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), sendStmt(102, "more")])),
+        });
+        const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [], maxTurns: 3 });
+        assert.equal(result.hitMaxTurns, true);
+        assert.equal(result.reason, "max_turns");
+        assert.equal(result.finalStatus, 429, "the turn ceiling terminates the loop at 429 Too Many Requests (§loop-terminals)");
+    } finally { await db.close(); }
+});
+
 test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
     // Per SPEC §telemetry gamification policy: telling the model "you're near
     // my abandonment threshold" is engine bookkeeping, not an error. The
