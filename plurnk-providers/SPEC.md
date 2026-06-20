@@ -234,6 +234,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       reasoningBudget, reasoningStyle,   // "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic"
       countTokens, costFor,  // strategies; default heuristic / free
       grammarStyle,          // "none" | "llamacpp" | "response_format" — GBNF wire shape (§13); default "none"
+      gbnfDebug,             // PLURNK_GBNF_DEBUG: validate a grammar locally + throw on invalid, but DON'T send it (§13); default false
       streaming,             // SSE transport; default true (false → one non-streamed JSON)
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
   });

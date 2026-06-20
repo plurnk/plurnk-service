@@ -56,7 +56,7 @@ First-party daughters install flat via [`@plurnk/plurnk-providers-all`](https://
 - `ProviderError`, `classifyProviderError`, `toProviderError`, `providerSource` (+ `TelemetryEvent`, `ProviderTelemetryKind`) — the TelemetryEvent envelope for transport failures (SPEC §12).
 - `tokenizerFor`, `tokenizerByPublisher`, `parseTokenizerFamily` (+ `TokenizerFamily`, `CountTokens`) — synchronous tokenizer strategies.
 - `STANDARD_PROVIDERS`, `isStandardProvider`, `standardProviderFromEnv` — pure-config OpenAI-compatible providers (no sibling package needed).
-- `Mock` — reference implementation + test fixture (dual-purpose).
+- `Mock` (+ `mockDefaultUsage`) — reference implementation + test fixture (dual-purpose).
 
 ## Tests
 
