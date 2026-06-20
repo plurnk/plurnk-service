@@ -21,7 +21,9 @@ const runBin = (args, env = {}) => {
 };
 
 const bootStart = (env = {}) => new Promise((res) => {
-    const child = spawn(bin, ["start"], { cwd: sandbox, env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
+    // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
+    // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
+    const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
     let stdout = "", stderr = "", listening = false;
     // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
     // embedder notice rides stderr and races the stdout startup line otherwise.
