@@ -1512,13 +1512,13 @@ export default class Engine {
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
-        // scheme returns status 202, the entry is written as state='proposed';
-        // dispatch then PAUSES on a per-entry waiter until resolution
-        // arrives via Engine.resolveProposal (from the loop/resolve RPC,
-        // YOLO listener, or timeout). The post-resolution status replaces
-        // 202 in the result the caller sees, so runTurn never branches on
-        // a pending state.
-        if (result.status === 202) {
+        // side-effecting op returns status 202 (a broadcast SEND[202] park is model
+        // speech, not a proposal — #isProposal, #255), the entry is written
+        // state='proposed'; dispatch then PAUSES on a per-entry waiter until
+        // resolution arrives via Engine.resolveProposal (from the loop/resolve RPC,
+        // YOLO listener, or timeout). The post-resolution status replaces 202 in the
+        // result the caller sees, so runTurn never branches on a pending state.
+        if (Engine.#isProposal(statement, result)) {
             // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
             // no human gate, no loop/proposal notification. Accept + apply
             // in-process; the model sees the outcome directly, never a review.
@@ -2117,6 +2117,16 @@ export default class Engine {
         return "file";  // local (bare) → file
     }
 
+    // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
+    // directed write — paused for client resolution) UNLESS it is a broadcast SEND.
+    // A broadcast SEND[202] is the model PARKING the loop (a terminal disposition,
+    // plurnk.md), never a side-effect — #255: gating the propose/await path on the
+    // bare 202 surfaced model speech as a loop/proposal and froze clients. The 202
+    // is overloaded (proposal-pause vs parked-terminal); the op disambiguates it.
+    static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
+        return result.status === 202 && !(statement.op === "SEND" && statement.target === null);
+    }
+
     async #writeLog({
         statement, result, runId, loopId, turnId, sequence, origin,
     }: {
@@ -2127,13 +2137,12 @@ export default class Engine {
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
             ? JSON.stringify(statement.lineMarker as LineMarker)
             : null;
-        // Status 202 from a scheme means the action is proposed — written to
-        // the log in state='proposed' until the proposal lifecycle resolves
-        // it. attrs holds the scheme-supplied payload (file diff, exec
-        // command, etc.) that the client renders for review and the scheme
-        // consumes on accept. All other statuses are terminal — state =
-        // 'resolved' for the common case.
-        const isProposed = result.status === 202;
+        // A proposal (status 202 from a side-effecting op) is written to the log in
+        // state='proposed' until the proposal lifecycle resolves it; attrs holds the
+        // scheme-supplied payload (file diff, exec command, etc.) the client renders
+        // for review and the scheme consumes on accept. A broadcast SEND[202] is a
+        // parked-terminal, NOT a proposal (#isProposal / #255) → state='resolved'.
+        const isProposed = Engine.#isProposal(statement, result);
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};

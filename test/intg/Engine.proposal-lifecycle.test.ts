@@ -13,6 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { parseDsl } from "./_rpc.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
 class ProposingTest {
@@ -224,6 +225,56 @@ test("proposal: onProposalPending listener fires with the right payload", async 
         const attrs = seen[0]?.attrs as { path: string; patch: string };
         assert.equal(attrs.path, "/proposed-test");
         assert.equal(attrs.patch, "@@ +x @@");
+    } finally { await db.close(); }
+});
+
+test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a proposal", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const proposed: number[] = [];
+        ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
+
+        // A broadcast SEND[202] — the model PARKING the loop (no target). It returns
+        // status 202, but it is model speech, not a reviewable side-effect, so it must
+        // NOT enter the propose/await path (the #255 collision that froze clients).
+        // A bare statement without a PLAN lead is a parse error (grammar 0.70 PLAN-first),
+        // and parseDsl drops kind:"error" items — so build from a PLAN-led turn and pluck
+        // the broadcast SEND[202] (target:null) the model would actually emit.
+        const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[202]:awaiting your reply:SEND").find((s) => s.op === "SEND");
+        assert.ok(sendParked, "fixture: broadcast SEND[202] parsed as a statement");
+        const parkDeferred = deferred<number>();
+        const parkResult = await ctx.engine.dispatch({
+            statement: sendParked,
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            sequence: 1, origin: "model",
+            onDispatch: (id) => parkDeferred.resolve(id),
+        });
+        const parkId = await parkDeferred.promise;
+
+        // Dispatch returned the terminal 202 directly — it never paused...
+        assert.equal(parkResult.status, 202, "broadcast SEND[202] returns its terminal status, unpaused");
+        // ...the entry is a resolved terminal, not a proposed one...
+        const parkRow = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number }>({ id: parkId });
+        assert.equal(parkRow?.state, "resolved", "parked SEND is a resolved terminal, not a proposed entry");
+        assert.equal(parkRow?.status_rx, 202);
+        // ...and no loop/proposal was announced for it.
+        assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast SEND[202]");
+
+        // Negative control: a genuine side-effecting EDIT[202] DOES propose — proving the
+        // listener is live and the SEND is exempt by op, not by a dead listener. Assert
+        // only after the dispatch fully resolves, so onProposalPending has already run.
+        const editDeferred = deferred<number>();
+        const editPending = ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            sequence: 2, origin: "model",
+            onDispatch: (id) => editDeferred.resolve(id),
+        });
+        const editId = await editDeferred.promise;
+        ctx.engine.resolveProposal(editId, { decision: "accept" });
+        await editPending;
+        assert.ok(proposed.includes(editId), "the side-effecting EDIT[202] IS announced as a proposal");
     } finally { await db.close(); }
 });
 
