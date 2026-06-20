@@ -33,7 +33,7 @@ No fallback defaults — required vars throw at `fromEnv` if missing or unparsea
 
 | Variable | Required | Notes |
 |---|---|---|
-| `OLLAMA_BASE_URL` | yes | Ollama server URL (e.g. `http://localhost:11434`) |
+| `OLLAMA_BASE_URL` | yes | Ollama server URL (e.g. `http://localhost:11434`). The official `OLLAMA_HOST` (a bare `host:port`) is also accepted; `OLLAMA_BASE_URL` wins |
 | `PLURNK_PROVIDERS_REASONING_BUDGET` | yes | Universal reasoning budget (SPEC §4); `0` disables, `> 0` toggles `think: true` on the request body |
 | `PLURNK_FETCH_TIMEOUT` | yes | Universal fetch timeout in ms (SPEC §4) |
 | `PLURNK_PROVIDER_RETRY_ATTEMPTS` | yes | Transient-failure retry budget (SPEC §4): `0` disables; `N` retries on 429/5xx/timeout/network with exponential backoff, honoring `Retry-After`. |

@@ -28,9 +28,12 @@ const tokenizerFamilyFor = (family: string | null): TokenizerFamily =>
 
 export default class Ollama {
     static async fromEnv(env: NodeJS.ProcessEnv, model: string): Promise<Provider> {
-        const base = requireEnv(env.OLLAMA_BASE_URL, "OLLAMA_BASE_URL", "ollama");
+        // OLLAMA_BASE_URL (our explicit override) wins; else the official OLLAMA_HOST,
+        // which may be a bare host:port with no scheme — normalize to http:// for it.
+        const rawBase = requireEnv(env.OLLAMA_BASE_URL || env.OLLAMA_HOST, "OLLAMA_BASE_URL or OLLAMA_HOST", "ollama");
         const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", "ollama");
-        const normalizedBase = base.replace(/\/$/, "");
+        const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
+        const normalizedBase = withScheme.replace(/\/$/, "");
 
         const { contextSize, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
 

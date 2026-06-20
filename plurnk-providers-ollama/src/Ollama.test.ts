@@ -24,8 +24,15 @@ test.afterEach(() => mock.restoreAll());
 
 // — fromEnv env guards —
 
-test("fromEnv: throws when OLLAMA_BASE_URL is unset", async () => {
-    await assert.rejects(() => Ollama.fromEnv({}, "qwenzel:latest"), /OLLAMA_BASE_URL must be set/);
+test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", async () => {
+    await assert.rejects(() => Ollama.fromEnv({}, "qwenzel:latest"), /OLLAMA_BASE_URL or OLLAMA_HOST must be set/);
+});
+
+test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
+    const rest = { PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDER_RETRY_ATTEMPTS: "0" };
+    const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
+    await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
+    assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
 });
 
 test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
