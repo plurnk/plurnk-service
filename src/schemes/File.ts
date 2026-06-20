@@ -100,9 +100,33 @@ export default class File {
 
     static #normalizeFileTarget(statement: ReadStatement, root: string | null): ReadStatement {
         const t = statement.target;
-        if (root === null || t === null || t.kind !== "url") return statement;
-        const norm = toWorkspaceRelative(t.pathname, root);
-        return norm === t.pathname ? statement : { ...statement, target: { ...t, pathname: norm } };
+        if (root === null || t === null) return statement;
+        // A bare member parses as a LocalPath (`notes.md` / `/notes.md` → raw); a scheme'd
+        // one as a UrlPath (pathname). Normalize whichever the grammar produced to the `/rel`
+        // member key — the LOCAL form is what the model actually emits. regex isn't a path.
+        if (t.kind === "url") {
+            const norm = File.#toMemberKey(t.pathname, root);
+            return norm === t.pathname ? statement : { ...statement, target: { ...t, pathname: norm } };
+        }
+        if (t.kind === "local") {
+            const norm = File.#toMemberKey(t.raw, root);
+            return norm === t.raw ? statement : { ...statement, target: { ...t, raw: norm } };
+        }
+        return statement;
+    }
+
+    // Map any path form the model might type to its namespace member key `/rel`, so READ
+    // resolves a member the way writeEntry does (the parity that was missing — READ only
+    // normalized absolute disk paths). Two forms collapse to `/rel`: an absolute path under
+    // root (echoed from exec output) and a namespace-relative path — bare `notes.md`,
+    // `/notes.md`, or `sub/x`, which is what the model naturally copies from the catalog.
+    // A path escaping root is left unchanged → it stays a 404, so the membership boundary
+    // holds (the entry-existence gate has the final say; no disk is touched on a read).
+    static #toMemberKey(pathname: string, root: string): string {
+        const abs = toWorkspaceRelative(pathname, root);
+        if (abs !== pathname) return abs;
+        const relBare = relative(root, join(root, pathname));
+        return relBare === "" || relBare.startsWith("..") || isAbsolute(relBare) ? pathname : `/${relBare}`;
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {

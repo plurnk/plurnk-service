@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
@@ -23,6 +24,15 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
     lineMarker: opts.lineMarker ?? null, body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
+
+// Parse a single op the way production does, so a bare path carries its REAL parsed shape
+// (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
+const parseRead = (dsl: string): ReadStatement => {
+    const found = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items
+        .find((i) => i.kind === "statement" && i.statement.op === "READ");
+    if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
+    return (found as { kind: "statement"; statement: ReadStatement }).statement;
+};
 
 // Materialize a file as a readable member — mirrors what the git-membership pass
 // does in production: read disk content into the entry's body channel via
@@ -251,6 +261,30 @@ test("File.read: absolute path under root → normalizes to the member's relativ
         const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
         assert.equal(result.status, 200, "an absolute path under the root normalizes to the relative member key and resolves");
         assert.equal(result.content, "abs content");
+    });
+});
+
+test("File.read: bare relative path (no leading slash) normalizes to the member key and resolves", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "notes.md"), "Codename: Bluejay\n");
+        await addMember(ctx, "notes.md");
+        // The member is keyed "/notes.md", but the model naturally types the bare "notes.md"
+        // it copies from the catalog. READ must resolve it the way WRITE does — the regression
+        // that 404'd "read the codename from notes.md" against the live model.
+        const result = await new File().read(parseRead("<<READ(notes.md)::READ"), ctx);
+        assert.equal(result.status, 200, "bare relative READ resolves to the /notes.md member, not 404");
+        assert.equal(result.content, "Codename: Bluejay\n");
+    });
+});
+
+test("File.read: bare nested relative path resolves to its member key too", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await mkdir(join(root, "src"));
+        await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
+        await addMember(ctx, "src/app.js");
+        const result = await new File().read(parseRead("<<READ(src/app.js)::READ"), ctx);
+        assert.equal(result.status, 200, "bare nested relative READ resolves");
+        assert.equal(result.content, "// TODO: rename\n");
     });
 });
 
