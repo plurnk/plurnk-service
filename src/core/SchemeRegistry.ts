@@ -11,6 +11,7 @@ import type { LoopFlags } from "./types.ts";
 import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type { PacketSection } from "./packet-wire.ts";
 import type { PacketSectionTransformer } from "./scheme-types.ts";
+import PluginAttribution from "./plugin-attribution.ts";
 
 export default class SchemeRegistry {
     // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
@@ -18,6 +19,7 @@ export default class SchemeRegistry {
     // is `object`. Dispatch (Engine.#run) borrows SchemeHandler's op-key set, not its ctx.
     #handlers = new Map<string, object>();
     #external = new Set<string>();
+    #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
 
     constructor() {
         this.register("plurnk",  new Plurnk());
@@ -109,8 +111,13 @@ export default class SchemeRegistry {
             const mod = await import(packageName) as { default: new () => SchemeHandler };
             this.register(name, new mod.default());
             this.#external.add(name);
+            this.#attributions.push(...PluginAttribution.read(packageName)); // #249 — fail-hard if it claims @plurnk/
         }
     }
+
+    // #249 — declared attribution tags of the discovered external schemes (opaque; the
+    // engine unions these across plugin families onto the generate() `attributions` wire).
+    attributions(): string[] { return [...this.#attributions]; }
 
     // Active set under the given loop flags (SPEC §engine-rails). Delegates to
     // the in-tree ResolveForLoop utility.

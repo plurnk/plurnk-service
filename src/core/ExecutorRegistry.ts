@@ -1,5 +1,6 @@
 import { discover } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
+import PluginAttribution from "./plugin-attribution.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
 // to the contract, not the framework's class identity.
@@ -36,10 +37,16 @@ export interface RegistryEntry {
 // plurnk-service#181, #185.
 export default class ExecutorRegistry {
     readonly #byTag: ReadonlyMap<string, RegistryEntry>;
+    readonly #attributions: readonly string[]; // #249 — declared attribution tags of discovered exec packages
 
-    constructor(byTag: ReadonlyMap<string, RegistryEntry>) {
+    constructor(byTag: ReadonlyMap<string, RegistryEntry>, attributions: readonly string[] = []) {
         this.#byTag = byTag;
+        this.#attributions = attributions;
     }
+
+    // #249 — declared attribution tags of the discovered exec packages (opaque; the engine
+    // unions these across plugin families onto the generate() `attributions` wire).
+    attributions(): string[] { return [...this.#attributions]; }
 
     static async build({ defaultRuntime = null, probeTimeoutMs = 3000, discoverFn = discover, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
@@ -79,7 +86,11 @@ export default class ExecutorRegistry {
         }
 
         ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
-        return new ExecutorRegistry(byTag);
+        // #249 — collect attribution per DISTINCT package (a multi-tag package — -common's
+        // sh/perl/ruby — shares one manifest); fail-hard if any claims the reserved @plurnk/.
+        const packages = new Set([...discovered.values()].map((info) => info.packageName));
+        const attributions = [...packages].flatMap((pkg) => PluginAttribution.read(pkg));
+        return new ExecutorRegistry(byTag, attributions);
     }
 
     // A configured default runtime that can't run is an operator misconfig the

@@ -877,8 +877,14 @@ export default class Engine {
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.tokens);
         let response: ProviderResponse;
+        // #249 — first-party plugin attribution: union the declared attribution tags of the
+        // active plugin families, deduped + stable, onto the wire. Only the plurnk provider
+        // forwards them (every other drops them — first-party stays first-party). Empty →
+        // omitted. Grounding in real per-turn dispatch + weighting is deferred (the rich-
+        // people problem); this carries the credible signal that the ecosystem is attributed.
+        const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
         try {
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved
         } catch (err) {
             // #256 — grammar_unenforced is the one provider error the MODEL can recover from:
             // the backend didn't constrain the GBNF, so this turn's output was rejected, but a

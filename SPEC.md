@@ -223,6 +223,20 @@ Plus immutable identity: `provider.contextSize` (token total, or `null` → "no 
 - `assistantRaw` is opaque to the engine (forensics-only). {§provider-guarantees-assistantraw-opaque}
 - `countTokens` is cheap by contract; engine calls frequently.
 
+### §attribution First-party plugin attribution
+
+A plugin declares an opaque attribution tag in its `package.json` so the creators behind it can be credited when the plugin is active:
+
+```
+{ "plurnk": { "attribution": "@acme/widgets" } }   // a string, or string[]
+```
+
+The engine unions the declared tags of the active plugin families (schemes, execs) — deduped + stable — onto `generate({ attributions })`. **Only the plurnk provider forwards them** (as a first-party header); every other provider drops them, so first-party metadata stays first-party by construction. The service does not interpret a tag — an npm-style handle is the natural form; richer creator identities (`@plurnk/creators/<name>`) ride the same namespace later.
+
+**The `@plurnk/` namespace is reserved.** A plugin declaring an `@plurnk/`-prefixed tag fails hard at discovery — a day-one reservation so the first-party creator namespace can't be squatted before it is lit up. {§attribution-plurnk-namespace-reserved}
+
+Deferred (the rigor, not the credible statement): grounding tags in real per-turn dispatch, token-weighting by value contributed, the content/authorship door (entry-level attribution), and the self-identified `client` id. Native surfacing of the field in each framework's `discover()` (delegate-upstream) supersedes the service-side manifest read.
+
 ### §provider-instantiation Provider instantiation
 
 Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). {§provider-instantiation-alias-resolution} Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
