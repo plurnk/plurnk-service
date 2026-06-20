@@ -3,7 +3,8 @@
 // lists every entry, uniformly READable, in no relevance order. The model
 // ranks/filters it itself by querying the catalog
 // (task-aware) — the catalog never ranks for it, or it would be an index again.
-// Each item: { path, seconds?, channels: { <name>: { mimetype, tokens, lines } } }.
+// Each item: { path, seconds?, channels: { <uri>: { mimetype, tokens, lines } } } — each channel
+// keyed by its addressable URI (default channel → the bare path, non-default → path#channel).
 // `tokens` is the live provider's count, re-counted at render — the write-time
 // snapshot is NOT trusted, since the model can change between loops and a stale
 // tokenizer would make the catalog lie; `lines` is the content's extent from
@@ -123,7 +124,11 @@ export default class EntryManifest {
                     await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex") });
                 }
             }
-            entry.channels[r.channel] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
+            // note 4 — key channels by addressable URI: the default channel by the bare entry
+            // path, a non-default by path#channel — so the model READs a channel without guessing.
+            const defaultCh = ctx.defaultChannelFor?.(r.scheme) ?? "body";
+            const channelKey = r.channel === defaultCh ? entry.path : `${entry.path}#${r.channel}`;
+            entry.channels[channelKey] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
         return JSON.stringify([...byEntry.values()], null, 2);
     }

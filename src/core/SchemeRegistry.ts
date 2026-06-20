@@ -65,6 +65,14 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
+    // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less
+    // address targets. Drives the manifest's address-keyed channels (note 4); null → file (body).
+    defaultChannelFor(scheme: string | null): string {
+        if (scheme === null) return "body";
+        const manifest = (this.#handlers.get(scheme)?.constructor as { manifest?: { defaultChannel?: string } })?.manifest;
+        return manifest?.defaultChannel ?? "body";
+    }
+
     // The scheme directory — the `schemes` packet section (below tools). grammar
     // 0.49+ teaches grammar/dialects only, not the scheme set (grammar#239), so the
     // service advertises what schemes exist at packet-time. Each handler that ships a

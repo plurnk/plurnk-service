@@ -78,6 +78,10 @@ export interface PlurnkSchemeContext {
     // test fixtures) — the write helpers fail-hard if a write is attempted
     // without it rather than silently storing 0.
     readonly tokenize?: (text: string) => number;
+    // A scheme's default channel — the manifest keys channels by addressable URI (note 4):
+    // default → the bare entry path, non-default → path#channel. Engine wires the registry;
+    // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
+    readonly defaultChannelFor?: (scheme: string | null) => string;
     // Push a TelemetryEvent into the loop's telemetry buffer. Closes over
     // sessionId + loopId so the scheme just provides the event payload.
     // Wired by Engine to #pushTelemetry → fans out to the next packet's

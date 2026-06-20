@@ -53,10 +53,12 @@ test("[§packet-manifest-catalog] manifest.json is the complete, unranked direct
         // Shape: { path, channels: { <name>: { mimetype, tokens, lines } } }.
         const germany = catalog.find((e) => e.path === "known:///germany/capital");
         assert.ok(germany !== undefined, "germany entry present");
-        assert.deepEqual(Object.keys(germany.channels), ["body"], "one body channel");
-        assert.equal(germany.channels.body.mimetype, "text/markdown");
-        assert.equal(typeof germany.channels.body.tokens, "number", "tokens is the re-counted provider depth");
-        assert.ok(germany.channels.body.lines >= 1, "lines is the content extent from process().totalLines");
+        // note 4 — the default (body) channel is keyed by the entry's addressable URI, not "body".
+        assert.deepEqual(Object.keys(germany.channels), ["known:///germany/capital"], "default channel keyed by its URI");
+        const gbody = germany.channels["known:///germany/capital"];
+        assert.equal(gbody.mimetype, "text/markdown");
+        assert.equal(typeof gbody.tokens, "number", "tokens is the re-counted provider depth");
+        assert.ok(gbody.lines >= 1, "lines is the content extent from process().totalLines");
     } finally { await db.close(); }
 });
 
@@ -87,7 +89,7 @@ test("manifest build survives a malformed application/json entry — degrades to
         assert.ok(paths.includes("known:///good.json"), `valid entry listed; got ${JSON.stringify(paths)}`);
         assert.ok(paths.includes("known:///bad.json"), "malformed entry still listed (degraded, not crashed)");
         const bad = catalog.find((e) => e.path === "known:///bad.json");
-        assert.ok(bad !== undefined && bad.channels.body.lines >= 1, "malformed entry degraded to a line count");
+        assert.ok(bad !== undefined && bad.channels["known:///bad.json"].lines >= 1, "malformed entry degraded to a line count");
     } finally { await db.close(); }
 });
 
@@ -139,5 +141,23 @@ test("[#21] manifest stamps live seconds= on an active stream, absent for static
         assert.equal(typeof stream.seconds, "number", "active stream carries a live seconds= clock");
         assert.ok((stream.seconds ?? -1) >= 0, "seconds is non-negative elapsed");
         assert.equal(stat.seconds, undefined, "a static entry has no seconds (no open subscription)");
+    } finally { await db.close(); }
+});
+
+test("[note4] manifest keys channels by addressable URI — default bare, non-default #fragment", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `note4-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        // A multi-channel exec stream entry at sh:///1/1/2 (stdout is the default channel, + stderr).
+        const id = await seedEntryWithChannel(db, { sessionId, runId, scheme: "sh", pathname: "/1/1/2", channel: "stdout", content: "out", mimetype: "text/stream" });
+        await (db.test_seed_channel as PrepMethod).run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
+        // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
+        const ctx = makeSchemeCtx({ db, sessionId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
+        const catalog = JSON.parse(await EntryManifest.buildManifestBody(ctx)) as Array<{ path: string; channels: Record<string, unknown> }>;
+        const stream = catalog.find((e) => e.path === "sh:///1/1/2");
+        assert.ok(stream, "exec stream listed");
+        assert.deepEqual(Object.keys(stream.channels).toSorted(), ["sh:///1/1/2", "sh:///1/1/2#stderr"],
+            "stdout (default) keyed by the bare URI; stderr by #stderr — the model READs either verbatim");
     } finally { await db.close(); }
 });

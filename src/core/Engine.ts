@@ -763,6 +763,7 @@ export default class Engine {
             wakeRunNotify: this.#wakeRunNotify,
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
         };
         // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
