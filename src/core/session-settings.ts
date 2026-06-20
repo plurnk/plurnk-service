@@ -18,6 +18,7 @@ export type SessionOpenContext = {
     mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_MD_* (#231)
     maxCommands: number | null;   // ceiling — min() with env PLURNK_MAX_COMMANDS; null = unset (#232)
     git: boolean | null;          // ceiling — env AND session; false denies git; null = unset (#232)
+    autoReadAgents: boolean | null; // #250 — auto-READ project AGENTS.md into the first model turn; null = unset
 };
 
 export default class SessionSettings {
@@ -25,14 +26,15 @@ export default class SessionSettings {
     // bag never reaches here — session.create validates before persisting.
     static async read(db: Db, sessionId: number): Promise<SessionOpenContext> {
         const row = await (db.session_get_settings as PrepMethod).get<{ settings: string }>({ session_id: sessionId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown }) : {};
+        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; autoReadAgents?: unknown }) : {};
         const manifestItems = typeof bag.manifestItems === "number" ? bag.manifestItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
+        const autoReadAgents = typeof bag.autoReadAgents === "boolean" ? bag.autoReadAgents : null;
         const mdDocs = Array.isArray(bag.mdDocs)
             ? bag.mdDocs.filter((d): d is ClientMdDoc => typeof (d as ClientMdDoc)?.alias === "string" && typeof (d as ClientMdDoc)?.content === "string")
             : [];
-        return { manifestItems, mdDocs, maxCommands, git };
+        return { manifestItems, mdDocs, maxCommands, git, autoReadAgents };
     }
 
     // The turn-0 reference-doc set: server env docs (PLURNK_MD_*, read from disk) UNION the

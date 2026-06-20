@@ -56,7 +56,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, addressed relative to the project root: clean under it, `..`-prefixed outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
-                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { manifestItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_MANIFEST_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision) }",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { manifestItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_MANIFEST_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision), autoReadAgents?: boolean (#250 — auto-READ the project AGENTS.md member into the first model turn) }",
             },
         });
 
@@ -92,8 +92,8 @@ export default class SessionCreateMethod {
     static #parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
         if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
-        const r = raw as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown };
-        const out: { manifestItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }> } = {};
+        const r = raw as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; autoReadAgents?: unknown };
+        const out: { manifestItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; autoReadAgents?: boolean } = {};
         if (r.manifestItems !== undefined) {
             if (typeof r.manifestItems !== "number" || !Number.isInteger(r.manifestItems)) {
                 throw new Error("session.create: settings.manifestItems must be an integer (-1 full | 0 off | N first-N)");
@@ -112,6 +112,12 @@ export default class SessionCreateMethod {
         if (r.git !== undefined) {
             if (typeof r.git !== "boolean") throw new Error("session.create: settings.git must be a boolean (false denies git for the session)");
             out.git = r.git;
+        }
+        // #250 — opt the session into auto-READing its AGENTS.md scratchpad member into the
+        // first model turn. The client owns on/off (and picks AGENTS.md into membership).
+        if (r.autoReadAgents !== undefined) {
+            if (typeof r.autoReadAgents !== "boolean") throw new Error("session.create: settings.autoReadAgents must be a boolean (auto-READ the project AGENTS.md member into the first model turn)");
+            out.autoReadAgents = r.autoReadAgents;
         }
         if (r.mdDocs !== undefined) {
             if (!Array.isArray(r.mdDocs)) throw new Error("session.create: settings.mdDocs must be an array");

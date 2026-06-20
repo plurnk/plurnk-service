@@ -787,7 +787,7 @@ export default class Engine {
         // it, not a 404; same plurnk-origin foist as the operator docs.
         if (seq === 1) {
             // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
-            const { manifestItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
+            const { manifestItems: sessionMI, autoReadAgents } = await SessionSettings.read(this.#db, sessionId);
             const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
             if (manifestItems !== null) {
                 const manifestRead: ReadStatement = {
@@ -805,6 +805,30 @@ export default class Engine {
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
+            }
+            // #250 — auto-READ the project's AGENTS.md scratchpad into THIS first model turn
+            // when the session opted in AND it's a member. The client picks it (gitignored by
+            // convention → not a git member); the engine READs it here so its body is part of
+            // turn-1's log — a normal file:/// member READ (the model sees only the READ; it
+            // stays read-write, so the model edits the scratchpad back as it evolves).
+            if (autoReadAgents === true) {
+                const agentsMember = await (this.#db.crud_get_member_sig as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/AGENTS.md" });
+                if (agentsMember !== undefined) {
+                    const agentsRead: ReadStatement = {
+                        op: "READ", suffix: "", signal: null, lineMarker: null,
+                        target: {
+                            kind: "url", raw: "file:///AGENTS.md", scheme: "file",
+                            username: null, password: null, hostname: null, port: null,
+                            pathname: "/AGENTS.md", params: {}, fragment: null,
+                        },
+                        body: null, position: { line: 1, column: 1 },
+                    };
+                    await this.dispatch({
+                        statement: agentsRead, sessionId, runId, loopId, turnId,
+                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                    });
+                    nextActionIndex++;
+                }
             }
         }
 
