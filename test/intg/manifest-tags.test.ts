@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -32,5 +33,20 @@ test("[§packet-manifest-catalog] the manifest catalog surfaces each entry's tag
         assert.deepEqual(plan?.tags, ["draft", "wip"], "the tagged entry carries its entry_tags in the catalog, sorted");
         const done = catalog.find((e) => e.path.endsWith("done.md"));
         assert.equal(done?.tags, undefined, "an untagged entry omits the tags field (no empty-array clutter)");
+    } finally { await db.close(); }
+});
+
+test("manifest catalog: a file member (scheme=null) renders slash-free — matches what the model types (note 1)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `mslash-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        // A file member is stored namespace-absolute (`/notes.md`, scheme=null) but the model
+        // types the relative path it reads — the catalog must render it slash-free so the two match.
+        await EntryCrud.writeEntry("/notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: [] }, ctx, null);
+        const catalog = JSON.parse(await EntryManifest.buildManifestBody(ctx)) as Array<{ path: string }>;
+        const note = catalog.find((e) => e.path.endsWith("notes.md"));
+        assert.equal(note?.path, "notes.md", "the /notes.md member renders as bare notes.md — what the model writes back");
     } finally { await db.close(); }
 });

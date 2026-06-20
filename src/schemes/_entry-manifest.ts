@@ -29,7 +29,10 @@ export default class EntryManifest {
     static #MANIFEST_PATH = "plurnk:///manifest.json";
 
     static #toPath(scheme: string | null, pathname: string): string {
-        return scheme === null ? pathname : renderAddress(scheme, pathname);
+        // Bare (file, scheme===null) entries store the namespace-absolute key (`/notes.md`)
+        // but the model types the relative path it reads — render the leading slash off so
+        // the catalog matches what the model writes back (READ/EDIT resolve either form).
+        return scheme === null ? pathname.replace(/^\//, "") : renderAddress(scheme, pathname);
     }
 
     static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
