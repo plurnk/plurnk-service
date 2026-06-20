@@ -6,7 +6,7 @@ Default Provider: [plurnk.ai](https://plurnk.ai).
 * Plurnk Service is vendor-agnostic, and connects to (almost) any LLM.
 * Plurnk Service is MIT Licensed and owned by Plurnk Foundation, not Plurnk, Inc.
 * Plurnk, Inc.'s grammar-tuned [plurnk.ai](https://plurnk.ai) model is offered as an optional convenience.
-* You may (OPTIONALLY) obtain free PLURNK_ACCOUNT and PLURNK_KEY variables at [plurnk.ai](https://plurnk.ai).
+* You may (OPTIONALLY) obtain a free PLURNK_API_KEY bearer token at [plurnk.ai](https://plurnk.ai).
 
 ## Documentation
 
