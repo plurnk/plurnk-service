@@ -339,6 +339,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         costFor,
         source: providerSource(name),
         grammarStyle,
+        // Optional debug toggle (off by default): validate a transported grammar
+        // locally and throw on invalid, without sending it to the model (§13).
+        gbnfDebug: env.PLURNK_GBNF_DEBUG !== undefined && env.PLURNK_GBNF_DEBUG !== "" && env.PLURNK_GBNF_DEBUG !== "0",
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
         supportsSlotPinning,

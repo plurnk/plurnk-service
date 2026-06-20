@@ -285,6 +285,28 @@ test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap
     assert.ok(warnings.some((w) => (w as Error & { code?: string }).code === "PLURNK_GRAMMAR_UNVERIFIABLE"), "emitted the verify-gap warning");
 });
 
+// — PLURNK_GBNF_DEBUG: validate the grammar locally, never pass it to the model —
+
+test("gbnfDebug: a valid grammar is NOT transported and the output is not enforced (runs unconstrained)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const calls = installFetch([{ choices: [{ delta: { content: "non-conforming output" }, finish_reason: "stop" }] }]);
+    const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal("grammar" in body, false);            // grammar never sent
+    assert.equal("repeat_penalty" in body, false);
+    assert.equal(assistant.content, "non-conforming output"); // returned as-is — enforcement skipped (we didn't constrain)
+});
+
+test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await assert.rejects(
+        () => p.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }), // no `root` rule → invalid GBNF
+        /grammar validation \(PLURNK_GBNF_DEBUG\): invalid GBNF/,
+    );
+    assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
+});
+
 // — first-party telemetry headers (attribution + client, SPEC §5) —
 
 const headerVal = (init: RequestInit, name: string): string | undefined =>

@@ -380,6 +380,17 @@ test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the regi
     );
 });
 
+test("PLURNK_GBNF_DEBUG=1 wires through: an invalid grammar throws without a chat call", async () => {
+    const calls = mockEndpoint({ metaNctx: 4096 }); // llama fingerprint → grammarStyle llamacpp
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x", PLURNK_GBNF_DEBUG: "1" }, "m");
+    await assert.rejects(
+        () => p!.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }), // invalid GBNF
+        /PLURNK_GBNF_DEBUG/,
+    );
+    assert.equal(chatCall(calls), undefined); // probes only — the grammar never reached /chat/completions
+    mock.restoreAll();
+});
+
 // — vendored-snapshot fallback (#19): live wins, catalog fills the gap —
 
 import { catalogSnapshot } from "@plurnk/plurnk-models";

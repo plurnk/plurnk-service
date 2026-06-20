@@ -54,6 +54,7 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
+    gbnfDebug?: boolean;                        // PLURNK_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
@@ -139,6 +140,7 @@ export default class OpenAICompatProvider implements Provider {
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
     #grammarStyle: GrammarStyle;
+    #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
     #supportsSlotPinning: boolean;
@@ -158,6 +160,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
+        this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
@@ -268,17 +271,40 @@ export default class OpenAICompatProvider implements Provider {
         throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict));
     }
 
+    // PLURNK_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
+    // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
+    // transported, so the request runs unconstrained. A debug aid to catch invalid
+    // grammars (e.g. while editing the plurnk grammar) without a model round-trip;
+    // off in production. `validateGbnf(grammar, "")` parses the grammar + resolves
+    // its root, throwing iff the grammar itself is invalid (the empty input's
+    // verdict is irrelevant — we only care that parsing succeeded).
+    #assertGrammarValid(grammar: string): void {
+        try {
+            validateGbnf(grammar, "");
+        } catch (cause) {
+            throw new Error(`grammar validation (PLURNK_GBNF_DEBUG): invalid GBNF — ${(cause as Error).message}`, { cause });
+        }
+    }
+
     async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
 
+        // Grammar handling (SPEC §13). PLURNK_GBNF_DEBUG validates the supplied
+        // grammar locally and throws on a malformed one, WITHOUT transporting it —
+        // the request then runs unconstrained (and skips enforcement). Otherwise the
+        // grammar is sent when the backend supports it (grammarStyle !== "none").
+        const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
+        if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
+        const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
+
         const body: Record<string, unknown> = {
             model: this.#model,
             messages,
             ...this.#reasoningBody(),
-            ...this.#grammarBody(grammar),
+            ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             ...this.#slotBody(runId),
         };
@@ -293,7 +319,7 @@ export default class OpenAICompatProvider implements Provider {
         // constrained output mislabeled as reasoning_content, yet returns it as
         // content non-streamed. The atomic dump is correct either way, so the
         // demotion is scoped to exactly that request, not the whole provider.
-        const grammarBreaksStream = grammar !== undefined && this.#grammarStyle === "response_format";
+        const grammarBreaksStream = sendGrammar !== undefined && this.#grammarStyle === "response_format";
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
@@ -319,7 +345,7 @@ export default class OpenAICompatProvider implements Provider {
 
         // Verify the backend honored the grammar we transported (§13) before the
         // content reaches the consumer — only when we actually sent one.
-        if (grammar !== undefined && this.#grammarStyle !== "none") this.#verifyGrammarEnforced(grammar, raw.content);
+        if (sendGrammar !== undefined) this.#verifyGrammarEnforced(sendGrammar, raw.content);
 
         return {
             assistant: {
