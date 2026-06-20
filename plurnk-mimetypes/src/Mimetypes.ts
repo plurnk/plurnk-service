@@ -44,6 +44,10 @@ interface Embedder {
     // embedderInfo() reports null, so the host stays on whole-entry behavior.
     readonly maxTokens?: number;
     countTokens?(text: string): Promise<number>;
+    // Release the embedder's native runtime (onnxruntime worker pool). Optional;
+    // an embedder without it just can't be torn down. Surfaced via
+    // Mimetypes.dispose() (issue #36).
+    dispose?(): Promise<void> | void;
 }
 
 // What embedderInfo() hands the host: the token window plus the model's own
@@ -460,6 +464,27 @@ export default class Mimetypes {
             countTokens: (text) => countTokens.call(embedder, text),
             ...(typeof model === "string" && { model }),
         };
+    }
+
+    // Release native resources so a consumer can drain its event loop and exit
+    // (issue #36). The embedder's onnxruntime worker pool holds active+referenced
+    // libuv handles that otherwise keep the process alive after all work
+    // finishes. Awaits the embedder's own dispose() if one was loaded, then
+    // drops the cached embedder + handler instances. Idempotent — channels
+    // re-lazy-init if the instance is used again. A consumer creating Mimetypes
+    // instances per unit of work should `await m.dispose()` when done.
+    async dispose(): Promise<void> {
+        if (this.#embedderPromise !== null) {
+            const pending = this.#embedderPromise;
+            this.#embedderPromise = null;
+            try {
+                const embedder = await pending;
+                if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
+            } catch {
+                // embedder never loaded (package absent / load failed) — nothing to release.
+            }
+        }
+        this.#handlerInstances.clear();
     }
 
     // Body-matcher query entry point. Plurnk-service passes a raw matcher
