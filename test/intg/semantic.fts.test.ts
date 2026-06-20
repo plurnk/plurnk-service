@@ -194,3 +194,38 @@ test("[#semantic-json-tile] deriveEmbeddings embeds a tiled entry's chunks as te
     assert.ok(hints.length > 0 && hints.every((h) => h === "text/plain"), `every chunk embeds as text/plain, not the entry mimetype; got ${JSON.stringify([...new Set(hints)])}`);
 });
 
+test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank; <0.x> threshold stays 501", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `fts-fallback-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        // Index the FTS half directly — the fallback never touches entry_embeddings, so no
+        // embedder is needed to populate it. "payment" twice in heavy, once in light; auth
+        // has none → the keyword narrow excludes it.
+        const mk = async (p: string, content: string): Promise<void> => {
+            await new Known().edit(editStmt(url(p), content), ctx);
+            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
+            assert.ok(e, `entry ${p} created`);
+            await EntrySemantic.indexFts(db, e.id, content);
+        };
+        await mk("heavy.ts", "payment refund payment\nmore");
+        await mk("light.ts", "payment once");
+        await mk("auth.ts", "authenticate user");
+
+        // No embedder: process() yields no embedding channel → the fallback fires.
+        const noEmbedder = { process: async () => ({}), embedderInfo: () => null } as unknown as Mimetypes;
+
+        const topK = await EntrySemantic.rankSemantic(db, sessionId, "known", noEmbedder, "payment", { first: 5, last: null });
+        assert.equal(topK.status, 200, "no embedder no longer 501s the top-K form");
+        assert.deepEqual(topK.results.map((x) => x.pathname), ["/heavy.ts", "/light.ts"],
+            "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
+        const heavy = topK.results.find((x) => x.pathname === "/heavy.ts");
+        assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
+
+        // The similarity-threshold form needs a cosine score the FTS half can't supply.
+        const thresh = await EntrySemantic.rankSemantic(db, sessionId, "known", noEmbedder, "payment", { first: 0.5, last: null });
+        assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
+    } finally { db.close(); }
+});
+

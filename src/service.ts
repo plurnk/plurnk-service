@@ -133,7 +133,7 @@ export default class Service {
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
         const addr = await daemon.start({ host, port });
         if (await daemon.mimetypes.embedderInfo() === null) {
-            process.stderr.write("plurnk-service: embedder inactive — semantic search (FIND) is degraded. Install @plurnk/plurnk-mimetypes-embeddings, or see README.md#semantic-search\n");
+            process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
         }
         if (alias === null) {
             process.stderr.write(`plurnk-service: no model configured — set PLURNK_MODEL in ${resolve(Service.#homeDir, ".env")} (e.g. PLURNK_MODEL=gemma). Bring your own provider; the hosted default isn't live yet.\n`);

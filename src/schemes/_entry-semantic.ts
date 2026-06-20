@@ -129,13 +129,9 @@ export default class EntrySemantic {
 
     // The ~query dispatch: embed the query text through the SAME channel, FTS-narrow by
     // its terms, cosine-rank the narrowed set, top-K. Each result carries its best-matching
-    // chunk's line span (the Finding extent). 501 when no embeddings handler is installed
-    // (the channel degrades to `embeddingMissing`).
+    // chunk's line span (the Finding extent). No embedder → the top-K <K> form degrades to an
+    // FTS-only keyword rank (whole-entry findings); the <0.x> threshold form stays 501.
     static async rankSemantic(db: Db, sessionId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
-        const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
-        // No embedder installed → the channel degrades to empty bytes (not undefined);
-        // an empty query vector can't rank, so surface 501 rather than a false 200.
-        if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) return { status: 501, results: [] };
         const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
         if (ftsQuery.length === 0) return { status: 200, results: [] };
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
@@ -144,6 +140,18 @@ export default class EntrySemantic {
         // value outside (0,1) is a nonsense result-marker → 416, never coerced.
         const { first, last } = marker;
         const toResult = (x: { pathname: string; line_start: number; line_end: number }) => ({ pathname: x.pathname, lineStart: x.line_start, lineEnd: x.line_end });
+
+        const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
+        if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) {
+            // FTS fallback: no embedder, so there is no query vector to cosine with. Top-K ranks
+            // by BM25 keyword relevance alone; the <0.x> threshold form is intrinsically cosine-
+            // based (no bounded BM25 analogue) → it stays 501.
+            if (!Number.isInteger(first)) return { status: 501, results: [] };
+            const rows = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
+                fts_query: ftsQuery, session_id: sessionId, scheme, k: first,
+            });
+            return { status: 200, results: rows.map(toResult) };
+        }
         if (Number.isInteger(first)) {
             const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,

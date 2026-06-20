@@ -62,3 +62,19 @@ SELECT pathname, line_start, line_end FROM ranked
 WHERE rn = 1 AND score >= $threshold
 ORDER BY score DESC
 LIMIT $cap;
+
+-- PREP: semantic_rank_fts
+-- FTS-only fallback when no embedder is installed: rank entry_fts by BM25 keyword
+-- relevance alone (no entry_embeddings join, no cosine), scheme-scoped, top-K. Without
+-- chunk vectors there is no winning span, so the finding is the whole entry — line
+-- 1..its line count, derived from the indexed FTS content.
+SELECT e.pathname,
+       1 AS line_start,
+       length(f.content) - length(replace(f.content, char(10), '')) + 1 AS line_end
+FROM entry_fts f
+JOIN entries e ON e.id = f.rowid
+WHERE f.content MATCH $fts_query
+  AND e.session_id = $session_id
+  AND e.scheme IS $scheme
+ORDER BY rank
+LIMIT $k;

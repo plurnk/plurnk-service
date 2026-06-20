@@ -41,7 +41,7 @@ Config + state live in `~/.plurnk/` (created on first run): set `PLURNK_MODEL` a
 
 ## Semantic search
 
-`FIND` ranks via an optional embedder peer, `@plurnk/plurnk-mimetypes-embeddings` (heavy native deps; not installed by default). Absent → `FIND` degrades and `start` prints an `embedder inactive` notice. Enable: `npm i @plurnk/plurnk-mimetypes-embeddings`.
+`FIND`'s `~query` ranks semantically via an optional embedder peer, `@plurnk/plurnk-mimetypes-embeddings` (heavy native deps; not installed by default). Absent → `~query` falls back to FTS keyword ranking and `start` prints an `embedder inactive` notice. Enable vector search: `npm i @plurnk/plurnk-mimetypes-embeddings`.
 
 ## Tests
 
