@@ -295,14 +295,26 @@ export const buildModel = (): GModel => {
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
-    // Target is an OPAQUE blob — any non-`)`/`<`/control run. The grammar does not
-    // litigate what a path contains (scheme, host, regex, glob, channel): that is
-    // the visitor's job. Mirrors the ANTLR `TARGET` lexer mode (`~[)<\r\n]`), so
-    // colons, spaces, drives, and `#…#` regexes all generate. `L(GBNF) ⊆ L(ANTLR)`
-    // holds because this is a strict subset of TARGET_INNER. (Regex groups need a
-    // `)` inside the target — ANTLR accepts them via TARGET_REGEX; the GBNF stays
-    // simple and just doesn't dictate that rarer form for constrained models.)
-    model.set("target", [[lit("("), plus(cls([...CONTROL_RANGES, ...C(")<\r\n")], true)), lit(")")]]);
+    // Target — two alternatives, both `(`-`)`-delimited slots:
+    //   target-inner : an OPAQUE blob, any non-`)`/`<`/control run. The grammar does not
+    //     litigate what a path contains (scheme, host, glob, channel): that is the
+    //     visitor's job. Mirrors the ANTLR `TARGET_INNER` mode (`~[)<\r\n]`).
+    //   target-regex : a `#…#flags` path-name regex. The `#` fences bound it, so a `)`
+    //     MAY appear inside (regex groups: `(#(draft|final)/.*#i)`) — the slot-closing
+    //     `)` comes after the flags. Mirrors the ANTLR `TARGET_REGEX` rule; without this
+    //     a constrained model couldn't emit grouped path-name regexes the parser accepts.
+    // Both are strict subsets of their ANTLR lexer rules, so `L(GBNF) ⊆ L(ANTLR)` holds.
+    // A `#…#` target matches both alternatives (ambiguous), but only `#`-leading targets
+    // pay that cost — a normal path kills the regex branch at the first char.
+    model.set("target", [
+        [lit("("), ref("target-inner"), lit(")")],
+        [lit("("), ref("target-regex"), lit(")")],
+    ]);
+    model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C(")<\r\n")], true))]]);
+    model.set("target-regex", [[lit("#"), star(ref("target-rx-char")), lit("#"), star(cls([R("a", "z"), R("A", "Z")]))]]);
+    // Regex content: an escaped char (`\#` for a literal hash) or any non-`#`/newline.
+    // `\` + non-newline is a strict subset of ANTLR's `'\\' .` (which also allows newline).
+    model.set("target-rx-char", [[lit("\\"), cls(C("\r\n"), true)], [cls([...C("#\r\n")], true)]]);
     // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
     // `<0.7,10,20>` all derive; the dash separator (`<N-M>`) stays parse-side only.
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);

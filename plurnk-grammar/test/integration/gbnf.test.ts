@@ -384,6 +384,18 @@ test("GBNF: READ without a target is not derivable", () => {
     assert.equal(derives("statement", "<<READ:x:READ"), false);
 });
 
+test("GBNF: path-name regex target may contain `)` (groups derive via the #…# fence)", () => {
+    // The `#…#` fences bound the regex, so a grouped alternation derives under GBNF now.
+    assert.equal(derives("statement", "<<FIND(#(draft|final)/.*#i)::FIND"), true);
+    assert.equal(derives("statement", "<<FIND(#a(b)c#)::FIND"), true);
+    // plain (non-`#`) targets are unaffected — still the opaque inner blob
+    assert.equal(derives("statement", "<<FIND(known:///**)::FIND"), true);
+    // a literal `)` outside a `#…#` regex is still NOT derivable (delimiter; percent-encode)
+    assert.equal(derives("statement", "<<FIND(a)b)::FIND"), false);
+    // `<` in a path stays excluded (encode `%3C`) — strict-generate over ANTLR's tolerance
+    assert.equal(derives("statement", "<<FIND(a<b)::FIND"), false);
+});
+
 test("GBNF: unsuffixed body cannot contain its own close literal", () => {
     const collision = "<<EDIT(known://demo):quoted: <<EDIT(known://inner):hello:EDIT\n:EDIT";
     assert.equal(derives("statement", collision), false);
