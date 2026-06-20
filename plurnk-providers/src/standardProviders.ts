@@ -152,19 +152,14 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // upstream (probeNctx), so a 32k→48k change is a one-line server decision,
     // never a client release — but `detectLlamaServer: false` keeps it a plain
     // remote OpenAI server that can't be flipped into grammar/slot behavior.
-    // Base URL defaults to model.plurnk.ai, overridable via PLURNK_BASE_URL. Two
-    // optional credentials: bearer PLURNK_KEY + the Plurnk-Account header, each
-    // sent only when set. firstPartyMetadata forwards attribution/client headers.
+    // Base URL defaults to model.plurnk.ai, overridable via PLURNK_BASE_URL. Auth
+    // is a single OPTIONAL bearer PLURNK_API_KEY — the key identifies the account
+    // server-side, so there is no separate account header; sent only when set,
+    // exactly like any other standard bearer (a keyless local server gets none).
+    // firstPartyMetadata forwards attribution/client headers.
     plurnk: {
         baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
-        headersFromEnv: (env) => {
-            const h: Record<string, string> = {};
-            const key = env.PLURNK_KEY ?? "";
-            const account = env.PLURNK_ACCOUNT ?? "";
-            if (key.length > 0) h.Authorization = `Bearer ${key}`;
-            if (account.length > 0) h["Plurnk-Account"] = account;
-            return h;
-        },
+        apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
         reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true,
     },

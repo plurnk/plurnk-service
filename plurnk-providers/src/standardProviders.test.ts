@@ -416,24 +416,23 @@ const plurnkMock = (chatStatus = 200) => {
 const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =>
     seen.find((s) => s.url.endsWith("/chat/completions"))!.headers;
 
-test("plurnk: with no PLURNK_KEY/PLURNK_ACCOUNT, no auth headers are sent", async () => {
+test("plurnk: with no PLURNK_API_KEY, no Authorization header is sent (keyless local server)", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // default base, no creds
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // default base, no key
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal("Authorization" in h, false);
-    assert.equal("Plurnk-Account" in h, false);
     mock.restoreAll();
 });
 
-test("plurnk: PLURNK_KEY + PLURNK_ACCOUNT send bearer + the Plurnk-Account routing header", async () => {
+test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the key identifies the account)", async () => {
     const seen = plurnkMock();
-    const env = { ...baseEnv, PLURNK_KEY: "pk-live-123", PLURNK_ACCOUNT: "acct_42" };
+    const env = { ...baseEnv, PLURNK_API_KEY: "pk-live-123" };
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal(h.Authorization, "Bearer pk-live-123");
-    assert.equal(h["Plurnk-Account"], "acct_42");
+    assert.equal("Plurnk-Account" in h, false); // retired — the key carries account identity
     mock.restoreAll();
 });
 
@@ -463,28 +462,10 @@ test("fireworks: does NOT forward attributions/client — first-party telemetry 
     mock.restoreAll();
 });
 
-test("plurnk: each credential is independent (key-only, account-only)", async () => {
-    let seen = plurnkMock();
-    let p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_KEY: "k" }, "plurnk");
-    await p!.generate({ runId: "r", messages: [] });
-    let h = chatHeaders(seen);
-    assert.equal(h.Authorization, "Bearer k");
-    assert.equal("Plurnk-Account" in h, false);
-    mock.restoreAll();
-
-    seen = plurnkMock();
-    p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_ACCOUNT: "acct_9" }, "plurnk");
-    await p!.generate({ runId: "r", messages: [] });
-    h = chatHeaders(seen);
-    assert.equal(h["Plurnk-Account"], "acct_9");
-    assert.equal("Authorization" in h, false);
-    mock.restoreAll();
-});
-
 test("plurnk: a 401 is classified unauthorized — terminal, never retried", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const seen = plurnkMock(401);
-    const env = { ...baseEnv, PLURNK_PROVIDER_RETRY_ATTEMPTS: "3", PLURNK_KEY: "expired" };
+    const env = { ...baseEnv, PLURNK_PROVIDER_RETRY_ATTEMPTS: "3", PLURNK_API_KEY: "expired" };
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
     await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError); assert.equal(err.kind, "unauthorized"); return true;
