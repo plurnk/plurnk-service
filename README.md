@@ -1,21 +1,24 @@
 # plurnk-service
 
-LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC for clients. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk).
-Default Provider: [plurnk.ai](https://plurnk.ai).
+LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC for clients. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk). MIT.
 
-* Plurnk Service is vendor-agnostic, and connects to (almost) any LLM.
-* Plurnk Service is MIT Licensed and owned by Plurnk Foundation, not Plurnk, Inc.
-* Plurnk, Inc.'s grammar-tuned [plurnk.ai](https://plurnk.ai) model is offered as an optional convenience.
-* You may (OPTIONALLY) obtain a free PLURNK_API_KEY bearer token at [plurnk.ai](https://plurnk.ai).
+## Run
 
-## Documentation
+```
+npm install -g @plurnk/plurnk-service
+plurnk-service start      # WS JSON-RPC daemon (`migrate` initializes the DB)
+```
 
-- [`SPEC.md`](./SPEC.md) — canonical specification. Sections and promises share one terse-tag namespace (`§<tag>`, no digits). Anchors `{§<tag>}` bind to integration tests (`test/intg/spec-anchors.test.ts`).
-- [`AGENTS.md`](./AGENTS.md) — collaboration memory for agents working on this repo (gitignored).
+Config: `.env.example` (canonical knob list; layer with `--env-file` / `--config`). Provider-agnostic — point `PLURNK_MODEL` / `PLURNK_*` at any vendor. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+
+## Contract
+
+- [`SPEC.md`](./SPEC.md) — canonical specification. One `§<tag>` namespace; anchors `{§<tag>}` bind 1:1 to `test/intg/spec-anchors.test.ts`.
+- `discover` RPC — live method + notification catalog over the wire.
 
 ## Sibling contracts
 
-Author-facing contracts hosted in their own repos. plurnk-service is the consumer; consumption surface section noted.
+Author-facing contracts in their own repos; plurnk-service is the consumer.
 
 | Repo | Domain | Consumption |
 |---|---|---|
@@ -26,16 +29,8 @@ Author-facing contracts hosted in their own repos. plurnk-service is the consume
 
 ## Semantic search
 
-`FIND` ranks entries semantically via an embedder, packaged as the optional peer dependency `@plurnk/plurnk-mimetypes-embeddings`. It is **not installed by default** — its native dependencies (`onnxruntime`, `sharp`) are heavy, platform-specific, and run install scripts, so the base install stays lean and portable.
-
-Without the embedder, `plurnk-service start` prints `embedder inactive — semantic search (FIND) is degraded`, and `FIND` returns entries without embedding-ranked relevance. To enable full semantic search:
-
-```
-npm i @plurnk/plurnk-mimetypes-embeddings
-```
-
-A lightweight FTS fallback for the no-embedder case is planned.
+`FIND` ranks via an optional embedder peer, `@plurnk/plurnk-mimetypes-embeddings` (heavy native deps; not installed by default). Absent → `FIND` degrades and `start` prints an `embedder inactive` notice. Enable: `npm i @plurnk/plurnk-mimetypes-embeddings`.
 
 ## Tests
 
-Tiers per SPEC §test-taxonomy. Scripts: `test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`. An off-hot-path `test:installation` verifies a clean global + local install of the built package.
+`test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`; off-hot-path `test:installation`.
