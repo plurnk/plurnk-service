@@ -1,31 +1,43 @@
 # plurnk-service
 
-LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC for clients. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk). MIT.
+> Plurnk is in early-alpha public testing — see https://status.plurnk.ai for current status.
+
+LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk). Provider-agnostic, MIT — no vendor or model lock-in.
+
+## What an agent can do
+
+Grammar ops: `PLAN` reason · `READ`/`EDIT` files · `FIND` search · `EXEC` run shell/code · `SEND` message or conclude · `COPY`/`MOVE`/`KILL` manage · `OPEN`/`FOLD` curate its own context.
+
+Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `run://` sibling agent runs (spawn / fork / message) · `known://` scratch · `log://` own history.
+
+## Loop model
+
+Session = the shared world (one filesystem + membership overlay). Run = one agent's private log. Loop = one `prompt → ops → SEND[terminal]` cycle; every turn leads with `PLAN`. Runs fork and message each other — many clients, many runs, one session.
+
+## Integration (WebSocket JSON-RPC)
+
+Methods: `session.*` (create / attach / constrain / list…) · `loop.run` / `loop.inject` / `loop.resolve` · `op.*` (read / edit / find / exec / send…) · `log.read` · `run.fork`. Streams: `log/entry` → … → `loop/terminated`, plus `loop/proposal`, `telemetry/event`. Full live catalog: the `discover` RPC.
+
+```
+ws connect → session.create({ projectRoot }) → loop.run({ prompt })
+           → read log/entry notifications until loop/terminated
+```
+
+The human CLI over this surface is [plurnk](https://github.com/plurnk/plurnk).
 
 ## Run
 
 ```
 npm install -g @plurnk/plurnk-service
-plurnk-service start      # WS JSON-RPC daemon (`migrate` initializes the DB)
+plurnk-service start      # daemon (`migrate` initializes the DB)
 ```
 
-Config: `.env.example` (canonical knob list; layer with `--env-file` / `--config`). Provider-agnostic — point `PLURNK_MODEL` / `PLURNK_*` at any vendor. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config: `.env.example` (layer with `--env-file` / `--config`); point `PLURNK_MODEL` at any provider. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
 
-## Contract
+## Contract & siblings
 
 - [`SPEC.md`](./SPEC.md) — canonical specification. One `§<tag>` namespace; anchors `{§<tag>}` bind 1:1 to `test/intg/spec-anchors.test.ts`.
-- `discover` RPC — live method + notification catalog over the wire.
-
-## Sibling contracts
-
-Author-facing contracts in their own repos; plurnk-service is the consumer.
-
-| Repo | Domain | Consumption |
-|---|---|---|
-| [plurnk-providers](https://github.com/plurnk/plurnk-providers) | LLM transports + tokenomic primitives | SPEC §provider |
-| [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) | URI scheme handlers | SPEC §scheme-surface |
-| [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) | Content interpreters | SPEC §mimetype-surface |
-| [plurnk-execs](https://github.com/plurnk/plurnk-execs) | Runtime executors (EXEC dispatch) | SPEC §bundled-set |
+- [plurnk-providers](https://github.com/plurnk/plurnk-providers) §provider · [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) §scheme-surface · [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) §mimetype-surface · [plurnk-execs](https://github.com/plurnk/plurnk-execs) §bundled-set.
 
 ## Semantic search
 
