@@ -26,19 +26,17 @@ export default class Service {
     // First-run bootstrap — run-time, NOT an install script: seed ~/.plurnk so a global
     // install has a stable home for config + the DB. Idempotent (only acts when absent).
     static #ensureHome(): void {
-        const fresh = !existsSync(Service.#homeDir);
+        // Seed ONCE, on first run (the home is absent). After that the user owns ~/.plurnk —
+        // edits and deletions stick, no silent re-seed. `~/.plurnk/.env.example` is the cascade
+        // FLOOR (the visible legend); the node_modules copy is the seed + CLI-flag source only.
+        // Wiping the whole dir is a deliberate reset. A deleted floor stays deleted; a missing
+        // required knob then surfaces as a clear `missing PLURNK_X` error, not a crash.
+        if (existsSync(Service.#homeDir)) return;
         mkdirSync(Service.#homeDir, { recursive: true });
-        // ~/.plurnk/.env.example is the cascade FLOOR — the user's visible, editable legend.
-        // Re-seeded from the shipped copy only when absent, so the node_modules copy is the
-        // seed (+ CLI-flag source), never a hidden runtime layer.
-        const homeExample = resolve(Service.#homeDir, ".env.example");
-        if (!existsSync(homeExample)) {
-            const shipped = resolve(Service.#projectRoot, ".env.example");
-            if (existsSync(shipped)) copyFileSync(shipped, homeExample);
-        }
-        const homeEnv = resolve(Service.#homeDir, ".env");
-        if (!existsSync(homeEnv)) writeFileSync(homeEnv, "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
-        if (fresh) process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${homeEnv}\n`);
+        const shipped = resolve(Service.#projectRoot, ".env.example");
+        if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
+        writeFileSync(resolve(Service.#homeDir, ".env"), "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
+        process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }
 
     static #expandHome(p: string): string {
