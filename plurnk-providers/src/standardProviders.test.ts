@@ -41,7 +41,7 @@ test("standardProviderFromEnv: returns null for a non-standard name", async () =
 });
 
 test("openai: throws a named error when OPENAI_BASE_URL is unset", async () => {
-    await assert.rejects(standardProviderFromEnv("openai", { ...baseEnv }, "m"), /OPENAI_BASE_URL must be set/);
+    await assert.rejects(standardProviderFromEnv("openai", { ...baseEnv }, "m"), /OPENAI_BASE_URL or OPENAI_API_BASE must be set/);
 });
 
 test("openai: invalid tokenizer value throws", async () => {
@@ -299,13 +299,17 @@ test("baseUrlVar overrides the fixed default", async () => {
 });
 
 test("every registry entry resolves the chat URL the spec encodes", async () => {
+    const first = (v: string | readonly string[] | undefined): string | undefined =>
+        v === undefined ? undefined : typeof v === "string" ? v : v[0];
     const envFor = (name: string): NodeJS.ProcessEnv => {
         const spec = STANDARD_PROVIDERS[name];
         const e: NodeJS.ProcessEnv = { ...baseEnv };
         // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
-        if (spec.apiKeyVar !== undefined) e[spec.apiKeyVar] = "k";
+        const keyVar = first(spec.apiKeyVar);
+        if (keyVar !== undefined) e[keyVar] = "k";
         // Entries with no fixed default (openai, bedrock) require their base URL.
-        if (spec.baseUrl === undefined && spec.baseUrlVar !== undefined) e[spec.baseUrlVar] = "http://x/v1";
+        const baseVar = first(spec.baseUrlVar);
+        if (spec.baseUrl === undefined && baseVar !== undefined) e[baseVar] = "http://x/v1";
         return e;
     };
     for (const name of Object.keys(STANDARD_PROVIDERS)) {
@@ -317,6 +321,63 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         assert.ok(u.startsWith("http"), `${name} → ${u}`);
         mock.restoreAll();
     }
+});
+
+// — accepted env-var aliases & derived bases (audit; web-sourced wild conventions) —
+
+test("deepinfra: resolves auth via the DEEPINFRA_TOKEN alias (not only DEEPINFRA_API_KEY)", async () => {
+    const seen = plurnkMock();
+    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok" }, "m");
+    await p!.generate({ runId: "r", messages: [] });
+    assert.equal(chatHeaders(seen).Authorization, "Bearer di-tok");
+    mock.restoreAll();
+});
+
+test("deepinfra: a required key unset across ALL aliases fails hard, naming each", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("deepinfra", { ...baseEnv }, "m"),
+        /DEEPINFRA_API_KEY or DEEPINFRA_API_TOKEN or DEEPINFRA_TOKEN must be set/,
+    );
+});
+
+test("openai: base URL via the legacy OPENAI_API_BASE alias", async () => {
+    const calls = mockEndpoint();
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_API_BASE: "http://legacy/v1" }, "m");
+    await p!.generate({ runId: "r", messages: [] });
+    assert.equal(chatCall(calls), "http://legacy/v1/chat/completions");
+    mock.restoreAll();
+});
+
+test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE_URL needed", async () => {
+    const calls = mockEndpoint();
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" }, "m");
+    await p!.generate({ runId: "r", messages: [] });
+    assert.equal(chatCall(calls), "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/chat/completions");
+    mock.restoreAll();
+});
+
+test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async () => {
+    const calls = mockEndpoint();
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1" }, "m");
+    await p!.generate({ runId: "r", messages: [] });
+    assert.equal(chatCall(calls), "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions");
+    mock.restoreAll();
+});
+
+test("bedrock: an explicit BEDROCK_BASE_URL overrides region derivation", async () => {
+    const calls = mockEndpoint();
+    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1" };
+    const p = await standardProviderFromEnv("bedrock", env, "m");
+    await p!.generate({ runId: "r", messages: [] });
+    assert.equal(chatCall(calls), "https://gw.internal/openai/v1/chat/completions");
+    mock.restoreAll();
+});
+
+test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the region vars", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok" }, "m"),
+        /BEDROCK_BASE_URL must be set, or AWS_REGION \/ AWS_DEFAULT_REGION/,
+    );
 });
 
 // — vendored-snapshot fallback (#19): live wins, catalog fills the gap —
@@ -382,16 +443,16 @@ test("bedrock: requires BEDROCK_BASE_URL (region-templated) and AWS_BEARER_TOKEN
     );
 });
 
-test("bedrock: builds the region URL and sends the Bedrock API key as bearer", async () => {
+test("bedrock: an explicit base is used verbatim and sends the Bedrock API key as bearer", async () => {
     const calls: { url: string; auth: string }[] = [];
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         calls.push({ url: String(url), auth: String((init?.headers as Record<string, string>)?.Authorization ?? "") });
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
     });
-    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key" };
+    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
-    assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/v1/chat/completions");
+    assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/chat/completions");
     assert.equal(calls[0].auth, "Bearer bedrock-key");
     mock.restoreAll();
 });

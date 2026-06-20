@@ -11,27 +11,35 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, reasoningBudgetFromEnv } from "./env.ts";
 import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
 
 type StandardProviderSpec = {
-    // Single-var bearer auth, and whether it's mandatory (local OpenAI-compat
-    // servers run without auth, so the generic "openai" entry leaves it
-    // optional). Omit both when supplying a custom `headersFromEnv` builder.
-    apiKeyVar?: string;
+    // Bearer-auth env var(s), and whether the key is mandatory (local
+    // OpenAI-compat servers run without auth, so the generic "openai" entry
+    // leaves it optional). A LIST accepts the conventional aliases the wild uses
+    // for one credential (e.g. deepinfra's API_KEY / API_TOKEN / TOKEN) — first
+    // non-empty wins, the required-but-unset error names them all. Omit when
+    // supplying a custom `headersFromEnv` builder.
+    apiKeyVar?: string | readonly string[];
     apiKeyRequired?: boolean;
     // Custom request-header builder for auth the single-var bearer can't express
     // (multiple optional credentials, vendor routing headers). Returns the
     // headers built from env; an empty object means no auth headers are sent.
     // When set, it REPLACES the apiKeyVar bearer logic.
     headersFromEnv?: (env: NodeJS.ProcessEnv) => Record<string, string>;
-    // Base URL: a fixed default and/or an operator override var. At least one
-    // must resolve to a non-empty value.
+    // Base URL: a fixed default and/or operator override var(s) (a list accepts
+    // conventional aliases, e.g. openai's BASE_URL / API_BASE). At least one of
+    // override / derived / fixed must resolve non-empty.
     baseUrl?: string;
-    baseUrlVar?: string;
+    baseUrlVar?: string | readonly string[];
+    // Derive the base from env when no override var is set and there's no fixed
+    // default — for endpoints whose URL is templated from standard env (bedrock
+    // builds it from AWS_REGION). Throws a named error if it can't derive.
+    baseUrlFromEnv?: (env: NodeJS.ProcessEnv) => string | undefined;
     // Path appended to the (slash-trimmed) base to reach chat-completions.
     chatPath: string;
     // When true (generic "openai" only), strip a trailing /v1 from the
@@ -87,7 +95,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // Replaces the former @plurnk/plurnk-providers-openai sibling verbatim.
     openai: {
         apiKeyVar: "OPENAI_API_KEY", apiKeyRequired: false,
-        baseUrlVar: "OPENAI_BASE_URL", chatPath: "/v1/chat/completions", flexBaseStrip: true,
+        baseUrlVar: ["OPENAI_BASE_URL", "OPENAI_API_BASE"], chatPath: "/v1/chat/completions", flexBaseStrip: true,
         reasoningStyle: "think", tokenizerDefault: "heuristic", tokenizerEnvVar: "OPENAI_TOKENIZER",
         probeNctx: true,
     },
@@ -117,7 +125,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         reasoningStyle: "none", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
-        apiKeyVar: "DEEPINFRA_API_KEY", apiKeyRequired: true,
+        apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
         baseUrl: "https://api.deepinfra.com/v1/openai", baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
@@ -131,16 +139,23 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     },
     // AWS Bedrock via its OpenAI-compat chat-completions endpoint, authed with a
     // Bedrock API key as a bearer token (SigV4 is optional, not required). The
-    // base URL is region-templated, so the operator MUST set BEDROCK_BASE_URL
-    // (e.g. https://bedrock-runtime.us-east-1.amazonaws.com/v1). Multi-model
-    // relay (Claude, gpt-oss, Llama, …) → no single reasoning toggle. Model ids
-    // are inference profiles like `us.anthropic.claude-sonnet-4-6`, which the
-    // models.dev catalog does NOT key on — so bedrock has no catalog
-    // context/cost; set PLURNK_PROVIDER_CONTEXT_SIZE for a context window (a
-    // catalog inference-profile mapping is a deliberate follow-on, #19).
+    // base is region-templated: BEDROCK_BASE_URL overrides, else it's derived
+    // from the standard AWS_REGION / AWS_DEFAULT_REGION as
+    // https://bedrock-runtime.{region}.amazonaws.com/openai/v1 — so an operator
+    // with AWS creds already exported needs no extra var. (Note the OpenAI-compat
+    // path is /openai/v1, not /v1.) Multi-model relay (Claude, gpt-oss, Llama, …)
+    // → no single reasoning toggle. Model ids are inference profiles like
+    // `us.anthropic.claude-sonnet-4-6`, which the models.dev catalog does NOT key
+    // on — so bedrock has no catalog context/cost; set PLURNK_PROVIDER_CONTEXT_SIZE
+    // for a context window (a catalog inference-profile mapping is a follow-on, #19).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
+        baseUrlFromEnv: (env) => {
+            const region = firstSet(env, ["AWS_REGION", "AWS_DEFAULT_REGION"]);
+            if (region === undefined) throw new Error("bedrock provider: BEDROCK_BASE_URL must be set, or AWS_REGION / AWS_DEFAULT_REGION to derive it");
+            return `https://bedrock-runtime.${region}.amazonaws.com/openai/v1`;
+        },
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
     // The plurnk hosted model — deliberately the most boring OpenAI-compatible
@@ -167,26 +182,43 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
 
 export const isStandardProvider = (name: string): boolean => name in STANDARD_PROVIDERS;
 
+// Normalize a single-or-list env-var spec to a list, and return the first env
+// var that is set non-empty (the accepted-alias resolution — first wins).
+const asList = (v: string | readonly string[] | undefined): readonly string[] =>
+    v === undefined ? [] : typeof v === "string" ? [v] : v;
+const firstSet = (env: NodeJS.ProcessEnv, names: readonly string[]): string | undefined => {
+    for (const name of names) {
+        const value = env[name];
+        if (value !== undefined && value.length > 0) return value;
+    }
+    return undefined;
+};
+
 const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string): string => {
-    const override = spec.baseUrlVar !== undefined ? env[spec.baseUrlVar] : undefined;
-    const base = override !== undefined && override.length > 0 ? override : spec.baseUrl;
+    // override var(s) → env-derived template → fixed default.
+    const base = firstSet(env, asList(spec.baseUrlVar)) ?? spec.baseUrlFromEnv?.(env) ?? spec.baseUrl;
     if (base === undefined || base.length === 0) {
-        throw new Error(`${label} provider: ${spec.baseUrlVar ?? "base URL"} must be set`);
+        const names = asList(spec.baseUrlVar);
+        throw new Error(`${label} provider: ${names.length > 0 ? names.join(" or ") : "base URL"} must be set`);
     }
     const trimmed = spec.flexBaseStrip === true ? base.replace(/\/v1\/?$/, "") : base.replace(/\/$/, "");
     return `${trimmed}${spec.chatPath}`;
 };
 
 // Auth/routing headers. A custom builder (multi-credential auth) wins; otherwise
-// the single-var bearer: required → fail-hard if unset, optional → omitted when
-// blank (a keyless server then receives no Authorization header).
+// the bearer from the first accepted alias that is set: required → fail-hard
+// naming every accepted var, optional → omitted when none set (a keyless server
+// then receives no Authorization header).
 const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string): Record<string, string> => {
     if (spec.headersFromEnv !== undefined) return spec.headersFromEnv(env);
-    if (spec.apiKeyVar === undefined) return {};
-    const apiKey = spec.apiKeyRequired === true
-        ? requireEnv(env[spec.apiKeyVar], spec.apiKeyVar, label)
-        : env[spec.apiKeyVar] ?? "";
-    return apiKey.length > 0 ? { Authorization: `Bearer ${apiKey}` } : {};
+    const names = asList(spec.apiKeyVar);
+    if (names.length === 0) return {};
+    const apiKey = firstSet(env, names);
+    if (apiKey === undefined) {
+        if (spec.apiKeyRequired === true) throw new Error(`${label} provider: ${names.join(" or ")} must be set`);
+        return {};
+    }
+    return { Authorization: `Bearer ${apiKey}` };
 };
 
 // GET /v1/models probe. Yields the reported context window (llama-server nests
