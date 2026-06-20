@@ -877,12 +877,8 @@ export default class Engine {
         const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
         const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.tokens);
         let response: ProviderResponse;
-        // #249 — first-party plugin attribution. The wire is PER-TURN (recomputed every
-        // generate, never session-keyed); the VALUE here is the active plugins' declared tags
-        // as a placeholder. The honest per-turn value — whose work actually flowed into THIS
-        // turn (dispatched code AND consumed content), token-weighted — is the deferred
-        // content/dispatch door, NOT a per-session/per-install property. Deduped + stable;
-        // only the plurnk provider forwards them (others drop — first-party stays first-party).
+        // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
+        // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
         try {
             response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved
