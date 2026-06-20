@@ -34,6 +34,7 @@ interface Params {
     prompt: string;
     maxTurns?: number;
     alias?: string;
+    model?: string;
     flags?: LoopRunFlags;
 }
 
@@ -71,14 +72,31 @@ export default class LoopRunMethod {
                 // #128) takes precedence over ctx.provider; absence falls back to
                 // the daemon's boot-time provider.
                 let provider: Provider | null = ctx.provider;
-                if (p.alias !== undefined) {
+                if (p.model !== undefined) {
+                    // Client-resolved provider/model (§provider-instantiation-alias-resolution). The
+                    // CLIENT resolves its own alias env — always fresh, unlike a long-lived daemon's —
+                    // and sends the concrete `<provider>/<model>`; the daemon instantiates it with ITS
+                    // keys, so the daemon needs no matching alias. Same first-slash split as the env knob.
+                    if (typeof p.model !== "string" || p.model.length === 0) {
+                        throw new Error("loop.run: model must be a non-empty '<provider>/<model>' string");
+                    }
+                    const slash = p.model.indexOf("/");
+                    if (slash <= 0) throw new Error(`loop.run: model must be '<provider>/<model>', got '${p.model}'`);
+                    const label = typeof p.alias === "string" && p.alias.length > 0 ? p.alias : p.model;
+                    provider = await ProviderInstantiate.instantiateProvider({ alias: label, provider: p.model.slice(0, slash), model: p.model.slice(slash + 1) });
+                } else if (p.alias !== undefined) {
                     if (typeof p.alias !== "string" || p.alias.length === 0) {
                         throw new Error("loop.run: alias must be a non-empty string");
                     }
                     const aliases = parseAliasesFromEnv();
                     const target = aliases.find((a) => a.alias === p.alias!.toLowerCase());
                     if (target === undefined) {
-                        throw new Error(`loop.run: unknown alias '${p.alias}'; configure PLURNK_MODEL_${p.alias.toUpperCase()}=<provider>/<model>`);
+                        // Aliases case-fold (PLURNK_MODEL_ccp === PLURNK_MODEL_CCP), so the miss is
+                        // never casing — it's the DAEMON's environment lacking the key, typically a
+                        // client-side shell export the running daemon never inherited. List what it
+                        // does know so the env gap is obvious.
+                        const known = aliases.map((a) => a.alias).join(", ") || "none";
+                        throw new Error(`loop.run: unknown alias '${p.alias}' (the daemon knows: ${known}). Aliases case-fold, so casing isn't it — the daemon's environment declares no PLURNK_MODEL_${p.alias.toLowerCase()}. Set it where the daemon runs and restart; a client-side shell export the daemon didn't inherit is the usual cause.`);
                     }
                     provider = await ProviderInstantiate.instantiateProvider(target);
                 }
@@ -174,11 +192,12 @@ export default class LoopRunMethod {
                     action: "enqueued_new_loop",
                 };
             },
-            description: "Run a model-driven loop with a prompt. Optional per-call `alias` resolves a PLURNK_MODEL_<alias> override. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
+            description: "Run a model-driven loop with a prompt. Optional `model` (`<provider>/<model>`, client-resolved) runs on that provider using the daemon's keys — preferred over `alias`, which resolves a PLURNK_MODEL_<alias> override in the DAEMON's env. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
                 maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§operator-config)",
-                alias: "string? — model alias to use for this loop (overrides the daemon's PLURNK_MODEL)",
+                alias: "string? — model alias resolved in the DAEMON's env (overrides PLURNK_MODEL); prefer `model` for client-resolved selection",
+                model: "string? — client-resolved '<provider>/<model>' to run on, instantiated with the daemon's keys; bypasses daemon alias lookup, takes precedence over `alias`",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
             },
             requiresInit: true,

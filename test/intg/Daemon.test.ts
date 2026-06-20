@@ -295,15 +295,42 @@ test("providers.list returns parsed aliases with active marker", async () => {
     });
 });
 
-test("loop.run with unknown alias returns clear error", async () => {
+test("loop.run with unknown alias returns a clear, case-fold-aware error", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "alias-test" });
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.attach", { id: session?.id });
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "hi", alias: "nonexistent-alias-xyz" });
+            // Request an UPPERCASE alias (guaranteed-unconfigured): the suggestion must lowercase
+            // it (aliases case-fold), never echo PLURNK_MODEL_ZQX — the misdirection that read to
+            // the owner as "capitalizing my aliases".
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "hi", alias: "ZQX" });
             assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /unknown alias 'nonexistent-alias-xyz'/);
+            const msg = response.error?.message ?? "";
+            assert.match(msg, /unknown alias 'ZQX'/, "echoes the requested alias verbatim");
+            assert.match(msg, /PLURNK_MODEL_zqx\b/, "suggests the case-folded (lowercase) key");
+            assert.doesNotMatch(msg, /PLURNK_MODEL_ZQX/, "never the uppercased key — casing is not the cause");
+            assert.match(msg, /case-fold/, "tells the operator casing isn't the issue");
+            assert.match(msg, /the daemon knows:/, "lists the daemon's known aliases to expose an env gap");
+        } finally { ws.close(); }
+    });
+});
+
+test("loop.run accepts a client-resolved provider/model, instantiated with the daemon's keys", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "client-model" });
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.attach", { id: session?.id });
+            // Malformed: needs the '<provider>/<model>' shape (same split as the env knob).
+            const bad = await rpcCall(ws, 2, "loop.run", { prompt: "hi", model: "noslash" });
+            assert.equal(bad.error?.code, -32603);
+            assert.match(bad.error?.message ?? "", /model must be '<provider>\/<model>'/);
+            // Well-formed but unknown provider: the client-resolved path reaches instantiation
+            // (proving it bypassed the daemon's alias lookup) and fails clearly on the missing package.
+            const unknown = await rpcCall(ws, 3, "loop.run", { prompt: "hi", model: "nope-xyz/some-model" });
+            assert.equal(unknown.error?.code, -32603);
+            assert.match(unknown.error?.message ?? "", /@plurnk\/plurnk-providers-nope-xyz.*not installed/);
         } finally { ws.close(); }
     });
 });
