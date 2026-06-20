@@ -26,7 +26,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
-EDIT is only for entries. Do not attempt to edit log items.
+EDIT is only for adding or modifying entries. Do not attempt to edit log items.
 EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc.).
 
 ## Context
@@ -77,12 +77,12 @@ URI-shaped: `[scheme://]rest`.
 * Bare paths (no scheme) default to local relative project file paths.
 * Glob metacharacters match within path segments; a standalone `#pattern#flags` matches the whole target by regex.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
-* A literal `)` closes the target — percent-encode parens in a path (`%28`/`%29`).
+* Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 
 ## Suffix
 
-When quoting plurnk operations in a body, YOU MUST use a matching single-digit suffix (`1`–`9`) on the opening and closing tags.
+When quoting plurnk operations in a body, YOU MUST use a matching single-digit suffix (`1`–`9`) or label (`[a-z]+`) on the opening and closing tags.
 
 <<EDIT1(known:///demo):
 quoted: <<EDIT(known:///inner):hello:EDIT
