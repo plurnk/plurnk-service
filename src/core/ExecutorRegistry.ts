@@ -64,10 +64,16 @@ export default class ExecutorRegistry {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
+        // #259 — git lockout. PLURNK_GIT_ALLOWED=0 must drop the git/gh executors ENTIRELY (not
+        // just membership + telemetry): a denied host neither dispatches EXEC[git]/[gh] nor teaches
+        // them (the tools sheet reads the registered set). "No git" then training on git is a break.
+        const gitDenied = process.env.PLURNK_GIT_ALLOWED !== "1";
+        const infos = [...discovered.values()].filter((info) => !(gitDenied && info.packageName === "@plurnk/plurnk-execs-git"));
+
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so
         // re-importing a package once per tag is free.
-        const probed = await Promise.all([...discovered.values()].map(async (info) => {
+        const probed = await Promise.all(infos.map(async (info) => {
             const mod = await load(info.packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
             const executor = new mod.default({ runtime: info.runtime, glyph: info.glyph });
             const availability = await ExecutorRegistry.#probe(executor, probeTimeoutMs);
@@ -89,7 +95,7 @@ export default class ExecutorRegistry {
         ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
         // #249 — collect attribution per DISTINCT package (a multi-tag package — -common's
         // sh/perl/ruby — shares one manifest); fail-hard if any claims the reserved @plurnk/.
-        const packages = new Set([...discovered.values()].map((info) => info.packageName));
+        const packages = new Set(infos.map((info) => info.packageName));
         const attributions = [...packages].flatMap((pkg) => PluginAttribution.read(pkg));
         return new ExecutorRegistry(byTag, attributions);
     }
