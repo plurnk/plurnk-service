@@ -83,6 +83,23 @@ FROM subscriptions WHERE run_id = $run_id AND entry_id = $entry_id;
 -- PREP: test_count_active_subscriptions
 SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
 
+-- PREP: test_count_open_subs_by_scheme
+-- Open (un-closed) subscriptions for a session's scheme — the deterministic
+-- "the backgrounded exec is live and killable" signal a cancel test waits on,
+-- instead of racing a fixed sleep against the spawn.
+SELECT COUNT(*) AS n FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+WHERE e.session_id = $session_id AND s.scheme = $scheme AND s.closed_at IS NULL;
+
+-- PREP: test_exec_close_status_by_session
+-- The close_status the registry recorded for a session's most-recently-closed
+-- stream of a scheme — proves the registry-routed reap (§run-lifecycle-total-reap)
+-- closed the subscription at 499, not just that a notification fired.
+SELECT s.close_status FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+WHERE e.session_id = $session_id AND s.scheme = $scheme AND s.closed_at IS NOT NULL
+ORDER BY s.closed_at DESC LIMIT 1;
+
 -- PREP: test_seed_entry_session
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
 INSERT INTO entries (scope, session_id, scheme, pathname)

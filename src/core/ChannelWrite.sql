@@ -47,6 +47,14 @@ SELECT id, scheme, handle
 FROM subscriptions
 WHERE run_id = $run_id AND entry_id = $entry_id AND closed_at IS NULL;
 
+-- PREP: find_open_subscriptions_for_run
+-- The run's still-open subscriptions — the registry-routed reap (§run-lifecycle-total-reap):
+-- loop.cancel / KILL / shutdown iterate these and abort each via the owning scheme, so a
+-- backgrounded exec is reaped independent of any in-process AbortSignal-listener timing.
+SELECT id, scheme
+FROM subscriptions
+WHERE run_id = $run_id AND closed_at IS NULL;
+
 -- PREP: find_exec_close_status
 -- Terminal outcome of a finished exec stream, addressed by its coordinate
 -- pathname — the KILL-on-a-non-running-exec lookup. 499 (aborted) = killed

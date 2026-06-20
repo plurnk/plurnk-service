@@ -188,6 +188,17 @@ Beyond the three creation ops:
 - **Cap** — `PLURNK_SESSION_RUNS_MAX_ACTIVE` ceilings the *concurrent* active runs per session (a run with a non-terminal loop); a spawn or fork past it fails hard (508 — no queue, no retry), irc exempt; `-1` disables it. The fork-bomb brake, sized for sessions that live for months. {§run-scheme-cap}
 - **Collect** — a run's loop reaching a terminal status surfaces to its sisters as an ambient FOLDED delta (§env-delta): a `SEND` from `run:///<name>` carrying the loop's deliverable — the `SEND[200]` body, or for an abandonment the reason. Every death-path is stamped uniformly, so no termination is silent; collection is the shared world moving, never a verb. {§run-scheme-collect}
 
+### §run-lifecycle Run lifecycle: the drain, the reap, the passive wake
+
+A run is a **log plus a cancellation scope** — one `AbortController` per run, reused while live and replaced only once aborted, so a cancel ends the run as a unit and a later `loop.run` is never born cancelled. A run's queued loops are advanced by a **drain**: a single per-run worker that claims loops atomically (status 100→102) and runs each under the run's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry (§subscriptions) — the durable record of what the run holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
+
+- **One drain advances a run.** At most one drain is registered for a run at any instant: a `loop.run` or wake on a run with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish run under one per-run lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. {§run-lifecycle-single-drain}
+- **A cancel reaps every stream the run holds — by the registry.** `loop.cancel` / `KILL` / shutdown abort the run scope AND iterate the run's open subscriptions, aborting each via its owning scheme; the registry is the source of truth, the in-process abort signal a fast-path optimization. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. {§run-lifecycle-total-reap}
+- **A stream's kill binds to the scope it captured at spawn.** A stream captures the run's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream. {§run-lifecycle-exec-epoch-bound}
+- **A cancelled run is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle run starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta (§env-delta), never a revived loop. The cancel was deliberate; only an explicit `loop.run` resumes the run. {§run-lifecycle-no-resurrection}
+- **A stream conclusion always reaches its run.** When a backgrounded stream concludes, the daemon routes it through the same inject seam as any loop source (§actor-boundary-passive-wake): an active run folds the summary into its next turn; a dormant run opens a fresh loop with the summary as its prompt — a long-running result is never lost because its spawning loop ended first. {§run-lifecycle-wake-liveness}
+- **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur. {§run-lifecycle-no-lost-loop}
+
 ---
 
 ## §provider Provider Contract
@@ -734,7 +745,6 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MANIFEST_ITEMS`              | `0`                | enforced   | Turn-0 manifest preview foisted into the model's first turn. `-1` = full `plurnk:///manifest.json`; positive `N` = the first N items (jsonpath slice); `0` / unset = off (§actor-boundary-manifest-preview). |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
 | `PLURNK_PROVIDERS_REASON_LEVEL`                      | `0`                | enforced   | Reasoning **magnitude** sent to the providers: `0` = none, positive = effort/budget the provider module translates to wire format (o-series tiers, Anthropic `budget_tokens`). The on/off is the `PLURNK_PROVIDERS_REASONING` gate. |
-| `PLURNK_PLAN`                        | `0`                | enforced   | Enable the grammar's `<<PLAN` op — advertised in the `# Plurnk System Tools` packet section (§tools). `1` on, `0` off. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
@@ -754,7 +764,7 @@ Enforcement is per-use-site — no central most-restrictive pass; each ceiling i
 - `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins (a deliberate shadow), but by default the policy doc rides into every session. The client sends content (it owns the file), not a path. {§operator-config-session-md-docs}
 
 *Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
-- `settings.maxCommands` (number) **min()s** the `PLURNK_MAX_COMMANDS` per-emission cap for the session — a client tightens the runaway-op guard, never raises it past the operator's. {§operator-config-session-max-commands}
+- `settings.maxCommands` (number) **min()s** the `PLURNK_MAX_COMMANDS` per-emission cap for the session — a client tightens the runaway-op guard, never raises it past the operator's. {§operator-config-session-max-commands} The cap bounds *actions* only: PLAN (reasoning) and a terminal `SEND` (signal ≥ 200, the conclusion) are never counted and always dispatch — so `0` is a valid floor (the tightest), admitting a plan and a conclusion with zero actions. {§operator-config-session-max-commands-floor}
 - `settings.git` (`false`) **denies** git for the session (`PLURNK_GIT_ALLOWED` AND session) — the client opts its session out of git membership + telemetry; it can never re-enable git past the operator's service-wide lockout. {§operator-config-session-git}
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
@@ -1002,7 +1012,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `Engine.#buildRequestPacket`, then lets trusted plugins rewrite it.
 
-**Decision.** Two stages. (1) The engine builds the default section list — the kernel sections `definition`, `tools`, `log` (system slot), then `prompt`, `budget`, `errors`, `git`, `requirements` (user slot). (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
+**Decision.** Two stages. (1) The engine builds the default section list — the kernel sections `definition`, `tools`, `schemes`, `log` (system slot), then `prompt`, `budget`, `errors`, `git`, `requirements` (user slot). (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
 
 **Why a whole-list transform, not a per-section hook.** It is the legible, fork-avoiding seam: a plugin that can reshape the packet to its needs never has a reason to fork the engine (§ecosystem). And it is **strictly in-process and trusted** (behind `PLURNK_PLUGINS_TRUSTED_ONLY`) — the client/RPC wire never reaches the packet, because handing an untrusted connection the model's entire context is exactly the actor-boundary violation the engine exists to prevent. Pure list-in/list-out; no context is handed to plugins.
 
@@ -1147,7 +1157,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 ```ts
 type PacketSection = {
-    name: string;                       // stable id: definition, log, prompt, budget, errors, git, tools, requirements — or a plugin's own
+    name: string;                       // stable id: definition, tools, schemes, log, prompt, budget, errors, git, requirements — or a plugin's own
     slot: "system" | "user";            // the prompt-cache boundary; system-slot sections build the cache-stable system message
     header: string | null;              // "# Plurnk System X", or null (definition renders verbatim)
     content: string;                    // rendered markdown — what the model saw
@@ -1206,11 +1216,17 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 A `# Plurnk System Tools` section renders **above** `# Plurnk System Requirements` — a hook-populated list of the capabilities enabled this session, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `Engine.#collectTools`; the whole section is omitted when nothing is enabled. {§tools-capability-sheet}
 
-**Contributors: the wired executor tags.** Each available executor tag injects a line describing its tag and functionality (the boot `ExecutorRegistry` probes availability per tag), retiring the model's blind `<<EXEC[sh]…`. The plan directive does **not** render here: it is a hard requirement gated by `PLURNK_PLAN`, joined to and dropped from the rules list with the flag rather than softly advertised as an optional tool (§requirements-plan-gated).
+**Contributors: the wired executor tags.** Each available executor tag injects a line describing its tag and functionality (the boot `ExecutorRegistry` probes availability per tag), retiring the model's blind `<<EXEC[sh]…`.
+
+### §schemes user.schemes — the scheme directory
+
+A `# Plurnk System Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this session, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE line — its canonical usage — plus a `(docs: plurnk://docs/<scheme>.md)` pointer when it ships `manifest.documentation`. The verbose per-scheme semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, mirroring the tools sheet (§tools). A scheme with no example (provisional) is omitted. {§schemes-directory}
+
+**The scheme self-doc contract.** `example` is the hot-path one-liner; `documentation` is the deep doc — the exact shape execs already use (`example` + `documentation`). `SchemeRegistry.teach()` renders the directory; `docEntries()` materializes the docs (per loop.run, alongside the operator docs). `documentation` rides a service-side `SchemeManifest` extension until plurnk-schemes#25 lands it in the contract.
 
 ### §requirements The requirements section — static per-turn rules
 
-Rendered at the END of the user packet under `# Plurnk System Requirements` {§requirements-requirements-render-last} — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. The header is omitted entirely when the requirements string is empty. {§requirements-requirements-omitted-when-empty} Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`"). The op syntax leads the section, and when `PLURNK_PLAN=1` the plan directive — *YOU MUST begin every response with `<<PLAN:...:PLAN`* — joins the rules: a hard requirement dynamically added to and removed from the list with the flag, never the soft optional-tools sheet. {§requirements-plan-gated}
+Rendered at the END of the user packet under `# Plurnk System Requirements` {§requirements-requirements-render-last} — closest to the assistant turn so the contract the model has to honor is the most recent text it sees. The header is omitted entirely when the requirements string is empty. {§requirements-requirements-omitted-when-empty} Contains rules the grammar block doesn't cover (canonical example: "Conclude the loop with `<<SEND[200]:answer:SEND`"). The op syntax leads the section. PLAN is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to lead with `<<PLAN`), so the service injects no separate plan directive here.
 
 **Sourcing:** caller supplies the string via `runLoop({ requirements })` / `runTurn({ requirements })`. Plurnk-service exposes `PATHS.defaultRequirements` (resolves `PLURNK_REQUIREMENTS` env → in-package `requirements.md`). No DB cascade — same string every turn.
 

@@ -38,8 +38,6 @@ const paginate = <T>(items: T[], marker: { first: number; last: number | null })
 };
 
 export default class Log {
-    static teach = "Your run's event history, one row per past operation at `log:///<loop>/<turn>/<seq>`. READ a row to recover the actual result body of an earlier op (chain a matcher onto it to extract a value); OPEN/FOLD rows to control which stay visible in your packet. The engine writes it — you read and curate it.";
-
     static manifest: SchemeManifest = {
         name: "log",
         channels: {},  // logs render through read(), not channel storage
@@ -49,6 +47,8 @@ export default class Log {
         writableBy: ["plurnk"],  // engine-only writes; model & client read + open/fold
         volatile: false,
         modelVisible: true,
+        example: "<<READ(log:///1/2/3)::READ",
+        documentation: "Your run's event history, one row per past operation at `log:///<loop>/<turn>/<seq>`. READ a row to recover the actual result body of an earlier op (chain a matcher onto it to extract a value); OPEN/FOLD rows to control which stay visible in your packet. The engine writes it — you read and curate it.",
     };
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {

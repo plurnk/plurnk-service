@@ -11,10 +11,12 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const parse = (dsl: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(dsl);
+    // grammar 0.70: turns lead with PLAN; prefix it (when absent) and strip it back out.
+    const result = PlurnkParser.parse(dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`);
     return result.items
         .filter((i) => i.kind === "statement")
-        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement)
+        .filter((s) => s.op !== "PLAN");
 };
 
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {

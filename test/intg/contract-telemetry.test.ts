@@ -35,7 +35,10 @@ const opsResponse = (ops: PlurnkStatement[]): MockResponse => ({
 // PlurnkParser, so a malformed emission produces a genuine parse_error.
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
-        content, reasoning: null,
+        // grammar 0.70: turns lead with PLAN (the Engine re-parses this content to
+        // surface the genuine parse_error in the embedded op, now on line 2).
+        content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
+        reasoning: null,
         usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
     },
     assistantRaw: null,
@@ -83,12 +86,13 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
         const p2 = await getPacket(db, t2.turnId);
         const parseErr = p2.telemetryErrors.find((e) => e.kind === "parse_error");
         assert.ok(parseErr !== undefined, "parse_error surfaced on the next packet");
-        // Real content-offset position from the grammar visitor (1:0).
-        assert.deepEqual(parseErr.position, { type: "content-offset", line: 1, column: 7 });
+        // Real content-offset position — the malformed SEND is on line 2 now
+        // (line 1 is the required PLAN lead, grammar 0.70).
+        assert.deepEqual(parseErr.position, { type: "content-offset", line: 2, column: 7 });
         // Snippet is the model's own offending bytes, N:\t-prefixed by #extractSnippet.
         assert.equal(parseErr.source, "grammar");
         assert.equal(parseErr.parserSource, "lexer");
-        assert.equal(parseErr.snippet, `1:\t${BROKEN_STMT}`);
+        assert.equal(parseErr.snippet, `1:\t<<PLAN::PLAN\n2:\t${BROKEN_STMT}`);
 
         // Render the wire the model actually receives and assert the layout:
         // meta line (no snippet key) immediately followed by the error://<line>
@@ -98,11 +102,11 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
         // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
         // error://1 fence carrying the verbatim N:\t snippet, line 1, immediately after meta.
-        const fenced = `<<:::error://1\n1:\t${BROKEN_STMT}\n:::error://1`;
+        const fenced = `<<:::error://2\n1:\t<<PLAN::PLAN\n2:\t${BROKEN_STMT}\n:::error://2`;
         assert.ok(wire.includes(fenced), "snippet rendered under error://<line> fence with N:\\t prefix");
         // Meta line precedes the fence (event meta, then locator block).
         const metaIdx = wire.indexOf('"kind":"parse_error"');
-        const fenceIdx = wire.indexOf("<<:::error://1");
+        const fenceIdx = wire.indexOf("<<:::error://2");
         assert.ok(metaIdx !== -1 && fenceIdx !== -1 && metaIdx < fenceIdx, "meta line precedes the snippet fence");
     } finally { await db.close(); }
 });
@@ -165,7 +169,7 @@ test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry
         // The only `error://` token the model ever sees is the snippet-fence
         // LOCATOR in the rendered telemetry, not an entry it can address.
         const wire = PacketWire.renderSlot(p2.sections, "user");
-        assert.ok(wire.includes("error://1"), "error://<line> is render-time locator context only");
+        assert.ok(wire.includes("error://2"), "error://<line> is render-time locator context only");
     } finally { await db.close(); }
 });
 
@@ -203,7 +207,7 @@ test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live wi
         const liveEvent = liveParse[0].payload.event;
         assert.equal(liveEvent.source, "grammar");
         assert.equal(liveEvent.kind, "parse_error");
-        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 1, column: 7 });
+        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 2, column: 7 });
 
         // Model side: the SAME envelope drains onto the next packet's
         // telemetry.errors[]. Same source/kind/message/position on both sides.

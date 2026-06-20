@@ -109,6 +109,7 @@ export default class ChannelWrite {
     static #openSubStmt(db: Db): PrepMethod { return db.open_subscription as PrepMethod; }
     static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
     static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
+    static #openSubsForRunStmt(db: Db): PrepMethod { return db.find_open_subscriptions_for_run as PrepMethod; }
     static #execTerminalStmt(db: Db): PrepMethod { return db.find_exec_close_status as PrepMethod; }
 
     // The entry's target URI for stream notifications (#179). A NULL scheme is
@@ -186,5 +187,17 @@ export default class ChannelWrite {
     ): Promise<{ id: number; scheme: string; handle: string } | null> {
         const row = await ChannelWrite.#findActiveStmt(db).get<{ id: number; scheme: string; handle: string }>({ run_id: runId, entry_id: entryId });
         return row ?? null;
+    }
+
+    // The run's still-open subscriptions — the registry-routed reap
+    // (§run-lifecycle-total-reap). A cancel iterates these and aborts each via the
+    // owning scheme, so a backgrounded exec is reaped regardless of in-process
+    // AbortSignal-listener timing (R1): the registry is the source of truth, the
+    // signal an optimization.
+    static async findOpenSubscriptionsForRun(
+        db: Db,
+        runId: number,
+    ): Promise<Array<{ id: number; scheme: string }>> {
+        return ChannelWrite.#openSubsForRunStmt(db).all<{ id: number; scheme: string }>({ run_id: runId });
     }
 }

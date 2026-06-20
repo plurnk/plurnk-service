@@ -86,19 +86,27 @@ export default class Dsl {
         return `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
     }
 
+    // grammar 0.70: a turn must lead with PLAN (plurnk.md §Imperatives), so the
+    // canonical parse of an op.*-built HEREDOC needs a PLAN prefix; we add it (when
+    // absent) and strip the PLAN back out, returning only the real op(s).
+    static #planPrefixed(text: string): string {
+        return text.startsWith("<<PLAN") ? text : `<<PLAN::PLAN\n${text}`;
+    }
+
     static parseSingleStatement(text: string): PlurnkStatement {
-        const result = PlurnkParser.parse(text);
+        const result = PlurnkParser.parse(Dsl.#planPrefixed(text));
         for (const item of result.items) {
-            if (item.kind === "statement") return item.statement;
+            if (item.kind === "statement" && item.statement.op !== "PLAN") return item.statement;
         }
         throw new Error(`expected a parsed statement, got none from: ${text}`);
     }
 
     static parseAllStatements(text: string): PlurnkStatement[] {
-        const result = PlurnkParser.parse(text);
+        const result = PlurnkParser.parse(Dsl.#planPrefixed(text));
         return result.items
             .filter((i) => i.kind === "statement")
-            .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+            .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement)
+            .filter((s) => s.op !== "PLAN");
     }
 
     static buildEdit(p: OpEditParams): PlurnkStatement {

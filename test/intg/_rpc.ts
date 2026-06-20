@@ -71,6 +71,26 @@ export const waitFor = async <T>(
     }
 };
 
+// DB-driven variant of waitFor: poll an async getter (a DB query) until the
+// predicate holds. For lifecycle preconditions that live in the database rather
+// than the notification stream — e.g. wait for an exec subscription to actually
+// open before cancelling, instead of racing a fixed sleep against the spawn.
+export const waitForDb = async <T>(
+    getter: () => Promise<T>,
+    predicate: (value: T) => boolean,
+    { timeoutMs = 5000, intervalMs = 20 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<T> => {
+    const start = Date.now();
+    for (;;) {
+        const value = await getter();
+        if (predicate(value)) return value;
+        if (Date.now() - start >= timeoutMs) {
+            throw new Error(`waitForDb: predicate not satisfied within ${timeoutMs}ms`);
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+};
+
 export const connect = (addr: DaemonAddr): Promise<WebSocket> =>
     new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
@@ -98,10 +118,17 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
 };
 
-export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => ({
-    assistant: {
-        content: dsl, ops: parseDsl(dsl), reasoning: null,
-        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
-    },
-    assistantRaw: null,
-});
+export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
+    // grammar 0.70: every turn must lead with PLAN (plurnk.md §Imperatives). The mock
+    // emits what a compliant model emits; the Engine hoists the PLAN body into the
+    // reasoning field before dispatch (#plan-reasoning), so PLAN never reaches the
+    // dispatched ops — no special-casing, PLAN/SEND flow as ordinary tags.
+    const turn = dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`;
+    return {
+        assistant: {
+            content: turn, ops: parseDsl(turn), reasoning: null,
+            usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
+        },
+        assistantRaw: null,
+    };
+};

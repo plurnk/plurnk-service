@@ -23,8 +23,10 @@ test("[§methods-loop-run] loop.run with mock provider runs a model turn and per
             assert.equal(result.usage.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-            // known:///france/capital + plurnk:///prompt/<loop_id> + plurnk:///manifest.json
-            assert.equal(entryCount, 3);
+            // known:///france/capital + plurnk:///prompt/<loop_id> + plurnk:///manifest.json,
+            // plus the 8 scheme docs the docs-catalog materializes at turn-0 (plurnk://docs/<scheme>.md):
+            // the 7 in-tree schemes that ship documentation + the boot-discovered `http` external.
+            assert.equal(entryCount, 11);
         } finally { ws.close(); }
     });
 });
@@ -119,14 +121,19 @@ test("loop.run streams log/entry notifications during execution", async () => {
             // §notifications / #198 — the turn-1 prompt-foist (system-origin EDIT, the
             // user's words entering the run) broadcasts too, ahead of the
             // model's ops; previously it was written but never notified.
-            assert.equal(captured.length, 3);
+            assert.equal(captured.length, 4);
             const prompt = captured[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "EDIT");
             assert.equal(prompt.entry.origin, "plurnk");
-            const first = captured[1] as { entry: { op: string; origin: string } };
+            // PLAN leads every model turn (grammar 0.70) — dispatched + broadcast to the
+            // client as an ordinary log op (this is the "pass PLAN along" behavior).
+            const plan = captured[1] as { entry: { op: string; origin: string } };
+            assert.equal(plan.entry.op, "PLAN");
+            assert.equal(plan.entry.origin, "model");
+            const first = captured[2] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
-            const second = captured[2] as { entry: { op: string; status_rx: number } };
+            const second = captured[3] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "SEND");
             assert.equal(second.entry.status_rx, 200);
         } finally { ws.close(); }

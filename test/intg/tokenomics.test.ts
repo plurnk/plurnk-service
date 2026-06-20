@@ -97,7 +97,7 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const budget = packetSection(JSON.parse(row!.packet), "budget");
-        const m = budget.match(/ceiling (\d+) · usage (\d+) \(\d+%\) · free (\d+)/);
+        const m = budget.match(/ceiling (\d+) · usage (\d+) \((?:<1|\d+)%\) · free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
         assert.ok(usage > 0, "usage is the measured render-weight, not zero or a leftover placeholder");
@@ -160,10 +160,16 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
         const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/ceiling (\d+) · usage (\d+) \((\d+)%\) · free (\d+)/);
+        const m = budget.match(/ceiling (\d+) · usage (\d+) \((<1|\d+)%\) · free (\d+)/);
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
-        const ceiling = Number(m![1]); const usage = Number(m![2]); const percent = Number(m![3]);
-        assert.equal(percent, Math.round((usage / ceiling) * 100), "percent reconciles to usage/ceiling");
+        const ceiling = Number(m![1]); const usage = Number(m![2]); const pct = m![3];
+        const exact = (usage / ceiling) * 100;
+        // The budget-% fix: a positive usage under 1% renders "<1", not a rounded-down 0%.
+        if (exact > 0 && exact < 1) {
+            assert.equal(pct, "<1", `sub-1% usage renders as <1, not 0%; exact=${exact}`);
+        } else {
+            assert.equal(Number(pct), Math.round(exact), "percent reconciles to round(usage/ceiling)");
+        }
     } finally { await db.close(); }
 });
 

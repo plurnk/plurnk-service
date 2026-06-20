@@ -1,16 +1,16 @@
-// note 12 — the schemes catalogue surfaces a scheme's daughter-provided usage `example`
-// inline + a plurnk:///docs/<name>.md doc-link when the manifest ships `documentation`
-// (optional). In-tree schemes ship none yet, so the link is future-proof — it lights up
-// the day plurnk-schemes adds the field, exactly as execs do via ExecInfo.documentation.
-// docs() carries the content for materialization at plurnk:///docs/<name>.md (loop_run writes
-// it like an operator doc; its token cost then rides the manifest entry).
+// note 12 — the scheme directory surfaces each scheme's `example` one-liner as its
+// directory line + a plurnk://docs/<name>.md doc-link when the manifest ships
+// `documentation`; docs() carries that content for materialization at
+// plurnk://docs/<name>.md (loop_run writes it like an operator doc, so its token cost
+// rides the manifest entry). In-tree schemes now ship both — the verbose prose
+// relocated OUT of the hot path into the pull doc. The link stays optional: a scheme
+// with no `example` (provisional, e.g. skill) is omitted from the directory entirely.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 
 class DocStub {
-    static teach = "a documented stub scheme";
     static manifest = {
         name: "docstub", channels: { body: "text/plain" }, defaultChannel: "body",
         category: "data", scope: "session", writableBy: ["model"], volatile: false, modelVisible: true,
@@ -23,12 +23,12 @@ test("[note 12] teach() surfaces a scheme's example + doc-link; docs() carries i
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
     const teaching = registry.teach();
-    assert.match(teaching, /Example: <<READ\(docstub:\/\/\/x\)::READ/, "the daughter usage example is surfaced inline");
-    assert.match(teaching, /Docs: plurnk:\/\/docs\/docstub\.md/, "a doc-link renders when the scheme ships documentation");
+    assert.match(teaching, /\* docstub:\/\/\/ <<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its directory line");
+    assert.match(teaching, /\(docs: plurnk:\/\/docs\/docstub\.md\)/, "a doc-link renders when the scheme ships documentation");
 
     const stub = registry.docs().find((d) => d.name === "docstub");
-    assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at plurnk:///docs/<name>.md");
+    assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at plurnk://docs/<name>.md");
 
-    // An in-tree scheme without documentation renders no doc-link (optional, no clutter).
-    assert.doesNotMatch(teaching, /Docs: plurnk:\/\/docs\/known\b/, "a scheme without documentation gets no doc-link");
+    // A scheme with no example (provisional, e.g. skill) is omitted from the directory entirely.
+    assert.doesNotMatch(teaching, /skill:\/\/\//, "a provisional scheme with no example is omitted from the directory");
 });

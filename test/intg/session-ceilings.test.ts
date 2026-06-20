@@ -16,7 +16,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated } from "./_helpers.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, flush } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
@@ -58,6 +58,37 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
     }
 });
 
+test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN + the terminal SEND, drops every action", async () => {
+    const prev = process.env.PLURNK_MAX_COMMANDS;
+    try {
+        process.env.PLURNK_MAX_COMMANDS = "99";
+        // One turn: two EDIT actions wrapped by the mandatory PLAN and a terminal SEND.
+        // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
+        // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
+        const mock = new Mock({ contextSize: 8192, responses: [
+            makeMockResponse("<<EDIT(known:///a.md):aaa:EDIT\n<<EDIT(known:///b.md):bbb:EDIT\n<<SEND[200]:done:SEND", 50),
+        ] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                const logEntries = subscribeNotifications(ws, "log/entry");
+                await rpcCall(ws, 1, "session.create", { name: "mc-zero", settings: { maxCommands: 0 } });
+                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                await flush();
+                const modelOps = logEntries()
+                    .map((e) => (e as { entry: { op: string; origin: string } }).entry)
+                    .filter((e) => e.origin === "model")
+                    .map((e) => e.op);
+                assert.deepEqual(modelOps, ["PLAN", "SEND"], "only PLAN + the terminal SEND dispatched — every action capped out");
+                assert.equal(await entryId(db, "/a.md"), undefined, "the first EDIT action never landed at maxCommands:0");
+                assert.equal(await entryId(db, "/b.md"), undefined, "the second EDIT action never landed");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MAX_COMMANDS; else process.env.PLURNK_MAX_COMMANDS = prev;
+    }
+});
+
 test("[§operator-config-session-git] session settings.git:false denies git membership for the session (env AND session)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-deny-"));
     const db = await openMigrated();
@@ -90,9 +121,9 @@ test("session.create rejects malformed ceiling settings — fail hard, no silent
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMC = await rpcCall(ws, 1, "session.create", { name: "bad-mc", settings: { maxCommands: 0 } });
-            assert.ok(badMC.error, "maxCommands:0 (not a positive integer) is a JSON-RPC error");
-            assert.match(badMC.error!.message, /maxCommands must be a positive integer/);
+            const badMC = await rpcCall(ws, 1, "session.create", { name: "bad-mc", settings: { maxCommands: -1 } });
+            assert.ok(badMC.error, "maxCommands:-1 (negative) is a JSON-RPC error — 0 is now a valid floor, negatives are not");
+            assert.match(badMC.error!.message, /maxCommands must be a non-negative integer/);
             const badGit = await rpcCall(ws, 2, "session.create", { name: "bad-git", settings: { git: "no" } });
             assert.ok(badGit.error, "a non-boolean git is rejected");
             assert.match(badGit.error!.message, /git must be a boolean/);

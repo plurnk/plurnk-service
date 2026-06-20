@@ -1,8 +1,10 @@
-// Scheme education (grammar#239 item 7). grammar 0.49+ teaches grammar/dialects
-// only — NOT the scheme catalogue — so the service injects SchemeRegistry.teach()
-// into the packet's system section at packet-time. This pins that a real model
-// turn's stored packet carries the catalogue (the `## Schemes` heading + a known
-// scheme) appended AFTER the plurnk.md system definition.
+// Scheme directory (grammar#239 item 7 + the docs-catalog work). grammar 0.49+
+// teaches grammar/dialects only — NOT the scheme set — so the service advertises
+// what schemes exist at packet-time. The verbose per-scheme prose moved OUT of the
+// hot path into pull docs (plurnk://docs/<name>.md); the packet's `schemes` section
+// (its own section below tools — definition is now plurnk.md only) carries a terse
+// directory: each scheme's canonical `example` one-liner + a doc-link, mirroring the
+// exec tools sheet. This pins that shape on a real model turn's stored packet.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +15,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-test("scheme education: the turn packet's system_definition carries the scheme catalogue after plurnk.md", async () => {
+test("[§schemes-directory] scheme directory: the packet's `schemes` section is a terse directory below tools; the catalogue left the definition", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `scheme-edu-${crypto.randomUUID()}`);
@@ -27,16 +29,22 @@ test("scheme education: the turn packet's system_definition carries the scheme c
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
-        const system_definition = packetSection(JSON.parse(row!.packet), "definition");
+        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
+        const definition = packetSection(packet, "definition");
+        const schemes = packetSection(packet, "schemes");
 
-        assert.match(system_definition, /## Schemes/, "system_definition carries the scheme catalogue heading");
-        assert.match(system_definition, /### `known:\/\/\//, "the catalogue teaches the `known` scheme");
-        assert.match(system_definition, /Channels: .+\(default: .+\)\. Writable by: /, "each scheme summarizes channels + default + who-can-write from its manifest");
+        // The definition is JUST plurnk.md now — the catalogue left the hot path.
+        assert.match(definition, /PLURNK_MD/, "definition carries the operator's plurnk.md");
+        assert.doesNotMatch(definition, /known:\/\/\//, "the scheme catalogue is NOT in the definition anymore");
 
-        const mdIdx = system_definition.indexOf("PLURNK_MD");
-        const schemesIdx = system_definition.indexOf("## Schemes");
-        assert.ok(mdIdx > -1 && schemesIdx > mdIdx, "plurnk.md system definition comes first, the catalogue is appended after it");
+        // The `schemes` section is the terse directory: known's canonical example + its pull-doc link.
+        assert.match(schemes, /\* known:\/\/\/ <<EDIT\(known:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
+        assert.match(schemes, /\(docs: plurnk:\/\/docs\/known\.md\)/, "each scheme points at its pull doc, not inline prose");
+        assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
+
+        // Order: the static prefix is definition → tools → schemes (tools sits right below the grammar).
+        const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
+        assert.deepEqual(sysOrder.slice(0, 3), ["definition", "tools", "schemes"], "tools sits right below the grammar; the scheme directory follows");
     } finally {
         await db.close();
     }

@@ -108,6 +108,10 @@ export default class LoopRunMethod {
                 }));
                 // #note12 — materialize the daughter scheme/exec reference docs at
                 // plurnk://docs/<name>.md so the catalogue's doc-links READ + carry token cost.
+                // Per-inject like the operator mdDocs above (idempotent EDITs). One-time
+                // session-scope seeding is a future refinement — seeding at session.create
+                // shifts every session's initial entry/run state (origin, counts, coordinates)
+                // and breaks the no-loop.run op.* tests, not worth the churn for the redundancy saved.
                 for (const { name, content } of ctx.engine.docEntries()) {
                     docStmts.push({
                         op: "EDIT", suffix: "", signal: null,

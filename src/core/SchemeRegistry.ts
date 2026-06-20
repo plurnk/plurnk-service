@@ -45,33 +45,25 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
-    // Scheme-education catalogue, injected into the model's packet at packet-time
-    // (grammar 0.49+ teaches grammar/dialects only, not the scheme set — grammar#239).
-    // Each registered handler contributes its `static teach` (the semantics/when-to-use
-    // blurb) plus a one-line summary derived from `static manifest` (channels, default
-    // channel, who may write). Handlers with no `teach` are skipped. Insertion order.
+    // The scheme directory — the `schemes` packet section (below tools). grammar
+    // 0.49+ teaches grammar/dialects only, not the scheme set (grammar#239), so the
+    // service advertises what schemes exist at packet-time. Each handler that ships a
+    // `manifest.example` contributes ONE terse line — its canonical usage — plus a
+    // doc-link when it ships `manifest.documentation` (materialized at
+    // plurnk://docs/<name>.md by loop_run, READ on demand). The verbose semantics live
+    // in that pull doc, not here: terse pushes, depth pulls — exactly the exec tools
+    // sheet's shape (#collectTools). Insertion order; a scheme with no example
+    // (provisional, e.g. skill) is omitted. The doc's token cost rides its manifest entry.
     teach(): string {
-        const sections: string[] = ["## Schemes"];
+        const lines: string[] = [];
         for (const [name, handler] of this.#handlers) {
-            const cls = handler.constructor as {
-                teach?: string;
-                manifest?: { defaultChannel?: string; channels?: Record<string, string>; writableBy?: ReadonlyArray<string>; example?: string; documentation?: string };
-            };
-            if (typeof cls.teach !== "string" || cls.teach.length === 0) continue;
-            const manifest = cls.manifest ?? {};
-            const channelNames = Object.keys(manifest.channels ?? {});
-            const channels = channelNames.length > 0 ? channelNames.join(", ") : "none";
-            const defaultChannel = manifest.defaultChannel !== undefined && manifest.defaultChannel.length > 0 ? manifest.defaultChannel : "none";
-            const writableBy = (manifest.writableBy ?? []).join(", ") || "none";
-            // #note12 — the daughter's usage example (inline) + a doc-link to its fuller
-            // documentation when the manifest ships it (optional; in-tree schemes have none
-            // yet, so the link lights up the day plurnk-schemes adds `documentation`, exactly
-            // as execs do today). The doc's token cost rides the manifest entry it materializes.
-            const example = typeof manifest.example === "string" && manifest.example.length > 0 ? `\nExample: ${manifest.example}` : "";
-            const docLink = typeof manifest.documentation === "string" && manifest.documentation.length > 0 ? `\nDocs: plurnk://docs/${name}.md` : "";
-            sections.push(`### \`${name}:///\`\n${cls.teach}\nChannels: ${channels} (default: ${defaultChannel}). Writable by: ${writableBy}.${example}${docLink}`);
+            const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
+            const example = manifest?.example;
+            if (typeof example !== "string" || example.length === 0) continue;
+            const docLink = typeof manifest?.documentation === "string" && manifest.documentation.length > 0 ? ` (docs: plurnk://docs/${name}.md)` : "";
+            lines.push(`* ${name}:/// ${example}${docLink}`);
         }
-        return sections.join("\n\n");
+        return lines.join("\n");
     }
 
     // #note12 — schemes that ship a `documentation` string, for materialization at

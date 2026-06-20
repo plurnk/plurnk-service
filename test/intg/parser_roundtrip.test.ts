@@ -7,17 +7,20 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
+// grammar 0.70: turns lead with PLAN; prefix it (when absent) and strip it back out.
+const planPrefixed = (input: string): string => input.startsWith("<<PLAN") ? input : `<<PLAN::PLAN\n${input}`;
+
 const parseOne = (input: string): PlurnkStatement => {
-    const result = PlurnkParser.parse(input);
+    const result = PlurnkParser.parse(planPrefixed(input));
     for (const item of result.items) {
-        if (item.kind === "statement") return item.statement;
+        if (item.kind === "statement" && item.statement.op !== "PLAN") return item.statement;
     }
     throw new Error(`no statement parsed from: ${input}`);
 };
 
 const parseAll = (input: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(input);
-    return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+    const result = PlurnkParser.parse(planPrefixed(input));
+    return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement).filter((s) => s.op !== "PLAN");
 };
 
 const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvelope>>, statements: PlurnkStatement[]): Promise<number[]> => {

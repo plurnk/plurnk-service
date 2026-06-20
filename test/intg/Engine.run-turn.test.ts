@@ -35,7 +35,9 @@ const planStmt = (body: string): PlanStatement => ({
 // (the only path that yields free-text items → synthesized SEND[103]).
 const contentResp = (content: string, completion: number): MockResponse => ({
     assistant: {
-        content, reasoning: null,
+        // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
+        content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
+        reasoning: null,
         usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
 } as MockResponse);
@@ -156,12 +158,12 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistant: unknown };
-        // The definition section is the system message body THEN the scheme-
-        // education catalogue (always appended at packet-time; grammar#239). The
-        // body leads; the prompt-foist fallback is the assertion's real subject.
+        // The definition section is now JUST the system message body — the scheme
+        // catalogue moved to its own `schemes` section (below tools). The body leads
+        // the definition; the prompt-foist fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(definition, /## Schemes/, "scheme catalogue is appended after the system message body");
+        assert.match(packetSection(packet, "schemes"), /\* known:\/\/\//, "the scheme directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
@@ -871,11 +873,12 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: interstitial free text → informational SEND[103] log ops, never loop-terminal (#free-text-capture)", async () => {
+test("Engine.runTurn: free text before an op breaks that op (grammar 0.70) — no dispatch, no-ops 422", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // No pre-parsed ops → the engine parses content; the prose before the SEND is
-        // a text item, which becomes a synthesized informational SEND[103] log op.
+        // grammar 0.70 has no free-text-between-ops: prose before a statement makes that
+        // statement unparseable, so the SEND is NOT dispatched — the turn is no-ops (422)
+        // and carries a parse_error. (The old #free-text-capture synthesis is retired.)
         const provider = new Mock({
             contextSize: 100000,
             responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
@@ -884,14 +887,12 @@ test("Engine.runTurn: interstitial free text → informational SEND[103] log ops
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        // statuses ARE the model ops' dispatch results: a 103 here is the synthesized
-        // informational SEND (its body is the prose), dispatched → a real log row.
-        assert.deepEqual(result.statuses, [103, 200], "free text dispatched as 103; the real SEND as 200");
-        assert.equal(result.status, 200, "turn status is the terminal SEND — the 1xx never sets it");
+        assert.deepEqual(result.statuses, [200], "only the PLAN dispatched; the SEND after free text never parsed");
+        assert.equal(result.status, 422, "no terminal SEND (PLAN is a no-op) → 422");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: PLAN is hoisted into the turn's reasoning, not dispatched as a log op (#plan-reasoning)", async () => {
+test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, not hoisted to reasoning", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -902,16 +903,15 @@ test("Engine.runTurn: PLAN is hoisted into the turn's reasoning, not dispatched 
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        // statuses hold only the SEND — PLAN never reached dispatch (no PLAN status).
-        assert.deepEqual(result.statuses, [200], "PLAN hoisted out of the op stream; only the SEND dispatched");
-        // content was empty + PLAN left the op stream, so the marker can only be here
-        // via the reasoning field.
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
-        assert.ok((row?.packet ?? "").includes("FIND before READ — the marker reasoning"), "PLAN body survives as the turn's reasoning");
+        // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND in statuses.
+        assert.deepEqual(result.statuses, [200, 200], "PLAN dispatched as a log op, then the SEND");
+        // The PLAN body is a real log row (passed to the client), NOT swallowed into reasoning.
+        const ops = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string }>({ loop_id: loopId });
+        assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as an op, not hoisted to reasoning");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: a prose-only turn still strikes as no-ops (422) — synthesized 103s are not real ops (#free-text-capture)", async () => {
+test("Engine.runTurn: a prose-only turn strikes as no-ops (422) — free text dropped, not synthesized (free-text-capture retired)", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -922,7 +922,7 @@ test("Engine.runTurn: a prose-only turn still strikes as no-ops (422) — synthe
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        assert.deepEqual(result.statuses, [103], "the prose was logged as an informational SEND[103]");
-        assert.equal(result.status, 422, "but the turn is no-ops — a synthesized 103 doesn't count as action");
+        assert.deepEqual(result.statuses, [200], "only the PLAN dispatched; the prose is dropped (no synthesized op)");
+        assert.equal(result.status, 422, "no terminal SEND — a PLAN-only turn strikes 422");
     } finally { await db.close(); }
 });

@@ -7,7 +7,7 @@ import type { WebSocket } from "ws";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
-import type { WakeRunPayload } from "../core/ChannelWrite.ts";
+import ChannelWrite, { type WakeRunPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
 import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -89,6 +89,8 @@ export default class Daemon {
     // any single (ephemeral) drain; replaced with a fresh controller once
     // aborted so a later loop.run isn't born cancelled.
     #runAborts = new Map<number, AbortController>();
+    // Per-run drain-transition lock — see #withDrainLock (R4 / §run-lifecycle-single-drain).
+    #drainLocks = new Map<number, Promise<unknown>>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
@@ -422,14 +424,14 @@ export default class Daemon {
             });
         }
 
-        // Guarantee a drain claims the loop we just enqueued. Synchronous
-        // check-and-start (no await between the membership test and the
-        // registry write): a live drain re-claims it; otherwise we start one.
-        // The drain's exit coordinates via an identity-checked re-claim so the
-        // loop is never stranded (the lost-loop hang). firstLoopPromise is
-        // present only when THIS call started the drain — loop.run keys its
-        // fast-path response on that.
-        const started = this.#ensureDrain({
+        // Guarantee a drain claims the loop we just enqueued. #ensureDrain runs its
+        // check-and-start UNDER the per-run drain lock (§run-lifecycle-single-drain),
+        // serialized against a draining sibling's teardown relinquish so the two can't
+        // both register a drain (R4). A live drain re-claims the loop in its own
+        // iteration or its lock-held exit re-claim, so it's never stranded.
+        // firstLoopPromise is present only when THIS call started the drain — loop.run
+        // keys its fast-path response on that.
+        const started = await this.#ensureDrain({
             sessionId, runId, provider: args.provider,
             systemPrompt: args.systemPrompt,
             maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
@@ -485,15 +487,20 @@ export default class Daemon {
                     controller.signal.throwIfAborted();
                     let loopRow = await claim();
                     if (loopRow === undefined) {
-                        // Queue empty → exit. Coordinate with a concurrent
-                        // inject + #ensureDrain: relinquish ownership, then
-                        // re-claim once. A loop that raced in during teardown
-                        // is caught here (re-acquire + run it); otherwise exit.
-                        // Identity-checked so we never delete a successor entry.
-                        if (this.#activeDrains.get(runId) === handle) this.#activeDrains.delete(runId);
-                        loopRow = await claim();
+                        // Queue empty → teardown UNDER the per-run drain lock (R4 / I1),
+                        // serialized against #ensureDrain so a concurrent inject can't
+                        // start a 2nd drain in the gap. Re-claim while holding the lock;
+                        // relinquish the registry slot only if it's empty too. A loop
+                        // that raced in is returned and run — we stay registered, so
+                        // there's no transient delete for #ensureDrain to catch.
+                        loopRow = await this.#withDrainLock(runId, async () => {
+                            const claimed = await claim();
+                            if (claimed === undefined && this.#activeDrains.get(runId) === handle) {
+                                this.#activeDrains.delete(runId);
+                            }
+                            return claimed;
+                        });
                         if (loopRow === undefined) break;
-                        this.#activeDrains.set(runId, handle);
                     }
                     currentLoopId = loopRow.id;
                     const onDispatch = (logEntryId: number): void => {
@@ -578,21 +585,39 @@ export default class Daemon {
         return { firstLoopPromise, drainPromise };
     }
 
-    // Idempotent, synchronous drain guarantee. A live drain will claim the
-    // just-enqueued loop in its own iteration (or its exit re-claim) → return
-    // null. Otherwise start one. MUST be called synchronously after the
-    // enqueue (no await between) so the membership test and #startDrain's
-    // registry write are one tick — two concurrent injects can't both start a
-    // drain for the same run.
+    // Per-run drain-transition lock (R4 / §run-lifecycle-single-drain). #ensureDrain's
+    // start and a drain's teardown relinquish both run under it, serialized, so the two
+    // can't interleave and register two drains for one run. The critical section is the
+    // registry decision only (never a loop's work) — a sub-ms hop at drain boundaries.
+    // A promise-chain mutex: each caller awaits the prior holder; the tail self-prunes
+    // when idle so the Map stays bounded to runs mid-transition.
+    #withDrainLock<T>(runId: number, fn: () => Promise<T>): Promise<T> {
+        const prev = this.#drainLocks.get(runId) ?? Promise.resolve();
+        const run = prev.then(fn, fn);
+        const tail = run.catch(() => {});
+        this.#drainLocks.set(runId, tail);
+        void tail.then(() => { if (this.#drainLocks.get(runId) === tail) this.#drainLocks.delete(runId); });
+        return run;
+    }
+
+    // The drain guarantee, serialized per run via #withDrainLock so it can't race a
+    // sibling drain's teardown relinquish into a double-drain (R4). A live drain
+    // (registered, NOT aborting) will claim the just-enqueued loop in its own iteration
+    // or its lock-held exit re-claim → return null. A registered-but-ABORTING drain is
+    // in teardown and won't claim, so we don't defer to it — start fresh, or the loop
+    // strands on a cancel/resume race (I6 no-lost-loop). Otherwise start one.
     #ensureDrain(opts: {
         sessionId: number; runId: number; provider: Provider;
         systemPrompt: string; maxTurns: number;
-    }): {
+    }): Promise<{
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
-    } | null {
-        if (this.#activeDrains.has(opts.runId)) return null;
-        return this.#startDrain(opts);
+    } | null> {
+        return this.#withDrainLock(opts.runId, async () => {
+            const existing = this.#activeDrains.get(opts.runId);
+            if (existing !== undefined && !existing.controller.signal.aborted) return null;
+            return this.#startDrain(opts);
+        });
     }
 
     // After a loop terminates, promote any next-turn prompt it never consumed —
@@ -637,8 +662,20 @@ export default class Daemon {
      */
     cancelDrain(runId: number, reason: string = "user_cancelled"): boolean {
         const hadWork = this.#activeDrains.has(runId) || this.#runHasActiveStreams(runId);
+        // Stop the active drain's turn-generation (its loop closes 499). The run
+        // signal is the optimization path — the fast, listener-driven reap.
         const scope = this.#runAborts.get(runId);
         if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
+        // Total reap by the REGISTRY (§run-lifecycle-total-reap): the durable source
+        // of truth. Every open subscription the run holds, aborted via its owning
+        // scheme — independent of the signal-listener timing, so an exec mid-spawn
+        // (registry row written before it is killable) is reaped too. A late spawn
+        // (registering after this) self-aborts against its captured, now-aborted
+        // epoch (§run-lifecycle-exec-loop-bound). Idempotent; fire-and-forget (the
+        // abort is sync, the registry read async; the 499 conclusion surfaces async).
+        void this.#reapRunStreams(runId, reason).catch((err: unknown) => {
+            console.error(`reapRunStreams(${runId}) failed:`, err);
+        });
         return hadWork;
     }
 
@@ -648,6 +685,20 @@ export default class Daemon {
     #runHasActiveStreams(runId: number): boolean {
         const exec = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
         return exec?.hasActiveSpawns?.(runId) ?? false;
+    }
+
+    // The registry-routed reap (§run-lifecycle-total-reap): every open subscription
+    // the run holds, aborted via its owning scheme. The durable answer to "reap
+    // everything" — the in-process AbortSignal listener is the optimization, this is
+    // the source of truth: an exec mid-spawn (registry row written before it is
+    // killable) or a background exec from any past loop is caught regardless of
+    // listener timing. Idempotent — a stream the signal already reaped is a no-op.
+    async #reapRunStreams(runId: number, reason: string): Promise<void> {
+        const open = await ChannelWrite.findOpenSubscriptionsForRun(this.#db, runId);
+        for (const { id, scheme } of open) {
+            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number, reason: string) => void } | undefined;
+            handler?.abortSubscription?.(id, reason);
+        }
     }
 
     /**
@@ -668,6 +719,21 @@ export default class Daemon {
         if (payload.closeStatus === 499) {
             this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
                 ...payload, wakeAction: "skipped-aborted",
+            });
+            return;
+        }
+
+        // No resurrection (§run-lifecycle-no-resurrection): a non-499 completion whose
+        // run was CANCELLED (idle + its scope aborted) must not start a fresh drain —
+        // the cancel was deliberate. The deliverable is already in the channel/log and
+        // surfaces as a `collect` environment delta (§env-delta) if the run is read or
+        // resumed; we just don't inject a turn. (An active run folds the wake into its
+        // next turn via inject below; a resumed run is active, never aborted, so it is
+        // unaffected.)
+        const scope = this.#runAborts.get(payload.runId);
+        if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.runId)) {
+            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                ...payload, wakeAction: "skipped-cancelled",
             });
             return;
         }

@@ -104,8 +104,8 @@ export default class SessionCreateMethod {
         // most-restrictive-wins at each read-site). maxCommands min()s the env ceiling;
         // git:false denies git for the session (env AND session).
         if (r.maxCommands !== undefined) {
-            if (typeof r.maxCommands !== "number" || !Number.isInteger(r.maxCommands) || r.maxCommands < 1) {
-                throw new Error("session.create: settings.maxCommands must be a positive integer (a tighten-only ceiling)");
+            if (typeof r.maxCommands !== "number" || !Number.isInteger(r.maxCommands) || r.maxCommands < 0) {
+                throw new Error("session.create: settings.maxCommands must be a non-negative integer (a tighten-only ceiling; 0 = plan + conclude only, no actions)");
             }
             out.maxCommands = r.maxCommands;
         }

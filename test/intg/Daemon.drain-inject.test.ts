@@ -5,7 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor } from "./_rpc.ts";
+import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
@@ -48,14 +49,24 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
         ],
     });
 
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "drain-cancel" });
+            const created = await rpcCall(ws, 1, "session.create", { name: "drain-cancel" });
+            const sessionId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { yolo: true } });
             await flush();
-            await new Promise((r) => setTimeout(r, 250));
+            // Wait for the backgrounded exec's subscription to ACTUALLY open before
+            // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
+            // docs push it past the old 250ms guess). The cancel must land on a live,
+            // registered exec so it terminates deterministically and the stream concludes
+            // 499; otherwise it fires into the spawn gap and asserts on a stream that never
+            // opened (the flake this replaces — the kill path itself is sound).
+            await waitForDb(
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n > 0,
+            );
 
             const cancelResp = await rpcCall(ws, 3, "loop.cancel", { reason: "redirected" });
             const cancelResult = cancelResp.result as { cancelled: boolean; reason: string };
@@ -96,7 +107,7 @@ test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false",
     });
 });
 
-test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
+test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
     const mock = new Mock({
@@ -109,16 +120,24 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
         ],
     });
 
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "drain-restart" });
+            const created = await rpcCall(ws, 1, "session.create", { name: "drain-restart" });
+            const sessionId = (created.result as { id: number }).id;
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
                 prompt: "first", flags: { yolo: true },
             });
-            await flush();
-            await new Promise((r) => setTimeout(r, 250));
+            // Wait for the backgrounded exec to ACTUALLY spawn (its entry to exist) before
+            // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
+            // docs push the spawn later than the old 250ms guess). The cancel must land on a
+            // running exec, deterministically; otherwise it fires into the spawn gap and the
+            // sleep leaks (the failure this replaces).
+            await waitForDb(
+                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n > 0,
+            );
 
             await rpcCall(ws, 3, "loop.cancel", {});
             const firstResp = await firstPromise;
@@ -134,7 +153,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     });
 });
 
-test("loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
+test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
     // Deterministic hold (no 50ms race): a non-yolo EXEC proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
@@ -233,6 +252,93 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
             );
             assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
             assert.ok(ts.every((t) => t.finalStatus === 200), "both loops ended cleanly");
+        } finally { ws.close(); }
+    });
+});
+
+test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by the subscription registry (closed 499)", async () => {
+    // A backgrounded sleep registers an OPEN exec subscription; loop.cancel must reap
+    // it THROUGH the registry — the open row closes at 499 — not merely fire a
+    // notification. Asserted against the registry directly: open→0 + close_status=499.
+    const mock = new Mock({
+        contextSize: 8192,
+        responses: [
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[200]:backgrounded:SEND"),
+            sendOnly("<<SEND[200]:done:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "session.create", { name: "reap-registry" });
+            const sessionId = (created.result as { id: number }).id;
+
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
+            // The exec is live + registered open.
+            await waitForDb(
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n === 1,
+            );
+
+            await rpcCall(ws, 3, "loop.cancel", {});
+            try { await loopPromise; } catch { /* cancelled */ }
+
+            // The registry reap closed the subscription — open→0, deterministically.
+            await waitForDb(
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n === 0,
+            );
+            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ session_id: sessionId, scheme: "exec" }))?.close_status;
+            assert.equal(closeStatus, 499, "the reaped exec subscription is closed at 499 in the registry");
+        } finally { ws.close(); }
+    });
+});
+
+test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its straggler stream's conclusion", async () => {
+    // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
+    // in the run — the cancel was deliberate. Proven by the run's loop count staying at
+    // its single model loop after the conclusion lands (a resurrection would add a
+    // wake-opened loop), plus the conclusion's wakeAction being a skip, not opened-loop.
+    const mock = new Mock({
+        contextSize: 8192,
+        responses: [
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[200]:backgrounded:SEND"),
+            sendOnly("<<SEND[200]:should never run:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "session.create", { name: "no-resurrection" });
+            const sessionId = (created.result as { id: number }).id;
+            const concluded = subscribeNotifications(ws, "stream/concluded");
+
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
+            await waitForDb(
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n === 1,
+            );
+
+            await rpcCall(ws, 3, "loop.cancel", {});
+            const loopResp = await loopPromise;
+            const loopId = (loopResp.result as { loopId: number }).loopId;
+
+            // The exec's conclusion lands — and is a SKIP, not an opened loop.
+            const conc = await waitFor(
+                () => concluded() as Array<{ scheme: string; wakeAction: string }>,
+                (cs) => cs.some((c) => c.scheme === "exec"),
+                { timeoutMs: 5000 },
+            );
+            const wake = conc.find((c) => c.scheme === "exec");
+            assert.ok(wake, "exec stream concluded");
+            assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
+
+            // The run was not resurrected: its only loop is the original model loop.
+            const runId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))?.run_id;
+            const loopCount = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: runId }))?.n;
+            assert.equal(loopCount, 1, "no wake loop was opened in the cancelled run");
         } finally { ws.close(); }
     });
 });

@@ -11,21 +11,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 
 const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[200]:done:SEND`;
 
-const mockResponse = (dsl: string) => ({
-    assistant: {
-        content: dsl,
-        reasoning: null,
-        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
-    },
-    assistantRaw: null,
-});
+const mockResponse = (dsl: string) => {
+    // grammar 0.70: turns lead with PLAN. No `ops` here → the Engine re-parses
+    // content, so the PLAN must be in the content the mock emits.
+    const turn = dsl.startsWith("<<PLAN") ? dsl : `<<PLAN::PLAN\n${dsl}`;
+    return {
+        assistant: {
+            content: turn,
+            reasoning: null,
+            usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+        },
+        assistantRaw: null,
+    };
+};
 
-test("wake-on-completion: dormant run → daemon opens a new loop with the summary prompt", async () => {
+test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon opens a new loop with the summary prompt", async () => {
     // First loop: EXEC echo + SEND[200] to terminate the loop immediately.
     // The exec spawn runs async after the loop ends. Daemon's wake handler
     // detects "no active loop in this run" and opens a fresh loop whose
@@ -115,7 +121,13 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
 
             await rpcCall(ws, 2, "loop.run", { prompt: "stay active during exec", flags: { yolo: true } });
             await flush();
-            await new Promise((r) => setTimeout(r, 200));
+            // Event-driven: wait for the exec to conclude (it finishes while the loop is
+            // still emitting SEND[102] continuations), not a fixed sleep racing the spawn.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "exec"),
+                { timeoutMs: 5000 },
+            );
 
             const concluded = concludedEvents() as Array<{ scheme: string; wakeAction: string }>;
             const wake = concluded.find((c) => c.scheme === "exec");
@@ -160,8 +172,13 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             assert.ok(firstElapsed < 1500,
                 `first loop returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
 
-            // Now wait for the spawn to conclude + wake to fire + wake loop to terminate.
-            await new Promise((r) => setTimeout(r, 3500));
+            // Event-driven: wait for the ~2.5s countdown spawn to conclude (200) and its
+            // wake to fire, not a fixed sleep that flakes if the spawn runs long under load.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string; closeStatus: number }>,
+                (cs) => cs.some((c) => c.scheme === "exec" && c.closeStatus === 200),
+                { timeoutMs: 8000 },
+            );
 
             const concluded = concludedEvents() as Array<{
                 scheme: string; closeStatus: number; summary: string; wakeAction: string;
@@ -177,7 +194,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     });
 });
 
-test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
+test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with closeStatus=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({
@@ -188,19 +205,31 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
         ],
     });
 
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-wake-cancelled" });
+            const created = await rpcCall(ws, 1, "session.create", { name: "exec-wake-cancelled" });
+            const sessionId = (created.result as { id: number }).id;
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", flags: { yolo: true } });
             await flush();
-            await new Promise((r) => setTimeout(r, 250));
+            // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
+            // to open, not a fixed sleep racing the spawn (the flake this replaces).
+            await waitForDb(
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "exec" }))?.n ?? 0,
+                (n) => n > 0,
+            );
 
             await rpcCall(ws, 3, "loop.cancel", {});
             try { await loopPromise; } catch { /* cancelled */ }
-            await new Promise((r) => setTimeout(r, 200));
+
+            // Event-driven: wait for the exec's 499 conclusion to broadcast.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "exec"),
+                { timeoutMs: 5000 },
+            );
 
             const concluded = concludedEvents() as Array<{ scheme: string; closeStatus: number; wakeAction: string }>;
             const wake = concluded.find((c) => c.scheme === "exec");

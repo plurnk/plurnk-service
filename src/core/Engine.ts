@@ -882,11 +882,11 @@ export default class Engine {
             });
         }
         const opsCount = packetAssistant.ops.length;
-        // Informational SEND[103] broadcasts (#free-text-capture) are log rows, not
-        // actions: excluded from the real-op count so a prose-only turn still strikes
+        // PLAN (reasoning) and informational SEND[103] are no-ops, not actions: both are
+        // excluded from the real-op count so a PLAN-only or prose-only turn still strikes
         // as no-ops, and the terminal scan ignores 1xx so they never set turnStatus.
         const realOpsCount = packetAssistant.ops.filter(
-            (op) => !(op.op === "SEND" && op.signal === 103 && op.target === null),
+            (op) => op.op !== "PLAN" && !(op.op === "SEND" && op.signal === 103 && op.target === null),
         ).length;
         const sendOp = packetAssistant.ops.findLast(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
@@ -926,7 +926,17 @@ export default class Engine {
         // its emission was truncated.
         // #232 — a session's maxCommands is a tighten-only ceiling: min() the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await SessionSettings.read(this.#db, sessionId)).maxCommands ?? Number.POSITIVE_INFINITY);
-        const opsToDispatch = packetAssistant.ops.slice(0, maxCommands);
+        // PLAN (reasoning) and a terminal SEND (signal ≥ 200, the conclusion) are not
+        // actions — they always dispatch and never count against the cap. maxCommands
+        // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
+        // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
+        let realCommands = 0;
+        const opsToDispatch = packetAssistant.ops.filter(
+            (op) =>
+                op.op === "PLAN"
+                || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
+                || realCommands++ < maxCommands,
+        );
         const droppedCount = opsCount - opsToDispatch.length;
         const statuses: number[] = [];
         for (const [i, statement] of opsToDispatch.entries()) {
@@ -973,39 +983,25 @@ export default class Engine {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
-        // #plan-reasoning: PLAN bodies are the model's in-band reasoning — hoisted
-        // out of the op stream into the reasoning field, never dispatched as a log op.
-        // Free text becomes informational SEND[103] log ops (#free-text-capture) below.
-        const planFragments: string[] = [];
-        const hoistPlan = (op: PlurnkStatement): boolean => {
-            if (op.op !== "PLAN") return false;
-            const raw = (op.body ?? "").trim();
-            if (raw.length > 0) planFragments.push(raw);
-            return true;
-        };
+        // PLAN is an ordinary op — emitted by the model, dispatched, and passed to the
+        // client as a log entry. No special hoisting into the reasoning field (that
+        // legacy paradigm is abandoned). Interstitial free text is DROPPED — the prior
+        // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
+        // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
         // Full PlurnkParseError context (line/column/source) is preserved
         // here so runTurn can build TelemetryEvent envelopes per the
         // grammar 0.17.0 protocol — model needs position info to locate
         // its own offending content on the next turn.
         const parseErrors: ParseErrorInfo[] = [];
         if (preParsedOps !== undefined) {
-            for (const op of preParsedOps) if (!hoistPlan(op)) ops.push(op);
+            ops.push(...preParsedOps);
         } else {
             const parsed = PlurnkParser.parse(assistant.content);
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
-                    if (!hoistPlan(item.statement)) ops.push(item.statement);
+                    ops.push(item.statement);
                 }
-                else if (item.kind === "text") {
-                    // #free-text-capture: interstitial prose → an informational
-                    // SEND[103] broadcast log op, interleaved in emission order.
-                    const trimmed = item.text.trim();
-                    if (trimmed.length > 0) ops.push({
-                        op: "SEND", suffix: "", signal: 103, target: null,
-                        lineMarker: null, body: { raw: trimmed, json: null },
-                        position: (item as { position?: { line: number; column: number } }).position ?? { line: 1, column: 1 },
-                    } as PlurnkStatement);
-                }
+                // Free text (kind "text") is dropped — #free-text-capture retired (above).
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
@@ -1027,10 +1023,7 @@ export default class Engine {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
-        const wireReasoning = assistant.reasoning ?? "";
-        const planReasoning = planFragments.join("\n\n");
-        const reasoningParts = [wireReasoning, planReasoning].filter((s) => s.length > 0);
-        const reasoning = reasoningParts.length > 0 ? reasoningParts.join("\n\n") : null;
+        const reasoning = assistant.reasoning ?? null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
@@ -1061,10 +1054,11 @@ export default class Engine {
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
-        // plurnk.md (grammar/dialects) THEN the scheme catalogue: grammar 0.49+ is
-        // scheme-agnostic, so the service teaches what schemes exist + what they do
-        // at packet-time (grammar#239 item 7). SchemeRegistry.teach() assembles it.
-        const system_definition = `${byRole("system")}\n\n${this.#schemes.teach()}`;
+        // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
+        // The scheme catalogue is its own `schemes` section below tools (§schemes-directory),
+        // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
+        // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
+        const system_definition = byRole("system");
         // the prompt section sources from the loop's most recent prompt entry first
         // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
         // This is what inject + the turn-1 foist write into. Falls back to
@@ -1080,11 +1074,11 @@ export default class Engine {
         // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
         const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
-        // The op syntax leads the requirements; when PLURNK_PLAN=1 the plan directive joins the
-        // HARD requirements list (dynamically added/removed with the flag) rather than softly
-        // appearing in the optional # Plurnk System Tools sheet. §requirements-plan-gated
-        const planDirective = process.env.PLURNK_PLAN === "1" ? "YOU MUST begin every response with <<PLAN:...:PLAN\n" : "";
-        const requirementsText = `Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix\n\n${planDirective}${baseRequirements}`;
+        // The op syntax leads the requirements. PLAN is mandated unconditionally by
+        // plurnk.md §Imperatives (grammar 0.70 requires every turn to lead with PLAN),
+        // so the service injects no separate plan directive here — the former PLURNK_PLAN
+        // gating is retired (PLURNK_PLAN is no longer a flag).
+        const requirementsText = `Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix\n\n${baseRequirements}`;
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
@@ -1108,6 +1102,7 @@ export default class Engine {
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
+            { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
             { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
@@ -1176,9 +1171,7 @@ export default class Engine {
     // The # Plurnk System Tools capability sheet (SPEC §tools). A hook: each enabled
     // capability contributes one line, rendered above Requirements so the model sees what
     // it can do before the rules. Each available executor tag contributes its self-documenting
-    // example (plurnk-execs#7), retiring the blind EXEC. The plan directive is NOT a tool — it
-    // is a hard requirement gated by PLURNK_PLAN (§requirements-plan-gated), so it joins the
-    // rules list, not this optional sheet.
+    // example (plurnk-execs#7), retiring the blind EXEC.
     // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
     #collectTools(): string[] {
         const tools: string[] = [];
@@ -1966,12 +1959,9 @@ export default class Engine {
         return { status: delResult.status };
     }
 
-    // PLAN — the model's in-band reasoning op (plurnk-grammar 0.30.0, the 11th op).
-    // Production HOISTS PLAN bodies into the turn's reasoning field in #parseAssistant
-    // (#plan-reasoning) before dispatch runs, so PLAN normally never reaches here. This
-    // handler is the op's direct-dispatch semantics (exercised by the dispatch unit
-    // test): a pure no-op (PLAN ∉ MUTATING_OPS) whose body would serialize into the log
-    // row's tx, no runtime effect.
+    // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any
+    // other, logged, and broadcast to the client as a log entry — but a pure no-op for
+    // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
     #handlePlan(statement: PlurnkStatement): DispatchResult {
         if (statement.op !== "PLAN") throw new Error("unreachable");
         return { status: 200 };

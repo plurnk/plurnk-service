@@ -67,8 +67,6 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
 };
 
 export default class Exec {
-    static teach = "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — with output streaming into the `exec:///<runtime>/<loop>/<turn>/<seq>` entry's stdout/stderr. A host-effecting command proposes for review before it runs; a read-only/pure one runs inline and returns its output the same turn. READ the entry on a later turn to see how a backgrounded run finished.";
-
     static manifest: SchemeManifest = {
         name: "exec",
         channels: { stdout: "text/stream", stderr: "text/stream" },
@@ -78,6 +76,8 @@ export default class Exec {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
+        example: "<<EXEC[sqlite]:SELECT 22.0 / 7.0:EXEC",
+        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — with output streaming into the `exec:///<runtime>/<loop>/<turn>/<seq>` entry's stdout/stderr. A host-effecting command proposes for review before it runs; a read-only/pure one runs inline and returns its output the same turn. READ the entry on a later turn to see how a backgrounded run finished.",
         flags: {
             excludedInAsk: true,
         },
@@ -119,6 +119,15 @@ export default class Exec {
         if (terminal === null) return { status: 404, error: `no exec at exec://${pathname}` };
         if (terminal === 499) return { status: 410, error: `exec://${pathname} was killed earlier` };
         return { status: 304 };
+    }
+
+    // Registry-routed reap (§run-lifecycle-total-reap): the daemon's cancel iterates
+    // the run's open subscriptions and calls this per id, aborting the spawn's
+    // controller directly. Idempotent — a no-op if the spawn already finished or this
+    // id isn't ours. Distinct from kill (by pathname, the model's KILL op): this is by
+    // subscription id, the run-level reap that does not depend on the signal listener.
+    abortSubscription(subscriptionId: number, reason: string): void {
+        this.#activeAborts.get(subscriptionId)?.controller.abort(new Error(reason));
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
@@ -240,12 +249,16 @@ export default class Exec {
         let unlink = (): void => {};
         if (ctx.signal !== undefined) {
             const parent = ctx.signal;
+            // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
+            // captured here, stable for the loop). Attach the listener FIRST, then
+            // re-check `aborted`: a listener added to an already-aborted signal never
+            // fires, so a check-then-attach order LOSES an abort that lands in the gap
+            // (R1's TOCTOU leak). Attach-then-check closes it; controller.abort is
+            // idempotent, so a doubled fire is harmless. §run-lifecycle-exec-loop-bound
+            const onParentAbort = (): void => controller.abort(parent.reason);
+            parent.addEventListener("abort", onParentAbort, { once: true });
+            unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(parent.reason);
-            else {
-                const onParentAbort = (): void => controller.abort(parent.reason);
-                parent.addEventListener("abort", onParentAbort, { once: true });
-                unlink = (): void => parent.removeEventListener("abort", onParentAbort);
-            }
         }
         this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, controller, unlink });
 

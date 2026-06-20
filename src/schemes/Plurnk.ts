@@ -18,8 +18,6 @@ import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 // accept any origin. Path-prefix restrictions live in the edit handler:
 // `plurnk:///prompt/*` rejects model-origin writes (engine/client own those).
 export default class Plurnk {
-    static teach = "Engine-authored events surfaced to you — most notably your active prompt at `plurnk://prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk://prompt/*` is engine-owned and rejects your writes.";
-
     static manifest: SchemeManifest = {
         name: "plurnk",
         channels: { body: "text/markdown" },
@@ -29,6 +27,8 @@ export default class Plurnk {
         writableBy: ["model", "client", "plurnk"],
         volatile: false,
         modelVisible: true,
+        example: "<<READ(plurnk:///manifest.json)::READ",
+        documentation: "Engine-authored events surfaced to you — most notably your active prompt at `plurnk://prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk://prompt/*` is engine-owned and rejects your writes.",
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
