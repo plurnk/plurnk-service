@@ -183,6 +183,36 @@ test("#256 — grammar_unenforced provider error surfaces as telemetry on the ne
     } finally { await db.close(); }
 });
 
+test("provider error: a terminal kind (network_failure) telemetries live, then ends the loop", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(),
+            telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+        });
+        const provider = new Mock({ contextSize: 100000, responses: [] });
+        provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
+
+        // Unlike grammar_unenforced, a terminal infra error propagates out of runTurn to end the loop.
+        await assert.rejects(
+            engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
+            /connection refused/,
+            "a terminal provider error propagates (ends the loop), not recovered as a no-op",
+        );
+        // ...but it surfaced as a live telemetry event FIRST — the client sees the cause, not just
+        // an opaque loop.run rejection.
+        const live = broadcasts.filter((b) => b.payload.event.kind === "network_failure");
+        assert.equal(live.length, 1, "network_failure broadcast live exactly once before terminating");
+        assert.equal(live[0].payload.loopId, loopId);
+        assert.equal(live[0].payload.event.source, "provider", "attributed to the provider");
+        assert.match(String(live[0].payload.event.message), /connection refused/, "carries the provider's diagnostic");
+    } finally { await db.close(); }
+});
+
 test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry, not a queryable error:// entry namespace", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {

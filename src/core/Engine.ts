@@ -883,14 +883,15 @@ export default class Engine {
         try {
             response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved
         } catch (err) {
-            // #256 — grammar_unenforced is the one provider error the MODEL can recover from:
-            // the backend didn't constrain the GBNF, so this turn's output was rejected, but a
-            // conforming emission next turn is accepted. Surface it as telemetry (the model's
-            // next packet shows it) and fall through as an empty no-op turn, so the strike rail
-            // gives it maxStrikes chances before terminating — unlike infra errors (rate_limit,
-            // network_failure, unauthorized), which propagate and end the loop.
-            if (err instanceof ProviderError && err.kind === "grammar_unenforced") {
-                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: "grammar_unenforced", message: err.message });
+            // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
+            // grammar_unenforced is the one the MODEL can recover from — the backend didn't
+            // constrain the GBNF, so this turn was rejected but a conforming emission next turn is
+            // accepted: fall through as an empty no-op turn so the strike rail retries. Every other
+            // kind (rate_limit, network_failure, unauthorized, …) is terminal — telemetry'd, then
+            // propagated to end the loop (rather than only the opaque loop.run rejection).
+            if (err instanceof ProviderError) {
+                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message });
+                if (err.kind !== "grammar_unenforced") throw err;
                 response = {
                     assistant: { content: "", reasoning: null, usage: { prompt: requestPacket.tokens, completion: 0, reasoning: 0, cached: 0, total: requestPacket.tokens }, finishReason: null, model: provider.model },
                     assistantRaw: null,
