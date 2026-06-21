@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
     "keywords": [
         "plurnk",
@@ -35,7 +35,8 @@
         "runtimes": [
             {
                 "name": "sh",
-                "glyph": "🐚"
+                "glyph": "🐚",
+                "example": "EXEC[sh]:ls -la:EXEC"
             },
             {
                 "name": "bash",
@@ -43,7 +44,8 @@
             },
             {
                 "name": "node",
-                "glyph": "⬢"
+                "glyph": "⬢",
+                "example": "EXEC[node]:console.log(process.version):EXEC"
             },
             {
                 "name": "python",
@@ -107,7 +109,8 @@
     "files": [
         "dist/**/*",
         "README.md",
-        ".env.example"
+        ".env.example",
+        "docs/**/*"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
