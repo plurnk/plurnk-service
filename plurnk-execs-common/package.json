@@ -45,7 +45,7 @@
             {
                 "name": "node",
                 "glyph": "⬢",
-                "example": "EXEC[node]:console.log(process.version):EXEC"
+                "example": "EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC"
             },
             {
                 "name": "python",
