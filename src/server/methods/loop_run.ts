@@ -190,6 +190,7 @@ export default class LoopRunMethod {
                     modelRunId,
                     action: "enqueued_new_loop",
                     finalStatus: 100,
+                    turnIds: [],  // #266 — every loop.run return carries turnIds (never absent → client undefined.length)
                 };
             },
             description: "Run a model-driven loop with a prompt. Optional `model` (`<provider>/<model>`, client-resolved) runs on that provider using the daemon's keys — preferred over `alias`, which resolves a PLURNK_MODEL_<alias> override in the DAEMON's env. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",

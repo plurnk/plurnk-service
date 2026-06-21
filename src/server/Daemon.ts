@@ -573,9 +573,21 @@ export default class Daemon {
                         firstSettled = true;
                         resolveFirst({ loopId: currentLoopId ?? 0, turnIds: [], finalStatus: 499, hitMaxTurns: false, usage });
                     }
-                } else if (!firstSettled) {
-                    firstSettled = true;
-                    rejectFirst(err);
+                } else {
+                    // #265 — a genuine (non-abort) loop error must still reach the client. loop.run only
+                    // acked finalStatus:100, so loop/terminated is the sole outcome channel; the rejection
+                    // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
+                    // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
+                    if (currentLoopId !== null) {
+                        const usage = await this.#engine.loopUsage(currentLoopId);
+                        this.#broadcast({ sessionId }, null, "loop/terminated", {
+                            loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage,
+                        });
+                    }
+                    if (!firstSettled) {
+                        firstSettled = true;
+                        rejectFirst(err);
+                    }
                 }
                 throw err;
             } finally {

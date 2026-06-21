@@ -158,7 +158,9 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             await rpcCall(ws, 1, "session.create", { name: "term-test" });
             // loop.run returns immediately (100 accepted); the loop's outcome rides loop/terminated.
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
-            assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately, not the terminal");
+            const ack = accept.result as { finalStatus: number; turnIds: number[] };
+            assert.equal(ack.finalStatus, 100, "loop.run accepts immediately, not the terminal");
+            assert.deepEqual(ack.turnIds, [], "the 100-ack carries turnIds — always present, never absent (#266)");
             const captured = await waitFor(
                 () => terminated() as Array<{ loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } }>,
                 (ts) => ts.length >= 1,
@@ -169,6 +171,35 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             assert.equal(params.hitMaxTurns, false);
             // #197 — loop/terminated carries the loop's usage totals.
             assert.equal(params.usage.completionTokens, 50);
+        } finally { ws.close(); }
+    });
+});
+
+test("loop.run still fires loop/terminated when the loop throws — no client hang (#265)", async () => {
+    // A loop that ERRORS (terminal provider failure / engine throw — not a clean SEND, abort, or
+    // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
+    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — generate()
+    // throws a plain Error, runTurn re-throws (non-ProviderError → throw), it escapes runLoop to the
+    // drain. Pre-#265 the drain rejected the already-.catch()'d promise and broadcast nothing → hang.
+    const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            await rpcCall(ws, 1, "session.create", { name: "errored-loop" });
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", maxTurns: 5 });
+            assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately (100)");
+
+            const captured = await waitFor(
+                () => terminated() as Array<{ finalStatus: number; turnIds: number[]; hitMaxTurns: boolean }>,
+                (ts) => ts.length >= 1,
+            );
+            assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging (#265)");
+            assert.equal(captured[0].finalStatus, 500, "a genuine loop error terminates at 500 (failed) — distinct from an abort's 499");
+            assert.deepEqual(captured[0].turnIds, [], "turnIds is always present — [] at the error boundary, never absent (#266)");
+            assert.equal(captured[0].hitMaxTurns, false);
         } finally { ws.close(); }
     });
 });
