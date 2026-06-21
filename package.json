@@ -20,6 +20,7 @@
     "files": [
         ".env.example",
         "dist/**/*",
+        "docs/**/*",
         "migrations/**/*.sql",
         "requirements.md",
         "README.md",

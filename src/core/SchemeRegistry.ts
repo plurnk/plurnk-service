@@ -14,6 +14,20 @@ import type { PacketSectionTransformer } from "./scheme-types.ts";
 import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import { readdir, readFile } from "node:fs/promises";
+
+// docs/ migration — the in-tree CORE-scheme depth (run/known/unknown/log) lives in
+// <pkgroot>/docs/<name>.md, NOT inline, loaded once at module eval (top-level await; resolves
+// from src/core or dist/core alike). teach()/docs() prefer this over a manifest's inline
+// `documentation` (the path that stays for stubs + daughter schemes). Absent dir → empty map.
+const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
+    const dir = new URL("../../docs/", import.meta.url);
+    try {
+        const files = (await readdir(dir)).filter((f) => f.endsWith(".md"));
+        const loaded = await Promise.all(files.map(async (f) => [f.slice(0, -3), await readFile(new URL(f, dir), "utf8")] as const));
+        return new Map(loaded);
+    } catch { return new Map(); }
+})();
 
 export default class SchemeRegistry {
     // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
@@ -101,7 +115,8 @@ export default class SchemeRegistry {
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            const docLink = typeof manifest?.documentation === "string" && manifest.documentation.length > 0 ? ` (docs: plurnk://docs/${name}.md)` : "";
+            const hasDoc = SCHEME_DOCS.has(name) || (typeof manifest?.documentation === "string" && manifest.documentation.length > 0);
+            const docLink = hasDoc ? ` (docs: plurnk://docs/${name}.md)` : "";
             lines.push(`* ${name}:/// ${example}${docLink}`);
         }
         return lines.join("\n");
@@ -113,8 +128,9 @@ export default class SchemeRegistry {
         const out: Array<{ name: string; content: string }> = [];
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
-            const doc = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
-            if (typeof doc === "string" && doc.length > 0) out.push({ name, content: doc });
+            const inline = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
+            const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
+            if (content !== undefined && content.length > 0) out.push({ name, content });
         }
         return out;
     }
