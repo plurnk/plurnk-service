@@ -72,6 +72,16 @@ interface DigestModel {
     opMixByRun: Map<number, OpMixRow[]>;
 }
 
+// Programmatic entry options (#264 — plurnk-bench reuses Digest without the CLI).
+// dbPath is required; digestDir defaults to the bin's test/digest; an optional
+// runId/sessionId narrows the digest to one scope instead of the whole DB.
+interface DigestOptions {
+    dbPath: string;
+    digestDir?: string;
+    runId?: number;
+    sessionId?: number;
+}
+
 export default class Digest {
     static #summarize(text: unknown, n = 80): string {
         if (text === null || text === undefined) return "";
@@ -244,30 +254,42 @@ export default class Digest {
         }, null, 2);
     }
 
-    static run(): void {
+    static run(opts: DigestOptions): void {
         const binDir = dirname(fileURLToPath(import.meta.url));
-        const projectRoot = resolve(binDir, "..");
-        const digestDir = join(projectRoot, "test", "digest");
-
-        const dbArg = process.argv[2] ?? join(projectRoot, "plurnk.db");
-        const dbPath = resolve(dbArg);
-        if (!existsSync(dbPath)) {
-            process.stderr.write(`digest: no DB at ${dbPath}\n`);
-            process.exit(1);
-        }
+        const dbPath = resolve(opts.dbPath);
+        if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
+        const digestDir = opts.digestDir ?? join(resolve(binDir, ".."), "test", "digest");
 
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
         const db = new SqlRiteSync({ path: dbPath, dir: [binDir] });
-        const sessions = db.digest_sessions.all<SessionRow>();
-        const runs = db.digest_runs.all<RunRow>();
-        const loops = db.digest_loops.all<LoopRow>();
-        const turns = db.digest_turns.all<TurnRow>();
-        const logEntries = db.digest_log_entries.all<LogRow>();
-        const runRollupRows = db.digest_run_rollups.all<RunRollupRow>();
-        const opMixRows = db.digest_run_op_mix.all<OpMixRow>();
+        let sessions = db.digest_sessions.all<SessionRow>();
+        let runs = db.digest_runs.all<RunRow>();
+        let loops = db.digest_loops.all<LoopRow>();
+        let turns = db.digest_turns.all<TurnRow>();
+        let logEntries = db.digest_log_entries.all<LogRow>();
+        let runRollupRows = db.digest_run_rollups.all<RunRollupRow>();
+        let opMixRows = db.digest_run_op_mix.all<OpMixRow>();
         db.close();
+
+        // Optional run/session selector — narrow to one run or session; everything
+        // cascades from the kept runs (loops→turns→log entries→rollups), so a consumer
+        // (plurnk-bench) digests just the scope it cares about, not the whole DB. #264.
+        if (opts.runId !== undefined) runs = runs.filter((r) => r.id === opts.runId);
+        if (opts.sessionId !== undefined) runs = runs.filter((r) => r.session_id === opts.sessionId);
+        if (opts.runId !== undefined || opts.sessionId !== undefined) {
+            const keptRunIds = new Set(runs.map((r) => r.id));
+            const keptSessionIds = new Set(runs.map((r) => r.session_id));
+            sessions = sessions.filter((s) => keptSessionIds.has(s.id));
+            loops = loops.filter((l) => keptRunIds.has(l.run_id));
+            const keptLoopIds = new Set(loops.map((l) => l.id));
+            turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
+            const keptTurnIds = new Set(turns.map((t) => t.id));
+            logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
+            runRollupRows = runRollupRows.filter((r) => keptRunIds.has(r.run_id));
+            opMixRows = opMixRows.filter((o) => keptRunIds.has(o.run_id));
+        }
 
         // Wipe-then-recreate the digest dir so each run is a clean snapshot —
         // orphaned packet*.* files from a prior run don't linger.
@@ -299,10 +321,21 @@ export default class Digest {
         writeFileSync(join(digestDir, "reasoning.md"), Digest.#renderReasoning(m));
         const packetFiles = Digest.#writePacketFiles(m);
 
-        console.log(`digest: wrote test/digest/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files`);
+        console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files`);
         console.log(`  source: ${dbPath}`);
         console.log(`  sessions=${sessions.length} runs=${runs.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);
     }
 }
 
-Digest.run();
+// CLI entry — guarded so `import Digest from ".../bin/digest.ts"` has NO side effect
+// (the #264 blocker for plurnk-bench). Bin behavior is identical: same default DB,
+// same default test/digest output, same exit-1 on a missing DB.
+if (import.meta.main) {
+    const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    try {
+        Digest.run({ dbPath: process.argv[2] ?? join(projectRoot, "plurnk.db") });
+    } catch (err) {
+        process.stderr.write(`${(err as Error).message}\n`);
+        process.exit(1);
+    }
+}
