@@ -26,6 +26,8 @@ export default class SchemeRegistry {
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
+    // #240 — built-in scheme names (captured at construction), reserved namespace-wide.
+    #reserved: ReadonlySet<string> = new Set();
 
     constructor() {
         this.register("plurnk",  new Plurnk());
@@ -36,6 +38,10 @@ export default class SchemeRegistry {
         this.register("skill",   new Skill());
         this.register("file",    new File());
         this.register("run",     new Run());
+        // #240 — the in-tree names are RESERVED across the whole scheme namespace: a
+        // discovered executor or external scheme claiming one fails the boot hard, never
+        // silently shadowed. (exec stays poisoned-but-registered — the EXEC op + kill state.)
+        this.#reserved = new Set(this.#handlers.keys());
     }
 
     register(name: string, handler: object): void {
@@ -52,7 +58,8 @@ export default class SchemeRegistry {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
         for (const tag of executors.availableRuntimes()) {
-            if (this.#handlers.has(tag)) continue; // built-in / in-tree precedence
+            if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — boot fail-hard (#240)`);
+            if (this.#handlers.has(tag)) continue; // idempotent re-scan
             const entry = executors.entry(tag);
             if (entry === undefined) continue;
             this.register(tag, new ExecOutputScheme(entry.executor, exec));
@@ -140,7 +147,8 @@ export default class SchemeRegistry {
             console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
         for (const { name, packageName } of schemes) {
-            if (this.has(name)) continue; // in-tree precedence + idempotent re-scan
+            if (this.#reserved.has(name)) throw new Error(`external scheme '${name}' (${packageName}) collides with a reserved built-in — boot fail-hard (#240)`);
+            if (this.has(name)) continue; // idempotent re-scan
             const mod = await import(packageName) as { default: new () => SchemeHandler };
             this.register(name, new mod.default());
             this.#external.add(name);
