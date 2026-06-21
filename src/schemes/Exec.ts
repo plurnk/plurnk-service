@@ -14,6 +14,7 @@ import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
 import ExecReceipt from "./exec-receipt.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -282,7 +283,7 @@ export default class Exec {
         if (attrs.inline === true) {
             const closeStatus = await tail;
             const read = await EntryCrud.readEntry(pathname, ctx, runtime);
-            const address = `${runtime}:///${pathname}`;
+            const address = renderAddress(runtime, pathname); // canonical 3-slash form (pathname has a leading /), matches the manifest handle
             const channel = read.entry?.channels[resolved.executor.defaultChannel];
             const body = channel === undefined
                 ? `${address} — (no output)`

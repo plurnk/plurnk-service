@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -22,6 +22,15 @@ const execStmt = (runtime: string, target: string | null, body: string): ExecSta
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
+const readStmt = (address: string): ReadStatement => {
+    const [scheme, pathname] = address.split(":///");
+    return {
+        op: "READ", suffix: "", signal: null,
+        target: { kind: "url", raw: address, scheme, username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, params: {}, fragment: null },
+        lineMarker: null, body: null, position: { line: 1, column: 1 },
+    };
+};
+
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
     const promise = new Promise<T>((res) => { resolve = res; });
@@ -33,7 +42,9 @@ const wire = async () => {
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
     const engine = new Engine({ db, schemes });
-    engine.setExecutors(await testExecutors());
+    const executors = await testExecutors();
+    engine.setExecutors(executors);
+    schemes.registerRuntimeSchemes(executors); // #240 — register per-tag faces so READ <tag>:// resolves (mirrors Daemon boot)
     const sessionId = await insertSession(db, `effect-${crypto.randomUUID()}`);
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, "effect test");
@@ -79,6 +90,29 @@ test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the 
         assert.match(result.body as string, /^sqlite:\/\/\//, "a directory cwd no longer fails the open — the exec resolved + produced an output receipt");
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+// #240 receipt-only round-trip: EXEC returns ONLY the receipt (address + index), and the
+// content is READable at that address (the read-fix's tag-scoped path + the receipt loop).
+// This is "the handle goes in the manifest/receipt, the read goes in the log" end-to-end.
+test("receipt-only round-trip: EXEC returns a receipt, READ <tag>:// pulls the content (#240)", async () => {
+    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    try {
+        const execResult = await engine.dispatch({
+            statement: execStmt("sqlite", null, "SELECT 'Bogota' AS capital;"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.match(execResult.body as string, /^sqlite:\/\/\//, "EXEC returns the receipt (address), not the content");
+        assert.doesNotMatch(execResult.body as string, /Bogota/, "the content is NOT inline — it's behind the receipt");
+        const address = (execResult.body as string).split(" — ")[0];
+        const readResult = await engine.dispatch({
+            statement: readStmt(address),
+            sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.ok(readResult.status < 400, `READ ${address} resolves; got ${readResult.status}`);
+        assert.match(readResult.content as string, /Bogota/, "the content is READable at the receipt address — the read-fix + receipt-only round-trip");
+        await exec.idle();
+    } finally { await db.close(); }
 });
 
 test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
