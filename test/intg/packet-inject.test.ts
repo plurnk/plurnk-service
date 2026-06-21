@@ -12,7 +12,7 @@ import { sendStmt } from "./_dsl.ts";
 
 // #240 — PLURNK_PACKET_INJECT lands as an operator section right after the teaching (schemes),
 // in the cached system slot, before the log. The operator-side pressure valve.
-test("PLURNK_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
+test("[§packet-inject] PLURNK_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
     const db = await openMigrated();
     const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-intg-"));
     const prior = process.env.PLURNK_PACKET_INJECT;
