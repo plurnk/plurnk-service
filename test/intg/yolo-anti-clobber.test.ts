@@ -15,7 +15,7 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
@@ -38,14 +38,14 @@ test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that div
             try {
                 await rpcCall(ws, 1, "session.create", { name: "clobber", projectRoot: root });
                 // loop 1 — first sight materializes doc.md = V1 (no divergence).
-                await rpcCall(ws, 2, "loop.run", { prompt: "look", flags: { yolo: true } });
+                await runLoopToTerminal(ws, 2, { prompt: "look", flags: { yolo: true } });
 
                 // The file changes out-of-band between turns.
                 await writeFile(join(root, "doc.md"), "V2 ambient change\n");
 
                 // loop 2 — pre-turn detects the V1→V2 divergence; the YOLO model EDITs based
                 // on its stale (V1) view. The anti-clobber must reject the EDIT, not apply it.
-                await rpcCall(ws, 3, "loop.run", { prompt: "edit it", flags: { yolo: true } });
+                await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { yolo: true } });
 
                 const onDisk = await readFile(join(root, "doc.md"), "utf8");
                 assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale YOLO EDIT was rejected, never written");

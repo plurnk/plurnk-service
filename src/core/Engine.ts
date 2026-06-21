@@ -529,13 +529,12 @@ export default class Engine {
         this.#loopAborts.set(loopId, loopAbort);
 
         // Cleanup splits by termination kind:
-        // - "graceful" (loop emitted SEND[2xx]): in-flight streaming-scheme
-        //   spawns are ALLOWED to outlive the loop. They complete naturally,
-        //   write final channel state, and wake-on-completion (E.4) opens a
-        //   fresh loop in the same run if the model needs to react.
-        // - "forceful" (max_turns, strike_threshold, external cancel,
-        //   non-2xx loop status): fire the loop-level abort so spawns
-        //   tear down immediately.
+        // - "graceful" (SEND[202] Accepted): in-flight streaming-scheme spawns
+        //   are ALLOWED to outlive the loop — they complete naturally, write final
+        //   channel state, and wake-on-completion (E.4) opens a fresh loop. 202 is
+        //   the only terminal that means "keep my async work."
+        // - "forceful" (SEND[200] done, max_turns, strike, cancel, budget, 4xx/5xx):
+        //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
             if (kind === "forceful" && !loopAbort.signal.aborted) {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
@@ -551,10 +550,10 @@ export default class Engine {
             const row = await (this.#db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId });
             if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
             if (row.status !== 102) {
-                // Status 2xx = graceful (model said done); 4xx/5xx = forceful
-                // (external cancel or upstream failure). The threshold splits
-                // at 400 to match HTTP success/error semantics.
-                cleanup(row.status < 400 ? "graceful" : "forceful", `loop_terminal_${row.status}`);
+                // Only 202 (Accepted) lets spawns outlive — it IS the async wake
+                // contract (E.4). Every other terminal, 200 included, reaps: "done"
+                // must not leak running execs. Trust the code's declared intent.
+                cleanup(row.status === 202 ? "graceful" : "forceful", `loop_terminal_${row.status}`);
                 return { turnIds, finalStatus: row.status, hitMaxTurns: false, reason: "external" };
             }
 
@@ -2112,8 +2111,9 @@ export default class Engine {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const status = statement.signal;
         if (status === null) return { status: 400 };
-        if (status === 200 || status === 499) {
-            // the loop's terminal message — its deliverable — rides the termination delta.
+        if (status === 200 || status === 202 || status === 499) {
+            // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
+            // the loop; each carries its body as the loop's terminal message — the deliverable.
             const body = statement.body;
             const message = body === null ? null : typeof body === "string" ? body : body.raw;
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId, message });

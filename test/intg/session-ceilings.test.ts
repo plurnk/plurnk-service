@@ -16,7 +16,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated } from "./_helpers.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
@@ -38,7 +38,7 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "mc-tighten", settings: { maxCommands: 1 } });
-                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.ok((await entryId(db, "/a.md"))?.id !== undefined, "the first model op dispatched");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second op was dropped — session maxCommands:1 tightened env 99");
             } finally { ws.close(); }
@@ -49,7 +49,7 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "mc-nowiden", settings: { maxCommands: 99 } });
-                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.equal(await entryId(db, "/b.md"), undefined, "session maxCommands:99 cannot widen env 1 — the second op stays dropped");
             } finally { ws.close(); }
         });
@@ -73,7 +73,7 @@ test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN +
             try {
                 const logEntries = subscribeNotifications(ws, "log/entry");
                 await rpcCall(ws, 1, "session.create", { name: "mc-zero", settings: { maxCommands: 0 } });
-                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                await runLoopToTerminal(ws, 2, { prompt: "go" });
                 await flush();
                 const modelOps = logEntries()
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)

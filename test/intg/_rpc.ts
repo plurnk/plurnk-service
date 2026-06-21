@@ -91,6 +91,34 @@ export const waitForDb = async <T>(
     }
 };
 
+// Model 3 — loop.run ACCEPTS and returns immediately (status 100 + loopId); a loop's real
+// outcome arrives via the loop/terminated event, never loop.run's return. A parked loop
+// (SEND[202]) awaits an external event, so loop.run cannot block on it without deadlocking
+// the client that must send that event. This runs a loop to its true terminal the honest
+// way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the
+// loopId and the `accepted` status, for callers that assert the 100).
+export const runLoopToTerminal = async (
+    ws: WebSocket, id: number, params: object,
+    { timeoutMs = 8000 }: { timeoutMs?: number } = {},
+): Promise<{
+    loopId: number; finalStatus: number; accepted: number; action?: string; modelRunId?: number;
+    hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costPico: number };
+}> => {
+    const terminated = subscribeNotifications(ws, "loop/terminated");
+    const run = await rpcCall(ws, id, "loop.run", params);
+    const { loopId, finalStatus: accepted, action, modelRunId } = run.result as { loopId: number; finalStatus: number; action?: string; modelRunId?: number };
+    const seen = await waitFor(
+        () => terminated() as Array<{ loopId: number }>,
+        (ts) => ts.some((t) => t.loopId === loopId),
+        { timeoutMs },
+    );
+    const term = seen.find((t) => t.loopId === loopId) as {
+        loopId: number; finalStatus: number; hitMaxTurns?: boolean; turnIds?: number[];
+        usage?: { promptTokens: number; completionTokens: number; costPico: number };
+    };
+    return { ...term, accepted, action, modelRunId };
+};
+
 export const connect = (addr: DaemonAddr): Promise<WebSocket> =>
     new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);

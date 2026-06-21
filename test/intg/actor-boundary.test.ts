@@ -15,7 +15,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -95,8 +95,9 @@ test("[§actor-boundary-two-doors] state crosses runs via the §env-delta delta;
     { todo: "Phase 1 — the voice door (inject, #193) is unbuilt; the environment door is exercised under §env-delta" }, () => {});
 
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
-// the stream-status door — idle stream-conclusion → opened-loop, active → no-op — is
-// locked in Daemon.exec-wake.test.ts. Together they discharge §141's two-trigger contract.
+// the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
+// an active loop folds the conclusion into its next turn — is locked in
+// Daemon.exec-wake.test.ts. Together they discharge §141's two-trigger contract.
 test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
@@ -108,8 +109,8 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
         try {
             await rpcCall(ws, 1, "session.create", { name: "passive-wake" });
             // Run a loop to completion → the model run is now IDLE (one loop).
-            const ran = await rpcCall(ws, 2, "loop.run", { prompt: "first", flags: { yolo: true } });
-            const { loopId } = ran.result as { loopId: number };
+            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { yolo: true } });
+            const { loopId } = ran as { loopId: number };
             const modelRunId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))!.run_id;
             const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
 

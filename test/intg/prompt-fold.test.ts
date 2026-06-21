@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; expanded: number; turn_id: number };
 const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
@@ -18,8 +18,8 @@ test("[§prompt-fold] the foisted prompt EDIT log row is folded by default; a no
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "prompt-fold" });
-            const resp = await rpcCall(ws, 2, "loop.run", { prompt: "hello there" });
-            const { loopId } = resp.result as { loopId: number };
+            const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
+            const { loopId } = resp as { loopId: number };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
             const prompt = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname.startsWith("/prompt/"));
             assert.ok(prompt !== undefined, "the prompt EDIT is logged (forensics)");

@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flight (#exec-wait)", async () => {
     const prev = process.env.PLURNK_EXEC_WAIT_MS;
@@ -24,9 +24,11 @@ test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flig
             try {
                 await rpcCall(ws, 1, "session.create", { name: "exec-wait" });
                 const t0 = Date.now();
-                const r = await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { yolo: true } });
+                // loop.run returns immediately (Model 3); runLoopToTerminal awaits the
+                // loop/terminated event, so `elapsed` spans the full loop incl. the breath.
+                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
                 const elapsed = Date.now() - t0;
-                assert.equal((r.result as { finalStatus: number }).finalStatus, 200);
+                assert.equal(finalStatus, 200);
                 assert.ok(elapsed >= 250, `the 300ms breath fired before turn 2 (backgrounded spawn in flight); elapsed=${elapsed}ms`);
             } finally { ws.close(); }
         });

@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; status_rx: number };
 const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
@@ -28,8 +28,8 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 await rpcCall(ws, 3, "op.edit", { target: "known:///b.md", content: "bravo" });
                 await rpcCall(ws, 4, "op.edit", { target: "known:///c.md", content: "charlie" });
-                const resp = await rpcCall(ws, 5, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 const mr = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
                 assert.ok(mr !== undefined, "turn 0 foists a READ of plurnk:///manifest.json when set");
@@ -43,8 +43,8 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "manifest-off" });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "no manifest READ foisted when unset");
             } finally { ws.close(); }
@@ -65,7 +65,7 @@ test("manifest.json is materialized with the preview off — the model always ha
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "manifest-empty" });
-                await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+                await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" });
                 assert.ok(entry?.id !== undefined, "plurnk:///manifest.json is materialized even with the preview off");
                 const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "/manifest.json", scheme: "plurnk", name: "body" });
@@ -89,8 +89,8 @@ test("[§operator-config-session-manifest-items] session.create settings.manifes
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "mi-off", settings: { manifestItems: 0 } });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "session manifestItems:0 replaces env -1 — no preview foisted");
             } finally { ws.close(); }
@@ -101,8 +101,8 @@ test("[§operator-config-session-manifest-items] session.create settings.manifes
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "mi-on", settings: { manifestItems: -1 } });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 const mr = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
                 assert.ok(mr !== undefined && mr.status_rx === 200, "session manifestItems:-1 replaces env 0 — preview foisted");

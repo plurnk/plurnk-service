@@ -13,7 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertSession, insertRun } from "./_helpers.ts";
 
 test("a client op.* never enters the model's packet — the client writes to its own run (#194)", async () => {
@@ -26,8 +26,8 @@ test("a client op.* never enters the model's packet — the client writes to its
             // A client op — lands in the connection's client run.
             await rpcCall(ws, 2, "op.edit", { target: "known:///secret", content: "client-only" });
             // The model runs — in its OWN run.
-            const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
-            const loopId = (run.result as { loopId: number }).loopId;
+            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const loopId = (run as { loopId: number }).loopId;
 
             const modelRun = await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId });
             assert.ok(modelRun !== undefined, "the model loop has a run");
@@ -59,8 +59,8 @@ test("[§machine-processes-model-run-readable] a connection reads the model run 
             // A client op lands in the connection's own (client) run.
             await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "client-only" });
             // Drive the model — its conversation lives in its OWN run, whose id loop.run returns.
-            const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
-            const { loopId, modelRunId } = run.result as { loopId: number; modelRunId: number };
+            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const { loopId, modelRunId } = run as { loopId: number; modelRunId: number };
             assert.equal(typeof modelRunId, "number", "loop.run returns the model run's id");
             assert.notEqual(modelRunId, clientRunId, "the model run is distinct from the connection's client run");
             const byLoop = await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId });
@@ -96,8 +96,8 @@ test("[§machine-processes-run-origin] session.runs tags each run with its actor
             const created = await rpcCall(ws, 1, "session.create", { name: "run-origin" });
             const clientRunId = (created.result as { runId: number }).runId;
             await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "x" });
-            const run = await rpcCall(ws, 3, "loop.run", { prompt: "go" });
-            const { modelRunId } = run.result as { modelRunId: number };
+            const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
+            const { modelRunId } = run as { modelRunId: number };
 
             const listed = (await rpcCall(ws, 4, "session.runs")).result as { runs: Array<{ id: number; origin: string }> };
             const model = listed.runs.find((r) => r.id === modelRunId);

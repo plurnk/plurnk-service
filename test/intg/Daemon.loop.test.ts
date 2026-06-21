@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
-test("[§methods-loop-run] loop.run with mock provider runs a model turn and persists entries", async () => {
+test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "<<EDIT(known:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 142)] });
 
@@ -12,15 +12,17 @@ test("[§methods-loop-run] loop.run with mock provider runs a model turn and per
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "loop-test" });
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "what is the capital of france?" });
-            const result = response.result as { loopId: number; turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } };
+            // loop.run accepts and returns immediately (100 + loopId); the terminal outcome —
+            // finalStatus, turnIds, usage — rides loop/terminated, surfaced here by the helper.
+            const result = await runLoopToTerminal(ws, 2, { prompt: "what is the capital of france?" });
+            assert.equal(result.accepted, 100, "loop.run returns immediately — accepted, not the terminal");
             assert.equal(result.finalStatus, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds.length, 1);
-            // #197 — loop.run result carries usage summed over the loop's turns.
-            assert.equal(result.usage.completionTokens, 142, "completion tokens summed from the turn");
-            assert.equal(result.usage.promptTokens, 0);
-            assert.equal(result.usage.costPico, 0);
+            assert.equal(result.turnIds?.length, 1);
+            // #197 — loop/terminated carries usage summed over the loop's turns.
+            assert.equal(result.usage?.completionTokens, 142, "completion tokens summed from the turn");
+            assert.equal(result.usage?.promptTokens, 0);
+            assert.equal(result.usage?.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
             // known:///france/capital + plurnk:///prompt/<loop_id> + plurnk:///manifest.json,
@@ -47,8 +49,9 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
             assert.ok(noRun.error !== undefined, "inject before any run errors");
             assert.match(noRun.error!.message, /no model run/);
 
-            // Start a run; SEND[200] ends it, leaving the run idle.
-            await rpcCall(ws, 3, "loop.run", { prompt: "first", flags: { yolo: true } });
+            // Start a run; SEND[200] ends it, leaving the run idle. Wait for the terminal
+            // (loop.run no longer blocks) so the run is genuinely idle before we inject.
+            await runLoopToTerminal(ws, 3, { prompt: "first", flags: { yolo: true } });
 
             // Inject into the idle run → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
@@ -76,8 +79,9 @@ test("run.fork branches the model run into a new -fork run; names it at instanti
             assert.ok(noRun.error, "fork with no model run errors");
             assert.match(noRun.error!.message, /no model run/);
 
-            // A loop builds the model run + its log; forking branches it.
-            await rpcCall(ws, 3, "loop.run", { prompt: "do a thing" });
+            // A loop builds the model run + its log; forking branches it. Wait for the
+            // terminal so the log is settled before the fork copies it.
+            await runLoopToTerminal(ws, 3, { prompt: "do a thing" });
             const fork = await rpcCall(ws, 4, "run.fork", {});
             const r = fork.result as { runId: number; runName: string | null; parentRunId: number };
             assert.ok(typeof r.runId === "number" && typeof r.parentRunId === "number", "returns new + parent run ids");
@@ -114,7 +118,9 @@ test("loop.run streams log/entry notifications during execution", async () => {
         try {
             const logEntries = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "session.create", { name: "stream-test" });
-            await rpcCall(ws, 2, "loop.run", { prompt: "test" });
+            // loop.run returns immediately; wait for the loop to terminate so all its
+            // log/entry notifications have fired before we inspect them.
+            await runLoopToTerminal(ws, 2, { prompt: "test" });
             await flush();
 
             const captured = logEntries();
@@ -149,12 +155,15 @@ test("loop.run fires loop/terminated notification on completion", async () => {
         try {
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 1, "session.create", { name: "term-test" });
-            await rpcCall(ws, 2, "loop.run", { prompt: "test" });
-            await flush();
-
-            const captured = terminated();
+            // loop.run returns immediately (100 accepted); the loop's outcome rides loop/terminated.
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
+            assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately, not the terminal");
+            const captured = await waitFor(
+                () => terminated() as Array<{ loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } }>,
+                (ts) => ts.length >= 1,
+            );
             assert.equal(captured.length, 1);
-            const params = captured[0] as { loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } };
+            const params = captured[0];
             assert.equal(params.finalStatus, 200);
             assert.equal(params.hitMaxTurns, false);
             // #197 — loop/terminated carries the loop's usage totals.
@@ -197,11 +206,11 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "maxturns-test" });
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "iterate", maxTurns: 3 });
-            const result = response.result as { finalStatus: number; hitMaxTurns: boolean; turnIds: number[] };
+            const result = await runLoopToTerminal(ws, 2, { prompt: "iterate", maxTurns: 3 });
+            assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.finalStatus, 429, "max_turns exhausts the turn ceiling → 429");
-            assert.equal(result.turnIds.length, 3);
+            assert.equal(result.turnIds?.length, 3);
         } finally { ws.close(); }
     });
 });
@@ -213,7 +222,8 @@ test("discover catalog includes loop.run and loop/terminated", async () => {
             const response = await rpcCall(ws, 1, "discover");
             const cat = response.result as { methods: Record<string, { longRunning?: boolean }>; notifications: Record<string, unknown> };
             assert.ok(cat.methods["loop.run"] !== undefined);
-            assert.equal(cat.methods["loop.run"].longRunning, true);
+            assert.equal(cat.methods["loop.run"].longRunning, false,
+                "loop.run accepts and returns immediately (Model 3); the loop runs async, surfaced via loop/terminated");
             assert.ok(cat.notifications["loop/terminated"] !== undefined);
         } finally { ws.close(); }
     });

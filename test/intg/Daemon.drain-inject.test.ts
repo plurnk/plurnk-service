@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
+import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
@@ -18,14 +18,13 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "drain-basic" });
-            const resp = await rpcCall(ws, 2, "loop.run", { prompt: "say hello" });
-            const result = resp.result as {
-                loopId: number; turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; action: string;
-            };
+            // loop.run returns the accept (100 + action); the outcome rides loop/terminated.
+            const result = await runLoopToTerminal(ws, 2, { prompt: "say hello" });
+            assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.action, "enqueued_new_loop");
             assert.equal(result.finalStatus, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds.length, 1);
+            assert.equal(result.turnIds?.length, 1);
         } finally { ws.close(); }
     });
 });
@@ -82,14 +81,12 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
             assert.ok(conc.some((c) => c.scheme === "sh" && c.closeStatus === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
-            // #204 contract: loop.cancel RESOLVES the pending loop.run with a
-            // terminal status (499 cancelled / 200 if it finished first) — it
-            // never rejects. Clients match this: on --timeout, send loop.cancel
-            // and await the {499}, never locally reject the request.
+            // #204 — loop.run already returned its 100 accept; loop.cancel never makes it
+            // reject. The cancelled loop's 499 terminal is observed via the stream conclusion
+            // above (and loop/terminated), not loop.run's return.
             const loopResp = await loopPromise;
-            assert.equal(loopResp.error, undefined, "loop.run resolves on cancel, never rejects (#204)");
-            const loopResult = loopResp.result as { finalStatus: number };
-            assert.ok([200, 499].includes(loopResult.finalStatus), `loop terminal; got ${loopResult.finalStatus}`);
+            assert.equal(loopResp.error, undefined, "loop.run accepted and resolved; cancel never rejects it (#204)");
+            assert.equal((loopResp.result as { finalStatus: number }).finalStatus, 100, "loop.run returned the 100 accept, not the terminal");
         } finally { ws.close(); }
     });
 });
@@ -125,6 +122,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
         try {
             const created = await rpcCall(ws, 1, "session.create", { name: "drain-restart" });
             const sessionId = (created.result as { id: number }).id;
+            const terminated = subscribeNotifications(ws, "loop/terminated");
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
                 prompt: "first", flags: { yolo: true },
@@ -141,14 +139,18 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
 
             await rpcCall(ws, 3, "loop.cancel", {});
             const firstResp = await firstPromise;
-            const firstStatus = (firstResp.result as { finalStatus: number }).finalStatus;
-            assert.ok([200, 499].includes(firstStatus),
-                `first loop closed with a terminal status; got ${firstStatus}`);
+            assert.equal((firstResp.result as { finalStatus: number }).finalStatus, 100,
+                "loop.run accepted (100); the cancelled loop's terminal arrives via events");
+            // Wait for the cancelled first loop to actually terminate (499 via loop/terminated)
+            // so the run is genuinely idle before the second loop.run.
+            const firstLoop = (firstResp.result as { loopId: number }).loopId;
+            await waitFor(() => terminated() as Array<{ loopId: number }>,
+                (ts) => ts.some((t) => t.loopId === firstLoop), { timeoutMs: 5000 });
 
-            const secondResp = await rpcCall(ws, 4, "loop.run", { prompt: "second" });
-            const secondResult = secondResp.result as { action: string; finalStatus: number };
-            assert.equal(secondResult.action, "enqueued_new_loop");
-            assert.equal(secondResult.finalStatus, 200);
+            // Post-cancel, a fresh loop.run starts a NEW drain (enqueued_new_loop) and completes.
+            const second = await runLoopToTerminal(ws, 4, { prompt: "second" });
+            assert.equal(second.action, "enqueued_new_loop");
+            assert.equal(second.finalStatus, 200);
         } finally { ws.close(); }
     });
 });
@@ -198,13 +200,16 @@ test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
             // consumes the injected prompt and ends cleanly.
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            const firstResp = await firstPromise;
-            assert.equal((firstResp.result as { finalStatus: number }).finalStatus, 200,
-                "loop 1 ends cleanly after consuming the injected prompt");
+            await firstPromise;  // resolves at the 100 accept; loop 1 finishes async (turn 2 → SEND[200])
 
-            // Exactly one loop ran for the run: the second call injected, it did
-            // not spin up a parallel drain.
-            assert.equal((terminated() as unknown[]).length, 1, "exactly one loop terminated — no parallel drain");
+            // Exactly one loop ran for the run: the second call injected, it did not spin up a
+            // parallel drain. Wait for the single termination (loop.run no longer blocks to it).
+            const ended = await waitFor(
+                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                (t) => t.length >= 1, { timeoutMs: 5000 },
+            );
+            assert.equal(ended.length, 1, "exactly one loop terminated — no parallel drain");
+            assert.equal(ended[0].finalStatus, 200, "loop 1 ends cleanly after consuming the injected prompt");
         } finally { ws.close(); }
     });
 });
@@ -263,7 +268,7 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[200]:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:backgrounded:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
         ],
     });
@@ -303,7 +308,7 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[200]:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:backgrounded:SEND"),
             sendOnly("<<SEND[200]:should never run:SEND"),
         ],
     });

@@ -80,3 +80,13 @@ WHERE e.scheme = 'plurnk'
       (SELECT COALESCE(MAX(sequence), 0) FROM turns WHERE loop_id = $loop_id)
 ORDER BY e.id DESC
 LIMIT 1;
+
+-- PREP: drain_find_slept_loop
+-- A run's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
+-- (§run-lifecycle-wake-liveness). A run parks one at a time; take the most recent.
+SELECT id FROM loops WHERE run_id = $run_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
+
+-- PREP: drain_resume_slept_loop
+-- Re-queue a slept (202) loop to status 100 so the drain re-claims and CONTINUES it. The
+-- engine's next-turn-sequence is DB-derived, so the resumed loop foists no prompt (seq > 1).
+UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string | null; status_rx: number; origin: string };
 
@@ -30,8 +30,8 @@ const runWithAgents = async (opts: { settings?: object; pick?: boolean }): Promi
                     settings: opts.settings ?? {},
                     constraints: opts.pick ? [{ effect: "pick", glob: "AGENTS.md" }] : [],
                 });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 return await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
             } finally { ws.close(); }
         });

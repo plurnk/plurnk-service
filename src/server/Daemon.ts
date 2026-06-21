@@ -524,11 +524,18 @@ export default class Daemon {
                         onDispatch,
                         signal: controller.signal,
                     });
+                    if (result.finalStatus === 202) {
+                        // The loop SLEPT (SEND[202]) — suspended, not terminated. Leave it at 202
+                        // (resumable); no loop/terminated, no orphan-reconcile. An OPEN event
+                        // (#handleWakeRun) re-queues it to resume in place. §run-lifecycle-wake-liveness.
+                        continue;
+                    }
                     const usage = await this.#engine.loopUsage(loopRow.id);
                     this.#broadcast({ sessionId }, null, "loop/terminated", {
                         loopId: loopRow.id,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
+                        turnIds: result.turnIds,
                         usage,
                     });
                     loopsDrained++;
@@ -550,25 +557,25 @@ export default class Daemon {
                     await this.#reconcileOrphanedWake(runId, loopRow.id);
                 }
             } catch (err) {
-                if (!firstSettled) {
-                    firstSettled = true;
-                    // #204 — loop.cancel / shutdown aborted the live drain. A cancellation
-                    // is the loop's TERMINAL state (499), not an error: the pending loop.run
-                    // RESOLVES finalStatus 499, it never rejects with the abort reason
-                    // (runLoop throws the reason via throwIfAborted). A genuine error rejects.
-                    if (controller.signal.aborted) {
-                        resolveFirst({
-                            loopId: currentLoopId ?? 0,
-                            turnIds: [],
-                            finalStatus: 499,
-                            hitMaxTurns: false,
-                            usage: currentLoopId === null
-                                ? { promptTokens: 0, completionTokens: 0, costPico: 0 }
-                                : await this.#engine.loopUsage(currentLoopId),
+                if (controller.signal.aborted) {
+                    // #204 / Model 3 — loop.cancel / shutdown aborted the live drain. A cancellation
+                    // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
+                    // longer blocks to return it). A genuine error rejects firstLoopPromise.
+                    const usage = currentLoopId === null
+                        ? { promptTokens: 0, completionTokens: 0, costPico: 0 }
+                        : await this.#engine.loopUsage(currentLoopId);
+                    if (currentLoopId !== null) {
+                        this.#broadcast({ sessionId }, null, "loop/terminated", {
+                            loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage,
                         });
-                    } else {
-                        rejectFirst(err);
                     }
+                    if (!firstSettled) {
+                        firstSettled = true;
+                        resolveFirst({ loopId: currentLoopId ?? 0, turnIds: [], finalStatus: 499, hitMaxTurns: false, usage });
+                    }
+                } else if (!firstSettled) {
+                    firstSettled = true;
+                    rejectFirst(err);
                 }
                 throw err;
             } finally {
@@ -753,36 +760,46 @@ export default class Daemon {
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-            // Unified path: this.inject decides whether to write a prompt
-            // entry for an active drain's next turn (no-op-active-loop) or
-            // enqueue a fresh loop + drain (opened-loop). The summary
-            // string becomes the user prompt either way.
-            const result = await this.inject({
-                sessionId: payload.sessionId,
-                runId: payload.runId,
-                prompt: `${payload.summary}\n\nAutomated environment update; response optional.`,
-                provider: this.#provider,
-                systemPrompt,
-            });
+            // A slept (202) loop means the run PARKED (SEND[202]) → RESUME it IN PLACE: re-queue
+            // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
+            // FIRST: the slept status is the run's true disposition regardless of a draining
+            // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
+            // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
+            // the manifest. §run-lifecycle-wake-liveness.
+            const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: payload.runId });
+            if (slept !== undefined) {
+                await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+                const started = await this.#ensureDrain({
+                    sessionId: payload.sessionId, runId: payload.runId, provider: this.#provider,
+                    systemPrompt, maxTurns: Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+                });
+                this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                    ...payload, wakeAction: "resumed-loop", wakeLoopId: slept.id,
+                });
+                started?.drainPromise?.catch((err: unknown) => {
+                    console.error("wake resume drain failed:", err instanceof Error ? err.message : String(err));
+                });
+                return;
+            }
 
-            if (result.action === "injected_next_turn") {
+            // No slept loop. An active drain folds the conclusion into the live loop's next turn
+            // (the model reads the concluded stream from the manifest) — no new loop.
+            if (this.#activeDrains.has(payload.runId)) {
+                const result = await this.inject({
+                    sessionId: payload.sessionId, runId: payload.runId,
+                    prompt: `${payload.summary}\n\nAutomated environment update; response optional.`,
+                    provider: this.#provider, systemPrompt,
+                });
                 this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
                     ...payload, wakeAction: "no-op-active-loop", wakeLoopId: result.loopId,
                 });
                 return;
             }
 
-            // enqueued_new_loop: drain runs in background; broadcast that
-            // the wake opened a loop, then await the drain so background
-            // failures bubble to the catch block below.
+            // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done run whose
+            // streams were swept). Surface the conclusion without opening a loop.
             this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
-                ...payload, wakeAction: "opened-loop", wakeLoopId: result.loopId,
-            });
-            // Drain runs in background; loop/terminated broadcasts come
-            // from #startDrain as each loop finishes. Don't await — the
-            // wake-notify path should return quickly.
-            result.drainPromise?.catch((err: unknown) => {
-                console.error("wake-on-completion drain failed:", err instanceof Error ? err.message : String(err));
+                ...payload, wakeAction: "no-loop",
             });
         } catch (err) {
             console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));

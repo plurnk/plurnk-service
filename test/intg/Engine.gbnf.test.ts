@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 // A Mock that records the grammar handed to generate() — the one thing #189
 // plumbs that the stock Mock drops (it destructures only `signal`).
@@ -19,7 +19,7 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name });
-            await rpcCall(ws, 2, "loop.run", { prompt: "x" });
+            await runLoopToTerminal(ws, 2, { prompt: "x" });
         } finally { ws.close(); }
     });
 };

@@ -1,9 +1,8 @@
-// Wake-on-completion daemon decision tree (E.4). When an exec spawn
-// concludes, Daemon.#handleWakeRun picks one of:
-//   - "no-op-active-loop" — the run has a live drain on its current loop
-//   - "opened-loop" — no active loop in the run; daemon enqueues a fresh
-//     loop with the summary as the user prompt
-//   - "skipped-aborted" — closeStatus=499 (deliberate cancel)
+// Wake-on-completion daemon decision tree (§run-lifecycle-wake-liveness). When an exec
+// spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeRun picks one of:
+//   - "no-op-active-loop" — the run has a live drain; the conclusion folds into its next turn
+//   - "resumed-loop" — the run is parked at a slept (202) loop; that SAME loop resumes in place
+//   - "skipped-aborted" — closeStatus=499 (deliberate cancel) — no resume
 //
 // These exercise the daemon end-to-end through real WS calls with a
 // Mock provider. Mock emissions use the EXEC op per plurnk.md.
@@ -11,11 +10,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
 const execDsl = (command: string): string =>
-    `<<EXEC[sh]:${command}:EXEC\n<<SEND[200]:done:SEND`;
+    `<<EXEC[sh]:${command}:EXEC\n<<SEND[202]:done:SEND`;
 
 const mockResponse = (dsl: string) => {
     // grammar 0.70: turns lead with PLAN. No `ops` here → the Engine re-parses
@@ -31,11 +30,12 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon opens a new loop with the summary prompt", async () => {
-    // First loop: EXEC echo + SEND[200] to terminate the loop immediately.
-    // The exec spawn runs async after the loop ends. Daemon's wake handler
-    // detects "no active loop in this run" and opens a fresh loop whose
-    // user prompt is the synthetic conclusion summary.
+test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
+    // First loop: EXEC echo + SEND[202] (Accepted) — the loop SLEEPS while the
+    // spawn runs on. When the spawn concludes (an OPEN stream-status transition,
+    // §actor-boundary-passive-wake), the daemon AWAKENS that same loop in place —
+    // never a fresh loop with a synthetic summary prompt. The resumed loop reads
+    // the concluded stream's own state and finishes on its own.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
@@ -51,13 +51,20 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
             const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
 
-            await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then end", flags: { yolo: true } });
+            // loop.run ACCEPTS and returns immediately (100 + loopId) — it never blocks on
+            // the loop's lifecycle. A parked loop awaits an external event (here the spawn's
+            // conclusion; in general a user reply), so loop.run cannot resolve on it without
+            // deadlocking the very client that must send that event. Park, resume, and the
+            // true terminal all arrive via events. §run-lifecycle-wake-liveness.
+            const firstRun = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { yolo: true } });
+            const parkedLoop = (firstRun.result as { loopId: number }).loopId;
+            assert.equal((firstRun.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
 
-            // echo hi is fast; wake fires after the loop ends; daemon opens a
-            // second loop; that loop terminates on its own. Wait — event-driven
-            // — for the wake loop to open AND terminate. This hard-fails on a
-            // timeout if the wake loop is ever stranded (the lost-loop hang this
-            // change fixes), instead of a fixed sleep that hides it under load.
+            // echo hi is fast; the conclusion fires after the loop sleeps; the daemon
+            // RESUMES the same loop; that resumed turn terminates it. Event-driven —
+            // wait for the resume to land AND the loop to terminate. Hard-fails on a
+            // timeout if the slept loop is ever stranded (the lost-loop hang), instead
+            // of a fixed sleep that hides it under load.
             await waitFor(
                 () => terminatedEvents() as Array<{ loopId: number; finalStatus: number }>,
                 (ts) => {
@@ -79,8 +86,9 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the tag-authority target URI (#179)");
             assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+ completed \(exit 0\)/,
                 "summary references the tag-authority <runtime>:///<loop>/<turn>/<seq> path");
-            assert.equal(wake.wakeAction, "opened-loop", "daemon opened a new loop because the original ended first");
-            assert.ok(typeof wake.wakeLoopId === "number", "wakeLoopId is reported");
+            assert.equal(wake.wakeAction, "resumed-loop", "the daemon resumed the slept loop in place");
+            // The resume-in-place lock: the woken loop IS the parked loop, not a new one.
+            assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop opened");
 
             // #224 — the coordinate the waterfall TUI used to parse out of the
             // exec URI is now explicit fields; assert they agree with the URI.
@@ -89,10 +97,11 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: dormant run → daemon
             assert.equal(wake.turn_seq, Number(seg[1]), "carries turn_seq");
             assert.equal(wake.sequence, Number(seg[2]), "carries sequence");
 
-            // Wake-opened loop terminated too (mock's second response was SEND[200]).
+            // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
+            // never through loop.run's (already-returned) result.
             const terminated = terminatedEvents() as Array<{ loopId: number; finalStatus: number }>;
-            assert.ok(terminated.some((t) => t.loopId === wake.wakeLoopId && t.finalStatus === 200),
-                "wake loop terminated cleanly");
+            assert.ok(terminated.some((t) => t.loopId === parkedLoop && t.finalStatus === 200),
+                "the resumed loop's 200 terminal arrives via events, not loop.run's return");
         } finally { ws.close(); }
     });
 });
@@ -105,7 +114,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(execDsl("echo soon").replace("SEND[200]", "SEND[102]")),
+            mockResponse(execDsl("echo soon").replace("SEND[202]", "SEND[102]")),
             continueResponse,
             continueResponse,
             continueResponse,
@@ -119,7 +128,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             await rpcCall(ws, 1, "session.create", { name: "exec-wake-active" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            await rpcCall(ws, 2, "loop.run", { prompt: "stay active during exec", flags: { yolo: true } });
+            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", flags: { yolo: true } });
             await flush();
             // Event-driven: wait for the exec to conclude (it finishes while the loop is
             // still emitting SEND[102] continuations), not a fixed sleep racing the spawn.
@@ -139,17 +148,15 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
 });
 
 test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async () => {
-    // A countdown emits 5 lines over ~2.5s. The model SEND[200]s
-    // immediately, so the loop closes well before the spawn finishes.
-    // When the spawn DOES finish, wake fires with closeStatus=200 and
-    // a summary that reflects the COMPLETE stdout (10 bytes for
-    // "5\n4\n3\n2\n1\n") — proving the streaming continued past the
-    // loop's terminal status and the conclusion is the final state,
-    // not a partial snapshot.
+    // A countdown emits 5 lines over ~2.5s. The model SEND[202]s — the loop SLEEPS
+    // while the countdown runs on. When the countdown concludes, the loop RESUMES in
+    // place, and the conclusion's summary reflects the COMPLETE stdout (10 bytes for
+    // "5\n4\n3\n2\n1\n") — proving the streaming continued past the sleep and the
+    // conclusion is the final state, not a partial snapshot buffered at sleep-time.
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[200]:fire and forget:SEND`),
+            mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[202]:fire and forget:SEND`),
             // Wake-opened loop just terminates so the test completes:
             mockResponse("<<SEND[200]:saw the wake:SEND"),
         ],
@@ -163,14 +170,14 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
 
             const startedAt = Date.now();
             const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", flags: { yolo: true } });
-            const firstResult = firstResp.result as { finalStatus: number };
+            const firstResult = firstResp.result as { loopId: number; finalStatus: number };
+            const parkedLoop = firstResult.loopId;
             const firstElapsed = Date.now() - startedAt;
-            assert.equal(firstResult.finalStatus, 200, "first loop terminates cleanly on SEND[200]");
-            // The loop's RPC should return well before the spawn's ~2.5s
-            // — the wake-on-completion path is what handles the spawn's
-            // late conclusion, not the original loop.
+            assert.equal(firstResult.finalStatus, 100, "loop.run returns immediately (100 accepted); the spawn's late conclusion resumes the loop");
+            // loop.run accepts immediately — it returns well before the spawn's ~2.5s.
+            // The resume path handles the spawn's late conclusion, not a blocking loop.run.
             assert.ok(firstElapsed < 1500,
-                `first loop returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
+                `loop.run returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
 
             // Event-driven: wait for the ~2.5s countdown spawn to conclude (200) and its
             // wake to fire, not a fixed sleep that flakes if the spawn runs long under load.
@@ -181,7 +188,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             );
 
             const concluded = concludedEvents() as Array<{
-                scheme: string; closeStatus: number; summary: string; wakeAction: string;
+                scheme: string; closeStatus: number; summary: string; wakeAction: string; wakeLoopId?: number;
             }>;
             const wake = concluded.find((c) => c.scheme === "sh" && c.closeStatus === 200);
             assert.ok(wake, "exec stream concluded");
@@ -189,7 +196,8 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             // whatever happened to be in the channel when loop ended.
             assert.match(wake.summary, /stdout=10 bytes/,
                 `summary should report the full final stdout=10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${wake.summary}`);
-            assert.equal(wake.wakeAction, "opened-loop");
+            assert.equal(wake.wakeAction, "resumed-loop", "the slept loop resumed in place");
+            assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop");
         } finally { ws.close(); }
     });
 });

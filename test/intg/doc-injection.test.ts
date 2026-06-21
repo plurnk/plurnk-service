@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
@@ -29,8 +29,8 @@ test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "md-doc" });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
 
                 // The model's turn-0 log carries a READ of plurnk:///AGENTS.md.
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
@@ -74,8 +74,8 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the p
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "session.create", { name: "md-zero" });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/POLICY.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
@@ -111,8 +111,8 @@ test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs 
                     { alias: "REPO", content: "# Repo guide\nlocal.\n" },
                     { alias: "POLICY", content: "# Client policy\noverride.\n" },
                 ] } });
-                const resp = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
-                const { loopId } = resp.result as { loopId: number };
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
                 const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === p);
                 const bodyOf = (p: string) => (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: p, scheme: "plurnk", name: "body" });

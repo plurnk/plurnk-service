@@ -181,15 +181,15 @@ export default class LoopRunMethod {
                         turnIds: [],
                     };
                 }
-                const first = await injected.firstLoopPromise;
+                // Model 3 — accept and return immediately; the drain (already started, its
+                // firstLoopPromise .catch()'d in Daemon) runs the loop async. Its outcome rides
+                // loop/terminated; loop.run never blocks on a loop that may park indefinitely
+                // (SEND[202]). §run-lifecycle-wake-liveness.
                 return {
-                    loopId: first.loopId,
+                    loopId: injected.loopId,
                     modelRunId,
-                    turnIds: first.turnIds,
-                    finalStatus: first.finalStatus,
-                    hitMaxTurns: first.hitMaxTurns,
-                    usage: first.usage,
                     action: "enqueued_new_loop",
+                    finalStatus: 100,
                 };
             },
             description: "Run a model-driven loop with a prompt. Optional `model` (`<provider>/<model>`, client-resolved) runs on that provider using the daemon's keys — preferred over `alias`, which resolves a PLURNK_MODEL_<alias> override in the DAEMON's env. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
@@ -201,7 +201,7 @@ export default class LoopRunMethod {
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
             },
             requiresInit: true,
-            longRunning: true,
+            longRunning: false,
         });
     }
 }

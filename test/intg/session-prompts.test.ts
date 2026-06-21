@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const send = () => makeMockResponse("<<SEND[200]:ok:SEND", 50);
 
@@ -15,8 +15,8 @@ test("session.prompts returns the session's user prompts newest-first, capped by
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "prompts-hist" });
-            await rpcCall(ws, 2, "loop.run", { prompt: "first prompt" });
-            await rpcCall(ws, 3, "loop.run", { prompt: "second prompt" });
+            await runLoopToTerminal(ws, 2, { prompt: "first prompt" });
+            await runLoopToTerminal(ws, 3, { prompt: "second prompt" });
 
             // Defaults to the attached session; newest-first.
             const all = await rpcCall(ws, 4, "session.prompts", {});

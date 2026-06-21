@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
@@ -22,7 +22,7 @@ test("manifest catalog is mtime-ordered — a re-edited entry sorts to the tail,
             // Re-edit a — now the most-recently-modified, so it must sort to the tail
             // (oldest-modified first); b and c keep their relative order at the front.
             await rpcCall(ws, 5, "op.edit", { target: "known:///a.md", content: "alpha-2" });
-            await rpcCall(ws, 6, "loop.run", { prompt: "go" }); // a model turn rebuilds the catalog
+            await runLoopToTerminal(ws, 6, { prompt: "go" }); // a model turn rebuilds the catalog
             const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({
                 pathname: "/manifest.json", scheme: "plurnk", name: "body",
             });

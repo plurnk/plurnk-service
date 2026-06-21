@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 // Minimal always-proposing scheme (mirrors loop-run-yolo.test.ts). Returns
 // 202 so the proposal lifecycle fires from a full Daemon RPC roundtrip.
@@ -47,10 +47,9 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "noproposals-resolve" });
-            const response = await rpcCall(ws, 2, "loop.run", {
+            const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { noProposals: true },
             });
-            const result = response.result as { finalStatus: number; loopId: number };
             assert.equal(result.finalStatus, 200, "loop completes on SEND[200]; the rejected EDIT doesn't gate it");
 
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
