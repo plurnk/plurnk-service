@@ -16,7 +16,7 @@ import { foldAuthorityIntoPath, renderAddress } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
-import { teachingLine } from "./teaching.ts";
+import { teachingLine, docsExcludeSet } from "./teaching.ts";
 import SessionSettings from "./session-settings.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
@@ -1235,7 +1235,9 @@ export default class Engine {
         // bullets + bare op forms match the packet's list/op rendering (no `- `,
         // no backticks — see packet-wire.ts).
         if (this.#executors !== undefined) {
+            const excluded = docsExcludeSet();
             for (const tag of this.#executors.availableRuntimes()) {
+                if (excluded.has(tag)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the oneliner + the doc
                 const entry = this.#executors.entry(tag);
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
@@ -1250,9 +1252,11 @@ export default class Engine {
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
     docEntries(): Array<{ name: string; content: string }> {
-        const out = this.#schemes.docs();
+        const out = this.#schemes.docs(); // scheme docs already drop PLURNK_DOCS_EXCLUDE names
         if (this.#executors !== undefined) {
+            const excluded = docsExcludeSet();
             for (const tag of this.#executors.availableRuntimes()) {
+                if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
                 const doc = this.#executors.entry(tag)?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
             }

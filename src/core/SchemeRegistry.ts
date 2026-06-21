@@ -15,7 +15,7 @@ import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { readdir, readFile } from "node:fs/promises";
-import { teachingLine } from "./teaching.ts";
+import { teachingLine, docsExcludeSet } from "./teaching.ts";
 
 // docs/ migration — the in-tree CORE-scheme depth (run/known/unknown/log) lives in
 // <pkgroot>/docs/<name>.md, NOT inline, loaded once at module eval (top-level await; resolves
@@ -111,8 +111,10 @@ export default class SchemeRegistry {
     // (provisional, e.g. skill) is omitted. The doc's token cost rides its manifest entry.
     teach(): string {
         const lines: string[] = [];
+        const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases route, but exec is taught once
+            if (excluded.has(name)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the oneliner + the doc
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
@@ -126,8 +128,10 @@ export default class SchemeRegistry {
     // plurnk:///docs/<name>.md. Optional + currently none in-tree; future-proofs the link.
     docs(): Array<{ name: string; content: string }> {
         const out: Array<{ name: string; content: string }> = [];
+        const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
+            if (excluded.has(name)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the doc
             const inline = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
             const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });

@@ -41,3 +41,24 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     registry.registerRuntimeSchemes(real);
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
+
+// #240 — PLURNK_DOCS_EXCLUDE drops a name from BOTH the teaching oneliner and the materialized
+// pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
+test("teach()/docs(): PLURNK_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", () => {
+    const registry = new SchemeRegistry();
+    const prior = process.env.PLURNK_DOCS_EXCLUDE;
+    try {
+        process.env.PLURNK_DOCS_EXCLUDE = "known,nonsuch";
+        const teaching = registry.teach();
+        assert.doesNotMatch(teaching, /known:\/\/\/plan\.md/, "an excluded scheme contributes no oneliner");
+        assert.match(teaching, /run:\/\/\/helper/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
+        assert.equal(registry.docs().find((d) => d.name === "known"), undefined, "an excluded scheme materializes no doc");
+        assert.ok(registry.docs().find((d) => d.name === "run"), "a non-excluded scheme still materializes its doc");
+
+        process.env.PLURNK_DOCS_EXCLUDE = "";
+        assert.match(registry.teach(), /known:\/\/\/plan\.md/, "cleared exclude → known teaches again");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_DOCS_EXCLUDE;
+        else process.env.PLURNK_DOCS_EXCLUDE = prior;
+    }
+});
