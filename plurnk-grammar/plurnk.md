@@ -28,7 +28,6 @@ In the examples, `...`, `N`, and `M` mark placeholders - substitute real content
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for adding or modifying entries. Do not attempt to edit log items.
-EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc.).
 
 ## Context
 
@@ -151,17 +150,16 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 <<FIND(#(draft|final)/.*#i)::FIND
 <<FIND(#src/.*\.test\.ts#)::FIND
 <<FIND(src/**):@<createCoder:FIND
+<<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
 echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt
 :EDIT
 
-<<EXEC:
+<<EXEC[sh]:
 chmod +x ./example.sh
 ./example.sh
 :EXEC
 
 <<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
 <<EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC
-
-<<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
