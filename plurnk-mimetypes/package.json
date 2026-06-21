@@ -57,7 +57,8 @@
         "test:conf": "node --test test/conformance/*.test.ts",
         "grammars:check": "node scripts/update-grammars.mjs --check",
         "grammars:update": "node scripts/update-grammars.mjs",
-        "grammars:publish": "node scripts/publish-grammars.mjs"
+        "grammars:publish": "node scripts/publish-grammars.mjs",
+        "deps:check": "node scripts/deps-check.mjs"
     },
     "peerDependencies": {
         "antlr-ng": "^1.0.10"
