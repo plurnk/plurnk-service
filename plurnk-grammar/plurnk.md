@@ -159,7 +159,8 @@ YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degr
 YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
 YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
 YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
-YOU MUST terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
-YOU MUST terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up - cannot identify the capital from available sources.:SEND
-YOU MUST terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
-YOU MUST pause an idle/waiting loop with status code 202: <<SEND[202]:Waiting until the capital-checker reports.:SEND
+
+102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
+200: submit a final turn with status code 200: <<SEND[200]:Paris:SEND
+202: submit a waiting/idle loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
+499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
