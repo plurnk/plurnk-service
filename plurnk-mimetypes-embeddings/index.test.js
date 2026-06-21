@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { countTokens, dimension, dispose, embed, maxTokens, model } from "./index.js";
+import { countTokens, dimension, dispose, embed, embedBatch, maxTokens, model } from "./index.js";
 
 function toVector(bytes) {
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -133,6 +133,53 @@ describe("embedder duck surface", () => {
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { embed } from ${JSON.stringify(indexPath)};\n`
             + `await embed("hello");\n`; // no dispose() — must still exit
+        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+            timeout: 60000,
+            stdio: "ignore",
+        });
+    });
+
+    it("embedBatch returns vectors in input order, byte-identical to embed() (#2)", async () => {
+        const texts = ["hello", "database connection error", "the quick brown fox", "birthday cake recipe"];
+        const batch = await embedBatch(texts);
+        assert.equal(batch.length, texts.length);
+        for (let i = 0; i < texts.length; i += 1) {
+            assert.equal(batch[i].length, 4 * dimension);
+            // The data-parallel pool must produce the SAME bytes as the single
+            // path — each worker is single-threaded, so determinism holds.
+            assert.deepEqual(batch[i], await embed(texts[i]), `index ${i} diverged from embed()`);
+        }
+    });
+
+    it("embedBatch reports progress as completed/total (#2)", async () => {
+        const seen = [];
+        const texts = ["a", "b", "c", "d", "e"];
+        await embedBatch(texts, { onProgress: (p) => seen.push(p) });
+        assert.equal(seen.length, texts.length, "one progress tick per text");
+        assert.deepEqual(seen.at(-1), { completed: texts.length, total: texts.length });
+        // monotonic 1..total
+        assert.deepEqual(seen.map((p) => p.completed), [1, 2, 3, 4, 5]);
+        assert.ok(seen.every((p) => p.total === texts.length));
+    });
+
+    it("embedBatch([]) is a no-op empty result (#2)", async () => {
+        assert.deepEqual(await embedBatch([]), []);
+    });
+
+    it("embedBatch rejects an aborted signal (#2)", async () => {
+        await assert.rejects(
+            embedBatch(["x", "y"], { signal: AbortSignal.abort() }),
+            (e) => e.name === "AbortError",
+        );
+    });
+
+    it("a process that embedBatch()es and never dispose()s still exits (#2)", () => {
+        // The pool reuses single-threaded workers; they're unref'd while idle so
+        // the process drains without dispose() — the #36 clean-exit property must
+        // survive the worker pool.
+        const indexPath = path.join(import.meta.dirname, "index.js");
+        const src = `import { embedBatch } from ${JSON.stringify(indexPath)};\n`
+            + `await embedBatch(["one", "two", "three"]);\n`;
         execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
             timeout: 60000,
             stdio: "ignore",

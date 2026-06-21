@@ -38,13 +38,20 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 
 ## Exports
 
-- `embed(text) → Promise<Uint8Array>` — the 1536-byte vector (above).
+- `embed(text) → Promise<Uint8Array>` — the 1536-byte vector (above), computed on the calling thread. The framework's per-entry path.
+- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a pool of single-threaded workers, returning vectors **in input order**. Each vector is **bit-identical** to `embed()` of the same text (workers are single-threaded; parallelism is data-parallel across them), so the `model` identity is unchanged. `onProgress({ completed, total })` fires as each finishes — the host's progress signal for a long corpus run. `signal` (`AbortSignal`) cancels in flight. The pool is lazy + persistent, unref'd while idle (the process still drains without `dispose()`), and torn down by `dispose()`. Pool size = `PLURNK_EMBED_WORKERS` (default `min(cores, 8)`; each worker holds its own model copy, so it's a memory↔throughput dial — ~6× at 8 workers, scales toward core count).
 - `dimension` — `384`.
 - `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
 - `maxTokens` — `512`, the model's token window.
 - `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= maxTokens`. A char/word proxy can't make that guarantee.
 
 Input beyond the 512-token window is truncated by `embed()`; `maxTokens` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
+
+For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `onProgress` to your operator surface — a large run becomes visible (N/total, %, ETA) and uses all cores, instead of a single-threaded, opaque freeze.
+
+## Environment
+
+- `PLURNK_EMBED_WORKERS` — `embedBatch` pool size (default `min(cores, 8)`). Set to the core count on a dedicated box; lower it on a shared or low-RAM host (one model copy per worker).
 
 ## Scripts
 
