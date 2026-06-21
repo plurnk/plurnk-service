@@ -29,11 +29,19 @@ import type {
     UrlPath,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
+import { readFile } from "node:fs/promises";
 import Browser, { type RenderResult } from "./Browser.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
 const HEADER = "header";
+
+// Deep doc lives in `docs/http.md` (the constellation's docs/<name>.md
+// convention) and is loaded into the manifest at module init — the contract
+// field stays a plain string; only the authoring source moves out of line.
+// `../docs/http.md` resolves identically from src/ (test) and dist/ (published):
+// both sit one level under the package root. Missing file → fail-hard at import.
+const documentation = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
 
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
@@ -57,20 +65,7 @@ export default class Http implements SchemeHandler {
         modelVisible: true,
         glyph: "🌐",
         example: "READ(https://example.com/page)",
-        documentation: [
-            "# http(s)://",
-            "",
-            "Fetch a URL. An HTML page is rendered with headless Chromium and its",
-            "final post-hydration DOM is delivered as the `body` channel (text/html);",
-            "non-HTML bodies stream raw with their real Content-Type.",
-            "",
-            "- `READ(http(s)://…)` — fetch + stream the body (102 Processing).",
-            "- `SEND[200](…)` — POST a body, stream the response.",
-            "- `SEND[410](…)` — delete the cached entry.",
-            "- `SEND[499](…)` — cancel an in-flight fetch/render.",
-            "",
-            "Status: 102 streaming · 499 cancelled · 502 upstream/render failure.",
-        ].join("\n"),
+        documentation,
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag
         },

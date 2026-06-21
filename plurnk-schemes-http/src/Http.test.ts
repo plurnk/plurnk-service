@@ -122,6 +122,13 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.match(Http.manifest.example ?? "", /^READ\(https?:\/\//);
 });
 
+test("manifest: documentation is loaded verbatim from docs/http.md", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const fromFile = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
+    assert.equal(Http.manifest.documentation, fromFile);
+    assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
+});
+
 // ── READ streaming ────────────────────────────────────────────────────────
 test("READ: streams response body into the body channel and closes done", async () => {
     const { ctx, inspect } = makeCtx();
