@@ -20,10 +20,11 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | MOVE | apply tags  | required   | lines `N,M`         | destination URI  |
 | OPEN | filter tags | log path   | results `N,M`       | matcher          |
 | FOLD | filter tags | log path   | results `N,M`       | matcher          |
-| KILL | signal      | required   | —                   | —                |
-| EXEC | executor    | cwd        | —                   | command or code  |
-| SEND | status code | recipient  | —                   | message body     |
+| KILL | signal      | required   | -                   | -                |
+| EXEC | executor    | cwd        | -                   | command or code  |
+| SEND | status code | recipient  | -                   | message body     |
 
+In the examples, `...`, `N`, and `M` mark placeholders - substitute real content.
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for adding or modifying entries. Do not attempt to edit log items.
@@ -33,8 +34,8 @@ EXEC defaults to `sh`; override with an optional executor (`sqlite`, `node`, etc
 
 The agent maintains two surfaces for budgeting working-memory tokens:
 
-- **Log** — the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive — FOLDed rows remain listed and re-OPENable.
-- **`plurnk:///manifest.json`** — what's available: the complete unranked directory of every entry. Query it to discover available entries.
+- **Log** - the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive - FOLDed rows remain listed and re-OPENable.
+- **`plurnk:///manifest.json`** - what's available: the complete unranked directory of every entry. Query it to discover available entries.
 
 OPEN and FOLD operate on the log only. Log items are read-only, but can be KILLed (erased).
 
@@ -158,7 +159,7 @@ YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degr
 YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
 YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
 YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
-YOU MUST terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
-YOU MUST terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up — cannot identify the capital from available sources.:SEND
+YOU MUST terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
+YOU MUST terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up - cannot identify the capital from available sources.:SEND
 YOU MUST terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
 YOU MUST pause an idle/waiting loop with status code 202: <<SEND[202]:Waiting until the capital-checker reports.:SEND
