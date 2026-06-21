@@ -17,6 +17,7 @@ import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
+import { readPacketInject } from "./packet-inject.ts";
 import SessionSettings from "./session-settings.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
@@ -1151,10 +1152,12 @@ export default class Engine {
         // last (the contract closest to the assistant turn); budget/errors/git are
         // peer sections (unbundled). The budget section carries its {{tokensFree}}
         // placeholders here; they resolve below once the assembled total is known.
+        const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
             { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
+            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
             { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
