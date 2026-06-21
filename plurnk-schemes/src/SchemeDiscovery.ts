@@ -27,6 +27,12 @@ import path from "node:path";
 export interface SchemeInfo {
     readonly name: string;        // declared plurnk.name — the URI prefix
     readonly packageName: string; // the npm package to import for the handler
+    // Raw `plurnk.attribution` — the human/org credit a scheme package declares
+    // for itself (a name, a handle, a list of contributors). Passed through
+    // verbatim (string | string[] | undefined): this package neither validates
+    // nor normalizes it; the @plurnk/-tags-only-from-@plurnk/-packages
+    // reservation policy is the consumer's to enforce (plurnk-service#26).
+    readonly attribution?: string | readonly string[];
 }
 
 export interface SchemeDiscoveryResult {
@@ -118,6 +124,22 @@ export default class SchemeDiscovery {
         if (plurnkRec.kind !== "scheme") return null;
         if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
         if (typeof record.name !== "string" || record.name === "") return null;
-        return { name: plurnkRec.name, packageName: record.name };
+        const attribution = SchemeDiscovery.#attribution(plurnkRec.attribution);
+        // Only carry the key when credit is actually present — an absent
+        // attribution leaves the property off entirely (not `undefined`), so a
+        // no-attribution descriptor stays `{ name, packageName }`.
+        return attribution === undefined
+            ? { name: plurnkRec.name, packageName: record.name }
+            : { name: plurnkRec.name, packageName: record.name, attribution };
+    }
+
+    // Pass `plurnk.attribution` through verbatim when it's a string or an array
+    // of strings; anything else (number, object, mixed array) is not credit and
+    // is dropped to undefined. No deeper validation — the reservation policy
+    // lives in the consumer.
+    static #attribution(value: unknown): string | readonly string[] | undefined {
+        if (typeof value === "string") return value;
+        if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value;
+        return undefined;
     }
 }

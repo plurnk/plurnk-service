@@ -35,6 +35,24 @@ test("discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscop
     assert.equal(skipped.length, 0);
 });
 
+test("discover: plurnk.attribution passes through verbatim — string, string[], absent, invalid", async () => {
+    const cwd = await makeTree([
+        ["one-credit", { name: "one-credit", plurnk: { kind: "scheme", name: "one", attribution: "Ada Lovelace" } }],
+        ["many-credit", { name: "many-credit", plurnk: { kind: "scheme", name: "many", attribution: ["Ada", "Grace"] } }],
+        ["no-credit", scheme("no-credit", "none")],
+        ["bad-credit", { name: "bad-credit", plurnk: { kind: "scheme", name: "bad", attribution: { who: "nope" } } }],
+    ]);
+    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    const by = (n: string) => schemes.find((s) => s.name === n);
+    assert.equal(by("one")?.attribution, "Ada Lovelace");
+    assert.deepEqual(by("many")?.attribution, ["Ada", "Grace"]);
+    // Absent → the property is omitted entirely (not present as undefined).
+    assert.deepEqual(by("none"), { name: "none", packageName: "no-credit" });
+    assert.equal("attribution" in by("none")!, false);
+    // A non-string, non-string[] value is not credit → dropped.
+    assert.deepEqual(by("bad"), { name: "bad", packageName: "bad-credit" });
+});
+
 test("discover: a missing node_modules yields an empty result", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "schemes-empty-"));
     const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
