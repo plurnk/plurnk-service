@@ -38,6 +38,24 @@ test("discover: registers each runtime tag of an exec package", async () => {
     });
 });
 
+test("discover: documentation is sourced from docs/<tag>.md, inline field as fallback (#12)", async () => {
+    const dir = await makePkg({
+        name: "@plurnk/plurnk-execs-common",
+        plurnk: { kind: "exec", runtimes: [
+            { name: "sh", documentation: "inline-sh (loses to the file)" },
+            { name: "node", documentation: "inline-node (no file → kept)" },
+            { name: "bc" },
+        ] },
+    });
+    await fs.mkdir(path.join(dir, "docs"), { recursive: true });
+    await fs.writeFile(path.join(dir, "docs", "sh.md"), "# sh\n\nfrom the file", "utf-8");
+
+    const { registry } = await discover({ packageDirs: [dir] });
+    assert.equal(registry.get("sh")?.documentation, "# sh\n\nfrom the file", "docs/<tag>.md wins over the inline field");
+    assert.equal(registry.get("node")?.documentation, "inline-node (no file → kept)", "inline is the fallback when no file ships");
+    assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
+});
+
 test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",

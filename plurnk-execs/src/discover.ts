@@ -22,7 +22,9 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // backed by the same handler (e.g. the search sibling claims `search`, `news`,
 // `images`, …). `example` is a one-line self-documenting usage example
 // (plurnk-execs#7); `documentation` is the fuller markdown a consumer can serve
-// on demand. execs carries both; how they reach the model is the consumer's.
+// on demand — sourced from a `docs/<tag>.md` file in the package (the docs
+// convention), falling back to the inline `documentation` manifest field.
+// execs carries both; how they reach the model is the consumer's.
 //
 // Tags are a flat global namespace. Unlike plurnk-mimetypes (last-loaded
 // wins), a tag collision here is a FAIL-HARD install error: two packages
@@ -133,14 +135,28 @@ async function readExecInfos(dir: string): Promise<ExecInfo[]> {
         if (typeof entry !== "object" || entry === null) continue;
         const e = entry as Record<string, unknown>;
         if (typeof e.name !== "string" || e.name === "") continue;
+        // `docs/<tag>.md` is the documentation source of truth (the docs
+        // convention); the inline `documentation` field is the fallback.
+        const inlineDoc = typeof e.documentation === "string" ? e.documentation : "";
+        const documentation = await readDocFile(dir, e.name) ?? inlineDoc;
         infos.push({
             runtime: e.name,
             glyph: typeof e.glyph === "string" ? e.glyph : "",
             example: typeof e.example === "string" ? e.example : "",
-            documentation: typeof e.documentation === "string" ? e.documentation : "",
+            documentation,
             packageName,
         });
     }
 
     return infos;
+}
+
+// A tag's documentation file under the package's `docs/` folder — the docs
+// convention's source of truth. Returns null when the package ships none.
+async function readDocFile(dir: string, tag: string): Promise<string | null> {
+    try {
+        return await fs.readFile(path.join(dir, "docs", `${tag}.md`), "utf-8");
+    } catch {
+        return null;
+    }
 }
