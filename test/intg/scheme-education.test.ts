@@ -38,7 +38,7 @@ test("[§schemes-directory] scheme directory: the packet's `schemes` section is 
         assert.doesNotMatch(definition, /known:\/\/\//, "the scheme catalogue is NOT in the definition anymore");
 
         // The `schemes` section is the terse directory: known's canonical example + its pull-doc link.
-        assert.match(schemes, /\* known:\/\/\/ <<EDIT\(known:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
+        assert.match(schemes, /\* <<EDIT\(known:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
         assert.match(schemes, /\(docs: plurnk:\/\/docs\/known\.md\)/, "each scheme points at its pull doc, not inline prose");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
 

@@ -15,6 +15,7 @@ import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import { readdir, readFile } from "node:fs/promises";
+import { teachingLine } from "./teaching.ts";
 
 // docs/ migration — the in-tree CORE-scheme depth (run/known/unknown/log) lives in
 // <pkgroot>/docs/<name>.md, NOT inline, loaded once at module eval (top-level await; resolves
@@ -116,8 +117,7 @@ export default class SchemeRegistry {
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
             const hasDoc = SCHEME_DOCS.has(name) || (typeof manifest?.documentation === "string" && manifest.documentation.length > 0);
-            const docLink = hasDoc ? ` (docs: plurnk://docs/${name}.md)` : "";
-            lines.push(`* ${name}:/// ${example}${docLink}`);
+            lines.push(teachingLine(example, name, hasDoc));
         }
         return lines.join("\n");
     }

@@ -16,6 +16,7 @@ import { foldAuthorityIntoPath, renderAddress } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
+import { teachingLine } from "./teaching.ts";
 import SessionSettings from "./session-settings.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
@@ -1236,10 +1237,10 @@ export default class Engine {
         if (this.#executors !== undefined) {
             for (const tag of this.#executors.availableRuntimes()) {
                 const entry = this.#executors.entry(tag);
-                if (entry?.example) tools.push(`* ${entry.example}`);
-                // #note12 — link the executor's fuller doc (materialized at plurnk:///docs/<tag>.md);
-                // its token cost rides that manifest entry, so no inline recount here.
-                if (entry?.documentation) tools.push(`* docs for ${tag}: plurnk://docs/${tag}.md`);
+                // #240 — identical treatment with the scheme directory: the example IS the oneliner,
+                // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
+                // token cost lives on that manifest entry. No example → no line (like a provisional scheme).
+                if (entry?.example) tools.push(teachingLine(entry.example, tag, Boolean(entry.documentation)));
             }
         }
         return tools;

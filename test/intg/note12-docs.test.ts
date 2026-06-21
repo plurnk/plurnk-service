@@ -23,7 +23,7 @@ test("[note 12] teach() surfaces a scheme's example + doc-link; docs() carries i
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
     const teaching = registry.teach();
-    assert.match(teaching, /\* docstub:\/\/\/ <<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its directory line");
+    assert.match(teaching, /\* <<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its directory line (no redundant scheme prefix — the example self-documents)");
     assert.match(teaching, /\(docs: plurnk:\/\/docs\/docstub\.md\)/, "a doc-link renders when the scheme ships documentation");
 
     const stub = registry.docs().find((d) => d.name === "docstub");
