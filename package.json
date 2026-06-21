@@ -49,7 +49,9 @@
         "build:local:install": "node scripts/install-sandbox.mjs install",
         "build:local:uninstall": "node scripts/install-sandbox.mjs uninstall",
         "test:installation": "node scripts/test-installation.mjs",
-        "prepare": "npm run build"
+        "deps:audit": "node scripts/deps-audit.ts",
+        "prepare": "npm run build",
+        "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.15",
