@@ -1988,9 +1988,9 @@ export default class Engine {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
-            return await killable.kill(pathnameFromPath(path), ctx);
+            return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
         }
         if (schemeName === "run") {
             // terminate — abort any run by address; whoever holds it may end it.

@@ -12,6 +12,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
+import ExecAbort from "./exec-abort.ts";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,17 +101,16 @@ export default class Exec {
     }
 
     // Process-KILL (plurnk-service#203). A running (host/background) exec is
-    // addressable by its coordinate pathname; KILL aborts that spawn's
-    // controller — the same teardown loop.cancel rides — and the executor's
-    // signal handler tears down the child. Signal escalation (TERM→SIGKILL) is
-    // the executor's mechanism; the service owns only the abort. The full #203
-    // status matrix: 200 killed (in-flight) · 410 killed-earlier (a prior abort
-    // closed the stream 499) · 304 already-exited (closed with any other terminal
-    // status) · 404 unknown (no subscription for that coordinate).
-    async kill(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+    // addressable by its coordinate pathname; KILL aborts that spawn's controller with
+    // the model's signal — KILL[code] → exactly that signal once (KILL[9] = SIGKILL), a
+    // bare KILL → the executor's SIGHUP default. The model owns escalation, so there
+    // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
+    // killed-earlier (a prior abort closed the stream 499) · 304 already-exited (closed
+    // with any other terminal status) · 404 unknown (no subscription for that coordinate).
+    async kill(pathname: string, signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         for (const entry of this.#activeAborts.values()) {
             if (entry.pathname === pathname) {
-                entry.controller.abort(new Error(`exec://${pathname} killed`));
+                entry.controller.abort(ExecAbort.killReason(signal));
                 return { status: 200 };
             }
         }
@@ -126,8 +126,9 @@ export default class Exec {
     // controller directly. Idempotent — a no-op if the spawn already finished or this
     // id isn't ours. Distinct from kill (by pathname, the model's KILL op): this is by
     // subscription id, the run-level reap that does not depend on the signal listener.
-    abortSubscription(subscriptionId: number, reason: string): void {
-        this.#activeAborts.get(subscriptionId)?.controller.abort(new Error(reason));
+    // Always a teardown — the bounded housekeeping reap, never the model's bare signal.
+    abortSubscription(subscriptionId: number): void {
+        this.#activeAborts.get(subscriptionId)?.controller.abort(ExecAbort.teardownReason());
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
@@ -252,15 +253,17 @@ export default class Exec {
         if (ctx.signal !== undefined) {
             const parent = ctx.signal;
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
-            // captured here, stable for the loop). Attach the listener FIRST, then
-            // re-check `aborted`: a listener added to an already-aborted signal never
-            // fires, so a check-then-attach order LOSES an abort that lands in the gap
-            // (R1's TOCTOU leak). Attach-then-check closes it; controller.abort is
-            // idempotent, so a doubled fire is harmless. §run-lifecycle-exec-loop-bound
-            const onParentAbort = (): void => controller.abort(parent.reason);
+            // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
+            // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
+            // the reason is always the bounded housekeeping reap. Attach the listener FIRST,
+            // then re-check `aborted`: a listener added to an already-aborted signal never
+            // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
+            // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
+            // doubled fire is harmless. §run-lifecycle-exec-loop-bound
+            const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
-            if (parent.aborted) controller.abort(parent.reason);
+            if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
         this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, controller, unlink });
 

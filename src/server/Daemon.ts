@@ -685,7 +685,7 @@ export default class Daemon {
         // (registering after this) self-aborts against its captured, now-aborted
         // epoch (§run-lifecycle-exec-loop-bound). Idempotent; fire-and-forget (the
         // abort is sync, the registry read async; the 499 conclusion surfaces async).
-        void this.#reapRunStreams(runId, reason).catch((err: unknown) => {
+        void this.#reapRunStreams(runId).catch((err: unknown) => {
             console.error(`reapRunStreams(${runId}) failed:`, err);
         });
         return hadWork;
@@ -705,11 +705,11 @@ export default class Daemon {
     // the source of truth: an exec mid-spawn (registry row written before it is
     // killable) or a background exec from any past loop is caught regardless of
     // listener timing. Idempotent — a stream the signal already reaped is a no-op.
-    async #reapRunStreams(runId: number, reason: string): Promise<void> {
+    async #reapRunStreams(runId: number): Promise<void> {
         const open = await ChannelWrite.findOpenSubscriptionsForRun(this.#db, runId);
         for (const { id, scheme } of open) {
-            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number, reason: string) => void } | undefined;
-            handler?.abortSubscription?.(id, reason);
+            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number) => void } | undefined;
+            handler?.abortSubscription?.(id);
         }
     }
 
