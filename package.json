@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "0.48.0",
+    "version": "0.49.0",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
     "type": "module",
     "license": "MIT",
@@ -52,15 +52,15 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.13",
-        "@plurnk/plurnk-execs-all": "0.1.5",
+        "@plurnk/plurnk-execs": "0.4.15",
+        "@plurnk/plurnk-execs-all": "0.1.6",
         "@plurnk/plurnk-grammar": "0.73.8",
         "@plurnk/plurnk-mimetypes": "0.15.23",
         "@plurnk/plurnk-mimetypes-all": "0.5.2",
         "@plurnk/plurnk-providers": "0.13.0",
         "@plurnk/plurnk-providers-all": "0.8.0",
-        "@plurnk/plurnk-schemes": "0.29.3",
-        "@plurnk/plurnk-schemes-all": "0.1.15",
+        "@plurnk/plurnk-schemes": "0.29.5",
+        "@plurnk/plurnk-schemes-all": "0.1.19",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"

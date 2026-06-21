@@ -25,11 +25,11 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
             assert.equal(result.usage?.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-            // known:///france/capital + plurnk:///prompt/<loop_id> + plurnk:///manifest.json,
-            // plus the 5 scheme docs the docs-catalog materializes at turn-0 (plurnk://docs/<scheme>.md):
-            // the 4 non-excluded in-tree schemes (log/known/unknown/run — plurnk/file/exec dropped by the
-            // default PLURNK_DOCS_EXCLUDE) + the boot-discovered `http` external.
-            assert.equal(entryCount, 8);
+            // known:///france/capital + plurnk:///manifest.json + plurnk://prompt/<loop> (3 base), plus 8
+            // docs: the 4 non-excluded in-tree schemes (log/known/unknown/run — plurnk/file/exec dropped by
+            // the default PLURNK_DOCS_EXCLUDE), the boot-discovered `http` external, and sh/node/sqlite —
+            // executor docs that execs 0.4.15 now ships (plurnk-execs#12 handoff landed). 3 + 8 = 11.
+            assert.equal(entryCount, 11);
         } finally { ws.close(); }
     });
 });
