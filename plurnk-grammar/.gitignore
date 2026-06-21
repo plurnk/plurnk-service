@@ -5,4 +5,5 @@ src/types.generated.ts
 dist/
 *.tokens
 *.interp
+*.tgz
 
