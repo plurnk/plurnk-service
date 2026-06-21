@@ -162,3 +162,15 @@ test("abort terminates the whole process group — no shell grandchild survives 
     if (survivors) spawnSync("pkill", ["-f", dur]);  // don't leak into other tests
     assert.equal(survivors, "", `leaked process(es) after abort: ${survivors}`);
 });
+
+test("abort reason carrying a non-default signal delivers THAT signal, not SIGTERM", async () => {
+    const controller = new AbortController();
+    // sh traps HUP and reports it before exiting — catching the echo proves
+    // SIGHUP was delivered (the default SIGTERM would not fire the HUP trap).
+    const promise = exec("sh", "trap 'echo CAUGHT_HUP; exit 0' HUP; sleep 5", { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 200));   // let the trap install
+    controller.abort(Object.assign(new Error("killed"), { signal: "SIGHUP" }));
+    const { result, out } = await promise;
+    assert.equal(result.status, 499);
+    assert.match(out.stdout, /CAUGHT_HUP/, "the HUP trap fired → SIGHUP was the delivered signal");
+});

@@ -8,6 +8,15 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, Sp
 // process ignoring SIGTERM can't wedge cancellation.
 const ABORT_GRACE_MS = 2000;
 
+// Undocumented: an abort whose reason carries `{ signal: <name> }` delivers THAT
+// Unix signal once, instead of the default ask-to-terminate. Lets a KILL pass a
+// non-default code (SIGHUP, SIGSTOP, …) with no contract change. Absent/invalid
+// → null → the default SIGTERM-then-SIGKILL teardown runs.
+const overrideSignal = (reason: unknown): NodeJS.Signals | null => {
+    const sig = (reason as { signal?: unknown } | null | undefined)?.signal;
+    return typeof sig === "string" && sig.startsWith("SIG") ? sig as NodeJS.Signals : null;
+};
+
 // Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
 // via resolveRuntime, streams the process's stdout/stderr into the declared
 // channels, honors cancellation, and reports the exit code. The sibling
@@ -99,6 +108,11 @@ export default class SubprocessExecutor extends BaseExecutor {
                 try { process.kill(-child.pid, sig); } catch { /* group already gone */ }
             };
             const onAbort = (): void => {
+                // A non-default signal on the abort reason does exactly that,
+                // once — no terminate-then-force escalation (the caller asked for
+                // a specific code, e.g. SIGHUP-to-reload, not a teardown).
+                const override = overrideSignal(signal.reason);
+                if (override !== null) { killGroup(override); return; }
                 killGroup("SIGTERM");
                 // Escalate if the group ignores SIGTERM. `close` fires once the
                 // pipes drain, which now happens because the grandchildren die.
