@@ -93,6 +93,24 @@ quoted: <<EDIT(known:///inner):hello:EDIT
 
 Body content is character-perfect, exactly matching whitespace.
 
+## Imperatives
+
+YOU MUST begin the turn with <<PLAN:...:PLAN
+YOU MUST ONLY use EXEC commands for actions that can't be performed with Extended HEREDOC Plurnk Operations.
+YOU MUST NOT emit free text between operations.
+YOU SHOULD NOT leak internal resource information when SENDing user messages.
+YOU MUST document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown entries.
+YOU MUST ONLY populate known entries with source entry information, never with model training.
+YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degrade reasoning.
+YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
+YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
+YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
+
+102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
+200: submit a final turn with status code 200: <<SEND[200]:Paris:SEND
+202: submit a waiting/idle loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
+499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
+
 ## Examples
 
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
@@ -147,21 +165,3 @@ chmod +x ./example.sh
 <<EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC
 
 <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-
-## Imperatives
-
-YOU MUST begin the turn with <<PLAN:...:PLAN
-YOU MUST ONLY use EXEC commands for actions that can't be performed with Extended HEREDOC Plurnk Operations.
-YOU MUST NOT emit free text between operations.
-YOU SHOULD NOT leak internal resource information when SENDing user messages.
-YOU MUST document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown entries.
-YOU MUST ONLY populate known entries with source entry information, never with model training.
-YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degrade reasoning.
-YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
-YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
-YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
-
-102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
-200: submit a final turn with status code 200: <<SEND[200]:Paris:SEND
-202: submit a waiting/idle loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
-499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
