@@ -1,12 +1,17 @@
 import { discover } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
 import PluginAttribution from "./plugin-attribution.ts";
+import type { SchemeManifest } from "./types.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
-// to the contract, not the framework's class identity.
+// to the contract, not the framework's class identity. #240 — the executor is also
+// the scheme face for its output, so it exposes `manifest` (OutputScheme-derived,
+// name = the tag) + `defaultChannel`.
 export interface Executor {
     readonly runtime: string;
     readonly glyph: string;
+    get manifest(): SchemeManifest;
+    get defaultChannel(): string;
     get channels(): Readonly<Record<string, ChannelDecl>>;
     run(args: ExecArgs): Promise<ExecResult>;
     probe(): Promise<RuntimeAvailability>;

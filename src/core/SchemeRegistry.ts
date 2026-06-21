@@ -12,6 +12,8 @@ import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type { PacketSection } from "./packet-wire.ts";
 import type { PacketSectionTransformer } from "./scheme-types.ts";
 import PluginAttribution from "./plugin-attribution.ts";
+import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
 
 export default class SchemeRegistry {
     // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
@@ -41,16 +43,19 @@ export default class SchemeRegistry {
         this.#handlers.set(name, handler);
     }
 
-    // §exec — exec OUTPUT entries address by their runtime TAG as authority (sh:///l/t/s).
-    // Register each discovered runtime tag as a scheme routing to the one Exec handler
-    // (already registered as "exec" for the EXEC op dispatch). Minted from the boot
-    // ExecutorRegistry; idempotent; fail-hard if a tag shadows a content scheme.
-    registerRuntimeSchemes(tags: readonly string[]): void {
+    // §exec / #240 — exec OUTPUT entries address by their runtime TAG as authority
+    // (sh:///l/t/s). Register each discovered executor as its OWN per-tag scheme face
+    // (ExecOutputScheme): READ/FIND tag-scoped via the executor's manifest, process-KILL
+    // delegated to the shared Exec handler. Minted from the boot ExecutorRegistry; in-tree
+    // names take precedence (a tag shadowing a built-in is skipped, never overrides it).
+    registerRuntimeSchemes(executors: ExecutorRegistry): void {
         const exec = this.#handlers.get("exec");
-        if (exec === undefined) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
-        for (const tag of tags) {
-            if (tag === "exec" || this.#handlers.get(tag) === exec) continue;
-            this.register(tag, exec);
+        if (!(exec instanceof Exec)) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
+        for (const tag of executors.availableRuntimes()) {
+            if (this.#handlers.has(tag)) continue; // built-in / in-tree precedence
+            const entry = executors.entry(tag);
+            if (entry === undefined) continue;
+            this.register(tag, new ExecOutputScheme(entry.executor, exec));
             this.#runtimeSchemes.add(tag);
         }
     }

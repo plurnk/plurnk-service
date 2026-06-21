@@ -194,7 +194,7 @@ export default class Daemon {
         this.#engine.setExecutors(executors);
         // §exec — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for the EXEC op dispatch.
-        this.#schemes.registerRuntimeSchemes(executors.availableRuntimes());
+        this.#schemes.registerRuntimeSchemes(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
