@@ -235,7 +235,9 @@ The engine unions the declared tags of the active plugin families (schemes, exec
 
 **The `@plurnk/` namespace is reserved.** A package may declare an `@plurnk/` tag only if it is itself `@plurnk/`-scoped (npm enforces scope ownership at publish); otherwise it fails hard. {§attribution-plurnk-namespace-reserved}
 
-Deferred (#249): grounding the value in real per-turn value flow rather than the active-plugin placeholder, token-weighting, entry-level attribution, and the `client` id. Native surfacing of the field in each framework's `discover()` supersedes the service-side manifest read and extends collection to mimetype + provider plugins.
+**The session's `client` id rides the same wire.** A frontend self-identifies (e.g. `plurnk.nvim/1.4.0`) at `session.create({ settings: { client } })`; the engine forwards it per turn on `generate({ client })`, which only the `plurnk` provider emits (as `Plurnk-Client`). Session-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset. {§client-telemetry}
+
+Deferred (#249): grounding the attribution value in real per-turn value flow rather than the active-plugin placeholder, token-weighting, and entry-level attribution. Native surfacing of the field in each framework's `discover()` supersedes the service-side manifest read and extends collection to mimetype + provider plugins.
 
 ### §provider-instantiation Provider instantiation
 

@@ -882,8 +882,10 @@ export default class Engine {
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
+        // #249 — session-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
+        const { client } = await SessionSettings.read(this.#db, sessionId);
         try {
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
             // grammar_unenforced is the one the MODEL can recover from — the backend didn't
