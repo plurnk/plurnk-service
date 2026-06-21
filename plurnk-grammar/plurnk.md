@@ -114,7 +114,7 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 <<READ(lang/??.json):$.greeting:READ
-<<READ(README.md):$.Installation:READ
+<<READ(plurnk://docs/sh.md):$.Environment:READ
 <<READ(README.md)://h2/text():READ
 <<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
