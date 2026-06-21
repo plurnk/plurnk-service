@@ -13,6 +13,7 @@ import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
+import ExecReceipt from "./exec-receipt.ts";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -274,14 +275,18 @@ export default class Exec {
             inline: attrs.inline === true, tempPath,
         });
 
-        // read/pure (inline): await the run + return its output in the EXEC
-        // result — the model gets it THIS turn, not a turn later. host streams:
-        // fire-and-forget; the model READs <runtime>:///<pathname> on a later turn.
+        // read/pure (inline): await the run, then return a RECEIPT — the output's
+        // address + a structural OrientIndex, never the body inline (#240 containment;
+        // the model READs <tag>:///<coord> to pull content). Same reflex as host
+        // streams, just resolved this turn instead of a turn later.
         if (attrs.inline === true) {
             const closeStatus = await tail;
             const read = await EntryCrud.readEntry(pathname, ctx, runtime);
-            const body = read.entry === null ? ""
-                : Object.values(read.entry.channels).map((c) => c.content).filter((c) => c.length > 0).join("\n");
+            const address = `${runtime}:///${pathname}`;
+            const channel = read.entry?.channels[resolved.executor.defaultChannel];
+            const body = channel === undefined
+                ? `${address} — (no output)`
+                : ExecReceipt.build(address, channel.content, channel.mimetype);
             return { status: closeStatus, body };
         }
         this.#activeSpawns.set(subscriptionId, tail);

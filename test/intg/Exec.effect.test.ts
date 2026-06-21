@@ -52,8 +52,9 @@ test("[§exec-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs i
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
-        assert.ok(typeof result.body === "string" && result.body.length > 0, "inline returns the run output in the EXEC result, this turn — not a turn later");
-        assert.match(result.body as string, /1/, "the SELECT 1 result is in the body");
+        // #240 receipt-only: inline returns the output's ADDRESS + structural index in-band
+        // this turn — never the content. The model READs the address to pull the result.
+        assert.match(result.body as string, /^sqlite:\/\/\/\S+ — /, "inline returns a receipt (address + index) in-band, not the raw content");
         await exec.idle();
     } finally { await db.close(); }
 });
@@ -73,7 +74,9 @@ test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the 
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs inline, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
-        assert.match(result.body as string, /Paris/, "the SELECT result is in the body — a directory cwd no longer fails the open");
+        // #240 receipt-only: the body is the output receipt; a clean receipt means the db
+        // opened + the query ran with a directory cwd (#216), the content READable at the address.
+        assert.match(result.body as string, /^sqlite:\/\/\//, "a directory cwd no longer fails the open — the exec resolved + produced an output receipt");
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
