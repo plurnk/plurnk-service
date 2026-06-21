@@ -36,7 +36,7 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "EXEC[sh]:ls -la:EXEC"
+                "example": "EXEC:chmod +x ./example.sh && ./example.sh:EXEC"
             },
             {
                 "name": "bash",
