@@ -144,6 +144,7 @@ chmod +x ./example.sh
 :EXEC
 
 <<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
+<<EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC
 
 <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 
