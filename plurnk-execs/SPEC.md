@@ -110,7 +110,9 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
 }
 ```
 
-A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, documentation, packageName }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+A package may claim multiple tags backed by one handler. Tags form a **flat global namespace**; `registry` maps tag → `{ runtime, glyph, example, documentation, packageName, attribution? }`. Unlike plurnk-mimetypes (last-loaded wins), a tag **collision is fail-hard**: two packages claiming the same runtime is an unresolvable install ambiguity the operator must fix.
+
+Each entry's optional **`attribution`** is the package's raw `plurnk.attribution` (`string | string[]`) — credit a consumer unions onto the model call when the package's tags are active (plurnk-service#249). It's **package-level** (every tag of a package carries the same value) and surfaced **raw**: the consumer owns the reservation policy (e.g. `@plurnk/`-scoped attribution only from `@plurnk/`-scoped packages). `undefined` when the package omits it.
 
 Each entry's optional **`example`** is a one-line, self-documenting usage example (`EXEC[tag]:body:EXEC`), surfaced verbatim by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
 

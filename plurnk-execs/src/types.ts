@@ -114,6 +114,13 @@ export interface ExecInfo {
     // consumer's concern, not specified by the contract.
     documentation: string;
     packageName: string;
+    // Raw `plurnk.attribution` (string | string[]) from the package's manifest —
+    // the credit a consumer unions onto the model call when this package's tags
+    // are active (plurnk-service#249). Package-level: every tag of a package
+    // carries the same value. `undefined` when the package omits it. Surfaced
+    // raw — the consumer owns the reservation policy (e.g. `@plurnk/`-scoped
+    // attribution only from `@plurnk/` packages).
+    attribution?: string | string[];
 }
 
 // Runtime tag → provider. Tags are a flat global namespace; collisions are a

@@ -56,6 +56,27 @@ test("discover: documentation is sourced from docs/<tag>.md, inline field as fal
     assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
 });
 
+test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag (#11)", async () => {
+    const strDir = await makePkg({
+        name: "@plurnk/plurnk-execs-git",
+        plurnk: { kind: "exec", attribution: "git", runtimes: [{ name: "git" }, { name: "gh" }] },
+    });
+    const arrDir = await makePkg({
+        name: "@acme/acme-execs-foo",
+        plurnk: { kind: "exec", attribution: ["acme", "foo"], runtimes: [{ name: "foo" }] },
+    });
+    const noneDir = await makePkg({
+        name: "@plurnk/plurnk-execs-sh",
+        plurnk: { kind: "exec", runtimes: [{ name: "sh" }] },
+    });
+    const { registry } = await discover({ packageDirs: [strDir, arrDir, noneDir] });
+    assert.equal(registry.get("git")?.attribution, "git", "string attribution rides every tag of the package");
+    assert.equal(registry.get("gh")?.attribution, "git");
+    assert.deepEqual(registry.get("foo")?.attribution, ["acme", "foo"], "array surfaced raw");
+    assert.equal(registry.get("sh")?.attribution, undefined, "absent → undefined");
+    assert.ok(!("attribution" in (registry.get("sh") as object)), "no attribution key when omitted");
+});
+
 test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",

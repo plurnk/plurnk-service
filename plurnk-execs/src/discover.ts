@@ -24,7 +24,9 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // (plurnk-execs#7); `documentation` is the fuller markdown a consumer can serve
 // on demand — sourced from a `docs/<tag>.md` file in the package (the docs
 // convention), falling back to the inline `documentation` manifest field.
-// execs carries both; how they reach the model is the consumer's.
+// execs carries both; how they reach the model is the consumer's. Package-level
+// `plurnk.attribution` (string | string[]) is surfaced raw on each tag too
+// (plurnk-service#249).
 //
 // Tags are a flat global namespace. Unlike plurnk-mimetypes (last-loaded
 // wins), a tag collision here is a FAIL-HARD install error: two packages
@@ -130,6 +132,10 @@ async function readExecInfos(dir: string): Promise<ExecInfo[]> {
     if (!Array.isArray(plurnkRec.runtimes)) return [];
 
     const packageName = typeof record.name === "string" ? record.name : "";
+    // Package-level attribution, surfaced raw (plurnk-service#249); every tag of
+    // the package carries the same value. The consumer owns the policy.
+    const rawAttr = plurnkRec.attribution;
+    const attribution = typeof rawAttr === "string" || Array.isArray(rawAttr) ? rawAttr as string | string[] : undefined;
     const infos: ExecInfo[] = [];
     for (const entry of plurnkRec.runtimes) {
         if (typeof entry !== "object" || entry === null) continue;
@@ -145,6 +151,7 @@ async function readExecInfos(dir: string): Promise<ExecInfo[]> {
             example: typeof e.example === "string" ? e.example : "",
             documentation,
             packageName,
+            ...(attribution !== undefined ? { attribution } : {}),
         });
     }
 
