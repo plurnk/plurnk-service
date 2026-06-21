@@ -41,7 +41,7 @@ test("plurnk.md examples block contains the expected statement count", () => {
     const result = PlurnkParser.parseStatements(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
-    assert.equal(statements.length, 37, `expected 37 statements, got ${statements.length}`);
+    assert.equal(statements.length, 34, `expected 34 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {
@@ -52,7 +52,9 @@ test("plurnk.md examples cover every OP", () => {
             .map((i) => i.statement.op),
     );
     // PLAN is wired but untaught — excluded until it appears in plurnk.md.
-    const required = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL"];
+    // EXEC examples moved to the service's tool-doc framework (every EXEC example is a
+    // tool/executor example); EXEC stays in the Operations table + imperative, not here.
+    const required = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "KILL"];
     for (const op of required) {
         assert.ok(ops.has(op as any), `plurnk.md examples should include ${op}`);
     }

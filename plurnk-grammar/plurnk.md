@@ -155,11 +155,3 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 <<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
 echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt
 :EDIT
-
-<<EXEC[sh]:
-chmod +x ./example.sh
-./example.sh
-:EXEC
-
-<<EXEC[sqlite]:SELECT 22.0 / 7.0;:EXEC
-<<EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC
