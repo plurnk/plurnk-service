@@ -6,8 +6,8 @@ Opt-in embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurn
 
 - **Xenova/all-MiniLM-L6-v2**, q8 quantized onnx (`onnx/model_quantized.onnx`), **384 dimensions**.
 - Pinned revision: `751bff37182d3f1213fa05d7196b954e230abad9` (`.model-pin`).
-- Model files are **bundled in the package** — no runtime network, ever. `env.allowRemoteModels = false` is set process-wide at import, and the loader is locked to the bundled `model/` directory. Integrity manifest in `model/model.sha256` (`npm run verify:model`).
-- Inference runs on `@huggingface/transformers` (onnxruntime ships inside it).
+- Model files are **bundled in the package** — no runtime network, ever. Hermetic by construction: the embedder only reads local files, so there is no fetcher to disable. Integrity manifest in `model/model.sha256` (`npm run verify:model`).
+- Inference runs on a **portable WASM runtime** — [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) (single-threaded) for the onnx graph, [`@huggingface/tokenizers`](https://www.npmjs.com/package/@huggingface/tokenizers) for WordPiece. No native N-API addon: runs anywhere Node/Bun/Deno/edge runs, ships no per-platform binary, and leaks no event-loop handles (a process that embeds drains and exits on its own — plurnk-mimetypes#36). Output is vector-identical to the prior native (`onnxruntime-node`) path — same `model` identity, no re-embed.
 
 ## Install
 

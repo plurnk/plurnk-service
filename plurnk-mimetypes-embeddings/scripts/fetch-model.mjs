@@ -9,8 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
-// Exactly what transformers.js feature-extraction needs for local resolution
-// with dtype q8 — probed against v4.2.0, not guessed.
+// The q8 onnx graph + its WordPiece tokenizer artifacts — exactly what index.js
+// reads at runtime (onnxruntime-web session + @huggingface/tokenizers).
 const FILES = [
     "config.json",
     "tokenizer.json",

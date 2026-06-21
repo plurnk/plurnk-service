@@ -78,6 +78,28 @@ describe("embedder duck surface", () => {
         assert.ok(n > maxTokens, `expected overflow count > ${maxTokens}, got ${n}`);
     });
 
+    it("vector-preserving: output matches the native (onnxruntime-node) baseline", async () => {
+        // The identity-stability contract for the WASM-runtime switch
+        // (plurnk-mimetypes#36): these first-6 floats were captured from the old
+        // @huggingface/transformers / onnxruntime-node path. The model id is
+        // deliberately unchanged, so stored vectors stay comparable — this guards
+        // against a future dep bump silently drifting them past that promise.
+        // Tolerance is float32 summation-order noise (~1e-7), not model slack.
+        const NATIVE = {
+            hello: [-0.07562684267759323, 0.04754344001412392, 0.03647792339324951, 0.09108457714319229, -0.07077883183956146, -0.08546268194913864],
+            "database connection error": [0.05036694183945656, -0.03440168872475624, -0.06667469441890717, 0.003910769708454609, -0.1688850373029709, 0.01926480233669281],
+        };
+        for (const [text, first6] of Object.entries(NATIVE)) {
+            const v = toVector(await embed(text));
+            for (let i = 0; i < first6.length; i += 1) {
+                assert.ok(
+                    Math.abs(v[i] - first6[i]) < 1e-5,
+                    `${text}[${i}]: ${v[i]} drifted from native ${first6[i]}`,
+                );
+            }
+        }
+    });
+
     it("dispose() is idempotent and re-lazy-inits (#36)", async () => {
         await dispose(); // before any use — no-op, must not throw
         await embed("warm");
@@ -88,15 +110,29 @@ describe("embedder duck surface", () => {
     });
 
     it("a process that embeds then dispose()s exits on its own — no leaked native handles (#36)", () => {
-        // The deliverable: without dispose() the embedder's onnxruntime threads
-        // keep the event loop alive and the process hangs at exit. With it, the
-        // process must drain and exit. Run as a child with a hard timeout — a
-        // hang makes execFileSync throw, failing the test.
+        // The deliverable: a process that loaded the embedder must drain and
+        // exit. Run as a child with a hard timeout — a hang makes execFileSync
+        // throw, failing the test.
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { embed, dispose } from ${JSON.stringify(indexPath)};\n`
             + `await embed("hello");\n`
             + `await dispose();\n`;
         // Throws on timeout (hang) or non-zero exit; returning = clean self-exit.
+        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+            timeout: 60000,
+            stdio: "ignore",
+        });
+    });
+
+    it("a process that embeds and NEVER dispose()s still exits — #36 dissolved by the WASM runtime", () => {
+        // The structural win of the onnxruntime-web move: the old native runtime
+        // held active+referenced libuv handles, so an undisposed embedder hung
+        // the loop. The single-threaded WASM backend holds none — so even with
+        // no dispose() the process drains on its own. dispose() is now hygiene,
+        // not a correctness requirement.
+        const indexPath = path.join(import.meta.dirname, "index.js");
+        const src = `import { embed } from ${JSON.stringify(indexPath)};\n`
+            + `await embed("hello");\n`; // no dispose() — must still exit
         execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
             timeout: 60000,
             stdio: "ignore",

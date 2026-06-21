@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
-    "version": "0.3.0",
-    "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) — hermetic, no runtime network.",
+    "version": "0.4.0",
+    "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) on a portable WASM runtime (onnxruntime-web) — hermetic, no native addon, no runtime network.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -30,7 +30,8 @@
         "test": "npm run test:unit && npm run test:integration"
     },
     "dependencies": {
-        "@huggingface/transformers": "^4.2.0"
+        "@huggingface/tokenizers": "^0.1.3",
+        "onnxruntime-web": "^1.27.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.0"
