@@ -51,28 +51,28 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.11",
+        "@plurnk/plurnk-execs": "0.4.13",
         "@plurnk/plurnk-execs-all": "0.1.5",
-        "@plurnk/plurnk-grammar": "0.73.0",
+        "@plurnk/plurnk-grammar": "0.73.3",
         "@plurnk/plurnk-mimetypes": "0.15.21",
         "@plurnk/plurnk-mimetypes-all": "0.5.1",
         "@plurnk/plurnk-providers": "0.13.0",
         "@plurnk/plurnk-providers-all": "0.8.0",
-        "@plurnk/plurnk-schemes": "0.28.0",
-        "@plurnk/plurnk-schemes-all": "0.1.11",
+        "@plurnk/plurnk-schemes": "0.29.2",
+        "@plurnk/plurnk-schemes-all": "0.1.14",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.3.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "0.4.0",
         "@types/diff": "^7.0.2",
         "@types/node": "^25.8.0",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.3.0"
+        "@plurnk/plurnk-mimetypes-embeddings": "0.4.0"
     },
     "peerDependenciesMeta": {
         "@plurnk/plurnk-mimetypes-embeddings": {
