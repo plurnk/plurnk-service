@@ -42,6 +42,11 @@ Implement only the op methods you support — `read` / `find` / `edit` / `copy` 
 ### 3. Declare the manifest — including self-doc
 
 ```ts
+import { readFile } from "node:fs/promises";
+
+// Deep doc lives in docs/foo.md (convention); loaded at module init.
+const documentation = await readFile(new URL("../docs/foo.md", import.meta.url), "utf-8");
+
 static manifest: SchemeManifest = {
   name: "foo",
   channels: { body: "text/markdown" },
@@ -53,12 +58,12 @@ static manifest: SchemeManifest = {
   modelVisible: true,
   glyph: "🦊",                          // display icon; omit → the name is shown
   example: "READ(foo://thing/42)",      // terse hot-path one-liner, rendered every turn
-  documentation: "# foo\n\nOps, channels, edge cases…" // deep doc, pulled at plurnk://docs/foo.md
+  documentation,                        // deep doc from docs/foo.md, pulled at plurnk://docs/foo.md
 };
 ```
 
 - **`example`** — the scheme's terse **hot-path** one-liner, rendered in the live catalogue every turn (like an execs runtime's `example`). Keep it to one canonical usage line; depth goes in `documentation`. Omit → not advertised.
-- **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `plurnk://docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`.
+- **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `plurnk://docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — a display icon (emoji / nerdfont). Omit it and the scheme `name` is rendered in its place.
 
 ### 4. Self-doc: terse pushes, depth pulls

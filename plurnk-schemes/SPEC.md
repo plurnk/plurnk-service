@@ -50,6 +50,8 @@ class Known {
 
 **Self-doc split (terse pushes, depth pulls).** `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`plurnk://docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
 
+**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the contract and the consumer's `plurnk://docs/<name>.md` materialization are unchanged. A missing file fails-hard at import (no silent empty doc).
+
 ## §2 Interface
 
 Sister scheme handlers implement op methods consumed by plurnk-service via dispatch: the engine calls `handler[statement.op.toLowerCase()](statement, ctx)` and returns **501** for any op whose method is absent. The op-dispatch surface is the exported **`SchemeHandler`** interface — every method optional, each `(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from grammar:
