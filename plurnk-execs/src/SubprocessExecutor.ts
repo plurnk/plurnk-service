@@ -3,18 +3,22 @@ import BaseExecutor from "./BaseExecutor.ts";
 import { resolveRuntime } from "./runtime.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
-// Grace period between SIGTERM and SIGKILL when tearing down an aborted process
-// group — long enough for a well-behaved process to clean up, bounded so a
-// process ignoring SIGTERM can't wedge cancellation.
-const ABORT_GRACE_MS = 2000;
-
-// Undocumented: an abort whose reason carries `{ signal: <name> }` delivers THAT
-// Unix signal once, instead of the default ask-to-terminate. Lets a KILL pass a
-// non-default code (SIGHUP, SIGSTOP, …) with no contract change. Absent/invalid
-// → null → the default SIGTERM-then-SIGKILL teardown runs.
-const overrideSignal = (reason: unknown): NodeJS.Signals | null => {
+// KILL[code]: an abort reason carrying `{ signal }` (a Unix signal name or
+// number) delivers exactly that signal, once, fire-and-forget — no escalation;
+// the model asked for a specific code. Absent → null → the polite default.
+const overrideSignal = (reason: unknown): NodeJS.Signals | number | null => {
     const sig = (reason as { signal?: unknown } | null | undefined)?.signal;
+    if (typeof sig === "number") return sig;
     return typeof sig === "string" && sig.startsWith("SIG") ? sig as NodeJS.Signals : null;
+};
+
+// Loop-end housekeeping: an abort reason marked `{ housekeeping: true, graceMs }`
+// (the consumer's run-completion teardown) escalates the polite SIGHUP to a hard
+// SIGKILL after `graceMs` — the consumer's grace, sourced from its config, never
+// a magic number here. Absent → null → no reap (a plain KILL is fire-and-forget).
+const housekeepingGrace = (reason: unknown): number | null => {
+    const r = reason as { housekeeping?: unknown; graceMs?: unknown } | null | undefined;
+    return r?.housekeeping === true && typeof r.graceMs === "number" ? r.graceMs : null;
 };
 
 // Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
@@ -103,20 +107,22 @@ export default class SubprocessExecutor extends BaseExecutor {
             // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.
             if (stdin !== undefined) child.stdin?.end(stdin);
 
-            const killGroup = (sig: NodeJS.Signals): void => {
+            const killGroup = (sig: NodeJS.Signals | number): void => {
                 if (child.pid === undefined) return;
                 try { process.kill(-child.pid, sig); } catch { /* group already gone */ }
             };
             const onAbort = (): void => {
-                // A non-default signal on the abort reason does exactly that,
-                // once — no terminate-then-force escalation (the caller asked for
-                // a specific code, e.g. SIGHUP-to-reload, not a teardown).
-                const override = overrideSignal(signal.reason);
+                const reason = signal.reason;
+                // KILL[code]: deliver exactly that signal, once, fire-and-forget.
+                const override = overrideSignal(reason);
                 if (override !== null) { killGroup(override); return; }
-                killGroup("SIGTERM");
-                // Escalate if the group ignores SIGTERM. `close` fires once the
-                // pipes drain, which now happens because the grandchildren die.
-                killTimer = setTimeout(() => killGroup("SIGKILL"), ABORT_GRACE_MS);
+                // Default KILL is the polite ask — SIGHUP, once. We trust the
+                // model; whether the process then dies is its concern, not ours.
+                killGroup("SIGHUP");
+                // Loop-end housekeeping ONLY: hard-kill the straggler after the
+                // consumer's grace. `close` fires once the group's pipes drain.
+                const graceMs = housekeepingGrace(reason);
+                if (graceMs !== null) killTimer = setTimeout(() => killGroup("SIGKILL"), graceMs);
             };
             const finish = (result: ExecResult, state: "closed" | "errored"): void => {
                 if (settled) return;

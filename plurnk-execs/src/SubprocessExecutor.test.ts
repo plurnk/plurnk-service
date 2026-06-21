@@ -163,14 +163,25 @@ test("abort terminates the whole process group — no shell grandchild survives 
     assert.equal(survivors, "", `leaked process(es) after abort: ${survivors}`);
 });
 
-test("abort reason carrying a non-default signal delivers THAT signal, not SIGTERM", async () => {
+test("KILL[code]: a signal on the abort reason delivers exactly that code, not the default SIGHUP", async () => {
     const controller = new AbortController();
-    // sh traps HUP and reports it before exiting — catching the echo proves
-    // SIGHUP was delivered (the default SIGTERM would not fire the HUP trap).
-    const promise = exec("sh", "trap 'echo CAUGHT_HUP; exit 0' HUP; sleep 5", { signal: controller.signal });
+    // Traps USR1 only — catching the echo proves SIGUSR1 was delivered; the
+    // default SIGHUP would terminate it without firing the USR1 trap.
+    const promise = exec("sh", "trap 'echo CAUGHT_USR1; exit 0' USR1; sleep 5", { signal: controller.signal });
     await new Promise((r) => setTimeout(r, 200));   // let the trap install
-    controller.abort(Object.assign(new Error("killed"), { signal: "SIGHUP" }));
+    controller.abort(Object.assign(new Error("killed"), { signal: "SIGUSR1" }));
     const { result, out } = await promise;
     assert.equal(result.status, 499);
-    assert.match(out.stdout, /CAUGHT_HUP/, "the HUP trap fired → SIGHUP was the delivered signal");
+    assert.match(out.stdout, /CAUGHT_USR1/, "the USR1 trap fired → the override code was delivered");
+});
+
+test("loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
+    const controller = new AbortController();
+    // node swallows SIGHUP and stays alive — so the run can only settle because
+    // the grace-timed SIGKILL fired. A plain KILL (polite, no reap) would leave it.
+    const promise = exec("node", "process.on('SIGHUP', () => {}); setInterval(() => {}, 1e9)", { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 200));
+    controller.abort({ housekeeping: true, graceMs: 100 });
+    const { result } = await promise;
+    assert.equal(result.status, 499, "the housekeeping SIGKILL reaped the HUP-ignoring process");
 });
