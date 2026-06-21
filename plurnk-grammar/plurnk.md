@@ -20,7 +20,7 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | MOVE | apply tags  | required   | lines `N,M`         | destination URI  |
 | OPEN | filter tags | log path   | results `N,M`       | matcher          |
 | FOLD | filter tags | log path   | results `N,M`       | matcher          |
-| KILL | —           | required   | —                   | —                |
+| KILL | signal      | required   | —                   | —                |
 | EXEC | executor    | cwd        | —                   | command or code  |
 | SEND | status code | recipient  | —                   | message body     |
 
@@ -36,7 +36,7 @@ The agent maintains two surfaces for budgeting working-memory tokens:
 - **Log** — the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive — FOLDed rows remain listed and re-OPENable.
 - **`plurnk:///manifest.json`** — what's available: the complete unranked directory of every entry. Query it to discover available entries.
 
-OPEN and FOLD operate on the log only. Log items are read-only, but can be KILLed.
+OPEN and FOLD operate on the log only. Log items are read-only, but can be KILLed (erased).
 
 ## `<Line> / <Result>`
 
@@ -120,7 +120,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 <<KILL(obsolete/file.md)::KILL
-<<KILL(sh:///3/1/2)::KILL
+<<KILL[9](sh:///3/1/2)::KILL
 <<EDIT(run://capital-checker):Find the capital of France.:EDIT
 <<COPY(run://.):Re-derive the capital from a primary source.:COPY
 <<OPEN(log:///**/get)<1,10>::OPEN
@@ -129,7 +129,7 @@ Body content is character-perfect, exactly matching whitespace.
 <<FOLD(log:///**/get)<101,200>::FOLD
 <<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
 <<FIND(known:///**):revolution:FIND
-<<FIND(#draft.*#i)::FIND
+<<FIND(#(draft|final)/.*#i)::FIND
 <<FIND(#src/.*\.test\.ts#)::FIND
 <<FIND(src/**):@<createCoder:FIND
 
@@ -159,6 +159,6 @@ YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern ope
 YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
 YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
 YOU MUST terminate a continuing loop with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance...:SEND
-YOU MUST terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
-YOU MUST terminate an idle/waiting loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
 YOU MUST terminate a failed/aborted loop with status code 499: <<SEND[499]:Giving up — cannot identify the capital from available sources.:SEND
+YOU MUST terminate a final turn with status code 200: <<SEND[200]:Paris:SEND
+YOU MUST pause an idle/waiting loop with status code 202: <<SEND[202]:Waiting until the capital-checker reports.:SEND
