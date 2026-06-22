@@ -357,12 +357,12 @@ export default class PacketWire {
             const target = PacketWire.#renderActionTarget(e.target);
             if (target !== null) meta.target = target;
 
-            // Op-specific meta enrichment for READ: surface the matcher body
+            // Op-specific meta enrichment for READ + FIND: surface the matcher body
             // and match count when a body matcher was used. Without these, the
             // model can't distinguish "0 matches" from "empty content" — both
             // would render as a status-204 line. The matcher comes from the
             // stored statement (tx); the count from the result (rx).
-            if (op === "READ") {
+            if (op === "READ" || op === "FIND") {
                 const tx = e.tx;
                 if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
@@ -380,10 +380,12 @@ export default class PacketWire {
             // Re-OPEN restores it. The row stays listed; only its weight drops.
             if (e.folded === true) return metaLine;
 
-            // READ@200: expose the response body. READ@204 (successfully empty —
-            // 0 matcher hits, sentinel slice, or empty source) has no body to
-            // render; the meta line carries the signal via `matches` / status code.
-            if (op === "READ" && e.status === 200) {
+            // READ@200 / FIND@200: expose the response body — the content READ pulled,
+            // or the catalog rows / matched entries FIND returned (§render-rule-find-renders-result).
+            // The model must SEE what a read/find returned, not just the echoed query; the
+            // turn-0 foisted FIND(scheme:///**) reaches the packet through this branch. @204
+            // (successfully empty) has no body; the meta line carries the signal via `matches`.
+            if ((op === "READ" || op === "FIND") && e.status === 200) {
                 const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
                 if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                     const fence = target ?? `log:///${coordinate}`;
@@ -415,7 +417,7 @@ export default class PacketWire {
                 }
             }
             // Every other op: re-emit the model's statement. EXEC, SEND, COPY,
-            // MOVE, FIND, OPEN, FOLD — each gets its native heredoc form back.
+            // MOVE, OPEN, FOLD — each gets its native heredoc form back.
             // Without this the log row is a status code with no record of what
             // the model actually wrote, and the model has to back into its own
             // actions by inference (see reasoning.md trace from the pre-fix

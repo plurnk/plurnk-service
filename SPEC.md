@@ -1376,6 +1376,8 @@ Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype
 - **Line-navigable** (text/markdown, text/plain, csv, source code, yaml, toml) → `N:\t` line-number prefix per line {§render-rule-line-navigable-prefix}
 - **Tree-navigable** (application/json, application/xml, text/html, +json/+xml suffixes) → verbatim body (no `N:\t` — outer line numbers would collide with structural navigation like jsonpath/xpath) {§render-rule-tree-navigable-verbatim}
 
+A log row renders its **result body** for the content-returning ops — `READ@200` (the content it pulled) and `FIND@200` (the catalog rows / matched entries it returned) — under the query's fence, mimetype-driven per the rules above; every other op re-emits its statement. FIND included: the model must see what a find *returned*, not just its echoed query, and the turn-0 foisted `FIND(scheme:///**)` reaches the packet through this branch — without it the catalog preview is invisible. {§render-rule-find-renders-result}
+
 The `N:\t` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 
 ### §markdown-primitive Mimetype primitive: text/markdown
