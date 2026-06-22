@@ -103,7 +103,7 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
     "plurnk": {
         "kind": "exec",
         "runtimes": [
-            { "name": "search", "glyph": "🔎", "example": "EXEC[search]:france population:EXEC", "documentation": "# search\n\n`!bang` / `:lang` ride the query…" },
+            { "name": "search", "glyph": "🔎", "example": "<<EXEC[search]:france population:EXEC", "documentation": "# search\n\n`!bang` / `:lang` ride the query…" },
             { "name": "news",   "glyph": "📰" }
         ]
     }
@@ -114,7 +114,7 @@ A package may claim multiple tags backed by one handler. Tags form a **flat glob
 
 Each entry's optional **`attribution`** is the package's raw `plurnk.attribution` (`string | string[]`) — credit a consumer unions onto the model call when the package's tags are active (plurnk-service#249). It's **package-level** (every tag of a package carries the same value) and surfaced **raw**: the consumer owns the reservation policy (e.g. `@plurnk/`-scoped attribution only from `@plurnk/`-scoped packages). `undefined` when the package omits it.
 
-Each entry's optional **`example`** is a one-line, self-documenting usage example (`EXEC[tag]:body:EXEC`), surfaced verbatim by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
+Each entry's optional **`example`** is a one-line, self-documenting usage example surfaced **verbatim** by the consumer in its `# Plurnk System Tools` capability sheet so the model learns the tag's syntax + purpose in one line instead of a separate prose description (plurnk-execs#7). It MUST be the **complete canonical op, `<<`-delimited** — `<<EXEC[tag]:body:EXEC` (or `<<EXEC[tag](target):body:EXEC`) — because the consumer renders it verbatim into the sheet; an example missing the `<<` opener teaches the model a malformed op. Defaults to `""` when omitted. Kept to a single line on purpose — the sheet is hot-path and token-sensitive; the generic `(target)` slot is documented once at the op level, not repeated per tag.
 
 Each entry's optional **`documentation`** is full markdown — the flags, modes, and gotchas the one-liner can't carry. It is the depth a consumer can serve on demand, separate from the always-on `example` (progressive disclosure). The **source of truth is a `docs/<tag>.md` file** in the package (the docs convention; ship it via `files`), which `discover()` reads into `documentation`; the inline `documentation` manifest field is the fallback when no file ships. Defaults to `""`. The execs contract is the two fields; **how** the consumer surfaces them to the model — an in-context one-liner, the full doc fetched when the model wants it — is the consumer's (plurnk-service's) concern, not specified here.
 
@@ -141,6 +141,36 @@ Two guarantees frame the hook:
 **Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The policy mirrors plurnk-service's `PluginTrust.isTrusted`; it's duplicated, not shared, since it can't cross the package boundary.
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
+
+### §3.2 Activation (Active / Available)
+
+Discovery answers *what is installed/configured*; **activation** answers *what is offered to the model right now*. They are distinct axes and must not be conflated — `discover()` stays static truth, activation is a runtime overlay the consumer owns on top of it (plurnk-execs#10). This generalizes across the **shared exec/scheme namespace**: a registered capability is a tag claimed once that is both `EXEC[tag]` and `tag://`, and activation operates on it whichever family it came from. MCP is not a category here — it is one *route* for registering a capability (alongside package discovery and env), so its tags activate by the same rules as any other.
+
+**Two states, no third.** A registered capability is **Active** (in the `# Plurnk System Tools` sheet, dispatchable) or **Available** (registered, inert). "Disabled" is the *verb* (Active→Available), not a state. The consumer's capability sheet surfaces two buckets:
+
+- **Tools Active** — the full one-line `example` each (the hot-path teaching cost).
+- **Tools Available** — name + glyph + `attribution` each (a word, not a line).
+
+This split *is* the progressive disclosure that bounds the sheet: N available servers cost N words, not N lines.
+
+**Default-activation rule** (the consumer applies it; execs supplies the signals — `packageName` scope, source route, `attribution`):
+
+| Source route | Trust | Default |
+|---|---|---|
+| Installed package (boot discovery) | first-party (`@plurnk/*`) | **Active** |
+| Installed package (boot discovery) | third-party | **Available** |
+| Env-declared (e.g. `PLURNK_MCP_<server>`, model-alias style) | — | **Available** |
+| Runtime hotload (`/mcp`, gated — below) | — | **Active** on add |
+
+The principle: *Active = the operator unambiguously committed this capability ON* (installed a first-party package; explicitly hotloaded). Configuring connection details (env) or installing a third-party package is the lighter act → Available, opt-in. Mirrors `PLURNK_MODEL_*` — declare many aliases, activate a subset.
+
+**Reachability is orthogonal.** Whether a capability is Active/Available (activation) is independent of whether it is reachable/unreachable (the §2.2 `probe()` health flag). A configured MCP server that is down is *Available but unreachable*. Do not overload "available" across the two axes.
+
+**Capability vs substrate.** enable/disable targets **capability** tags only (execs and executor-backed schemes). Core **substrate** schemes (`file://`, the addressing/ops ground) are always-active and never toggleable — `/disable file` must not be able to brick the address space. For an executor-backed scheme, `disable` gates *new production*; existing `tag://` entries stay READable (reads are pure).
+
+**Security — one gate, on introduction not activation.** `enable` / `disable` are **not** trust-gated: a client (and the model itself) may freely activate any *registered* capability. This is safe because the registered set is operator-bounded — only env-declared or package-installed capabilities exist — *unless* the single daemon gate **`PLURNK_MCP_INSTALL`** (default off) opens the runtime-hotload route, permitting *arbitrary* tooling to be **added**. Gate the introduction of capabilities, never their activation. The trust gate (§3) still bounds *registration*; activation rides on top of an already-trusted set.
+
+Execs owns none of the overlay machinery — the live Active/Available state, the `/enable` `/disable` `/mcp` commands, and the gate enforcement are the consumer's (plurnk-service#240). Execs' contribution is the static signals above and (for the hotload route) an MCP executor that accepts a runtime-injected server config and re-checks `PLURNK_MCP_INSTALL` at its connect path (defense in depth).
 
 ## §4 Subprocess helper (legacy path)
 
