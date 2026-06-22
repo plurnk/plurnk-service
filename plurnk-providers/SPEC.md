@@ -55,7 +55,7 @@ interface ProviderResponse {
         model: string;              // wire-reported (may differ from requested for relay providers)
     };
     assistantRaw: unknown;          // verbatim wire response for forensics
-    balancePico?: number;           // provider→client account balance (pico-USD) when the backend reports it; plurnk only, omitted elsewhere (#23)
+    meta?: Record<string, unknown>; // per-turn provider→client bag: backend extra fields passed through + validated known keys (e.g. balancePico, pico-USD); absent when empty (#23)
 }
 
 interface ProviderUsage {
@@ -153,7 +153,7 @@ The framework is **contract-only** — it does **not** depend on its daughters. 
 - `signal` is wired to the run's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
 - `assistantRaw` is opaque to the consumer (forensics-only).
-- `balancePico` is the account balance in pico-USD (matching cost units), surfaced **only** by the plurnk hosted provider from its endpoint's per-response field; every other provider omits it. The consumer reads `balancePico` directly and MUST NOT mine `assistantRaw` for it — same null-honest contract as `contextSize` (#23).
+- `meta` is the per-turn provider→client metadata bag: the backend's **non-standard top-level response fields passed through verbatim** (every provider), PLUS **validated known keys** the framework holds a contract for — currently `balancePico` (a finite pico-USD number normalized from the plurnk endpoint's balance field, renamed off its raw key; dropped if non-numeric). Absent when the backend reported no extras. The consumer (service) merges `meta` into its Turn metadata and filters what reaches the client; it reads `meta`, never mines `assistantRaw` (#23).
 - `countTokens` is cheap by contract; consumer calls frequently.
 
 ## §7 Provider → engine guarantees
@@ -252,7 +252,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base URL, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest.
 
-The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched, for contributor credit) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers. The gate lives on the provider, not the call site, so these first-party signals are **structurally incapable** of reaching a third-party backend (the destination is the consent boundary — never sold, never leaked). Empty values emit no header; third-party credit-travel, if ever added, is a separate opt-in that flips this flag elsewhere. It also alone sets **`balanceMetaKey: "balance_pico"`** — the top-level response field the plurnk endpoint reports the running account balance (pico-USD) in, which `OpenAICompatProvider` lifts off `chunkMetadata` into `ProviderResponse.balancePico` for the service to surface to clients (#23). No other provider sets it, so `balancePico` is structurally absent everywhere else.
+The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched, for contributor credit) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers. The gate lives on the provider, not the call site, so these first-party signals are **structurally incapable** of reaching a third-party backend (the destination is the consent boundary — never sold, never leaked). Empty values emit no header; third-party credit-travel, if ever added, is a separate opt-in that flips this flag elsewhere. It also alone sets **`balanceMetaKey: "balance_pico"`** — the top-level response field the plurnk endpoint reports the running account balance (pico-USD) in. `OpenAICompatProvider` surfaces the backend's extra top-level fields as `ProviderResponse.meta` for **every** provider (passed through), and for a provider that set `balanceMetaKey` it additionally normalizes that field into a validated `meta.balancePico`. So `balancePico` appears only from plurnk; the raw pass-through `meta` is general (#23).
 
 A spec may carry a **`modelPrefix`** — a constant model-id segment the backend requires but the operator's alias shouldn't repeat. `fireworks` sets `"accounts/fireworks/models/"`, so `PLURNK_MODEL_fast=fireworks/deepseek-v4-pro` carries only the distinctive tail; `standardProviderFromEnv` prepends it idempotently (an already-prefixed id is untouched) to form the wire id, which is **also** the catalog key (models.dev keys fireworks-ai on the full id). Specs without a `modelPrefix` use the model string verbatim.
 

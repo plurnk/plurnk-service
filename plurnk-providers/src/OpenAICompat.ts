@@ -57,7 +57,7 @@ export type OpenAICompatConfig = {
     gbnfDebug?: boolean;                        // PLURNK_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
-    balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → ProviderResponse.balancePico (plurnk only, #23); default unset
+    balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → validated meta.balancePico (plurnk only, #23); default unset
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
@@ -291,14 +291,20 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    // #23: lift the backend's reported account balance (pico-USD) off the raw
-    // response's top-level metadata into the typed `balancePico` — ONLY when the
-    // spec named the field (the plurnk endpoint). The service reads `balancePico`,
-    // never `assistantRaw`. Non-numeric / absent → undefined (null-honest).
-    #extractBalance(meta: Record<string, unknown>): number | undefined {
-        if (this.#balanceMetaKey === undefined) return undefined;
-        const v = meta[this.#balanceMetaKey];
-        return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+    // Per-turn metadata bag (#23): pass the backend's non-standard top-level fields
+    // (the transport's `chunkMetadata`) through VERBATIM, then normalize the known
+    // keys we hold a contract for — the spec's balance field → a validated
+    // `balancePico` (finite pico-USD; dropped if non-numeric), renamed off its raw
+    // key so the consumer reads one canonical name. Undefined when nothing's there;
+    // the service merges this into its Turn metadata and filters what reaches clients.
+    #buildMeta(chunkMetadata: Record<string, unknown>): Record<string, unknown> | undefined {
+        const meta: Record<string, unknown> = { ...chunkMetadata };
+        if (this.#balanceMetaKey !== undefined) {
+            const raw = meta[this.#balanceMetaKey];
+            delete meta[this.#balanceMetaKey];
+            if (typeof raw === "number" && Number.isFinite(raw)) meta.balancePico = raw;
+        }
+        return Object.keys(meta).length > 0 ? meta : undefined;
     }
 
     async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
@@ -362,7 +368,7 @@ export default class OpenAICompatProvider implements Provider {
         // content reaches the consumer — only when we actually sent one.
         if (sendGrammar !== undefined) this.#verifyGrammarEnforced(sendGrammar, raw.content);
 
-        const balancePico = this.#extractBalance(raw.chunkMetadata);
+        const meta = this.#buildMeta(raw.chunkMetadata);
 
         return {
             assistant: {
@@ -373,7 +379,7 @@ export default class OpenAICompatProvider implements Provider {
                 model: raw.model ?? this.#model,
             },
             assistantRaw: raw,
-            ...(balancePico !== undefined ? { balancePico } : {}),
+            ...(meta !== undefined ? { meta } : {}),
         };
     }
 }

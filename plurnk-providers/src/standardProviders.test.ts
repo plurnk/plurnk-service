@@ -561,7 +561,7 @@ test("plurnk: a 401 is classified unauthorized — terminal, never retried", asy
     mock.restoreAll();
 });
 
-test("plurnk: surfaces balancePico from the endpoint's balance_pico field (#23)", async () => {
+test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         const u = String(url);
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "plurnk", meta: { n_ctx: 49152 } }] }), { status: 200 });
@@ -571,16 +571,17 @@ test("plurnk: surfaces balancePico from the endpoint's balance_pico field (#23)"
     });
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
     const res = await p!.generate({ runId: "r", messages: [] });
-    assert.equal(res.balancePico, 880000000);
+    assert.equal(res.meta?.balancePico, 880000000);
     mock.restoreAll();
 });
 
-test("a third-party (non-plurnk) provider never surfaces balancePico even if the wire carries it", async () => {
+test("a third-party (non-plurnk) provider never NORMALIZES balancePico — only plurnk holds that contract", async () => {
     mock.method(globalThis, "fetch", async () =>
         new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
     const res = await p!.generate({ runId: "r", messages: [] });
-    assert.equal("balancePico" in res, false); // groq has no balanceMetaKey — structurally can't surface it
+    assert.equal("balancePico" in (res.meta ?? {}), false); // groq has no balanceMetaKey — no normalization
+    assert.equal(res.meta?.balance_pico, 880000000);          // but the raw field still passes through (every-provider meta)
     mock.restoreAll();
 });
 

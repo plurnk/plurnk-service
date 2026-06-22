@@ -308,27 +308,31 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
     assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
 });
 
-// — balancePico (provider→client account balance, #23) —
+// — meta bag: pass-through extras + validated known keys (#23) —
 
-test("balancePico: lifted from the named metadata field when the spec opts in", async () => {
+test("meta: the spec's balance field is normalized to a validated meta.balancePico", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
     installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 });
     const res = await p.generate({ runId: "r", messages: [] });
-    assert.equal(res.balancePico, 4_200_000);
+    assert.equal(res.meta?.balancePico, 4_200_000);
+    assert.equal("balance_pico" in (res.meta ?? {}), false); // raw key renamed to the canonical balancePico
 });
 
-test("balancePico: omitted (key absent) when the provider has no balanceMetaKey — no mining of others' responses", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false });
-    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 }); // present on the wire, but this provider doesn't read it
+test("meta: passes the backend's extra top-level fields through verbatim (every provider)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false }); // no balanceMetaKey
+    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000, system_fingerprint: "fp_abc" });
     const res = await p.generate({ runId: "r", messages: [] });
-    assert.equal("balancePico" in res, false);
+    assert.equal(res.meta?.balance_pico, 4_200_000); // passed through raw — no balance contract on this provider
+    assert.equal(res.meta?.system_fingerprint, "fp_abc");
+    assert.equal("balancePico" in (res.meta ?? {}), false); // not normalized without the key
 });
 
-test("balancePico: a non-numeric balance field is ignored (null-honest)", async () => {
+test("meta: a non-numeric balance is dropped, never surfaced as balancePico (null-honest)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
     installFetchJson({ ...jsonChoice, balance_pico: "lots" });
     const res = await p.generate({ runId: "r", messages: [] });
-    assert.equal("balancePico" in res, false);
+    assert.equal("balancePico" in (res.meta ?? {}), false);
+    assert.equal("balance_pico" in (res.meta ?? {}), false); // raw dropped too — the known key is validated away
 });
 
 // — first-party telemetry headers (attribution + client, SPEC §5) —

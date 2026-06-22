@@ -35,11 +35,13 @@ export interface ProviderAssistant {
 export interface ProviderResponse {
     readonly assistant: ProviderAssistant;
     readonly assistantRaw: unknown;
-    // Provider→client account balance in pico-USD (matches cost units), when the
-    // backend reports it per response. ONLY the plurnk hosted endpoint populates
-    // this; every other provider omits it (undefined) — same null-honest contract
-    // as contextSize. The consumer must NOT mine assistantRaw for it (SPEC §2/#23).
-    readonly balancePico?: number;
+    // Per-turn provider→client metadata bag: the backend's non-standard top-level
+    // response fields, passed through verbatim, PLUS validated known keys we hold a
+    // contract for (e.g. `balancePico` — a finite pico-USD number, from the plurnk
+    // endpoint). The consumer (service) merges this into its Turn metadata and
+    // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
+    // Absent when the backend reported no extra fields (#23, generalized).
+    readonly meta?: Record<string, unknown>;
 }
 
 export interface Provider {
