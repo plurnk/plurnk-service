@@ -1240,7 +1240,7 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 ### §tools user.tools — the capability sheet
 
-A `# Plurnk System Tools` section renders **above** `# Plurnk System Requirements` — a hook-populated list of the capabilities enabled this session, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `Engine.#collectTools`; the whole section is omitted when nothing is enabled. {§tools-capability-sheet}
+The tools capability lines render **titleless**, directly under the `definition` (plurnk.md) section — the examples flow on from plurnk.md with no separate header — and **above** `# Plurnk System Requirements`, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `Engine.#collectTools`; the section is omitted when nothing is enabled. {§tools-capability-sheet}
 
 **Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE line — its canonical usage — plus a `(docs: plurnk://docs/<tag>.md)` pointer when its package ships documentation, via the shared `teachingLine` (identical shape to the scheme directory, §schemes). A tag with no example contributes nothing; `PLURNK_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
 

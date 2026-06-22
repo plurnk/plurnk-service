@@ -1191,7 +1191,7 @@ export default class Engine {
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
-            { name: "tools", slot: "system", header: "Plurnk System Tools", content: tools.join("\n"), tokens: 0 },
+            { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
             { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
             { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
