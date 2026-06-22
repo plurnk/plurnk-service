@@ -64,3 +64,12 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SEMANTIC_CHUNK_TOKENS = the e
         else process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = prev;
     }
 });
+
+test("EntrySemantic.deepConfigSignature: folds the embedder model id — a same-window model swap re-derives (#31)", async () => {
+    const mk = (model: string) => ({ embedderInfo: () => ({ maxTokens: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
+    const a = await EntrySemantic.deepConfigSignature(mk("e5@1"));
+    const b = await EntrySemantic.deepConfigSignature(mk("e5@2")); // identical window + knobs, different model
+    assert.notEqual(a, b, "a same-window model swap changes the signature → the deep_hash gate re-derives every entry");
+    assert.equal(a, await EntrySemantic.deepConfigSignature(mk("e5@1")), "same model + knobs is stable → no needless re-derivation");
+    assert.equal(await EntrySemantic.deepConfigSignature(dormant), "embed:none", "no embedder → dormant signature, never folds a model");
+});
