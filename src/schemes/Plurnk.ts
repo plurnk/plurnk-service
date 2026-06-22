@@ -27,7 +27,7 @@ export default class Plurnk {
         writableBy: ["model", "client", "plurnk"],
         volatile: false,
         modelVisible: true,
-        example: "<<READ(plurnk:///manifest.json)::READ",
+        example: "<<FIND(plurnk:///**)::FIND",
         documentation: "Engine-authored events surfaced to you — most notably your active prompt at `plurnk://prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk://prompt/*` is engine-owned and rejects your writes.",
     };
 

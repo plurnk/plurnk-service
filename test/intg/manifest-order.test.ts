@@ -1,35 +1,35 @@
-// User Note 5 — plurnk:///manifest.json is catalogued by mtime (entries.updated_at),
-// oldest-modified first / newest last, so the prompt-cache prefix (dormant entries)
-// stays stable across turns and churn clusters at the tail. A re-edited entry moves
-// to the tail while the rest hold their positions.
+// User Note 5 — the catalog is ordered by mtime (entries.updated_at), oldest-modified
+// first / newest last, so the prompt-cache prefix (dormant entries) stays stable across
+// turns and churn clusters at the tail. A re-edited entry moves to the tail while the rest
+// hold their positions. catalogRowsFor renders engine_list_session_entries' order verbatim.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { setTimeout as sleep } from "node:timers/promises";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import Known from "../../src/schemes/Known.ts";
+import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
-const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+const url = (p: string): UrlPath => ({ kind: "url", raw: `known:///${p}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, params: {}, fragment: null });
+const editStmt = (target: UrlPath, body: string): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
 
-test("manifest catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
-    await withDaemon(mock(), async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "session.create", { name: "manifest-mtime" });
-            await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
-            await rpcCall(ws, 3, "op.edit", { target: "known:///b.md", content: "bravo" });
-            await rpcCall(ws, 4, "op.edit", { target: "known:///c.md", content: "charlie" });
-            // Re-edit a — now the most-recently-modified, so it must sort to the tail
-            // (oldest-modified first); b and c keep their relative order at the front.
-            await rpcCall(ws, 5, "op.edit", { target: "known:///a.md", content: "alpha-2" });
-            await runLoopToTerminal(ws, 6, { prompt: "go" }); // a model turn rebuilds the catalog
-            const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({
-                pathname: "/manifest.json", scheme: "plurnk", name: "body",
-            });
-            const known = (JSON.parse(body?.content ?? "[]") as Array<{ path: string }>)
-                .map((e) => e.path).filter((p) => p.startsWith("known:///"));
-            assert.deepEqual(known, ["known:///b.md", "known:///c.md", "known:///a.md"],
-                "b, c, then the re-edited a at the tail — oldest-modified first");
-        } finally { ws.close(); }
-    });
+test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `mtime-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const k = new Known();
+        // Distinct sub-second mtimes via short spacing; a re-edit of `a` makes it newest.
+        await k.edit(editStmt(url("a.md"), "alpha"), ctx); await sleep(10);
+        await k.edit(editStmt(url("b.md"), "bravo"), ctx); await sleep(10);
+        await k.edit(editStmt(url("c.md"), "charlie"), ctx); await sleep(10);
+        await k.edit(editStmt(url("a.md"), "alpha-2"), ctx); // re-edit a — now most-recently-modified
+
+        const catalog = await EntryManifest.catalogRowsFor(ctx);
+        const known = catalog.map((e) => e.path).filter((p) => p.startsWith("known:///"));
+        assert.deepEqual(known, ["known:///b.md", "known:///c.md", "known:///a.md"],
+            "b, c, then the re-edited a at the tail — oldest-modified first");
+    } finally { await db.close(); }
 });

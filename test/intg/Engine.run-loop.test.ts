@@ -59,8 +59,8 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
         assert.equal(result.hitMaxTurns, false);
 
         const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-        // 3 known entries + plurnk:///prompt/<loop_id> + plurnk:///manifest.json
-        assert.equal(entryCount, 5);
+        // 3 known entries + plurnk:///prompt/<loop_id> (no manifest.json entry — the catalog is FIND-served)
+        assert.equal(entryCount, 4);
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200);

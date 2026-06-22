@@ -79,7 +79,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the p
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/POLICY.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
-                assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "the manifest preview stays off at =0 — the doc foist is independent of it, not capped by it");
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "the catalog preview stays off at =0 — the doc foist is independent of it, not capped by it");
             } finally { ws.close(); }
         });
     } finally {

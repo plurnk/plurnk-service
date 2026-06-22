@@ -1,5 +1,5 @@
 import { PlurnkParser, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
@@ -761,12 +761,11 @@ export default class Engine {
             }
         }
 
-        // plurnk:///manifest.json — rewritten EVERY turn (a live view of the
-        // entry set, which changes each turn). A derived view (computed each
-        // turn), NOT an action — written directly (Engine.inject's path): no log entry,
-        // no sequence slot, not dispatched. The catalog body is built in the
-        // schemes layer (_entry-manifest); the engine only orchestrates the
-        // per-turn write. Does not list itself.
+        // The per-turn derivation pump (_entry-manifest.maintainDerivations) — refreshes
+        // every entry's deep channels (symbols/refs/embeddings/FTS, deep_hash-gated) so the
+        // catalog and FIND read current data. NOT an action: no log entry, no sequence slot,
+        // not dispatched. There is no plurnk:///manifest.json entry — the catalog is served
+        // on demand by FIND(scheme:///**), foisted into the run's first turn below.
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "plurnk",
@@ -782,42 +781,48 @@ export default class Engine {
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // session's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
-        // (disk → body channel) so they appear in the manifest below. No-ops
-        // on headless / non-git sessions. Runs BEFORE the manifest write so
+        // (disk → body channel) so they appear in the catalog. No-ops
+        // on headless / non-git sessions. Runs BEFORE the derivation pump so
         // this turn's packet reflects them.
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
         await this.#logFsFictions(sessionId, fsDivergences);
 
-        await EntryCrud.writeEntry("/manifest.json", {
-            channels: { body: { content: await EntryManifest.buildManifestBody(systemCtx), mimetype: "application/json" } },
-            tags: [],
-        }, systemCtx, "plurnk");
+        await EntryManifest.maintainDerivations(systemCtx);
 
-        // Manifest preview (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview):
-        // a turn-0 foisted READ of the just-built catalog so a run opens with what's
-        // available, not blank. -1 → full; N → the first N items (jsonpath slice — the
-        // manifest is JSON); off by default. AFTER the manifest write so the READ hits
-        // it, not a 404; same plurnk-origin foist as the operator docs.
+        // Turn-0 catalog preview (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview):
+        // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
+        // model turn so it opens with its catalog (the per-scheme arrays that replaced the
+        // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
+        // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
         if (seq === 1) {
             // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
             const { manifestItems: sessionMI, autoReadAgents } = await SessionSettings.read(this.#db, sessionId);
             const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
-            if (manifestItems !== null && runFirstLoop) { // #269 — manifest preview is run-once
-                const manifestRead: ReadStatement = {
-                    op: "READ", suffix: "", signal: null, lineMarker: null,
-                    target: {
-                        kind: "url", raw: "plurnk:///manifest.json", scheme: "plurnk",
-                        username: null, password: null, hostname: null, port: null,
-                        pathname: "/manifest.json", params: {}, fragment: null,
-                    },
-                    body: manifestItems < 0 ? null : { dialect: "jsonpath", raw: `$[0:${manifestItems}]` } as MatcherBody,
-                    position: { line: 1, column: 1 },
-                };
-                await this.dispatch({
-                    statement: manifestRead, sessionId, runId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                });
-                nextActionIndex++;
+            if (manifestItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
+                // engine_scheme_catalog_summary is the scheme source: session-scoped, ordered,
+                // one row per scheme that has entries (scheme=null → file). log:// is absent —
+                // it lives in log_entries, not the catalog (present-mode, the # Log section).
+                const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
+                for (const { scheme, entries } of catalogSchemes) {
+                    const schemeName = scheme ?? "file";
+                    const cap = manifestItems < 0 ? null : Math.min(manifestItems, entries);
+                    const catalogFind: FindStatement = {
+                        op: "FIND", suffix: "", signal: null,
+                        target: {
+                            kind: "url", raw: `${schemeName}:///**`, scheme: schemeName,
+                            username: null, password: null, hostname: null, port: null,
+                            pathname: "", params: {}, fragment: null,
+                        },
+                        body: null,
+                        lineMarker: cap === null ? null : { marks: [1, cap] },
+                        position: { line: 1, column: 1 },
+                    };
+                    await this.dispatch({
+                        statement: catalogFind, sessionId, runId, loopId, turnId,
+                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                    });
+                    nextActionIndex++;
+                }
             }
             // #268 — auto-READ the configured AGENTS file(s) into THIS first model turn. Env-driven
             // (PLURNK_AGENTS_AUTO / PLURNK_AGENTS_FILES), overridable per-session by autoReadAgents; the

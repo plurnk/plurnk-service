@@ -19,7 +19,7 @@ const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reas
 
 type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
-test("[§packet-manifest-catalog] manifest.json is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
+test("[§packet-manifest-catalog] the catalog is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `manifest-${crypto.randomUUID()}`);
@@ -30,16 +30,13 @@ test("[§packet-manifest-catalog] manifest.json is the complete, unranked direct
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/france/capital", channel: "body", content: "Paris", mimetype: "text/markdown" });
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/germany/capital", channel: "body", content: "Berlin\nis the capital", mimetype: "text/markdown" });
 
-        // A real turn rewrites plurnk:///manifest.json (Engine.runTurn line 702).
+        // A real turn runs the derivation pump (maintainDerivations); the catalog is the
+        // read-only render FIND serves — there is no manifest.json entry.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
-        // Parse the materialized catalog body.
-        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" }))?.id;
-        assert.notEqual(entryId, undefined, "the turn materialized plurnk:///manifest.json");
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
-        const catalog = JSON.parse(body?.content ?? "[]") as CatalogItem[];
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
         const paths = catalog.map((e) => e.path);
 
         // Completeness: every seeded entry is listed.
@@ -81,10 +78,8 @@ test("manifest build survives a malformed application/json entry — degrades to
         const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
-        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" }))?.id;
-        assert.notEqual(entryId, undefined, "the manifest materialized despite the malformed entry");
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
-        const catalog = JSON.parse(body?.content ?? "[]") as CatalogItem[];
+        // The turn's pump survived the malformed entry (no -32603); the catalog renders it degraded.
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
         const paths = catalog.map((e) => e.path);
         assert.ok(paths.includes("known:///good.json"), `valid entry listed; got ${JSON.stringify(paths)}`);
         assert.ok(paths.includes("known:///bad.json"), "malformed entry still listed (degraded, not crashed)");
@@ -113,10 +108,8 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
-        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" }))?.id;
-        assert.notEqual(entryId, undefined, "the manifest materialized — the tiled JSON entry did not crash the turn");
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "body" });
-        const catalog = JSON.parse(body?.content ?? "[]") as CatalogItem[];
+        // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
         assert.ok(catalog.some((e) => e.path === "known:///big.json"), "the large JSON entry is listed in the catalog");
     } finally { await db.close(); }
 });

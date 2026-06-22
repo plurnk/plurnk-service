@@ -1,18 +1,16 @@
-// The body of plurnk:///manifest.json — the complete, unranked directory (§packet-manifest-catalog) of
-// every entry the session holds, across all schemes. engine_list_session_entries
-// lists every entry, uniformly READable, in no relevance order. The model
-// ranks/filters it itself by querying the catalog
+// The entry catalog (§packet-manifest-catalog) — the complete, unranked directory of every
+// entry the session holds, served by FIND(scheme:///**), one per-scheme array (there is no
+// plurnk:///manifest.json entry). catalogRowsFor renders engine_list_session_entries' rows,
+// uniformly READable, in no relevance order; the model ranks/filters it itself by querying it
 // (task-aware) — the catalog never ranks for it, or it would be an index again.
-// Each item: { path, seconds?, channels: { <uri>: { mimetype, tokens, lines } } } — each channel
-// keyed by its addressable URI (default channel → the bare path, non-default → path#channel).
-// `tokens` is the live provider's count, re-counted at render — the write-time
-// snapshot is NOT trusted, since the model can change between loops and a stale
-// tokenizer would make the catalog lie; `lines` is the content's extent from
-// mimetypes' process() totalLines. The catalog never lists itself.
+// Each item: { path, seconds?, tags?, channels: { <uri>: { mimetype, tokens, lines } } } — each
+// channel keyed by its addressable URI (default channel → the bare path, non-default → path#channel).
+// `tokens` is the live provider's count, re-counted at render — the write-time snapshot is NOT
+// trusted, since a model/tokenizer change between loops would make the catalog lie; `lines` is the
+// content's extent from mimetypes' process() totalLines.
 //
-// Lives in the schemes/entry layer, not the engine: building a plurnk:/// entry's
-// content is the schemes' job; the engine only orchestrates the per-turn write
-// (the same materialization pattern as git membership).
+// maintainDerivations (the per-turn pump) refreshes the deep channels the rows report; both live
+// in the schemes/entry layer, not the engine — building a scheme's catalog is the schemes' job.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
@@ -131,12 +129,4 @@ export default class EntryManifest {
         }
     }
 
-    // The body of plurnk:///manifest.json — the per-turn derivation pump, then the catalog
-    // render. Both walk the same entry set: maintainDerivations refreshes the deep channels;
-    // catalogRowsFor renders the read-only catalog rows FIND also serves. (Transitional — when
-    // plurnk:///manifest.json retires, the engine runs the pump directly and FIND renders.)
-    static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
-        await EntryManifest.maintainDerivations(ctx);
-        return JSON.stringify(await EntryManifest.catalogRowsFor(ctx), null, 2);
-    }
 }

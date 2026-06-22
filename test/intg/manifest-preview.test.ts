@@ -31,9 +31,9 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                const mr = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
-                assert.ok(mr !== undefined, "turn 0 foists a READ of plurnk:///manifest.json when set");
-                assert.equal(mr!.status_rx, 200, "the READ hits the just-built manifest (200 = matches), not a 404");
+                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "known");
+                assert.ok(cf !== undefined, "turn 0 foists a FIND(known:///**) catalog preview when set");
+                assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
             } finally { ws.close(); }
         });
 
@@ -46,7 +46,7 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "no manifest READ foisted when unset");
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "no catalog FIND foisted when unset");
             } finally { ws.close(); }
         });
     } finally {
@@ -54,23 +54,24 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
     }
 });
 
-// Note 293 (c): plurnk:///manifest.json is materialized every turn regardless of the
-// preview switch or entry count — so the model always has the directory to READ (a
-// valid, possibly-sparse JSON array), even when the preview is off and nothing's there.
-test("manifest.json is materialized with the preview off — the model always has an (empty) directory to READ", async () => {
+// The catalog is FIND-served — there is no plurnk:///manifest.json entry. With the preview
+// off, the run opens with no foisted catalog; the model FINDs each scheme on demand (the
+// "always a single directory to READ" invariant retired with the manifest.json entry).
+test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_MANIFEST_ITEMS;
     process.env.PLURNK_MANIFEST_ITEMS = "0"; // preview OFF
     try {
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "manifest-empty" });
-                await runLoopToTerminal(ws, 2, { prompt: "go" });
+                await rpcCall(ws, 1, "session.create", { name: "catalog-find-served" });
+                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
                 const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" });
-                assert.ok(entry?.id !== undefined, "plurnk:///manifest.json is materialized even with the preview off");
-                const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "/manifest.json", scheme: "plurnk", name: "body" });
-                const catalog = JSON.parse(body?.content ?? "null");
-                assert.ok(Array.isArray(catalog), "the materialized manifest is a valid JSON array — the directory the model READs, even when sparse");
+                assert.equal(entry?.id, undefined, "no plurnk:///manifest.json entry — the catalog is not materialized as an entry");
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
             } finally { ws.close(); }
         });
     } finally {
@@ -92,7 +93,7 @@ test("[§operator-config-session-manifest-items] session.create settings.manifes
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json"), undefined, "session manifestItems:0 replaces env -1 — no preview foisted");
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "session manifestItems:0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
         // env OFF (0) but the client's session asks for ON (-1) → preview appears.
@@ -104,8 +105,8 @@ test("[§operator-config-session-manifest-items] session.create settings.manifes
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                const mr = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
-                assert.ok(mr !== undefined && mr.status_rx === 200, "session manifestItems:-1 replaces env 0 — preview foisted");
+                const cf = rows.find((r) => r.op === "FIND");
+                assert.ok(cf !== undefined && cf.status_rx === 200, "session manifestItems:-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
         });
     } finally {
@@ -144,12 +145,12 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
-                const manifestRead = async (loopId: number) => {
+                const catalogFind = async (loopId: number) => {
                     const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                    return rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
+                    return rows.find((r) => r.op === "FIND" && r.scheme === "known");
                 };
-                assert.ok((await manifestRead((r1 as { loopId: number }).loopId)) !== undefined, "run's first loop foists the manifest preview");
-                assert.equal(await manifestRead((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the run's log (#269)");
+                assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "run's first loop foists the catalog preview");
+                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the run's log (#269)");
             } finally { ws.close(); }
         });
     } finally {
