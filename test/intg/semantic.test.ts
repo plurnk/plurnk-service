@@ -45,7 +45,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
-        await EntryManifest.buildManifestBody(ctx);  // real embeddings stored via mimetypes-embeddings
+        await EntryManifest.maintainDerivations(ctx);  // real embeddings stored via mimetypes-embeddings
 
         const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
@@ -68,7 +68,7 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
-        await EntryManifest.buildManifestBody(ctx);
+        await EntryManifest.maintainDerivations(ctx);
         const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes });
 
         // A low floor admits every FTS-matched candidate (cosine > 0.05) — same set

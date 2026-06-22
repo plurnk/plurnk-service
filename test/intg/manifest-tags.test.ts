@@ -28,7 +28,7 @@ test("[§packet-manifest-catalog] the manifest catalog surfaces each entry's tag
         await new Known().edit(taggedEdit(url("plan.md"), "the plan", ["wip", "draft"]), ctx);
         await new Known().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
 
-        const catalog = JSON.parse(await EntryManifest.buildManifestBody(ctx)) as Array<{ path: string; tags?: string[] }>;
+        const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string; tags?: string[] }>;
         const plan = catalog.find((e) => e.path.endsWith("plan.md"));
         assert.deepEqual(plan?.tags, ["draft", "wip"], "the tagged entry carries its entry_tags in the catalog, sorted");
         const done = catalog.find((e) => e.path.endsWith("done.md"));
@@ -45,7 +45,7 @@ test("manifest catalog: a file member (scheme=null) renders slash-free — match
         // A file member is stored namespace-absolute (`/notes.md`, scheme=null) but the model
         // types the relative path it reads — the catalog must render it slash-free so the two match.
         await EntryCrud.writeEntry("/notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: [] }, ctx, null);
-        const catalog = JSON.parse(await EntryManifest.buildManifestBody(ctx)) as Array<{ path: string }>;
+        const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string }>;
         const note = catalog.find((e) => e.path.endsWith("notes.md"));
         assert.equal(note?.path, "notes.md", "the /notes.md member renders as bare notes.md — what the model writes back");
     } finally { await db.close(); }

@@ -41,7 +41,7 @@ const seed = async () => {
         await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, null);
     }
     // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
-    await EntryManifest.buildManifestBody(ctx);
+    await EntryManifest.maintainDerivations(ctx);
     return { db, sessionId, runId };
 };
 

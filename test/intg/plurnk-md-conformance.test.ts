@@ -229,7 +229,7 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
         await new Known().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Known().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
-        await EntryManifest.buildManifestBody(ctx);  // store real embeddings via the daughter
+        await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the daughter
         const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a"]);

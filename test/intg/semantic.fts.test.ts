@@ -36,7 +36,7 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
         const ctx = makeSchemeCtx({ db, sessionId, runId });
         await new Known().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
         await new Known().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
-        await EntryManifest.buildManifestBody(ctx);
+        await EntryManifest.maintainDerivations(ctx);
 
         assert.deepEqual(await fts(db, sessionId, "processPayment"), ["/pay.ts"]);
         assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"]);
@@ -45,7 +45,7 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
         // Change pay.ts: re-index must drop the old term and add the new one;
         // auth.ts is unchanged (gate skips it) and stays indexed.
         await new Known().edit(editStmt(url("pay.ts"), "export function refund() {}\n"), ctx);
-        await EntryManifest.buildManifestBody(ctx);
+        await EntryManifest.maintainDerivations(ctx);
         assert.deepEqual(await fts(db, sessionId, "processPayment"), [], "old term gone after re-index");
         assert.deepEqual(await fts(db, sessionId, "refund"), ["/pay.ts"], "new term indexed");
         assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"], "unchanged entry stays indexed");
@@ -85,11 +85,11 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
             ["auth.ts", "authenticate the user", [1, 0, 0]],
         ];
         for (const [p, c] of ENTRIES) await new Known().edit(editStmt(url(p), c), ctx);
-        await EntryManifest.buildManifestBody(ctx);  // FTS-indexes every entry
+        await EntryManifest.maintainDerivations(ctx);  // FTS-indexes every entry
         for (const [p, , v] of ENTRIES) {
             const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
             assert.ok(e);
-            // buildManifestBody stored a real one-chunk embedding; clear it and seed
+            // maintainDerivations stored a real one-chunk embedding; clear it and seed
             // the deterministic test vector as the entry's single chunk.
             await (db.embedding_delete as PrepMethod).run({ entry_id: e.id });
             await (db.embedding_set as PrepMethod).run({ entry_id: e.id, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob(v), embedding_model: "test-model" });
@@ -116,7 +116,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         // gets only an orthogonal chunk.
         await new Known().edit(editStmt(url("doc.ts"), "alpha payment beta\nmore text here\nthe needle payment"), ctx);
         await new Known().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
-        await EntryManifest.buildManifestBody(ctx);
+        await EntryManifest.maintainDerivations(ctx);
         const idOf = async (p: string): Promise<number> => {
             const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
             assert.ok(e, `entry ${p} found`);

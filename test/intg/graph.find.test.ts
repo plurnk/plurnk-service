@@ -48,7 +48,7 @@ const seed = async () => {
     }
     // @graph derives at manifest-add (engine-side, §mimetype) — building the manifest
     // walks every entry and populates the symbol index from its content.
-    await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId, runId }));
+    await EntryManifest.maintainDerivations(makeSchemeCtx({ db, sessionId, runId }));
     return { db, sessionId, runId };
 };
 
@@ -96,7 +96,7 @@ test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", as
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
         await new Known().edit(editStmt(url("b.ts"), "export const x = 1;\n"), makeSchemeCtx({ db, sessionId, runId }));
-        await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId, runId }));  // re-derive at manifest-add
+        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, sessionId, runId }));  // re-derive at manifest-add
         const r = await find(db, sessionId, runId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
@@ -122,13 +122,13 @@ test("[#186-graph-gate] manifest-add re-derives only on content change (the deep
         } as unknown as typeof DEFAULT_MIMETYPES;
         const gctx = { ...ctx, mimetypes: counting };
 
-        await EntryManifest.buildManifestBody(gctx);
+        await EntryManifest.maintainDerivations(gctx);
         assert.equal(parses, 1, "first sight: content unseen → derive");
-        await EntryManifest.buildManifestBody(gctx);
+        await EntryManifest.maintainDerivations(gctx);
         assert.equal(parses, 1, "unchanged: deep_hash matches → skip the parse");
 
         await new Known().edit(editStmt(url("a.ts"), "export function bar() {}\n"), ctx);
-        await EntryManifest.buildManifestBody(gctx);
+        await EntryManifest.maintainDerivations(gctx);
         assert.equal(parses, 2, "content changed → re-derive");
     } finally { db.close(); }
 });

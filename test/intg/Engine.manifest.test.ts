@@ -132,8 +132,7 @@ test("[#21] manifest stamps live seconds= on an active stream, absent for static
         const execId = await seedEntryWithChannel(db, { sessionId, runId, scheme: "sh", pathname: "/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
         await ChannelWrite.openSubscription(db, { runId, entryId: execId, scheme: "sh", handle: "sh: sleep 30" });
 
-        const body = await EntryManifest.buildManifestBody(makeSchemeCtx({ db, sessionId }));
-        const catalog = JSON.parse(body) as Array<{ path: string; seconds?: number; channels: object }>;
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId })) as Array<{ path: string; seconds?: number; channels: object }>;
 
         const stream = catalog.find((e) => e.path === "sh:///1/1/1");
         const stat = catalog.find((e) => e.path === "known:///static/note");
@@ -154,7 +153,7 @@ test("[note4] manifest keys channels by addressable URI — default bare, non-de
         await (db.test_seed_channel as PrepMethod).run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
         // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
         const ctx = makeSchemeCtx({ db, sessionId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
-        const catalog = JSON.parse(await EntryManifest.buildManifestBody(ctx)) as Array<{ path: string; channels: Record<string, unknown> }>;
+        const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string; channels: Record<string, unknown> }>;
         const stream = catalog.find((e) => e.path === "sh:///1/1/2");
         assert.ok(stream, "exec stream listed");
         assert.deepEqual(Object.keys(stream.channels).toSorted(), ["sh:///1/1/2", "sh:///1/1/2#stderr"],
