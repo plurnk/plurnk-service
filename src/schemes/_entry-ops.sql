@@ -18,3 +18,14 @@ WHERE e.scope = 'session'
   AND e.pathname = $pathname
   AND ec.name = $channel;
 
+-- PREP: ops_read_channel_run
+-- Run-scope twin of ops_read_channel (§run-scheme).
+SELECT ec.content, ec.mimetype
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+WHERE e.scope = 'run'
+  AND e.session_id = $session_id
+  AND e.scheme IS $scheme
+  AND e.pathname = $pathname
+  AND ec.name = $channel;
+

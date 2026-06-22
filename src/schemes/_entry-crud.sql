@@ -19,6 +19,18 @@ INSERT INTO entries (scope, session_id, scheme, pathname)
 VALUES ('session', $session_id, $scheme, $pathname)
 RETURNING id;
 
+-- PREP: crud_find_run_entry
+-- Run-scope twin of crud_find_session_entry (§run-scheme). A run entry is keyed
+-- (scope='run', scheme='run', pathname); the owning run rides the pathname's first
+-- segment (the folded run:// authority), so there is no run_id column.
+SELECT id FROM entries
+WHERE scope = 'run' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
+
+-- PREP: crud_insert_run_entry
+INSERT INTO entries (scope, session_id, scheme, pathname)
+VALUES ('run', $session_id, $scheme, $pathname)
+RETURNING id;
+
 -- PREP: crud_register_session_member
 -- Idempotent bare-membership insert (SPEC §membership D4 — git ls-files membership).
 -- A git-tracked file is a session member by virtue of being tracked; the row
