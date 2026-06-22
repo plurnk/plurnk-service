@@ -8,6 +8,11 @@
 SELECT id FROM runs WHERE session_id = $session_id AND name = $name
 ORDER BY id DESC LIMIT 1;
 
+-- PREP: run_name_by_id
+-- A run's name from its id (§run-scheme) — the run:/// self-fold resolves the
+-- acting run (ctx.runId) to its name to key its run-scope entries by authority.
+SELECT name FROM runs WHERE id = $run_id;
+
 -- PREP: run_count_active
 -- Runs in a session with a non-terminal loop (status 100 pending / 102 in-progress)
 -- — "active" for the PLURNK_SESSION_RUNS_MAX_ACTIVE ceiling (run-cap.ts).
