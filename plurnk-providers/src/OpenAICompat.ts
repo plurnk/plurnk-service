@@ -57,6 +57,7 @@ export type OpenAICompatConfig = {
     gbnfDebug?: boolean;                        // PLURNK_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
+    balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → ProviderResponse.balancePico (plurnk only, #23); default unset
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
@@ -143,6 +144,7 @@ export default class OpenAICompatProvider implements Provider {
     #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
+    #balanceMetaKey: string | undefined;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -163,6 +165,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
+        this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
     }
@@ -226,10 +229,12 @@ export default class OpenAICompatProvider implements Provider {
     #grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
         switch (this.#grammarStyle) {
-            // llama.cpp greedy-decodes under hard constraint and loops without
-            // the repeat-penalty floor (#9) — it rides with the grammar here.
+            // Greedy decoding under hard constraint loops without a repeat-penalty
+            // floor (#9, SPEC §13) — every grammar path carries it. llama.cpp spells
+            // it `repeat_penalty`; the OpenAI-compat (Fireworks) shape is `repetition_penalty`
+            // (verified honored live, #20).
             case "llamacpp": return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
-            case "response_format": return { response_format: { type: "grammar", grammar } };
+            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
             case "none": return {};
         }
     }
@@ -284,6 +289,16 @@ export default class OpenAICompatProvider implements Provider {
         } catch (cause) {
             throw new Error(`grammar validation (PLURNK_GBNF_DEBUG): invalid GBNF — ${(cause as Error).message}`, { cause });
         }
+    }
+
+    // #23: lift the backend's reported account balance (pico-USD) off the raw
+    // response's top-level metadata into the typed `balancePico` — ONLY when the
+    // spec named the field (the plurnk endpoint). The service reads `balancePico`,
+    // never `assistantRaw`. Non-numeric / absent → undefined (null-honest).
+    #extractBalance(meta: Record<string, unknown>): number | undefined {
+        if (this.#balanceMetaKey === undefined) return undefined;
+        const v = meta[this.#balanceMetaKey];
+        return typeof v === "number" && Number.isFinite(v) ? v : undefined;
     }
 
     async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
@@ -347,6 +362,8 @@ export default class OpenAICompatProvider implements Provider {
         // content reaches the consumer — only when we actually sent one.
         if (sendGrammar !== undefined) this.#verifyGrammarEnforced(sendGrammar, raw.content);
 
+        const balancePico = this.#extractBalance(raw.chunkMetadata);
+
         return {
             assistant: {
                 content: raw.content,
@@ -356,6 +373,7 @@ export default class OpenAICompatProvider implements Provider {
                 model: raw.model ?? this.#model,
             },
             assistantRaw: raw,
+            ...(balancePico !== undefined ? { balancePico } : {}),
         };
     }
 }

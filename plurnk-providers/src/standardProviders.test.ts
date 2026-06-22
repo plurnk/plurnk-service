@@ -546,6 +546,29 @@ test("plurnk: a 401 is classified unauthorized — terminal, never retried", asy
     mock.restoreAll();
 });
 
+test("plurnk: surfaces balancePico from the endpoint's balance_pico field (#23)", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+        const u = String(url);
+        if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "plurnk", meta: { n_ctx: 49152 } }] }), { status: 200 });
+        // plurnk has detectLlamaServer:false → streams; balance rides as a top-level field on a chunk.
+        const sse = 'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"balance_pico":880000000}\n\ndata: [DONE]';
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }), { status: 200 });
+    });
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    const res = await p!.generate({ runId: "r", messages: [] });
+    assert.equal(res.balancePico, 880000000);
+    mock.restoreAll();
+});
+
+test("a third-party (non-plurnk) provider never surfaces balancePico even if the wire carries it", async () => {
+    mock.method(globalThis, "fetch", async () =>
+        new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
+    const res = await p!.generate({ runId: "r", messages: [] });
+    assert.equal("balancePico" in res, false); // groq has no balanceMetaKey — structurally can't surface it
+    mock.restoreAll();
+});
+
 test("plurnk: reads its window from upstream but stays a plain OpenAI client — no grammar, no slot pinning, despite a meta block", async () => {
     // The mock's /models returns a meta block (a llama-server fingerprint), yet
     // detectLlamaServer:false means plurnk reads only the window and refuses every

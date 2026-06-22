@@ -188,7 +188,8 @@ test("grammar transport 'response_format': response_format.grammar, no top-level
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.response_format, { type: "grammar", grammar: 'root ::= "x"' });
     assert.equal("grammar" in body, false);          // not the llama.cpp shape
-    assert.equal("repeat_penalty" in body, false);
+    assert.equal("repeat_penalty" in body, false);   // llama.cpp spelling not used here
+    assert.equal(body.repetition_penalty, 1.15);     // the floor still rides (OpenAI-compat spelling, #20)
 });
 
 // A response_format grammar is the one case the spine drops streaming for, even
@@ -305,6 +306,29 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
         /grammar validation \(PLURNK_GBNF_DEBUG\): invalid GBNF/,
     );
     assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
+});
+
+// — balancePico (provider→client account balance, #23) —
+
+test("balancePico: lifted from the named metadata field when the spec opts in", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
+    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 });
+    const res = await p.generate({ runId: "r", messages: [] });
+    assert.equal(res.balancePico, 4_200_000);
+});
+
+test("balancePico: omitted (key absent) when the provider has no balanceMetaKey — no mining of others' responses", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false });
+    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 }); // present on the wire, but this provider doesn't read it
+    const res = await p.generate({ runId: "r", messages: [] });
+    assert.equal("balancePico" in res, false);
+});
+
+test("balancePico: a non-numeric balance field is ignored (null-honest)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
+    installFetchJson({ ...jsonChoice, balance_pico: "lots" });
+    const res = await p.generate({ runId: "r", messages: [] });
+    assert.equal("balancePico" in res, false);
 });
 
 // — first-party telemetry headers (attribution + client, SPEC §5) —

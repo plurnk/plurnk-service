@@ -35,6 +35,11 @@ export interface ProviderAssistant {
 export interface ProviderResponse {
     readonly assistant: ProviderAssistant;
     readonly assistantRaw: unknown;
+    // Provider→client account balance in pico-USD (matches cost units), when the
+    // backend reports it per response. ONLY the plurnk hosted endpoint populates
+    // this; every other provider omits it (undefined) — same null-honest contract
+    // as contextSize. The consumer must NOT mine assistantRaw for it (SPEC §2/#23).
+    readonly balancePico?: number;
 }
 
 export interface Provider {

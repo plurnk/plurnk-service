@@ -69,6 +69,9 @@ type StandardProviderSpec = {
     // structurally incapable of reaching a third-party backend (never sold,
     // never leaked — the destination is the consent boundary).
     firstPartyMetadata?: boolean;
+    // Top-level response field the endpoint reports account balance (pico-USD) in,
+    // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
+    balanceMetaKey?: string;
     tokenizerDefault: TokenizerFamily;
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
@@ -176,7 +179,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
         reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
-        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true,
+        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico",
     },
 });
 
@@ -344,6 +347,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         gbnfDebug: env.PLURNK_GBNF_DEBUG !== undefined && env.PLURNK_GBNF_DEBUG !== "" && env.PLURNK_GBNF_DEBUG !== "0",
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
+        balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,
     });
