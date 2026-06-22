@@ -683,6 +683,13 @@ export default class Engine {
         // writes consume low indices; model ops continue from there.
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
+        // #269 — loops.sequence is the loop's ordinal WITHIN the run. Turn-0 foists that belong to the
+        // RUN (manifest preview, AGENTS, operator docs) gate on the run's FIRST loop, not every loop's
+        // first turn; per-loop foists (the prompt, @file) still fire each loop. Read once, turn-1 only.
+        const loopRow = seq === 1
+            ? await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId })
+            : undefined;
+        const runFirstLoop = (loopRow?.sequence ?? 0) === 1;
         const openRow = await (this.#db.engine_open_turn as PrepMethod).get<{ id: number }>({
             loop_id: loopId, sequence: seq,
         });
@@ -710,7 +717,8 @@ export default class Engine {
             // #231 — env docs (PLURNK_MD_*) UNION the session's client docs; foist a READ of
             // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
             const { mdDocs } = await SessionSettings.read(this.#db, sessionId);
-            for (const doc of await SessionSettings.resolveDocs(mdDocs)) {
+            // #269 — operator docs are run-once; foist them only on the run's first loop.
+            for (const doc of runFirstLoop ? await SessionSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
                     username: null, password: null, hostname: null, port: null,
@@ -726,7 +734,7 @@ export default class Engine {
                 });
                 nextActionIndex++;
             }
-            const promptRow = await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId });
+            const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptPath: UrlPath = {
                     kind: "url", raw: `plurnk://prompt/${loopId}/${seq}`,
@@ -794,7 +802,7 @@ export default class Engine {
             // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
             const { manifestItems: sessionMI, autoReadAgents } = await SessionSettings.read(this.#db, sessionId);
             const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
-            if (manifestItems !== null) {
+            if (manifestItems !== null && runFirstLoop) { // #269 — manifest preview is run-once
                 const manifestRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, lineMarker: null,
                     target: {
@@ -816,7 +824,7 @@ export default class Engine {
             // convention → not a git member); the engine READs it here so its body is part of
             // turn-1's log — a normal file:/// member READ (the model sees only the READ; it
             // stays read-write, so the model edits the scratchpad back as it evolves).
-            if (autoReadAgents === true) {
+            if (autoReadAgents === true && runFirstLoop) { // #269 — AGENTS read is run-once
                 const agentsMember = await (this.#db.crud_get_member_sig as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/AGENTS.md" });
                 if (agentsMember !== undefined) {
                     const agentsRead: ReadStatement = {

@@ -127,3 +127,32 @@ test("session.create rejects malformed settings — fail hard, no silent accept 
         } finally { ws.close(); }
     });
 });
+
+// #269 — turn-0 run-once foists (manifest preview, AGENTS, operator docs) fire on the run's FIRST
+// loop only; later loops in the same run already carry them in the persistent log, so re-foisting
+// each loop spammed the log + burned tokens. Two loops in one run: the manifest READ is in loop 1's
+// log, absent from loop 2's.
+test("[#269] turn-0 run-once foists fire on the run's first loop only, not every loop", async () => {
+    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    process.env.PLURNK_MANIFEST_ITEMS = "-1"; // preview ON
+    try {
+        const twoLoops = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50), makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        await withDaemon(twoLoops, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "foist-once" });
+                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
+                const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
+                const manifestRead = async (loopId: number) => {
+                    const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                    return rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/manifest.json");
+                };
+                assert.ok((await manifestRead((r1 as { loopId: number }).loopId)) !== undefined, "run's first loop foists the manifest preview");
+                assert.equal(await manifestRead((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the run's log (#269)");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
