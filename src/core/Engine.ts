@@ -1956,11 +1956,11 @@ export default class Engine {
     async #handleRunFork(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
         if (target === null) return { status: 400, error: "run:// fork requires a source run" };
-        const name = pathnameFromPath(target).replace(/^\/+/, "");
+        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
         let srcRunId = ctx.runId;
         if (name !== "" && name !== ".") {
             const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-            if (row === undefined) return { status: 404, error: `run:///${name} not found in this session` };
+            if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
             srcRunId = row.id;
         }
         if (ctx.injectRun === undefined) throw new Error("run fork: injectRun capability absent");
@@ -2042,11 +2042,11 @@ export default class Engine {
             // terminate — abort any run by address; whoever holds it may end it.
             // `.`/"" = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
-            const name = pathnameFromPath(path).replace(/^\/+/, "");
+            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
             let runId = ctx.runId;
             if (name !== "" && name !== ".") {
                 const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-                if (row === undefined) return { status: 404, error: `run:///${name} not found in this session` };
+                if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
                 runId = row.id;
             }
             if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
@@ -2306,8 +2306,10 @@ export default class Engine {
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
         // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
-        // namespace: keep it in hostname.
-        const foldNs = scheme !== null && this.#schemes.has(scheme);
+        // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
+        // run selector (§run-scheme), and run:/// (self) must stay distinct from run://name, so Run.ts
+        // folds the owner into the storage path itself, never here.
+        const foldNs = scheme !== null && scheme !== "run" && this.#schemes.has(scheme);
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,

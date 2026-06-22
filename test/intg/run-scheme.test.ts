@@ -7,17 +7,26 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement, KillStatement } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, CopyStatement, KillStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 import { editStmt, sendStmt } from "./_dsl.ts";
 
+// §run-scheme — the run is the AUTHORITY: run://<name> (name in hostname), not run:///<name>.
+// "." stays the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
 const runPath = (name: string): ParsedPath => ({
-    kind: "url", raw: `run:///${name}`, scheme: "run",
-    username: null, password: null, hostname: null, port: null,
-    pathname: `/${name}`, params: {}, fragment: null,
+    kind: "url", raw: `run://${name}`, scheme: "run",
+    username: null, password: null, hostname: name, port: null,
+    pathname: "", params: {}, fragment: null,
+});
+
+// A run-scope STORAGE address: run://<owner>/<path> ("" owner = self), entry path present.
+const runEntry = (owner: string, path: string): ParsedPath => ({
+    kind: "url", raw: `run://${owner}/${path}`, scheme: "run",
+    username: null, password: null, hostname: owner, port: null,
+    pathname: `/${path}`, params: {}, fragment: null,
 });
 
 // The Daemon.inject seam as a recording stub — its drain/enqueue behavior is
@@ -193,5 +202,34 @@ test("[§run-scheme-terminate] KILL(run:///name) aborts a sister by address; a m
         const missing = await engine.dispatch({ statement: killGhost, sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
+    } finally { await db.close(); }
+});
+
+test("run-scope scratch: self EDIT writes the run partition; cross-run READ reaches it; cross-run WRITE is 403", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
+        const sessionId = await insertSession(db, `run-store-${crypto.randomUUID()}`);
+        const meId = await insertRun(db, sessionId, null, "me");
+        const otherId = await insertRun(db, sessionId, null, "other");
+        const loopId = await insertLoop(db, meId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const readOf = (target: ParsedPath): ReadStatement => ({ op: "READ", suffix: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
+
+        // self EDIT(run:///note.md) — a self-owned run-scope entry; the empty authority folds to "me".
+        const write = await engine.dispatch({ statement: editStmt(runEntry("", "note.md"), "scratch"), sessionId, runId: meId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(write.status, 201, "self scratch write creates the entry");
+        const stored = await (db.crud_find_run_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "run", pathname: "/me/note.md" });
+        if (stored === undefined) throw new Error("entry must be keyed (scope='run', /me/note.md) — owner folded from the empty authority");
+
+        // cross-run READ(run://me/note.md) from 'other' — reaches the sister's scratch (perspective-private, not ACL).
+        const otherLoop = await insertLoop(db, otherId, 1, "go");
+        const otherTurn = await insertTurn(db, otherLoop, 1, 102);
+        const readCross = await engine.dispatch({ statement: readOf(runEntry("me", "note.md")), sessionId, runId: otherId, loopId: otherLoop, turnId: otherTurn, sequence: 1, origin: "model" });
+        assert.equal(readCross.status, 200, "cross-run READ reaches a sister's scratch by address");
+
+        // cross-run EDIT(run://me/note.md) from 'other' — denied (write is self-only).
+        const writeCross = await engine.dispatch({ statement: editStmt(runEntry("me", "note.md"), "tamper"), sessionId, runId: otherId, loopId: otherLoop, turnId: otherTurn, sequence: 2, origin: "model" });
+        assert.equal(writeCross.status, 403, "cross-run WRITE is denied — read a sister's notes, never write them");
     } finally { await db.close(); }
 });

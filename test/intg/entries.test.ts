@@ -191,9 +191,9 @@ test("entries: partial indexes exist", async () => {
     try {
         const indexes = await (db.test_entries_partial_indexes as PrepMethod).all<{ name: string; sql: string }>();
         const names = indexes.map((i) => i.name).sort();
-        assert.deepEqual(names, ["entries_session_identity"]);
+        assert.deepEqual(names, ["entries_run_identity", "entries_session_identity"]);
         for (const idx of indexes) {
-            assert.match(idx.sql, /WHERE scope = 'session'/);
+            assert.match(idx.sql, /WHERE scope = '(session|run)'/); // the session + run identity partials
             assert.match(idx.sql, /UNIQUE/);
         }
     } finally { await db.close(); }

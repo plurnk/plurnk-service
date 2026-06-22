@@ -109,7 +109,7 @@ CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    scope      TEXT    NOT NULL             CHECK (scope IN ('session')),
+    scope      TEXT    NOT NULL             CHECK (scope IN ('session', 'run')),
     session_id INTEGER,
     scheme     TEXT                         CHECK (scheme IS NULL OR length(scheme) > 0),
     username   TEXT,
@@ -144,6 +144,8 @@ CREATE TABLE IF NOT EXISTS entries (
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
+-- §run-scheme — run-scope entries key (session, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no run_id).
+CREATE UNIQUE INDEX IF NOT EXISTS entries_run_identity ON entries (session_id, scheme, pathname) WHERE scope = 'run';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
