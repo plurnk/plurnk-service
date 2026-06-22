@@ -68,6 +68,25 @@ test("Engine.dispatch: KILL against known:/// permanently deletes the entry (200
     } finally { await db.close(); }
 });
 
+test("Engine.dispatch: known://x (authority form) folds to the same entry as known:///x — RFC namespace authority", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // create via the path form: known:///config.json => /config.json
+        await engine.dispatch({
+            statement: editStmt({ target: urlPath("known", "/config.json"), body: "host=db.internal" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+        });
+        // known://config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
+        // the same entry the path form created. Without the fold the authority drops to "" and this 404s.
+        const authForm: UrlPath = { kind: "url", raw: "known://config.json", scheme: "known", username: null, password: null, hostname: "config.json", port: null, pathname: "", params: {}, fragment: null };
+        const read = await engine.dispatch({
+            statement: readStmt({ target: authForm }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     const { db, engine, env } = await setup();
     try {

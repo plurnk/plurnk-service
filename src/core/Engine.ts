@@ -2293,10 +2293,11 @@ export default class Engine {
         if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
         const scheme = path.scheme === "file" ? null : path.scheme;
-        // plurnk uses its authority as a namespace — fold it into the canonical pathname so the
-        // log keys identically to the entry (/prompt/<loop>, /docs/x.md). A web host (http://) is
-        // NOT a namespace: keep it in hostname.
-        const foldNs = scheme === "plurnk";
+        // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
+        // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
+        // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
+        // namespace: keep it in hostname.
+        const foldNs = scheme !== null && this.#schemes.has(scheme);
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,

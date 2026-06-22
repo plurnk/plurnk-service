@@ -16,6 +16,7 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import { Paths } from "../../src/index.ts";
 import Yolo from "../../src/server/yolo.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "../intg/_helpers.ts";
+import { parseDsl } from "../intg/_rpc.ts";
 
 const TIMEOUT = 240_000;
 
@@ -73,11 +74,14 @@ const runLoop = async (s: LiveSetup, prompt: string, maxTurns = 8): Promise<{ st
     return { status: result.finalStatus, turnIds: result.turnIds, lastContent };
 };
 
-// Seed an entry directly with its mimetype. Crucially: the model never WRITES the
-// JSON/HTML, so it can't answer from memory — it must actually exercise the matcher
-// to extract a value it never saw. Model-driven setup masked the dialect; this forces it.
-const seed = async (s: LiveSetup, pathname: string, content: string, mimetype: string): Promise<void> => {
-    const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: "known", pathname });
+// Seed the entry a READ of `reference` addresses, resolving (scheme, pathname) through the SAME
+// grammar parse the READ uses — so seed and read can't drift on the RFC-3986 authority/path split
+// (known:///x => empty authority + path-abempty "/x"). The model never WRITES the content, so a green
+// proves it drove the matcher, not its memory.
+const seed = async (s: LiveSetup, reference: string, content: string, mimetype: string): Promise<void> => {
+    const read = parseDsl(`<<PLAN::PLAN\n<<READ(${reference}):x:READ`).find((st) => st.op === "READ") as { target: { scheme: string | null; pathname: string } } | undefined;
+    if (read === undefined) throw new Error(`seed: unparseable reference ${reference}`);
+    const e = await (s.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: s.sessionId, scheme: read.target.scheme, pathname: read.target.pathname });
     if (e === undefined) throw new Error("seed: insert returned no row");
     await (s.db.crud_write_channel as PrepMethod).run({ entry_id: e.id, name: "body", content, mimetype, tokens: 0, state: "static" });
 };
@@ -85,7 +89,7 @@ const seed = async (s: LiveSetup, pathname: string, content: string, mimetype: s
 test("live: jsonpath $.field on known:///config.json extracts a value", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("jsonpath-field");
     try {
-        await seed(s, "config.json", '{"host":"db.internal","pool":5}', "application/json");
+        await seed(s, "known:///config.json", '{"host":"db.internal","pool":5}', "application/json");
         const prompt = [
             "Two-step probe. The entry known:///config.json already holds a JSON object with host and pool fields.",
             "1) <<READ(known:///config.json):$.host:READ",
@@ -100,7 +104,7 @@ test("live: jsonpath $.field on known:///config.json extracts a value", { timeou
 test("live: jsonpath $.users[*].name wildcard extracts list", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("jsonpath-wildcard");
     try {
-        await seed(s, "team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
+        await seed(s, "known:///team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
         const prompt = [
             "Two-step probe. The entry known:///team.json already holds a JSON object with a users array.",
             "1) <<READ(known:///team.json):$.users[*].name:READ",
@@ -116,7 +120,7 @@ test("live: jsonpath $.users[*].name wildcard extracts list", { timeout: TIMEOUT
 test("live: xpath //h1/text() on known:///page.html extracts heading text", { timeout: TIMEOUT }, async () => {
     const s = await liveSetup("xpath-h1");
     try {
-        await seed(s, "page.html", "<html><body><h1>Welcome</h1></body></html>", "text/html");
+        await seed(s, "known:///page.html", "<html><body><h1>Welcome</h1></body></html>", "text/html");
         const prompt = [
             "Two-step probe. The entry known:///page.html already holds an HTML page with an h1 heading.",
             "1) <<READ(known:///page.html)://h1/text():READ",
@@ -133,7 +137,7 @@ test("live: jsonpath compose-chain — extract then pick first via structural <L
     // <L> on the log entry picks the Nth match without jsonpath syntax.
     const s = await liveSetup("compose-jsonpath-L");
     try {
-        await seed(s, "team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
+        await seed(s, "known:///team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json");
         const prompt = [
             "Three-step probe. The entry known:///team.json already holds a JSON object with a users array.",
             "1) <<READ(known:///team.json):$.users[*].name:READ",
