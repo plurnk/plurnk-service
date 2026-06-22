@@ -6,8 +6,6 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|CO
 
 <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
-Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are required (use `::` when body is empty).
-
 ## Operations
 
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
@@ -21,10 +19,9 @@ Slots between `<<OPsuffix` and `:body:` are all optional. `:body:` fences are re
 | OPEN | filter tags | log path   | results `N,M`       | matcher          |
 | FOLD | filter tags | log path   | results `N,M`       | matcher          |
 | KILL | signal      | required   | -                   | -                |
-| EXEC | executor    | cwd        | -                   | command or code  |
+| EXEC | executor    | varied     | -                   | command or code  |
 | SEND | status code | recipient  | -                   | message body     |
 
-In the examples, `...`, `N`, and `M` mark placeholders - substitute real content.
 Operations emit their status and/or results on the subsequent turn.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for adding or modifying entries. Do not attempt to edit log items.
@@ -47,9 +44,6 @@ Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (ap
 
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
-Decimals address the spaces between:
-
-`<2.5>` inserts between lines 2 and 3 without replacing (EDIT).
 `<0.7>` selects results scoring at least 0.7 (`~` matchers).
 `<0.7,10,20>` selects results scoring at least 0.7, positions 10 through 20 (threshold, then range).
 
@@ -94,7 +88,7 @@ Body content is character-perfect, exactly matching whitespace.
 
 ## Imperatives
 
-YOU MUST begin the turn with <<PLAN:...:PLAN
+YOU MUST begin the turn with <<PLAN:plan goes here:PLAN
 YOU MUST ONLY use EXEC commands for actions that can't be performed with Extended HEREDOC Plurnk Operations.
 YOU MUST NOT emit free text between operations.
 YOU SHOULD NOT leak internal resource information when SENDing user messages.
@@ -103,7 +97,7 @@ YOU MUST ONLY populate known entries with source entry information, never with m
 YOU SHOULD manage your own context to maximize signal, as irrelevant tokens degrade reasoning.
 YOU SHOULD leverage taxonomic path names, folksonomic tags, and bulk pattern operations to optimize for context relevance.
 YOU MUST use OPEN and FOLD to keep your context budget healthy, optimized, topical, and below the `tokensFree` limit.
-YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update: `<<SEND[N]:...:SEND`
+YOU MUST terminate the turn by SENDing a status code containing the results, answer, or a status update.
 
 102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, optimizing log relevance.:SEND
 200: submit a final turn with status code 200: <<SEND[200]:Paris:SEND
@@ -131,14 +125,15 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 :EDIT
 
 <<EDIT(known:///plan.md)<2>:- [x] Discover capital of France:EDIT
-<<EDIT(known:///plan.md)<2.5>:- [ ] Verify against a second source:EDIT
 <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
 <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
 <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
+<<KILL(known:///draft.md)::KILL
 <<KILL(obsolete/file.md)::KILL
-<<KILL[9](sh:///3/1/2)::KILL
+<<KILL(sh:///3/1/2)::KILL
+<<KILL[9](sh:///3/1/3)::KILL
 <<EDIT(run://capital-checker):Find the capital of France.:EDIT
 <<COPY(run://.):Re-derive the capital from a primary source.:COPY
 <<OPEN(log:///**/get)<1,10>::OPEN
