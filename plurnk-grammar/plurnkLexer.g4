@@ -102,6 +102,16 @@ OPEN_PLAN : '<<PLAN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 // require "nothing but WS" between/after ops in a turn: WS is invisible to rules, while
 // any non-WS TEXT between ops makes the turn invalid.
 WS   : [ \t\r\n]+ -> channel(HIDDEN) ;
+
+// Optional in-band reasoning enclosures (when a model's reasoning is NOT channel-split
+// above the grammar and lands in the text stream): absorb the WHOLE `<think>…</think>` /
+// `<|channel>…<channel|>` block as one TEXT token, so a `<<PLAN` (or any op) DRAFTED while
+// reasoning is not lexed as an opener and never mis-anchors the turn. Maximal munch wins
+// over TEXT (which would stop at the inner `<<OP`); an UNCLOSED enclosure has no match and
+// falls through to TEXT. Mirrors the GBNF optional reasoning block — keeps L(GBNF) ⊆ L(ANTLR).
+THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
+CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
+
 TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[< \t\r\n])+ ;
 
 // ============================================================================

@@ -87,6 +87,27 @@ const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => 
     model.set(`${name}-b0ne`, alts);
 };
 
+// General single-literal complement automaton: any text containing no occurrence of
+// `literal`. Same shape as bodyRules but parameterized on the restart char (the literal's
+// first char). Valid when that first char does not recur inside the literal and the literal
+// is borderless (true for `</think>` and `<channel|>` — both start with `<`, no internal
+// `<`, no proper prefix==suffix). Used for the OPTIONAL reasoning enclosures: the body is a
+// complement over the CLOSER, so a `<<PLAN` (or any op) drafted INSIDE reasoning is just
+// content — never the anchor — and the closer (`</think>` / `<channel|>`) is always
+// reachable. That defuses the unclosed-enclosure trap when reasoning lands in-band.
+const forbidLiteral = (model: GModel, name: string, literal: string): void => {
+    const first = literal[0];
+    for (let k = 0; k < literal.length; k++) {
+        const expected = literal[k];
+        const alts: GRule = [];
+        if (k + 1 < literal.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
+        if (k > 0 && expected !== first) alts.push([lit(first), ref(`${name}-b1`)]);
+        alts.push([bodyOther(k === 0 ? first : `${first}${expected}`), ref(`${name}-b0`)]);
+        alts.push([]);
+        model.set(`${name}-b${k}`, alts);
+    }
+};
+
 // Free-text preamble before the PLAN anchor: any text completing NO `<<OP` opener
 // (FIND…PLAN…SEND) — an Aho-Corasick complement over the opener trie. Keeping the
 // preamble opener-free preserves L(GBNF) ⊆ L(ANTLR): every preamble char re-lexes as
@@ -264,7 +285,19 @@ export const buildModel = (): GModel => {
     // preplan: the free reasoning prefix — any text completing no `<<OP` opener, so the
     // first `<<PLAN` is the unambiguous anchor and the preamble re-lexes as pure TEXT.
     preplanRules(model);
-    model.set("root-turn", [[ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
+    // Optional in-band reasoning enclosure before the anchor. When a model's reasoning is
+    // NOT channel-split (above the grammar) and lands in the constrained text stream, it
+    // arrives wrapped: DeepSeek `<think>…</think>`, gemma `<|channel>…<channel|>`. The
+    // enclosure body is a complement over the CLOSER, so a `<<PLAN` drafted while reasoning
+    // is protected content (not the anchor) and the closer is always reachable — otherwise
+    // a drafted opener anchors mid-thought and the unclosed enclosure becomes a dead packet.
+    // Optional: a channel-split (or non-reasoning) model skips straight to preplan.
+    forbidLiteral(model, "rz-think", "</think>");
+    forbidLiteral(model, "rz-chan", "<channel|>");
+    model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
+    model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
+    model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
+    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);

@@ -254,6 +254,30 @@ test("PlurnkParser.parse discards the pre-<<PLAN preamble (turn sandwich)", () =
     assert.equal(r.unparsedTail, undefined);
 });
 
+// In-band reasoning enclosures: a model that drafts a `<<PLAN` (or any op) WHILE reasoning
+// must not have that draft anchor the turn (and must be able to close its enclosure). The
+// GBNF generates the optional enclosure; ANTLR absorbs it as preamble TEXT. Both must agree
+// (subset invariant) AND parse must anchor on the REAL `<<PLAN` after the enclosure. The
+// random fuzz never emits a literal `<<PLAN` inside a reasoning body, so guard it explicitly.
+test("reasoning enclosure protects a drafted <<PLAN; parse anchors on the real one", () => {
+    const cases: Array<[string, string]> = [
+        ["think", "<think>my plan: <<PLAN:do x:PLAN then verify</think>\n<<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND"],
+        ["channel", "<|channel>thought, will <<PLAN:draft:PLAN<channel|>\n<<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND"],
+    ];
+    for (const [label, turn] of cases) {
+        assert.equal(derives("root-turn", turn), true, `GBNF should derive the ${label} enclosure turn`);
+        const r = PlurnkParser.parse(turn);
+        const stmts = r.items.filter((i) => i.kind === "statement");
+        assert.equal(r.items.filter((i) => i.kind === "error").length, 0, `${label}: ${JSON.stringify(r.items)}`);
+        const first = stmts[0]?.kind === "statement" ? stmts[0].statement : undefined;
+        // PLAN's body is a plain string (reasoning text), not a {raw} object like SEND/EDIT.
+        assert.ok(
+            first?.op === "PLAN" && first.body === "real intent",
+            `${label}: must anchor on the real PLAN, not the drafted one (got ${JSON.stringify(first?.body)})`,
+        );
+    }
+});
+
 test("PlurnkParser.parse rejects non-turns — no PLAN and SEND[N] ⇒ invalid", () => {
     const invalid = (s: string): boolean => {
         const r = PlurnkParser.parse(s);
