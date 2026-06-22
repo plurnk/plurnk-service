@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-sqlite",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "SQLite runtime executor for plurnk-service's exec scheme — runs the sqlite runtime tag in-process via node:sqlite, results as application/json.",
     "keywords": [
         "plurnk",
@@ -33,7 +33,7 @@
             {
                 "name": "sqlite",
                 "glyph": "🗃",
-                "example": "EXEC[sqlite](./app.db):SELECT count(*) FROM users:EXEC"
+                "example": "<<EXEC[sqlite](./app.db):SELECT count(*) FROM users:EXEC"
             }
         ]
     },
