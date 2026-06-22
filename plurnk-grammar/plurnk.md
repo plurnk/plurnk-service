@@ -74,7 +74,7 @@ Escape `#` inside a regex pattern as `\#`. XPath body begins with `//`. Semantic
 
 URI-shaped: `[scheme://]rest`.
 
-* Bare paths (no scheme) default to local relative project file paths.
+* Bare paths (no scheme) default to local relative project file paths. All local file paths in the manifest are relative.
 * Glob metacharacters match within path segments; a standalone `#pattern#flags` matches the whole target by regex.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
