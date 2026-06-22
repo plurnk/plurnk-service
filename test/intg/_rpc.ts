@@ -5,7 +5,7 @@ import { WebSocket } from "ws";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Daemon from "../../src/server/Daemon.ts";
-import type { Mock, MockResponse } from "@plurnk/plurnk-providers";
+import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
@@ -126,9 +126,11 @@ export const connect = (addr: DaemonAddr): Promise<WebSocket> =>
         ws.once("error", reject);
     });
 
-// Open db + daemon, run the callback, clean up. Provider is optional.
+// Open db + daemon, run the callback, clean up. Provider is optional —
+// a Mock for deterministic tiers, or a real Provider (loadActiveProvider)
+// for the live/demo tiers that drive the prod loop against a real model.
 export const withDaemon = async <T>(
-    provider: Mock | null,
+    provider: Provider | null,
     fn: (db: Db, daemon: Daemon, addr: DaemonAddr) => Promise<T>,
 ): Promise<T> => {
     const db = await openMigrated();

@@ -4,6 +4,13 @@
 // src/app.js, data/users.json, package.json) and we assert outcomes:
 // file content after edit, response text after query, etc.
 //
+// Driven through the REAL prod loop — loop.run via the daemon. session.create
+// pins the fixture as project_root; PLURNK_GIT_AUTO makes its git-committed
+// files members the production way (no hand-registered catalog), and Exec
+// defaults its cwd to project_root. runStory boots the prod Daemon directly
+// (rather than the auto-closing withDaemon) only because the db must stay open
+// for the post-loop forensic asserts; the loop itself is 100% prod.
+//
 // Patterns adopted from rummy's test/e2e/stories/:
 //   - Project fixture: real files the model can read/edit/query.
 //   - Scoped prompts: "find exactly N values" / "edit this specific
@@ -16,44 +23,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readFile as readPath } from "node:fs/promises";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
-import { Paths } from "../../src/index.ts";
-import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "../intg/_helpers.ts";
+import { liveSession, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
-
-const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes();
-    await m.ready();
-    return m;
-};
-
-const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
-const REQUIREMENTS = await readPath(Paths.defaultRequirements, "utf8");
-
-const buildProvider = async (): Promise<Provider> => {
-    const alias = resolveActiveAlias();
-    if (alias === null) throw new Error("PLURNK_MODEL not set; demo tests require a configured model alias");
-    const provider = await ProviderInstantiate.loadActiveProvider();
-    if (provider === null) throw new Error("loadActiveProvider returned null");
-    return provider;
-};
-
-const lastTurnContent = async (db: Db, turnId: number): Promise<string> => {
-    const row = await (db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: turnId });
-    const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-    return packet.assistant?.content ?? "";
-};
 
 interface StoryOpts {
     label: string;
@@ -65,9 +39,6 @@ interface StoryResult {
     db: Db;
     workspace: string;
     cleanup: () => Promise<void>;
-    sessionId: number;
-    runId: number;
-    loopId: number;
     turnIds: number[];
     finalStatus: number;
     lastContent: string;
@@ -75,56 +46,28 @@ interface StoryResult {
 }
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
-    const provider = await buildProvider();
     const fixture = await seedDemoFixture(opts.label);
-    const db = await openMigrated();
-    const schemes = new SchemeRegistry();
-    const exec = schemes.get("exec") as Exec;
-    const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
-    engine.setExecutors(await testExecutors());
-    Yolo.attachYolo(engine, db);
-    const sessionId = await insertSession(db, `demo-${opts.label}-${crypto.randomUUID()}`);
-    await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: fixture.workspace });
-    // Register the seeded files as session members — File.read is membership-gated, so
-    // without this the model cannot read the very files each prompt asks about.
-    await fixture.addToCatalog(db, sessionId);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, opts.prompt);
-    await (db.engine_set_loop_flags as PrepMethod).run({
-        loop_id: loopId, flags: JSON.stringify({ yolo: true }),
-    });
-
-    const result = await engine.runLoop({
-        provider, sessionId, runId, loopId,
-        requirements: REQUIREMENTS,
-        ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
-        messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: opts.prompt },
-        ],
-    });
-    console.error(`[story:${opts.label}] turns=${result.turnIds.length} finalStatus=${result.finalStatus} reason=${result.reason} hitMaxTurns=${result.hitMaxTurns}`);
-    await exec.idle();
-
-    const lastTurnId = result.turnIds[result.turnIds.length - 1];
-    const lastContent = lastTurnId !== undefined ? await lastTurnContent(db, lastTurnId) : "";
+    const s = await liveSession({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(
+        s, 2,
+        { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
+        { timeoutMs: TIMEOUT },
+    );
+    console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
 
     const dump = async (): Promise<void> => {
-        for (const turnId of result.turnIds) {
-            const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+        for (const turnId of turnIds) {
+            const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-            const content = packet.assistant?.content ?? "";
             console.error(`--- turn ${turnId} status=${row?.status} ---`);
-            console.error(content.slice(0, 2000));
+            console.error((packet.assistant?.content ?? "").slice(0, 2000));
         }
     };
 
     return {
-        db, workspace: fixture.workspace, cleanup: async () => { await db.close(); await fixture.cleanup(); },
-        sessionId, runId, loopId,
-        turnIds: result.turnIds,
-        finalStatus: result.finalStatus,
-        lastContent, dump,
+        db: s.db, workspace: fixture.workspace,
+        cleanup: async () => { await s.cleanup(); await fixture.cleanup(); },
+        turnIds, finalStatus, lastContent, dump,
     };
 };
 

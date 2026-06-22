@@ -1,82 +1,37 @@
+// Live OpenAI-surface coverage: a multi-turn loop the model drives to terminal,
+// and a single-shot store-and-reply. Both run through the REAL prod loop (loop.run
+// via the daemon — liveSession + liveLoop), so they exercise the path production
+// runs, not a hand-built engine. Packet-shape invariants (definition leads with the
+// sysprompt, ops==statuses) are asserted deterministically in the intg tier
+// (packet-assembled, scheme-education); here we assert the LIVE outcome — the model
+// drives the loop to a clean terminal and the right entries land in the db.
+
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
-import { Paths } from "../../src/index.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "../intg/_helpers.ts";
+import { liveSession, liveLoop } from "../_live-harness.ts";
 
-// Tests that bypass Daemon construct Mimetypes directly. Discovery scans
-// installed @plurnk/plurnk-mimetypes-* packages — none installed in this
-// repo today, so content flows through the framework's fitContent raw-
-// content fallback (still budget-bounded).
-const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes();
-    await m.ready();
-    return m;
-};
-
-const SYSTEM_PROMPT = await readFile(Paths.instructionsSystem, "utf8");
-
-const buildProvider = async (): Promise<Provider> => {
-    const alias = resolveActiveAlias();
-    if (alias === null) {
-        throw new Error(
-            "PLURNK_MODEL not set. Live tests require a configured model alias:\n" +
-            "  PLURNK_MODEL_<alias>=<provider>/<model>\n" +
-            "  PLURNK_MODEL=<alias>\n" +
-            "Plus provider-specific env (OPENAI_BASE_URL etc).",
-        );
-    }
-    const provider = await ProviderInstantiate.loadActiveProvider();
-    if (provider === null) throw new Error("loadActiveProvider returned null despite resolveActiveAlias succeeding");
-    return provider;
-};
-
-test("live OpenAI: runLoop multi-turn against macher — model drives loop to terminal", async () => {
-    const provider = await buildProvider();
-    const db = await openMigrated();
+test("live OpenAI: a multi-turn loop drives paris → tokyo → compare to terminal", async () => {
+    const s = await liveSession({ name: `live-loop-${crypto.randomUUID()}` });
     try {
         const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known:///city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known:///city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
+        const { finalStatus, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
 
-        const sessionId = await insertSession(db, `live-loop-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        // loop.prompt is what packet.user.prompt sources from via the
-        // per-turn foist (drain+inject paradigm).
-        const loopId = await insertLoop(db, runId, 1, userPrompt);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
-
-        const start = Date.now();
-        const result = await engine.runLoop({
-            provider, sessionId, runId, loopId, maxTurns: 6,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: userPrompt },
-            ],
-        });
-        const elapsed = Date.now() - start;
-
-        console.log(`\n=== multi-turn run (${result.turnIds.length} turns, final ${result.finalStatus}, ${elapsed}ms wall) ===`);
-        for (const [i, turnId] of result.turnIds.entries()) {
-            const turn = await (db.test_get_turn as PrepMethod).get<{ status: number; packet: string; usage_completion: number }>({ id: turnId });
-            const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string; reasoning: string | null } };
-            console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${turn?.usage_completion} tokens, ${packet.assistant.reasoning?.length ?? 0} reasoning chars) ---`);
+        console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
+        for (const [i, turnId] of turnIds.entries()) {
+            const turn = await (s.db.test_get_turn as PrepMethod).get<{ status: number; packet: string; usage_completion: number }>({ id: turnId });
+            const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string } };
+            console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${turn?.usage_completion} tokens) ---`);
             console.log(packet.assistant.content);
         }
 
-        const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
+        const entries = await (s.db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
         console.log("\n=== entries written ===");
         for (const e of entries) console.log(`  known:///${e.pathname}`);
 
-        // Outcome assertions — not just "the loop terminated cleanly,"
-        // which silently passed for a loop that wrote `paris` five times
-        // and never advanced. The task says: paris pop, then tokyo pop,
-        // then a comparison. Both city entries must exist.
+        // Outcome assertions — not just "the loop terminated cleanly," which silently
+        // passed for a loop that wrote `paris` five times and never advanced. The task
+        // says: paris pop, then tokyo pop, then a comparison. Both city entries must exist.
         const pathnames = entries.map((e) => e.pathname);
         assert.ok(
             pathnames.some((p) => p.includes("paris")),
@@ -86,61 +41,27 @@ test("live OpenAI: runLoop multi-turn against macher — model drives loop to te
             pathnames.some((p) => p.includes("tokyo")),
             `expected a known:///city/tokyo/* entry; got ${JSON.stringify(pathnames)} — model never advanced past turn 1`,
         );
-        assert.ok(
-            entries.length >= 2,
-            `expected at least 2 distinct entries (paris, tokyo); got ${entries.length}`,
-        );
-        assert.ok(result.turnIds.length >= 2, "multi-turn task needs more than 1 turn");
-        assert.ok(
-            [200, 499].includes(result.finalStatus),
-            `loop must terminate cleanly; got ${result.finalStatus}`,
-        );
-    } finally { await db.close(); }
+        assert.ok(entries.length >= 2, `expected at least 2 distinct entries (paris, tokyo); got ${entries.length}`);
+        assert.ok(turnIds.length >= 2, "multi-turn task needs more than 1 turn");
+        assert.ok([200, 499].includes(finalStatus), `loop must terminate cleanly; got ${finalStatus}`);
+    } finally { await s.cleanup(); }
 });
 
-test("live OpenAI: runTurn single-shot smoke", async () => {
-    const provider = await buildProvider();
-    const db = await openMigrated();
+test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () => {
+    const s = await liveSession({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
         const userPrompt = "What is the capital of France? Store the answer under known:///france/capital and reply with a single SEND[200] message containing the answer.";
-        const sessionId = await insertSession(db, `live-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, userPrompt);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: await makeMimetypes(provider) });
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 4 }, { timeoutMs: 240_000 });
 
-        const result = await engine.runTurn({
-            provider,
-            sessionId, runId, loopId,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: userPrompt },
-            ],
-        });
+        assert.ok([200, 499].includes(finalStatus), `single-shot store-and-reply terminates cleanly; got ${finalStatus}`);
+        assert.ok(turnIds.length >= 1, "at least one turn ran");
+        assert.ok(lastContent.length > 0, "model emitted non-empty content");
 
-        console.log("turn status:", result.status);
-        console.log("op statuses:", result.statuses);
-
-        const turn = await (db.test_get_turn as PrepMethod).get<{ id: number; loop_id: number; sequence: number; status: number; usage_completion: number; packet: string }>({ id: result.turnId });
-        const packetPreview = JSON.parse(turn?.packet ?? "{}") as { assistant: { reasoning: string | null; content: string } };
-        console.log("system prompt tokens (approx chars/4):", Math.ceil(SYSTEM_PROMPT.length / 4));
-        console.log("completion tokens (from provider):", turn?.usage_completion);
-        console.log("reasoning length (chars):", packetPreview.assistant.reasoning?.length ?? 0);
-        console.log("content length (chars):", packetPreview.assistant.content.length);
-        assert.ok((turn?.id ?? 0) >= 1, "turn row should exist");
-        assert.ok((turn?.status ?? 0) >= 100 && (turn?.status ?? 0) <= 599, "turn status in HTTP range");
-
-        const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.ok((logCount ?? 0) > 0, "at least one op was dispatched");
-
-        const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string; ops: unknown[] } };
-        assert.ok(packet.assistant.content.length > 0, "model emitted non-empty content");
-        assert.equal(packet.assistant.ops.length, result.statuses.length, "ops count matches dispatched statuses");
-        assert.ok(packetSection(packet, "definition").startsWith(SYSTEM_PROMPT), "definition section leads with the system prompt");
-
-        console.log("---\nmodel emitted:");
-        console.log(packet.assistant.content);
-        console.log("---\nentries written:");
-        const entries = await (db.test_parser_entries_first as PrepMethod).all<{ scheme: string; pathname: string }>();
-        for (const e of entries) console.log(`  ${e.scheme}://${e.pathname}`);
-    } finally { await db.close(); }
+        // The answer was stored where the prompt asked.
+        const entries = await (s.db.test_parser_entries_first as PrepMethod).all<{ scheme: string; pathname: string }>();
+        assert.ok(
+            entries.some((e) => /france|capital/.test(e.pathname)),
+            `the answer was stored under known:///france/capital; got ${JSON.stringify(entries.map((e) => e.pathname))}`,
+        );
+    } finally { await s.cleanup(); }
 });

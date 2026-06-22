@@ -6,38 +6,17 @@
 // it worked. The communicated ceiling is shrunk, not the real window, so this
 // isolates "does the readout MOTIVATE curation" with no real-413 confound.
 // Run + digest (bin/digest.ts) to analyze the failure together.
+//
+// Driven through the REAL prod loop (loop.run via the daemon). The ceiling is a
+// tasteful .env tuning — set before liveSession boots the daemon so its engine
+// captures it at construction; project_root + PLURNK_GIT_AUTO give the fixture's
+// git files as members the production way (no hand-registered catalog).
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
-import { readFile as readPath } from "node:fs/promises";
-import { Paths } from "../../src/index.ts";
-import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, testExecutors } from "../intg/_helpers.ts";
+import { liveSession, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
-
-const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes();
-    await m.ready();
-    return m;
-};
-
-const SYSTEM_PROMPT = await readPath(Paths.instructionsSystem, "utf8");
-
-const buildProvider = async (): Promise<Provider> => {
-    const alias = resolveActiveAlias();
-    if (alias === null) throw new Error("PLURNK_MODEL not set; demo tests require a configured model alias");
-    const provider = await ProviderInstantiate.loadActiveProvider();
-    if (provider === null) throw new Error("loadActiveProvider returned null");
-    return provider;
-};
 
 // Pinned above the assembled floor+catalog — measured as the turn-1 peak, which
 // grew to ~1816 with grammar 0.20.0 + mimetypes 0.10.0's larger sysprompt (was
@@ -48,44 +27,30 @@ const CEILING = 2000;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
-    const provider = await buildProvider();
-    const db = await openMigrated();
+    const prevCeiling = process.env.PLURNK_BUDGET_CEILING;
+    process.env.PLURNK_BUDGET_CEILING = String(CEILING); // captured by the daemon's engine at construction (liveSession, below)
     try {
-        const schemes = new SchemeRegistry();
-        const exec = schemes.get("exec") as Exec;
-        process.env.PLURNK_BUDGET_CEILING = String(CEILING);
-        const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
-        engine.setExecutors(await testExecutors());
-        delete process.env.PLURNK_BUDGET_CEILING; // engine captured it at construction
-        Yolo.attachYolo(engine, db);
-        const sessionId = await insertSession(db, `demo-budget-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: fixture.workspace });
-        await fixture.addToCatalog(db, sessionId);
-        const runId = await insertRun(db, sessionId);
-        const userPrompt = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
-        const loopId = await insertLoop(db, runId, 1, userPrompt);
-        await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify({ yolo: true }) });
+        const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+        try {
+            const userPrompt = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
+            const { finalStatus, turnIds } = await liveLoop(s, 2, { prompt: userPrompt }, { timeoutMs: 240_000 });
 
-        const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
-            messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: userPrompt }],
-        });
-        await exec.idle();
+            // Peak assembled context across the loop. Without curation the log
+            // accumulates past the wall; staying under means the model HID as it went.
+            let peak = 0;
+            for (const tid of turnIds) {
+                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
+                const p = JSON.parse(row?.packet ?? "{}") as { system?: { tokens?: number }; user?: { tokens?: number } };
+                peak = Math.max(peak, (p.system?.tokens ?? 0) + (p.user?.tokens ?? 0));
+            }
+            console.error(`[budget-grind] turns=${turnIds.length} finalStatus=${finalStatus} ceiling=${CEILING} peakTotal=${peak}`);
 
-        // Peak assembled context across the loop. Without curation the log
-        // accumulates past the wall; staying under means the model HID as it went.
-        let peak = 0;
-        for (const tid of result.turnIds) {
-            const row = await (db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
-            const p = JSON.parse(row?.packet ?? "{}") as { system?: { tokens?: number }; user?: { tokens?: number } };
-            peak = Math.max(peak, (p.system?.tokens ?? 0) + (p.user?.tokens ?? 0));
-        }
-        console.error(`[budget-grind] turns=${result.turnIds.length} finalStatus=${result.finalStatus} ceiling=${CEILING} peakTotal=${peak}`);
-
-        assert.equal(result.finalStatus, 200, "model completes the briefing under budget pressure");
-        assert.ok(peak <= CEILING, `model kept assembled context under the ${CEILING} ceiling (peaked at ${peak})`);
+            assert.equal(finalStatus, 200, "model completes the briefing under budget pressure");
+            assert.ok(peak <= CEILING, `model kept assembled context under the ${CEILING} ceiling (peaked at ${peak})`);
+        } finally { await s.cleanup(); }
     } finally {
+        if (prevCeiling === undefined) delete process.env.PLURNK_BUDGET_CEILING;
+        else process.env.PLURNK_BUDGET_CEILING = prevCeiling;
         await fixture.cleanup();
-        await db.close();
     }
 });

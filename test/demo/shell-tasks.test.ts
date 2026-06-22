@@ -7,51 +7,16 @@
 // can't know without running something (machine state, filesystem
 // contents). Holistic outcome assertions: the model's final reply
 // matches the actual shell output.
+//
+// Driven through the REAL prod loop (loop.run via the daemon — liveSession +
+// liveLoop), so the demo demonstrates production, not a hand-built engine fork.
+// The daemon wires executors + the system prompt + doc materialization itself.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
-import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
-import { Paths } from "../../src/index.ts";
-import Yolo from "../../src/server/yolo.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, logEntries } from "../intg/_helpers.ts";
-
-const makeMimetypes = async (provider: Provider): Promise<Mimetypes> => {
-    const m = new Mimetypes();
-    await m.ready();
-    return m;
-};
-
-const SYSTEM_PROMPT = await readFile(Paths.instructionsSystem, "utf8");
-const REQUIREMENTS = await readFile(Paths.defaultRequirements, "utf8");
-
-// Real subprocess executors, same as the daemon wires at boot
-// (Daemon.setExecutors). Without this the exec scheme fail-hards:
-// "exec dispatched without an executor registry".
-const EXECUTORS = await ExecutorRegistry.build({ defaultRuntime: "sh" });
-
-const buildProvider = async (): Promise<Provider> => {
-    const alias = resolveActiveAlias();
-    if (alias === null) throw new Error("PLURNK_MODEL not set; demo tests require a configured model alias");
-    const provider = await ProviderInstantiate.loadActiveProvider();
-    if (provider === null) throw new Error("loadActiveProvider returned null");
-    return provider;
-};
-
-const lastTurnContent = async (db: Db, turnId: number): Promise<string> => {
-    const row = await (db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: turnId });
-    const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-    return packet.assistant?.content ?? "";
-};
+import type { PrepMethod } from "../../src/core/Db.ts";
+import { liveSession, liveLoop } from "../_live-harness.ts";
 
 interface DemoOpts {
     label: string;
@@ -60,48 +25,22 @@ interface DemoOpts {
 }
 
 const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void> => {
-    const provider = await buildProvider();
-    const db = await openMigrated();
+    const s = await liveSession({ name: `demo-${label}-${crypto.randomUUID()}` });
     try {
-        const schemes = new SchemeRegistry();
-        const exec = schemes.get("exec") as Exec;
-        const engine = new Engine({ db, schemes, mimetypes: await makeMimetypes(provider) });
-        engine.setExecutors(EXECUTORS);
-        Yolo.attachYolo(engine, db);
-        const sessionId = await insertSession(db, `demo-${label}-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, prompt);
-        await (db.engine_set_loop_flags as PrepMethod).run({
-            loop_id: loopId, flags: JSON.stringify({ yolo: true }),
-        });
+        const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(s, 2, { prompt }, { timeoutMs: 240_000 });
 
-        const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
-            requirements: REQUIREMENTS,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: prompt },
-            ],
-        });
-        await exec.idle();
-
-        const lastTurnId = result.turnIds[result.turnIds.length - 1];
-        const lastContent = lastTurnId !== undefined ? await lastTurnContent(db, lastTurnId) : "";
-
-        if (result.finalStatus !== 200 || !expected.test(lastContent)) {
-            for (const turnId of result.turnIds) {
-                const row = await (db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+        if (finalStatus !== 200 || !expected.test(lastContent)) {
+            for (const turnId of turnIds) {
+                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-                console.error(`turn ${turnId} status=${row?.status}`);
-                console.error(`  emission: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
-                console.error(`  log: ${logEntries(packet).map((e) => `${e.op ?? "?"}[${e.status ?? "?"}]${e.target ? ` ${e.target}` : ""}`).join("; ")}`);
+                console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
             }
         }
-        assert.equal(result.finalStatus, 200, "loop terminated on SEND[200]");
-        assert.equal(result.hitMaxTurns, false, "didn't hit the safety cap");
+        assert.equal(finalStatus, 200, "loop terminated on SEND[200]");
+        assert.equal(hitMaxTurns, false, "didn't hit the safety cap");
         assert.match(lastContent, expected,
             `final reply contains the expected value; got: ${lastContent.slice(0, 200)}`);
-    } finally { await db.close(); }
+    } finally { await s.cleanup(); }
 };
 
 test("demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", async () => {
