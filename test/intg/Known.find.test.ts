@@ -39,7 +39,7 @@ const seedEntries = async (db: import("../../src/core/Db.ts").Db, sessionId: num
     }
 };
 
-test("Known.find returns all entries when scope is broad and no matcher", async () => {
+test("[§find-result-catalog-rows] Known.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         await seedEntries(db, sessionId, runId, [
@@ -47,9 +47,18 @@ test("Known.find returns all entries when scope is broad and no matcher", async 
         ]);
         const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a", "known:///b", "known:///c"]);
-        assert.equal(r.mimetype, "text/plain");
-        assert.equal(r.content, "known:///a\nknown:///b\nknown:///c");
+        // FIND is the filtered catalog: a JSON array of catalog rows (path + per-channel
+        // {mimetype, tokens, lines}), NOT findings carrying per-match extents.
+        assert.equal(r.mimetype, "application/json");
+        assert.deepEqual(r.results.map((row) => row.path), ["known:///a", "known:///b", "known:///c"]);
+        assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog rows");
+        const [first] = r.results;
+        assert.equal(first.path, "known:///a");
+        assert.deepEqual(Object.keys(first.channels), ["known:///a"], "the default channel keys by the bare entry path");
+        assert.equal(typeof first.channels["known:///a"].mimetype, "string");
+        assert.equal(first.channels["known:///a"].lines, 1, "\"alpha\" is one line");
+        assert.equal(typeof first.channels["known:///a"].tokens, "number");
+        assert.ok(!("extent" in (first as object)), "a catalog row carries no per-match extent");
     } finally { db.close(); }
 });
 
@@ -186,7 +195,7 @@ test("Known.find with no matches returns 200 with empty results", async () => {
         const r = await new Known().find(findStmt(url(""), glob("nope*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
-        assert.equal(r.content, "");
+        assert.equal(r.content, "[]", "no matches → an empty JSON array");
     } finally { db.close(); }
 });
 

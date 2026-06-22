@@ -24,12 +24,14 @@ import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
 type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null; deep_hash: string | null };
-type CatalogEntry = { path: string; seconds?: number; tags?: string[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
+export type CatalogEntry = { path: string; seconds?: number; tags?: string[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
     static #MANIFEST_PATH = "plurnk:///manifest.json";
 
-    static #toPath(scheme: string | null, pathname: string): string {
+    // Public — the catalog's path-rendering is the single source of truth for the
+    // addressable key, shared by FIND (EntryFind aligns matched pathnames to catalog rows).
+    static toPath(scheme: string | null, pathname: string): string {
         // Bare (file, scheme===null) entries store the namespace-absolute key (`/notes.md`)
         // but the model types the relative path it reads — render the leading slash off so
         // the catalog matches what the model writes back (READ/EDIT resolve either form).
@@ -53,7 +55,7 @@ export default class EntryManifest {
         }
         const byEntry = new Map<string, CatalogEntry>();
         for (const r of rows) {
-            const path = EntryManifest.#toPath(r.scheme, r.pathname);
+            const path = EntryManifest.toPath(r.scheme, r.pathname);
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) {
@@ -92,7 +94,7 @@ export default class EntryManifest {
         // compute it once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         for (const r of rows) {
-            const path = EntryManifest.#toPath(r.scheme, r.pathname);
+            const path = EntryManifest.toPath(r.scheme, r.pathname);
             if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) {

@@ -184,7 +184,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
             assert.deepEqual(result.results, []);
-            assert.equal(result.content, "");
+            assert.equal(result.content, "[]", "FIND content is a JSON catalog array — empty here");
         } finally { ws.close(); }
     });
 });

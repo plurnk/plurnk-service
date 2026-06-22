@@ -14,16 +14,6 @@ DELETE FROM symbol_refs WHERE entry_id = $entry_id;
 INSERT INTO symbol_defs (session_id, entry_id, name, kind, container, line, end_line)
 VALUES ($session_id, $entry_id, $name, $kind, $container, $line, $end_line);
 
--- PREP: graph_enclosing_symbol
--- Project Findings — the smallest symbol_def covering a line: the structural unit a match
--- at line N belongs to (function/class/heading). Ties → tightest span; a point symbol
--- (NULL end_line) covers only its own line.
-SELECT name, kind, line, end_line
-FROM symbol_defs
-WHERE entry_id = $entry_id AND line <= $line AND COALESCE(end_line, line) >= $line
-ORDER BY (COALESCE(end_line, line) - line) ASC
-LIMIT 1;
-
 -- PREP: graph_insert_ref
 INSERT INTO symbol_refs (session_id, entry_id, name, kind, container, line, col)
 VALUES ($session_id, $entry_id, $name, $kind, $container, $line, $col);

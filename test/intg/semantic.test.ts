@@ -53,7 +53,7 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         // keyword) is excluded by the FTS narrow, never reaching cosine.
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["known:///db.md", "known:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "known:///cake.md"), "the unrelated recipe never enters the ranking");
-        assert.ok(r.results.every((f) => f.extent !== null && f.extent.first >= 1 && f.extent.last >= f.extent.first), "each semantic finding carries its matched chunk's line span (Project Findings enrollment), not extent:null");
+        assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns uniform catalog rows (no per-match extent) — the matched chunk's span is a READ, the ranking is the row order");
     } finally { db.close(); }
 });
 

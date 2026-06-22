@@ -1,46 +1,38 @@
 // FIND helper for entry-bearing schemes (SPEC §find; plurnk.md FIND row).
-// Used by FIND (the body-matcher candidate selector).
+// FIND resolves to the scheme's CATALOG ROWS — the very rows the manifest catalogs —
+// filtered to the statement's matches. A matcher (glob/regex/jsonpath/xpath/~semantic/
+// @graph) decides WHICH entries appear; it never reshapes a row (there is no per-match
+// extent — match-location is a READ, not a FIND field). The result is a JSON array of
+// catalog rows: the per-scheme slice of the catalog (§find-result-catalog-rows).
 //
 // Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):
 //   target  — required scope (path or glob); selects which entries are candidates
-//   body    — matcher (glob/regex/jsonpath/xpath). Runs against the entry's
-//             default-channel CONTENT, NOT the pathname — the same content match
-//             READ performs (Matcher.matchAgainstContent → the mimetypes
-//             daughter). e.g. `FIND(log:///**/error):/timeout/i` selects logs
-//             whose content matches; `OPEN(countries/**):Paris*` selects entries
-//             whose content matches. The path-glob is the (target).
+//   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
+//             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
+//             → the mimetypes daughter) and INCLUDES/EXCLUDES the entry — e.g.
+//             `FIND(log:///**/error):/timeout/i` keeps logs whose content matches.
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
 
-import type { FindStatement, FoldStatement, OpenStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import EntryGraph from "./_entry-graph.ts";
+import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
 export interface FindResult {
     status: number;
     content: string | null;
     mimetype: string | null;
-    results: Finding[];
-}
-
-// Project Findings — a finding IS its enclosing structural unit, not a bare pathname.
-// `extent` is the <L> line span — the enclosing symbol's range, the match line itself when
-// no symbol covers it, or null for a whole-entry match. `symbol` names that unit when
-// known; `content` is opt-in (OPEN curates body into context).
-export interface Finding {
-    path: string;
-    extent: { first: number; last: number } | null;
-    symbol?: string;
-    content?: string;
+    results: CatalogEntry[];
 }
 
 export default class EntryFind {
-    static #scopePathnameOf(statement: FindStatement | OpenStatement | FoldStatement): string | null {
+    static #scopePathnameOf(statement: FindStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
         if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
@@ -68,35 +60,41 @@ export default class EntryFind {
         return { status: 200, items: items.slice(n - 1, m) };
     }
 
-    // Resolve a matcher-bearing statement (FIND, or multi-entry OPEN/FOLD) to the
-    // matched session pathnames. Candidate selection (scope + tags) runs in SQL
-    // (find_session_entry_candidates); the body matcher then runs against each
-    // candidate's default-channel CONTENT via the mimetypes daughter
-    // (Matcher.matchAgainstContent) — 200 (hit) includes the entry, 204/415/203
-    // exclude it (no content hit), 400 (malformed matcher) fails the whole op.
-    // Path-scoping stays in the (target). Used by FIND.
-    static async matchFindings(
-        statement: FindStatement | OpenStatement | FoldStatement,
+    static #unique(xs: string[]): string[] {
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const x of xs) if (!seen.has(x)) { seen.add(x); out.push(x); }
+        return out;
+    }
+
+    // Resolve a FIND to its matched session PATHNAMES — entry-level, unique, in result
+    // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
+    // tags) runs in SQL (find_session_entry_candidates); a content matcher then runs against
+    // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
+    // daughter) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
+    // (malformed matcher) fails the whole op. Path-scoping stays in the (target). The matched
+    // SET is what FIND returns; the match LOCATION (which line/symbol) is a READ concern.
+    static async #matchPathnames(
+        statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-    ): Promise<{ status: number; findings: Finding[] }> {
-        if (statement.target === null) return { status: 400, findings: [] };
+    ): Promise<{ status: number; pathnames: string[] }> {
+        if (statement.target === null) return { status: 400, pathnames: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File sets storedScheme=null — bare rows.
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
-        const addr = (pathname: string): string => `${manifest.name}://${pathname}`;
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // ~query: embed the query text, FTS-narrow by its terms, cosine-rank the
             // narrowed set, top-K. 501 when no embeddings handler is installed (the
             // channel degrades to empty bytes). <L> carries K.
             const { mimetypes } = ctx;
-            if (mimetypes === undefined) return { status: 501, findings: [] };
-            if (statement.lineMarker === null) return { status: 400, findings: [] };  // ~query needs a top-K, e.g. ~query<10>
+            if (mimetypes === undefined) return { status: 501, pathnames: [] };
+            if (statement.lineMarker === null) return { status: 400, pathnames: [] };  // ~query needs a top-K, e.g. ~query<10>
             const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
-            if (ranked.status !== 200) return { status: ranked.status, findings: [] };
-            // Each semantic finding addresses its best-matching chunk (the winning span),
-            // not the whole entry — the model READs the region that actually matched.
-            return { status: 200, findings: ranked.results.map((x) => ({ path: addr(x.pathname), extent: { first: x.lineStart, last: x.lineEnd } })) };
+            if (ranked.status !== 200) return { status: ranked.status, pathnames: [] };
+            // Rank order; a chunk-ranked list can repeat an entry across chunks → dedupe,
+            // keeping the highest-ranked occurrence. The winning chunk's span is a READ.
+            return { status: 200, pathnames: EntryFind.#unique(ranked.results.map((x) => x.pathname)) };
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
@@ -121,72 +119,60 @@ export default class EntryFind {
         if (statement.target.kind === "regex") {
             let re: RegExp;
             try { re = new RegExp(statement.target.pattern, statement.target.flags || undefined); }
-            catch { return { status: 400, findings: [] }; }
+            catch { return { status: 400, pathnames: [] }; }
             candidates = candidates.filter((c) => re.test(c.pathname));
         }
 
-        let findings: Finding[];
+        let pathnames: string[];
         if (statement.body === null) {
-            // No body matcher — the whole entry is the finding (extent null).
-            findings = candidates.map((c) => ({ path: addr(c.pathname), extent: null }));
+            // No body matcher — every in-scope candidate is in the result.
+            pathnames = candidates.map((c) => c.pathname);
         } else if (statement.body.dialect === "graph") {
             // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`.
             // EntryGraph resolves the relation across (session, scheme); intersect
             // with the in-scope candidates (target glob + tags) for the final set.
             const inScope = new Set(candidates.map((c) => c.pathname));
             const graph = await EntryGraph.match(ctx.db, ctx.sessionId, scheme, statement.body.raw);
-            if (graph.status !== 200) return { status: graph.status, findings: [] };
-            findings = graph.pathnames.filter((p) => inScope.has(p)).map((p) => ({ path: addr(p), extent: null }));
+            if (graph.status !== 200) return { status: graph.status, pathnames: [] };
+            pathnames = graph.pathnames.filter((p) => inScope.has(p));
         } else {
             const { mimetypes } = ctx;
-            if (mimetypes === undefined) throw new Error("EntryFind.matchFindings: body matcher requires the mimetypes capability in ctx");
-            findings = [];
+            if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
+            pathnames = [];
             for (const cand of candidates) {
                 const match = await Matcher.matchAgainstContent(statement.body, cand.content, cand.mimetype, mimetypes); // matcher runs on content — §find-glob-filter-on-content
-                if (match.status === 400) return { status: 400, findings: [] };
+                if (match.status === 400) return { status: 400, pathnames: [] };
                 if (match.status !== 200) continue; // 204 no-match / 415 unsupported / 203 fallback → not a content hit
-                // Each hit line resolves to its enclosing structural unit (findingsForMatch).
-                findings.push(...await EntryFind.findingsForMatch(db, cand.entry_id, addr(cand.pathname), match.lines ?? []));
+                pathnames.push(cand.pathname); // a content hit includes the entry — entry-level, no extent
             }
         }
 
         if (statement.lineMarker !== null) {
-            const page = EntryFind.#paginate(findings, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return { status: page.status, findings: [] };
-            findings = page.items ?? [];
+            const page = EntryFind.#paginate(pathnames, LineMarkerOps.firstLast(statement.lineMarker));
+            if (page.status !== 200) return { status: page.status, pathnames: [] };
+            pathnames = page.items ?? [];
         }
-        return { status: 200, findings };
+        return { status: 200, pathnames };
     }
 
-    // Project Findings — resolve a matched entry's hit lines to findings: each line maps to
-    // its smallest enclosing symbol (the structural unit it belongs to), or to the line
-    // itself when no symbol covers it. Deduped by extent — many hits in one function
-    // collapse to one finding. Phase 2b wires this into the FIND result shape.
-    static async findingsForMatch(db: Db, entryId: number, path: string, lines: readonly number[]): Promise<Finding[]> {
-        const findings: Finding[] = [];
-        const seen = new Set<string>();
-        for (const line of lines) {
-            const sym = await EntryGraph.enclosingSymbol(db, entryId, line);
-            const extent = sym === null ? { first: line, last: line } : { first: sym.line, last: sym.endLine };
-            const key = `${extent.first}-${extent.last}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            findings.push(sym === null ? { path, extent } : { path, extent, symbol: sym.name });
-        }
-        return findings;
-    }
-
+    // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
+    // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
+    // {mimetype, tokens, lines}, tags, seconds) — FIND is the filtered, navigable slice of
+    // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
     static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
-        const match = await EntryFind.matchFindings(statement, ctx, manifest);
+        const match = await EntryFind.#matchPathnames(statement, ctx, manifest);
         if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [] };
-        const content = match.findings.map(EntryFind.#renderFinding).join("\n");
-        return { status: 200, content, mimetype: "text/plain", results: match.findings };
-    }
-
-    // Project Findings — a finding renders as a usable address: path + its <L> extent
-    // (the grammar's <n> / <first,last> range), plus the enclosing symbol's name when known.
-    static #renderFinding(f: Finding): string {
-        const ext = f.extent === null ? "" : f.extent.first === f.extent.last ? `<${f.extent.first}>` : `<${f.extent.first},${f.extent.last}>`;
-        return `${f.path}${ext}${f.symbol === undefined ? "" : ` (${f.symbol})`}`;
+        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
+        // The catalog row is keyed by its addressable path; align each matched pathname to
+        // its row through the same EntryManifest.toPath the catalog uses (single source of
+        // truth). Match order is preserved (rank for ~semantic); a pathname with no row
+        // (e.g. the self-excluded manifest) drops out.
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme)).map((r) => [r.path, r] as const));
+        const results: CatalogEntry[] = [];
+        for (const pathname of match.pathnames) {
+            const row = byPath.get(EntryManifest.toPath(scheme, pathname));
+            if (row !== undefined) results.push(row);
+        }
+        return { status: 200, content: JSON.stringify(results, null, 2), mimetype: "application/json", results };
     }
 }

@@ -15,9 +15,10 @@
 //   <<OPEN[france](known:///countries/**):Paris*:OPEN      — glob over entry content
 // The path-globs live in the (target); the body is the content matcher.
 //
-// All four honor this: READ via read-resolve, FIND/OPEN/FOLD via
-// _entry-find.matchFindings → matchAgainstContent against the candidate's
-// CONTENT (_entry-find.ts:95). The body-on-pathname divergence these once
+// READ resolves via read-resolve; FIND runs its body matcher through
+// _entry-find (#matchPathnames → matchAgainstContent) against the candidate's
+// CONTENT, returning the matched entries' catalog rows; OPEN/FOLD curate the
+// log view (log_entries.expanded). The body-on-pathname divergence these once
 // pinned is reconciled — they are green pins now, not deferred-reds.
 
 import test from "node:test";
