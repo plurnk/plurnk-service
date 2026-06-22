@@ -1,0 +1,65 @@
+{
+    "name": "@plurnk/plurnk-execs-mcp",
+    "version": "0.1.0",
+    "description": "MCP-bridge runtime executor for plurnk-service's exec scheme — exposes each configured MCP server as its own EXEC tag, its tools called from the body, output contained behind the server's address.",
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "mcp",
+        "model-context-protocol"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-execs-mcp#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-mcp/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-mcp.git"
+    },
+    "engines": {
+        "node": ">=25"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "attribution": "mcp",
+        "runtimesModule": "./dist/runtimes.js"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.8.0",
+        "typescript": "^6.0.3",
+        "@plurnk/plurnk-execs": "^0.4.16"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "^0.4.16"
+    }
+}

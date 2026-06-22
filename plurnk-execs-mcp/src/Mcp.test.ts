@@ -1,0 +1,191 @@
+import test, { before, after } from "node:test";
+import { strict as assert } from "node:assert";
+import { fileURLToPath } from "node:url";
+import Mcp, { closeAll } from "./Mcp.ts";
+import { runtimes } from "./runtimes.ts";
+import { installAllowed, serverConfig, serverNames } from "./config.ts";
+import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+
+const FIXTURE = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
+
+interface Capture {
+    result: ExecResult;
+    writes: { channel: string; chunk: string; mimetype?: string }[];
+    states: { channel: string; state: string }[];
+    events: TelemetryEvent[];
+}
+
+const invoke = async (runtime: string, command: string, opts: { signal?: AbortSignal } = {}): Promise<Capture> => {
+    const writes: Capture["writes"] = [];
+    const states: Capture["states"] = [];
+    const events: TelemetryEvent[] = [];
+    const args: ExecArgs = {
+        runtime, command, cwd: null,
+        signal: opts.signal ?? new AbortController().signal,
+        write: (channel, chunk, mimetype) => writes.push({ channel, chunk, mimetype }),
+        setState: (channel, state) => states.push({ channel, state }),
+        emit: (event) => events.push(event),
+    };
+    const result = await new Mcp({ runtime: "echo", glyph: "🪞" }).run(args);
+    return { result, writes, states, events };
+};
+
+before(() => {
+    process.env.PLURNK_MCP_ECHO = `node ${FIXTURE}`;
+});
+after(async () => { await closeAll(); });
+
+// --- config.ts (pure env parsing — explicit env, no process.env leakage) ---
+
+test("config: stdio transport parsed from a command target (split into argv)", () => {
+    const env = { PLURNK_MCP_ECHO: `node ${FIXTURE}` };
+    assert.deepEqual(serverNames(env), ["echo"]);
+    assert.deepEqual(serverConfig("echo", env), {
+        transport: "stdio", command: "node", args: [FIXTURE], env: undefined,
+    });
+});
+
+test("config: the user's lower-case PLURNK_MCP_github=https://… resolves to http", () => {
+    const env = { PLURNK_MCP_github: "https://mcp.test/rpc", PLURNK_MCP_GITHUB_HEADERS: '{"Authorization":"Bearer x"}' };
+    assert.deepEqual(serverNames(env), ["github"]);
+    assert.deepEqual(serverConfig("github", env), {
+        transport: "http", url: "https://mcp.test/rpc", headers: { Authorization: "Bearer x" },
+    });
+});
+
+test("config: servers are discovered by enumeration (no list var), sorted", () => {
+    const env = { PLURNK_MCP_FIGMA: "https://figma.test", PLURNK_MCP_ECHO: "node x.mjs", PLURNK_OTHER: "ignored" };
+    assert.deepEqual(serverNames(env), ["echo", "figma"]);
+});
+
+test("config: an unconfigured server resolves to null", () => {
+    assert.equal(serverConfig("ghost", {}), null);
+});
+
+test("config: _ENV / _HEADERS are companions, not servers", () => {
+    const env = { PLURNK_MCP_ECHO: "node x.mjs", PLURNK_MCP_ECHO_ENV: '{"TOKEN":"t"}' };
+    assert.deepEqual(serverNames(env), ["echo"], "the _ENV companion is not its own server");
+    assert.deepEqual(serverConfig("echo", env)?.env, { TOKEN: "t" });
+});
+
+test("config: two keys case-folding to one server is fail-hard", () => {
+    assert.throws(
+        () => serverNames({ PLURNK_MCP_GH: "https://a.test", PLURNK_MCP_gh: "https://b.test" }),
+        /Duplicate MCP server "gh"/,
+    );
+});
+
+test("config: malformed companion JSON is fail-hard", () => {
+    const env = { PLURNK_MCP_BAD: "node x.mjs", PLURNK_MCP_BAD_ENV: "{not json" };
+    assert.throws(() => serverConfig("bad", env), /PLURNK_MCP_BAD_ENV must be a JSON object/);
+});
+
+test("config: PLURNK_MCP_INSTALL is a reserved gate, not a server", () => {
+    const env = { PLURNK_MCP_INSTALL: "1", PLURNK_MCP_ECHO: "node x.mjs" };
+    assert.deepEqual(serverNames(env), ["echo"], "INSTALL is never enumerated as a server");
+    assert.equal(serverConfig("install", env), null, "and resolves to no config");
+});
+
+test("config: the install gate defaults off (absent / empty / \"0\"), on for any other value", () => {
+    assert.equal(installAllowed({}), false);
+    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "" }), false);
+    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "0" }), false);
+    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "1" }), true);
+});
+
+// --- runtimes.ts (the dynamic hook) ----------------------------------------
+
+test("runtimes: one decl per configured server, named for the server", () => {
+    const decls = runtimes();
+    assert.equal(decls.length, 1);
+    const [echo] = decls;
+    assert.equal(echo.name, "echo");
+    assert.equal(echo.glyph, "🔌");
+    assert.match(echo.example ?? "", /^<<EXEC\[echo\]:.*:EXEC$/, "the example is the full canonical op, <<-delimited");
+    assert.match(echo.documentation ?? "", /MCP/);
+});
+
+test("runtimes: empty when no servers are configured", () => {
+    assert.deepEqual(serverNames({}), []);
+});
+
+// --- Mcp executor (real stdio server end-to-end) ---------------------------
+
+test("effect: every MCP call is host (conservative, proposal-gated)", () => {
+    assert.equal(new Mcp({ runtime: "echo", glyph: "🪞" }).effect(null), "host");
+});
+
+test("channels: declares a results channel (application/json)", () => {
+    assert.deepEqual(new Mcp({ runtime: "echo", glyph: "🪞" }).channels, {
+        results: { mimetype: "application/json" },
+    });
+});
+
+test("probe: connects to the live server and reports the tool count", async () => {
+    const avail = await new Mcp({ runtime: "echo", glyph: "🪞" }).probe();
+    assert.deepEqual(avail, { available: true, detail: "stdio: 2 tools" });
+});
+
+test("probe: an unconfigured server is unavailable with an actionable detail", async () => {
+    const avail = await new Mcp({ runtime: "ghost", glyph: "🪞" }).probe();
+    assert.equal(avail.available, false);
+    assert.match(String(avail.detail), /not configured/);
+});
+
+test("run: calls a tool, writes the JSON result stamped application/json, closes 200", async () => {
+    const { result, writes, states } = await invoke("echo", 'echo {"msg":"hi"}');
+    assert.deepEqual(result, { status: 200 });
+    assert.equal(writes[0].channel, "results");
+    assert.equal(writes[0].mimetype, "application/json");
+    const payload = JSON.parse(writes[0].chunk) as { content: { text: string }[] };
+    assert.equal(payload.content[0].text, '{"msg":"hi"}', "the server echoed our arguments back");
+    assert.deepEqual(states, [{ channel: "results", state: "closed" }]);
+});
+
+test("run: a no-argument tool call (no JSON body) works", async () => {
+    const { result, writes } = await invoke("echo", "echo");
+    assert.equal(result.status, 200);
+    assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
+});
+
+test("run: an empty body writes the live tool catalog", async () => {
+    const { result, writes } = await invoke("echo", "");
+    assert.equal(result.status, 200);
+    const tools = JSON.parse(writes[0].chunk) as { name: string }[];
+    assert.deepEqual(tools.map((t) => t.name).sort(), ["boom", "echo"]);
+});
+
+test("run: an isError tool result closes errored with status 500", async () => {
+    const { result, writes, states } = await invoke("echo", "boom");
+    assert.equal(result.status, 500);
+    assert.equal(JSON.parse(writes[0].chunk).isError, true);
+    assert.equal(states.at(-1)?.state, "errored");
+});
+
+test("run: non-JSON tool arguments → mcp_bad_arguments, status 400, no call", async () => {
+    const { result, events, states } = await invoke("echo", "echo {not json}");
+    assert.equal(result.status, 400);
+    assert.equal(events[0].kind, "mcp_bad_arguments");
+    assert.equal(states.at(-1)?.state, "errored");
+});
+
+test("run: an unknown tool surfaces as mcp_tool_error, status 500", async () => {
+    const { result, events } = await invoke("echo", "nope {}");
+    assert.equal(result.status, 500);
+    assert.equal(events[0].kind, "mcp_tool_error");
+    assert.match(String(events[0].message), /unknown tool/);
+});
+
+test("run: an unconfigured server → mcp_not_configured, status 500", async () => {
+    const { result, events } = await invoke("ghost", "anything");
+    assert.equal(result.status, 500);
+    assert.equal(events[0].kind, "mcp_not_configured");
+});
+
+test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { result, events } = await invoke("echo", 'echo {"msg":"x"}', { signal: controller.signal });
+    assert.equal(result.status, 499);
+    assert.equal(events.length, 0, "caller cancellation is normal flow, not telemetry");
+});
