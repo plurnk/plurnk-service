@@ -77,100 +77,66 @@ export default class EntryManifest {
         return [...byEntry.values()];
     }
 
-    static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
-        const { db, sessionId, mimetypes, tokenize } = ctx;
-        if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
-        if (tokenize === undefined) throw new Error("buildManifestBody: ctx.tokenize is required — depth is re-counted at render through the live provider, not read from the write-time snapshot");
+    // The per-turn derivation pump (§mimetype). For each BODY channel whose content changed
+    // since its last derivation (the deep_hash gate, config-signature-folded), re-derive every
+    // deep channel from ONE process() — the @graph symbol index (#186) and the ~semantic FTS +
+    // embedding — and stamp the new hash. An unchanged entry is skipped; its symbol/FTS/embedding
+    // rows persist. This is the engine-side point where the mimetypes handler legitimately fires
+    // (never at a scheme write). It DERIVES; it does not render — FIND and the catalog read what
+    // it leaves. Per-entry isolation: a malformed/unprocessable entry (e.g. invalid JSON the model
+    // wrote) makes process() throw — uncaught, that once crashed the whole turn (the daemon's
+    // -32603); contain it here (clear the deep channels, stamp the hash so it doesn't re-attempt)
+    // and keep pumping the rest.
+    static async maintainDerivations(ctx: PlurnkSchemeContext): Promise<void> {
+        const { db, sessionId, mimetypes } = ctx;
+        if (mimetypes === undefined) throw new Error("maintainDerivations: ctx.mimetypes is required to derive entry deep channels");
         const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
-        // #note13 — surface each entry's tags (entry_tags) in the catalog so the model sees
-        // its own categorization (and can FIND by tag) without a separate read.
-        const tagsById = new Map<number, string[]>();
-        for (const { entry_id, tag } of await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })) {
-            const list = tagsById.get(entry_id);
-            if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
-        }
-        const byEntry = new Map<string, CatalogEntry>();
-        // The embedding config signature is identical for every entry this build —
-        // compute it once and fold it into each deep_hash (re-derive on model/knob change).
+        // The embedding config signature is identical for every entry this pass — compute it
+        // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         for (const r of rows) {
-            const path = EntryManifest.toPath(r.scheme, r.pathname);
-            if (path === EntryManifest.#MANIFEST_PATH) continue;
-            let entry = byEntry.get(path);
-            if (entry === undefined) {
-                entry = { path, channels: {} };
-                const tags = tagsById.get(r.entry_id);
-                if (tags !== undefined && tags.length > 0) entry.tags = tags;
-                byEntry.set(path, entry);
-            }
-            // seconds: live age of an active stream (open subscription), set once
-            // at entry level — a clock on running execs, absent for static entries.
-            if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
-            // Manifest-add is the engine-side point where the mimetypes handler
-            // legitimately fires (never at a scheme write, §mimetype). For the body channel
-            // we re-derive every deep channel from ONE process() — the @graph symbol
-            // index (#186) and the ~semantic FTS + embedding — alongside the catalog's
-            // totalLines, but ONLY when the content changed since the last derivation
-            // (the deep_hash gate). An unchanged entry just gets totalLines; its
-            // symbol/FTS/embedding rows persist. A handler predating the references
-            // channel throws → fall back to metadata-only and clear the graph rows.
-            const isBody = r.channel === "body";
-            // Per-entry isolation: a malformed/unprocessable entry (e.g. invalid JSON the
-            // model wrote) makes mimetypes.process() throw — and uncaught, that crashed the
-            // whole manifest build and the turn (the daemon's -32603). Contain it here:
-            // degrade the offender to a bare line count with its deep channels cleared, and
-            // keep building the rest of the catalog. The hash is stamped so it doesn't
-            // re-attempt every turn; a content change re-hashes and re-derives.
-            let result: ProcessResult;
+            if (r.channel !== "body") continue; // derivation fires on the body channel only
+            if (EntryManifest.toPath(r.scheme, r.pathname) === EntryManifest.#MANIFEST_PATH) continue; // the catalog never derives itself
+            const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
+            if (hash === r.deep_hash) continue; // unchanged since last derivation → deep rows persist
             try {
-                if (isBody) {
-                    const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
-                    if (hash === r.deep_hash) {
+                const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+                let result: ProcessResult;
+                if (wantGraph) {
+                    try {
+                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] }); // §mimetype-methods-process-entry-point
+                        await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                    } catch {
+                        // A handler predating the references channel throws → metadata-only, clear graph.
                         result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                    } else {
-                        const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
-                        if (wantGraph) {
-                            try {
-                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] }); // §mimetype-methods-process-entry-point
-                                await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
-                            } catch {
-                                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                            }
-                        } else {
-                            result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                            await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                        }
-                        // The other two deep channels: re-index the body into entry_fts
-                        // (~semantic's keyword half) and store the embedding vector(s) + model
-                        // (the vector half). Empty/binary/degraded → cleared, not stored.
-                        await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                        // Project Semantics: derive the entry's chunk embeddings. Gated on
-                        // the embedder reporting its tokenizer — absent → one whole-entry
-                        // chunk (today's behavior), present → lossless tiling. result.embedding
-                        // is the fallback whole-entry vector for the dormant path.
-                        const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel);
-                        await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-                        await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+                        await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                     }
                 } else {
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                }
-            } catch {
-                result = { totalLines: r.content.length === 0 ? 0 : r.content.split("\n").length } as ProcessResult;
-                if (isBody) {
                     await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                    await EntrySemantic.indexFts(db, r.entry_id, "");
-                    await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
-                    await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex") });
                 }
+                // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
+                // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
+                // cleared, not stored. result.embedding is the fallback whole-entry vector.
+                await EntrySemantic.indexFts(db, r.entry_id, r.content);
+                const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel);
+                await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
+                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            } catch {
+                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                await EntrySemantic.indexFts(db, r.entry_id, "");
+                await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
+                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
             }
-            // note 4 — key channels by addressable URI: the default channel by the bare entry
-            // path, a non-default by path#channel — so the model READs a channel without guessing.
-            const defaultCh = ctx.defaultChannelFor?.(r.scheme) ?? "body";
-            const channelKey = r.channel === defaultCh ? entry.path : `${entry.path}#${r.channel}`;
-            entry.channels[channelKey] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: result.totalLines };
         }
-        return JSON.stringify([...byEntry.values()], null, 2);
+    }
+
+    // The body of plurnk:///manifest.json — the per-turn derivation pump, then the catalog
+    // render. Both walk the same entry set: maintainDerivations refreshes the deep channels;
+    // catalogRowsFor renders the read-only catalog rows FIND also serves. (Transitional — when
+    // plurnk:///manifest.json retires, the engine runs the pump directly and FIND renders.)
+    static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
+        await EntryManifest.maintainDerivations(ctx);
+        return JSON.stringify(await EntryManifest.catalogRowsFor(ctx), null, 2);
     }
 }
