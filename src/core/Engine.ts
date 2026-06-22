@@ -448,12 +448,15 @@ export default class Engine {
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
     // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costPico is the stored pico-dollar unit.
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number }> {
-        const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number }>({ loop_id: loopId });
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number }> {
+        const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number; context: number | null }>({ loop_id: loopId });
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
             costPico: row?.cost_pico ?? 0,
+            // #263 — the last turn's prompt tokens = current window occupancy (gauge numerator), NOT the
+            // summed promptTokens above, which overcounts a context that grows across turns.
+            contextTokens: row?.context ?? 0,
         };
     }
 

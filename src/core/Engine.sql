@@ -75,10 +75,13 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 
 -- PREP: engine_loop_usage
 -- Per-loop usage totals — SUM the loop's turns (§tokenomics stores usage per turn).
--- Surfaced on loop.run + loop/terminated (#197).
+-- Surfaced on loop.run + loop/terminated (#197). `context` is the LAST turn's prompt tokens — the
+-- honest window-occupancy numerator (#263), distinct from the summed `prompt` (which overcounts a
+-- context that grows across turns).
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
-       COALESCE(SUM(usage_cost_pico), 0)  AS cost_pico
+       COALESCE(SUM(usage_cost_pico), 0)  AS cost_pico,
+       (SELECT usage_prompt FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context
 FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_turn_seqs

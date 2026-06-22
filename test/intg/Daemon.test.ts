@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 
 interface RpcResponse {
     jsonrpc: "2.0";
@@ -265,7 +266,7 @@ test("session.attach with both runId and runName rejects", async () => {
 });
 
 test("providers.list returns parsed aliases with active marker", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
+    await withDaemon(new Mock({ contextSize: 8192, responses: [] }), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const original = { ...process.env };
@@ -275,7 +276,7 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 process.env.PLURNK_MODEL = "gemma";
                 const response = await rpcCall(ws, 1, "providers.list");
                 const result = response.result as {
-                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean }>;
+                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }>;
                 };
                 const gemma = result.aliases.find((a) => a.alias === "gemma");
                 const opus = result.aliases.find((a) => a.alias === "opus");
@@ -284,6 +285,10 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 assert.equal(gemma?.model, "macher.gguf");
                 assert.equal(gemma?.active, true);
                 assert.equal(opus?.active, false);
+                // #263 — the active alias carries the daemon provider's contextSize (the gauge denominator);
+                // an inactive alias is null (provider not instantiated) so the client omits the gauge.
+                assert.equal(gemma?.contextSize, 8192, "active alias carries the provider's context window");
+                assert.equal(opus?.contextSize, null, "inactive alias has no window → null");
             } finally {
                 // Restore env so other tests aren't polluted.
                 for (const k of Object.keys(process.env)) {
