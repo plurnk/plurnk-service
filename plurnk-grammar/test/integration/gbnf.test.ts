@@ -182,7 +182,7 @@ test("GBNF: every plurnk.md example derives from statement", () => {
     assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
     const rest = plurnkMd.substring(headingMatch.index + headingMatch[0].length);
     const nextHeading = /^## /m.exec(rest);
-    const block = rest.substring(0, nextHeading ? nextHeading.index : rest.length).trim();
+    const block = rest.substring(0, nextHeading ? nextHeading.index : rest.length).trim().replace(/^[ \t]*\* /gm, "");
 
     const result = PlurnkParser.parseStatements(block);
     const statements = result.items.filter((item) => item.kind === "statement");

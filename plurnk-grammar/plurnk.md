@@ -98,47 +98,38 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 
 ## Examples
 
-<<FIND(config/**/*.xml)://user[@role='admin']:FIND
-<<READ(lang/??.json):$.greeting:READ
-<<READ(plurnk://docs/sh.md):$.Environment:READ
-<<READ(README.md)://h2/text():READ
-<<READ(known:///users.json):$[?(@.role=="admin")]:READ
-<<READ(log:///1/2/3):$[*].matched.codename:READ
-<<READ(node:///3/1/2#stdout)<1,40>::READ
-<<READ(../../../../etc/hosts)<2>::READ
-<<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
-<<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
-<<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
-
-<<EDIT[plan,france,task](known:///plan.md):
-- [ ] Decompose prompt into unknowns
-- [ ] Discover capital of France
-- [ ] Deliver
-:EDIT
-
-<<EDIT(known:///plan.md)<2>:- [x] Discover capital of France:EDIT
-<<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-<<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
-<<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
-<<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
-<<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
-<<KILL(known:///draft.md)::KILL
-<<KILL(obsolete/file.md)::KILL
-<<KILL(sh:///3/1/2)::KILL
-<<KILL[9](sh:///3/1/3)::KILL
-<<EDIT(run://capital-checker):Find the capital of France.:EDIT
-<<COPY(run://.):Re-derive the capital from a primary source.:COPY
-<<OPEN(log:///**/get)<1,10>::OPEN
-<<FIND(known:///**)<5>:~french revolutionary history:FIND
-<<FIND(known:///**)<0.7>:~french territorial concessions:FIND
-<<FOLD(log:///**/get)<101,200>::FOLD
-<<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
-<<FIND(known:///**):revolution:FIND
-<<FIND(#(draft|final)/.*#i)::FIND
-<<FIND(#src/.*\.test\.ts#)::FIND
-<<FIND(src/**):@<createCoder:FIND
-<<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-
-<<EDIT[tutorial,training,scripts](example.sh):#!/usr/bin/env sh
-echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt
-:EDIT
+* <<FIND(config/**/*.xml)://user[@role='admin']:FIND
+* <<READ(lang/??.json):$.greeting:READ
+* <<READ(plurnk://docs/sh.md):$.Environment:READ
+* <<READ(README.md)://h2/text():READ
+* <<READ(known:///users.json):$[?(@.role=="admin")]:READ
+* <<READ(log:///1/2/3):$[*].matched.codename:READ
+* <<READ(node:///3/1/2#stdout)<1,40>::READ
+* <<READ(../../../../etc/hosts)<2>::READ
+* <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
+* <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
+* <<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
+* <<EDIT[plan,france,task](known:///plan.md):- [ ] Decompose prompt into unknowns:EDIT
+* <<EDIT(known:///plan.md)<2>:- [x] Discover capital of France:EDIT
+* <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+* <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
+* <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
+* <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
+* <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
+* <<KILL(known:///draft.md)::KILL
+* <<KILL(obsolete/file.md)::KILL
+* <<KILL(sh:///3/1/2)::KILL
+* <<KILL[9](sh:///3/1/3)::KILL
+* <<EDIT(run://capital-checker):Find the capital of France.:EDIT
+* <<COPY(run://.):Re-derive the capital from a primary source.:COPY
+* <<OPEN(log:///**/get)<1,10>::OPEN
+* <<FIND(known:///**)<5>:~french revolutionary history:FIND
+* <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
+* <<FOLD(log:///**/get)<101,200>::FOLD
+* <<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
+* <<FIND(known:///**):revolution:FIND
+* <<FIND(#(draft|final)/.*#i)::FIND
+* <<FIND(#src/.*\.test\.ts#)::FIND
+* <<FIND(src/**):@<createCoder:FIND
+* <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
+* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt:EDIT

@@ -22,7 +22,7 @@ const exampleBlock = (() => {
     const rest = plurnkMd.substring(startIdx);
     const nextHeadingMatch = /^## /m.exec(rest);
     const endIdx = nextHeadingMatch ? nextHeadingMatch.index : rest.length;
-    return rest.substring(0, endIdx).trim();
+    return rest.substring(0, endIdx).trim().replace(/^[ \t]*\* /gm, "");
 })();
 
 test("plurnk.md examples block parses with no errors and no unparsed tail", () => {
