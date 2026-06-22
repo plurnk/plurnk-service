@@ -118,8 +118,7 @@ export default class SchemeRegistry {
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            const hasDoc = SCHEME_DOCS.has(name) || (typeof manifest?.documentation === "string" && manifest.documentation.length > 0);
-            lines.push(teachingLine(example, name, hasDoc));
+            lines.push(teachingLine(example)); // doc links removed (#270) — docs are FIND(plurnk://docs/**)-discovered
         }
         return lines.join("\n");
     }

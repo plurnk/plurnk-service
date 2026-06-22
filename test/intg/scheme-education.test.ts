@@ -3,8 +3,9 @@
 // what schemes exist at packet-time. The verbose per-scheme prose moved OUT of the
 // hot path into pull docs (plurnk://docs/<name>.md); the packet's `schemes` section
 // (its own section below tools — definition is now plurnk.md only) carries a terse
-// directory: each scheme's canonical `example` one-liner + a doc-link, mirroring the
-// exec tools sheet. This pins that shape on a real model turn's stored packet.
+// directory: each scheme's canonical `example` one-liner, no inline doc-link (docs are
+// FIND(plurnk://docs/**)-discovered, #270), mirroring the exec tools sheet. This pins that
+// shape on a real model turn's stored packet.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -37,9 +38,9 @@ test("[§schemes-directory] scheme directory: the packet's `schemes` section is 
         assert.match(definition, /PLURNK_MD/, "definition carries the operator's plurnk.md");
         assert.doesNotMatch(definition, /known:\/\/\//, "the scheme catalogue is NOT in the definition anymore");
 
-        // The `schemes` section is the terse directory: known's canonical example + its pull-doc link.
+        // The `schemes` section is the terse directory: known's canonical example, no inline doc-link.
         assert.match(schemes, /\* <<EDIT\(known:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
-        assert.match(schemes, /\(docs: plurnk:\/\/docs\/known\.md\)/, "each scheme points at its pull doc, not inline prose");
+        assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — docs are FIND(plurnk://docs/**)-discovered (#270)");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
 
         // Order: the static prefix is definition → tools → schemes (tools sits right below the grammar).

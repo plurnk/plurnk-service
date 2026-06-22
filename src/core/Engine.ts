@@ -805,13 +805,20 @@ export default class Engine {
                 const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
                 for (const { scheme, entries } of catalogSchemes) {
                     const schemeName = scheme ?? "file";
-                    const cap = manifestItems < 0 ? null : Math.min(manifestItems, entries);
+                    // plurnk → its docs subtree (FIND(plurnk://docs/**), uncapped) — the self-
+                    // documenting surface. The prompt is shown in # Prompt, so the plurnk catalog
+                    // the model orients on IS the docs; doc links are no longer rendered inline (#270).
+                    const isPlurnk = schemeName === "plurnk";
+                    const cap = isPlurnk || manifestItems < 0 ? null : Math.min(manifestItems, entries);
                     const catalogFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
                         target: {
-                            kind: "url", raw: `${schemeName}:///**`, scheme: schemeName,
+                            kind: "url",
+                            raw: isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`,
+                            scheme: schemeName,
                             username: null, password: null, hostname: null, port: null,
-                            pathname: "", params: {}, fragment: null,
+                            pathname: isPlurnk ? "/docs/**" : "",
+                            params: {}, fragment: null,
                         },
                         body: null,
                         lineMarker: cap === null ? null : { marks: [1, cap] },
@@ -1288,7 +1295,7 @@ export default class Engine {
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
                 // token cost lives on that manifest entry. No example → no line (like a provisional scheme).
-                if (entry?.example) tools.push(teachingLine(entry.example, tag, Boolean(entry.documentation)));
+                if (entry?.example) tools.push(teachingLine(entry.example));
             }
         }
         return tools;
