@@ -51,7 +51,7 @@ test("teach()/docs(): PLURNK_DOCS_EXCLUDE drops the oneliner + the doc; stray na
         process.env.PLURNK_DOCS_EXCLUDE = "known,nonsuch";
         const teaching = registry.teach();
         assert.doesNotMatch(teaching, /known:\/\/\/plan\.md/, "an excluded scheme contributes no oneliner");
-        assert.match(teaching, /run:\/\/\/helper/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
+        assert.match(teaching, /run:\/\/\/todo\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
         assert.equal(registry.docs().find((d) => d.name === "known"), undefined, "an excluded scheme materializes no doc");
         assert.ok(registry.docs().find((d) => d.name === "run"), "a non-excluded scheme still materializes its doc");
 

@@ -22,7 +22,7 @@ export default class Run {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
-        example: "<<EDIT(run:///todo.md):- [ ] ship #270:EDIT",
+        example: "<<EDIT(run:///todo.md):- [ ] investigate the timeout:EDIT",
     };
 
     // The run name from a run:// target's authority (hostname). "" = self (empty authority);

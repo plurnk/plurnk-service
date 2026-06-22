@@ -7,7 +7,7 @@ Every operation you emit is recorded as a row at `log:///<loop>/<turn>/<seq>`. T
 You manage working-memory tokens across two surfaces:
 
 - **The log** — every operation, in order. The curatable surface.
-- **`plurnk:///manifest.json`** — the directory of every entry available to READ. Discovery, not history.
+- **The catalog** — `FIND(scheme:///**)` lists the entries a scheme holds, available to READ. Discovery, not history.
 
 ## Curation — OPEN, FOLD, KILL
 
