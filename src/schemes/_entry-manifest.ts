@@ -36,6 +36,45 @@ export default class EntryManifest {
         return scheme === null ? pathname.replace(/^\//, "") : renderAddress(scheme, pathname);
     }
 
+    // Read-only catalog rows for a scheme (or all entries when undefined) — the manifest's
+    // CatalogEntry[] WITHOUT the derivation pump. The per-scheme FIND(scheme:///**) catalog
+    // (#270) renders these as its JSON result; buildManifestBody keeps the pump. Transitional
+    // parity — converges with buildManifestBody when plurnk:///manifest.json retires.
+    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null): Promise<CatalogEntry[]> {
+        const { db, sessionId, mimetypes, tokenize } = ctx;
+        if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
+        if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — depth is re-counted through the live provider, not stored");
+        const all = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
+        const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
+        const tagsById = new Map<number, string[]>();
+        for (const { entry_id, tag } of await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })) {
+            const list = tagsById.get(entry_id);
+            if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
+        }
+        const byEntry = new Map<string, CatalogEntry>();
+        for (const r of rows) {
+            const path = EntryManifest.#toPath(r.scheme, r.pathname);
+            if (path === EntryManifest.#MANIFEST_PATH) continue;
+            let entry = byEntry.get(path);
+            if (entry === undefined) {
+                entry = { path, channels: {} };
+                const tags = tagsById.get(r.entry_id);
+                if (tags !== undefined && tags.length > 0) entry.tags = tags;
+                byEntry.set(path, entry);
+            }
+            if (r.seconds !== null && entry.seconds === undefined) entry.seconds = r.seconds;
+            // Lines via a read-only process() (no deep channels → no derivation). A malformed
+            // entry degrades to a bare line count, parity with buildManifestBody's containment.
+            let totalLines: number;
+            try { totalLines = (await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] })).totalLines; }
+            catch { totalLines = r.content.length === 0 ? 0 : r.content.split("\n").length; }
+            const defaultCh = ctx.defaultChannelFor?.(r.scheme) ?? "body";
+            const channelKey = r.channel === defaultCh ? entry.path : `${entry.path}#${r.channel}`;
+            entry.channels[channelKey] = { mimetype: r.mimetype, tokens: tokenize(r.content), lines: totalLines };
+        }
+        return [...byEntry.values()];
+    }
+
     static async buildManifestBody(ctx: PlurnkSchemeContext): Promise<string> {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("buildManifestBody: ctx.mimetypes is required for the lines (extent) field");
