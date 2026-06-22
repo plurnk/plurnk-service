@@ -1378,6 +1378,8 @@ Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype
 
 A log row renders its **result body** for the content-returning ops — `READ@200` (the content it pulled) and `FIND@200` (the catalog rows / matched entries it returned) — under the query's fence, mimetype-driven per the rules above; every other op re-emits its statement. FIND included: the model must see what a find *returned*, not just its echoed query, and the turn-0 foisted `FIND(scheme:///**)` reaches the packet through this branch — without it the catalog preview is invisible. {§render-rule-find-renders-result}
 
+An `EDIT` log row renders its **resulting span** — the edited area as it looks now (`rx.span`), under the target's fence — not the input statement: the log reads "and here's X now," so the model sees its edit's effect. The meta line still carries op + target; the model's own EDITs and the system delta-EDITs (§env-delta) render identically; an emptied span → meta line only. With no span stored, the row falls back to re-emitting the statement (the heredoc the model wrote). {§edit-result-render}
+
 The `N:\t` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 
 ### §markdown-primitive Mimetype primitive: text/markdown

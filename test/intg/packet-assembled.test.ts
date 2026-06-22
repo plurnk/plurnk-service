@@ -51,3 +51,25 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
     }
 });
+
+test("assembled packet: the grammar definition reaches the packet + the schemes directory renders well-formed << heredocs", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `pkt-shape-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const packet = await getPacket(db, result.turnId);
+
+        // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
+        assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
+        // Every scheme-directory line is a well-formed heredoc — the service-side guard for the
+        // <<-less example class (a render dropping the << teaches the model malformed ops, the
+        // exact failure mode the EXEC examples shipped). Covers the part the service controls.
+        const schemeLines = packetSection(packet, "schemes").split("\n").filter((l) => l.startsWith("* "));
+        assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
+        for (const line of schemeLines) assert.match(line, /^\* <</, `scheme directory line must be a << heredoc: ${line}`);
+    } finally { await db.close(); }
+});

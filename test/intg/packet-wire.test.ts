@@ -92,6 +92,21 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
 });
 
+test("[§edit-result-render] log render: EDIT@200 with rx.span → renders the resulting span under the fence, not the statement", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "model",
+        op: "EDIT",
+        status: 200,
+        target: { scheme: "known", pathname: "/plan.md" },
+        rx: { status: 200, span: "- [x] ship the fix" },
+    }]);
+    // The model sees the edited area as it looks NOW, under the entry's fence — its edit's
+    // effect, not the heredoc it typed. (No-span EDITs fall back to re-emitting the statement,
+    // covered above.)
+    assert.match(out, /<<:::known:\/\/\/plan\.md\n- \[x\] ship the fix\n:::known:\/\/\/plan\.md/, "EDIT renders rx.span verbatim under the target fence");
+});
+
 test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
     const system = {
         system_definition: "SD",
