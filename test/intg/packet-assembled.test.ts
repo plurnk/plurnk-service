@@ -52,6 +52,31 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
     }
 });
 
+test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces materialized docs into the log", async () => {
+    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    process.env.PLURNK_MANIFEST_ITEMS = "-1";
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `pkt-docs-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't).
+        await seedEntryWithChannel(db, { sessionId, runId, scheme: "plurnk", pathname: "/docs/known.md", channel: "body", content: "# known\nYour persistent memory.", mimetype: "text/markdown" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const log = packetSection(await getPacket(db, result.turnId), "log");
+
+        // The plurnk catalog is scoped to its docs subtree, and the FIND renders its result —
+        // the materialized doc reaches the model via FIND, not an inline link (#270).
+        assert.match(log, /"target":"plurnk:\/\/docs\/\*\*"/, "the foist scopes the plurnk catalog to the docs subtree");
+        assert.match(log, /plurnk:\/\/docs\/known\.md/, "the materialized doc surfaces in the foist's rendered result");
+    } finally {
+        await db.close();
+        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
+
 test("assembled packet: the grammar definition reaches the packet + the schemes directory renders well-formed << heredocs", async () => {
     const db = await openMigrated();
     try {
