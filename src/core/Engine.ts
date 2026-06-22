@@ -819,20 +819,22 @@ export default class Engine {
                 });
                 nextActionIndex++;
             }
-            // #250 — auto-READ the project's AGENTS.md scratchpad into THIS first model turn
-            // when the session opted in AND it's a member. The client picks it (gitignored by
-            // convention → not a git member); the engine READs it here so its body is part of
-            // turn-1's log — a normal file:/// member READ (the model sees only the READ; it
-            // stays read-write, so the model edits the scratchpad back as it evolves).
-            if (autoReadAgents === true && runFirstLoop) { // #269 — AGENTS read is run-once
-                const agentsMember = await (this.#db.crud_get_member_sig as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/AGENTS.md" });
-                if (agentsMember !== undefined) {
+            // #268 — auto-READ the configured AGENTS file(s) into THIS first model turn. Env-driven
+            // (PLURNK_AGENTS_AUTO / PLURNK_AGENTS_FILES), overridable per-session by autoReadAgents; the
+            // matching files are auto-PICKed into membership at session setup (envelope). The model sees
+            // only the READ — a normal file:/// member READ, read-write so it edits the scratchpad back.
+            const { auto: agentsAuto, files: agentsFiles } = SessionSettings.resolveAgentsAutoload(autoReadAgents);
+            if (agentsAuto && runFirstLoop) { // #269 — run-once, the run's first loop
+                for (const file of agentsFiles) {
+                    const pathname = file.startsWith("/") ? file : `/${file}`;
+                    const member = await (this.#db.crud_get_member_sig as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname });
+                    if (member === undefined) continue; // absent / non-git session → not a member → skip
                     const agentsRead: ReadStatement = {
                         op: "READ", suffix: "", signal: null, lineMarker: null,
                         target: {
-                            kind: "url", raw: "file:///AGENTS.md", scheme: "file",
+                            kind: "url", raw: `file://${pathname}`, scheme: "file",
                             username: null, password: null, hostname: null, port: null,
-                            pathname: "/AGENTS.md", params: {}, fragment: null,
+                            pathname, params: {}, fragment: null,
                         },
                         body: null, position: { line: 1, column: 1 },
                     };

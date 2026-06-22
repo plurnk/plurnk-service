@@ -18,7 +18,7 @@ export type SessionOpenContext = {
     mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_MD_* (#231)
     maxCommands: number | null;   // ceiling — min() with env PLURNK_MAX_COMMANDS; null = unset (#232)
     git: boolean | null;          // ceiling — env AND session; false denies git; null = unset (#232)
-    autoReadAgents: boolean | null; // #250 — auto-READ project AGENTS.md into the first model turn; null = unset
+    autoReadAgents: boolean | null; // #268 — per-session override of PLURNK_AGENTS_AUTO; null = env default
     client: string | null;        // #249 — session-stable frontend id, forwarded as Plurnk-Client (plurnk provider only); null = unset
 };
 
@@ -51,5 +51,14 @@ export default class SessionSettings {
         }
         for (const { alias, content } of clientDocs) byEntry.set(`${alias}.md`, content); // client wins
         return [...byEntry].map(([entryName, content]) => ({ entryName, content }));
+    }
+
+    // #268 — service-owned AGENTS auto-load. Env defaults (PLURNK_AGENTS_AUTO=1 / PLURNK_AGENTS_FILES),
+    // overridable per-session by the client's autoReadAgents (null ⇒ env default). One resolution drives
+    // BOTH the auto-PICK (envelope, into membership) and the auto-READ (engine, the run's first turn).
+    static resolveAgentsAutoload(sessionOverride: boolean | null): { auto: boolean; files: string[] } {
+        const auto = sessionOverride ?? (process.env.PLURNK_AGENTS_AUTO === "1");
+        const files = (process.env.PLURNK_AGENTS_FILES ?? "").split(/[\s,]+/).filter((f) => f.length > 0);
+        return { auto, files };
     }
 }
