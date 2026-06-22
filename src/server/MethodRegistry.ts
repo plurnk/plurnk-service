@@ -29,7 +29,7 @@ export interface DaemonSurface {
     inject(args: {
         sessionId: number; runId: number; prompt: string;
         provider: Provider; systemPrompt: string;
-        maxTurns?: number; flags?: { yolo?: boolean };
+        maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;

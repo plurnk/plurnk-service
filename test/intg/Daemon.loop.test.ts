@@ -260,3 +260,24 @@ test("discover catalog includes loop.run and loop/terminated", async () => {
         } finally { ws.close(); }
     });
 });
+
+test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const logEntries = subscribeNotifications(ws, "log/entry");
+            await rpcCall(ws, 1, "session.create", { name: "openpaths" });
+            // Headless session: the files needn't exist — what's asserted is that the daemon FOISTS a
+            // turn-0 READ for each path (a missing path just surfaces its own 4xx in the log).
+            await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
+            await flush();
+            // file:/// paths store with scheme=NULL (a routing-internal scheme; §entries), so that plus
+            // a plurnk origin identifies the foists — the prompt EDIT alongside them is scheme='plurnk'.
+            const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
+                .map((c) => c.entry)
+                .filter((e) => e.op === "READ" && e.origin === "plurnk" && e.scheme === null);
+            assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["/README.md", "/src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0");
+        } finally { ws.close(); }
+    });
+});

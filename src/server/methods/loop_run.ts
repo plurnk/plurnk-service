@@ -36,6 +36,7 @@ interface Params {
     alias?: string;
     model?: string;
     flags?: LoopRunFlags;
+    openPaths?: string[];
 }
 
 export default class LoopRunMethod {
@@ -61,6 +62,10 @@ export default class LoopRunMethod {
                     if (p.flags.mode !== undefined && p.flags.mode !== "ask" && p.flags.mode !== "act") {
                         throw new Error("loop.run: flags.mode must be 'ask' or 'act'");
                     }
+                }
+                // #260 — workspace paths the daemon foists as turn-0 READs (no client-side inlining).
+                if (p.openPaths !== undefined && (!Array.isArray(p.openPaths) || p.openPaths.some((x) => typeof x !== "string" || x.length === 0))) {
+                    throw new Error("loop.run: openPaths must be an array of non-empty path strings");
                 }
                 // PLURNK_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
                 // cap; positive = a hard cap a per-call maxTurns cannot exceed. §operator-config-max-turns-ceiling
@@ -145,7 +150,7 @@ export default class LoopRunMethod {
                 const injected = await ctx.daemon.inject({
                     sessionId, runId: modelRunId, prompt: p.prompt,
                     provider, systemPrompt,
-                    maxTurns, flags: p.flags,
+                    maxTurns, flags: p.flags, openPaths: p.openPaths,
                 });
 
                 if (injected.action === "injected_next_turn") {
@@ -200,6 +205,7 @@ export default class LoopRunMethod {
                 alias: "string? — model alias resolved in the DAEMON's env (overrides PLURNK_MODEL); prefer `model` for client-resolved selection",
                 model: "string? — client-resolved '<provider>/<model>' to run on, instantiated with the daemon's keys; bypasses daemon alias lookup, takes precedence over `alias`",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",
+                openPaths: "string[]? — workspace paths (@file refs) the daemon READs into the loop's first turn so their content sits in front of the model; daemon-foist, no client-side byte inlining (#260).",
             },
             requiresInit: true,
             longRunning: false,

@@ -394,7 +394,7 @@ export default class Daemon {
     async inject(args: {
         sessionId: number; runId: number; prompt: string;
         provider: Provider; systemPrompt: string;
-        maxTurns?: number; flags?: { yolo?: boolean };
+        maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;
@@ -426,6 +426,12 @@ export default class Daemon {
             const merged = { ...DEFAULT_LOOP_FLAGS, ...args.flags };
             await (this.#db.engine_set_loop_flags as PrepMethod).run({
                 loop_id: loopId, flags: JSON.stringify(merged),
+            });
+        }
+        // #260 — persist client-passed @file paths before the drain claims the loop, so turn 0 foists them.
+        if (args.openPaths !== undefined && args.openPaths.length > 0) {
+            await (this.#db.engine_set_loop_open_paths as PrepMethod).run({
+                loop_id: loopId, open_paths: JSON.stringify(args.openPaths),
             });
         }
 

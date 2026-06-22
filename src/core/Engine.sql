@@ -24,6 +24,15 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 -- active set is loop-stable, so the `= '[]'` guard keeps later turns from rewriting it.
 UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
 
+-- PREP: engine_set_loop_open_paths
+-- #260 — persist the loop.run-passed @file paths (string[] JSON) on the loop before the drain
+-- starts, so runTurn foists a turn-0 READ of each (same seam as the #250 AGENTS.md auto-read).
+UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
+
+-- PREP: engine_get_loop_open_paths
+-- #260 — runTurn reads the loop's @file foist-paths at turn 0.
+SELECT open_paths FROM loops WHERE id = $loop_id;
+
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
 -- system-origin EDIT against plurnk:///prompt/<loop_id>/1 (§packet), at the
