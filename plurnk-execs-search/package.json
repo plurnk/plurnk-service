@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "0.2.5",
+    "version": "0.2.6",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
     "keywords": [
         "plurnk",
@@ -34,7 +34,7 @@
             {
                 "name": "search",
                 "glyph": "🔎",
-                "example": "EXEC[search]:france population:EXEC"
+                "example": "<<EXEC[search]:france population:EXEC"
             },
             {
                 "name": "images",
