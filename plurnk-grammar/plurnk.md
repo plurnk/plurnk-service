@@ -119,7 +119,7 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 <<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
 <<READ(node:///3/1/2#stdout)<1,40>::READ
-<<READ(/etc/hosts)<2>::READ
+<<READ(../../../../etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
