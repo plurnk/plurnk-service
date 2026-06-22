@@ -54,15 +54,15 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.15",
+        "@plurnk/plurnk-execs": "0.4.16",
         "@plurnk/plurnk-execs-all": "0.1.6",
-        "@plurnk/plurnk-grammar": "0.74.0",
+        "@plurnk/plurnk-grammar": "0.74.6",
         "@plurnk/plurnk-mimetypes": "0.15.23",
         "@plurnk/plurnk-mimetypes-all": "0.5.2",
-        "@plurnk/plurnk-providers": "0.13.0",
-        "@plurnk/plurnk-providers-all": "0.8.0",
-        "@plurnk/plurnk-schemes": "0.29.6",
-        "@plurnk/plurnk-schemes-all": "0.1.20",
+        "@plurnk/plurnk-providers": "0.15.0",
+        "@plurnk/plurnk-providers-all": "0.8.1",
+        "@plurnk/plurnk-schemes": "0.29.8",
+        "@plurnk/plurnk-schemes-all": "0.1.22",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
