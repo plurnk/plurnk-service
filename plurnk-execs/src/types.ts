@@ -123,6 +123,31 @@ export interface ExecInfo {
     attribution?: string | string[];
 }
 
+// One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`
+// manifest entry, and the element type a dynamic runtimes hook returns. `name`
+// is the tag; the rest are the optional manifest fields discover() surfaces
+// onto ExecInfo (a per-tag `docs/<tag>.md` file, when present, still wins over
+// an inline `documentation`).
+export interface RuntimeDecl {
+    name: string;
+    glyph?: string;
+    example?: string;
+    documentation?: string;
+}
+
+// A dynamic runtimes hook. A package that can't enumerate its tags at publish
+// time — the MCP bridge is the motivating case, its tags are the per-deployment
+// servers an operator configures in the environment (plurnk-execs#10) —
+// declares `plurnk.runtimesModule` (a path, relative to the package dir) INSTEAD
+// of a static `plurnk.runtimes[]`, pointing at a module whose `runtimes` export
+// (or default export) is this function. discover() imports and calls it at scan
+// time, but only AFTER the trust gate — an untrusted package's hook is never
+// executed. The hook reads its own config from the environment and returns the
+// same decls a static manifest would. Throwing is FAIL-HARD: a declared but
+// broken hook is a trusted-package contract violation, surfaced not swallowed
+// (unlike a malformed third-party package.json, which discover() skips).
+export type RuntimesHook = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;
+
 // Runtime tag → provider. Tags are a flat global namespace; collisions are a
 // fail-hard install error (see discover()).
 export type ExecRegistry = ReadonlyMap<string, ExecInfo>;

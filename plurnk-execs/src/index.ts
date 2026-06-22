@@ -15,6 +15,8 @@ export type {
     ExecResult,
     Effect,
     RuntimeAvailability,
+    RuntimeDecl,
+    RuntimesHook,
     ExecInfo,
     ExecRegistry,
     Discovery,

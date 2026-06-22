@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
+import { pathToFileURL } from "node:url";
+import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
 // Scan installed executor packages and build the runtime-tag registry the
 // consuming scheme dispatches on. Parallel to plurnk-mimetypes' discover().
@@ -16,9 +17,17 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // consumer to note. Off by default — no regression.
 //
 // A package is recognized as an executor when its `package.json` declares
-// `plurnk.kind === "exec"` and exposes one or more runtime tags via
-// `plurnk.runtimes: { name, glyph?, example?, documentation? }[]` (SPEC §3).
-// Each entry registers its tag separately; one package can claim many tags
+// `plurnk.kind === "exec"` and exposes one or more runtime tags. Tags come from
+// one of two sources (SPEC §3):
+//   - STATIC: `plurnk.runtimes: { name, glyph?, example?, documentation? }[]` —
+//     the tags are known at publish time (sh, search, sqlite, …).
+//   - DYNAMIC: `plurnk.runtimesModule: "<rel-path>"` — for a package whose tags
+//     are per-deployment (the MCP bridge: one tag per configured server). The
+//     module's `runtimes` (or default) export is a hook discover() imports and
+//     calls at scan time to materialize the decls. Executed only for TRUSTED
+//     packages — the trust gate runs first, so an untrusted package's hook is
+//     never imported (plurnk-execs#10). A declared-but-broken hook is fail-hard.
+// Each decl registers its tag separately; one package can claim many tags
 // backed by the same handler (e.g. the search sibling claims `search`, `news`,
 // `images`, …). `example` is a one-line self-documenting usage example
 // (plurnk-execs#7); `documentation` is the fuller markdown a consumer can serve
@@ -38,14 +47,18 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const registry = new Map<string, ExecInfo>();
     const skipped = new Set<string>();
     for (const dir of dirs) {
-        for (const info of await readExecInfos(dir)) {
-            // Host plugin-trust gate (plurnk-service#229): an untrusted
-            // third-party package is discovered but not registered — recorded
-            // for the consumer's telemetry note, never crashed on.
-            if (!isTrusted(info.packageName)) {
-                skipped.add(info.packageName);
-                continue;
-            }
+        const manifest = await readExecManifest(dir);
+        if (manifest === null) continue; // not an exec package
+        // Host plugin-trust gate (plurnk-service#229), enforced BEFORE any tag
+        // is read or — critically — any dynamic runtimes hook is imported: an
+        // untrusted third-party package is discovered but not registered, and
+        // its code is never executed. Recorded for the consumer's telemetry
+        // note, never crashed on.
+        if (!isTrusted(manifest.packageName)) {
+            skipped.add(manifest.packageName);
+            continue;
+        }
+        for (const info of await readExecInfos(dir, manifest)) {
             const existing = registry.get(info.runtime);
             if (existing !== undefined) {
                 throw new Error(
@@ -105,41 +118,54 @@ async function defaultPackageDirs(cwd: string): Promise<string[]> {
     return dirs;
 }
 
-// Produce one ExecInfo per declared runtime tag. Returns [] for non-executor
-// packages or invalid declarations.
-async function readExecInfos(dir: string): Promise<ExecInfo[]> {
-    const pkgPath = path.join(dir, "package.json");
+// An exec package's parsed manifest — its name and the `plurnk` block. Read
+// once per package so the trust gate can run before tags are materialized.
+interface ExecManifest {
+    packageName: string;
+    plurnk: Record<string, unknown>;
+}
+
+// Read a package's `package.json` and return its manifest iff it declares
+// `plurnk.kind === "exec"`. Returns null for non-executor packages, a missing
+// or malformed `package.json` — discover() silently skips those (they are not
+// "skipped by trust", just not exec packages).
+async function readExecManifest(dir: string): Promise<ExecManifest | null> {
     let raw: string;
     try {
-        raw = await fs.readFile(pkgPath, "utf-8");
+        raw = await fs.readFile(path.join(dir, "package.json"), "utf-8");
     } catch {
-        return [];
+        return null;
     }
 
     let pkg: unknown;
     try {
         pkg = JSON.parse(raw);
     } catch {
-        return [];
+        return null;
     }
 
-    if (typeof pkg !== "object" || pkg === null) return [];
+    if (typeof pkg !== "object" || pkg === null) return null;
     const record = pkg as Record<string, unknown>;
     const plurnk = record.plurnk;
-    if (typeof plurnk !== "object" || plurnk === null) return [];
+    if (typeof plurnk !== "object" || plurnk === null) return null;
     const plurnkRec = plurnk as Record<string, unknown>;
-    if (plurnkRec.kind !== "exec") return [];
-    if (!Array.isArray(plurnkRec.runtimes)) return [];
+    if (plurnkRec.kind !== "exec") return null;
 
-    const packageName = typeof record.name === "string" ? record.name : "";
+    return { packageName: typeof record.name === "string" ? record.name : "", plurnk: plurnkRec };
+}
+
+// Produce one ExecInfo per declared runtime tag — static `plurnk.runtimes[]` or
+// a dynamic `plurnk.runtimesModule` hook. Returns [] when neither is declared.
+async function readExecInfos(dir: string, { packageName, plurnk }: ExecManifest): Promise<ExecInfo[]> {
     // Package-level attribution, surfaced raw (plurnk-service#249); every tag of
     // the package carries the same value. The consumer owns the policy.
-    const rawAttr = plurnkRec.attribution;
+    const rawAttr = plurnk.attribution;
     const attribution = typeof rawAttr === "string" || Array.isArray(rawAttr) ? rawAttr as string | string[] : undefined;
+
     const infos: ExecInfo[] = [];
-    for (const entry of plurnkRec.runtimes) {
-        if (typeof entry !== "object" || entry === null) continue;
-        const e = entry as Record<string, unknown>;
+    for (const decl of await runtimeDecls(dir, packageName, plurnk)) {
+        if (typeof decl !== "object" || decl === null) continue;
+        const e = decl as Record<string, unknown>;
         if (typeof e.name !== "string" || e.name === "") continue;
         // `docs/<tag>.md` is the documentation source of truth (the docs
         // convention); the inline `documentation` field is the fallback.
@@ -156,6 +182,46 @@ async function readExecInfos(dir: string): Promise<ExecInfo[]> {
     }
 
     return infos;
+}
+
+// Resolve a package's runtime decls. Static `plurnk.runtimes[]` is the common
+// case; `plurnk.runtimesModule` (a relative path) is the dynamic hook for
+// per-deployment tags. Static wins if both are declared. Returns [] when
+// neither is present.
+async function runtimeDecls(dir: string, packageName: string, plurnk: Record<string, unknown>): Promise<unknown[]> {
+    if (Array.isArray(plurnk.runtimes)) return plurnk.runtimes;
+    const mod = plurnk.runtimesModule;
+    if (typeof mod === "string" && mod !== "") return loadDynamicRuntimes(dir, packageName, mod);
+    return [];
+}
+
+// Import a trusted package's runtimes hook and call it. Fail-hard on every
+// failure — an unloadable module, a missing/non-function export, or a
+// non-array return is a contract violation by a trusted package (its own
+// packaging or config), surfaced with the cause, never swallowed. The trust
+// gate in discover() guarantees this only runs for trusted packages.
+async function loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
+    const href = pathToFileURL(path.join(dir, rel)).href;
+    let mod: Record<string, unknown>;
+    try {
+        mod = await import(href);
+    } catch (cause) {
+        throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
+    }
+    const hook = mod.runtimes ?? mod.default;
+    if (typeof hook !== "function") {
+        throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must export 'runtimes' (or default) as a function`);
+    }
+    let decls: unknown;
+    try {
+        decls = await (hook as () => unknown)();
+    } catch (cause) {
+        throw new Error(`exec runtimes hook threw: ${packageName} -> ${rel}`, { cause });
+    }
+    if (!Array.isArray(decls)) {
+        throw new Error(`exec runtimes hook returned a non-array: ${packageName} -> ${rel}`);
+    }
+    return decls as RuntimeDecl[];
 }
 
 // A tag's documentation file under the package's `docs/` folder — the docs

@@ -118,6 +118,26 @@ Each entry's optional **`example`** is a one-line, self-documenting usage exampl
 
 Each entry's optional **`documentation`** is full markdown — the flags, modes, and gotchas the one-liner can't carry. It is the depth a consumer can serve on demand, separate from the always-on `example` (progressive disclosure). The **source of truth is a `docs/<tag>.md` file** in the package (the docs convention; ship it via `files`), which `discover()` reads into `documentation`; the inline `documentation` manifest field is the fallback when no file ships. Defaults to `""`. The execs contract is the two fields; **how** the consumer surfaces them to the model — an in-context one-liner, the full doc fetched when the model wants it — is the consumer's (plurnk-service's) concern, not specified here.
 
+### §3.1 Dynamic runtimes (per-deployment tags)
+
+A package whose tags are not known at publish time — the MCP bridge is the motivating case, where each tag is a per-deployment MCP **server** an operator configures in the environment (plurnk-execs#10) — declares **`plurnk.runtimesModule`** (a path, relative to the package dir) **instead of** a static `plurnk.runtimes[]`:
+
+```json
+{
+    "name": "@plurnk/plurnk-execs-mcp",
+    "plurnk": { "kind": "exec", "runtimesModule": "./dist/runtimes.js" }
+}
+```
+
+The module's **`runtimes`** export (or its default export) is a hook `() => RuntimeDecl[] | Promise<RuntimeDecl[]>` returning the same decls a static manifest would (`{ name, glyph?, example?, documentation? }`). `discover()` imports and calls it at scan time and registers the result exactly as if the decls were static (a `docs/<tag>.md` file still wins over an inline `documentation`, though dynamic tags rarely ship one). The hook reads its own config from the environment — it must be cheap and **must not** depend on network reachability (that is `probe()`'s job, per server, at boot).
+
+Two guarantees frame the hook:
+
+- **Trust-gated execution.** The hook is imported **only for trusted packages** — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate (below) runs *before* the import, so an untrusted package's code is never executed. This is the same in-process-trust posture executors already carry (their `run()` is trusted host code); dynamic discovery just extends it to scan time.
+- **Fail-hard on a broken hook.** An unloadable module, a missing/non-function export, or a non-array return is a **contract violation by a trusted package** (its own packaging or config) and throws with the cause attached — surfaced, not swallowed. This is deliberately stricter than a malformed third-party `package.json`, which `discover()` silently skips: a package that *declares* a hook owns making it work.
+
+`runtimes[]` and `runtimesModule` are mutually exclusive; if both are present the **static array wins** and the hook is never loaded.
+
 **Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The policy mirrors plurnk-service's `PluginTrust.isTrusted`; it's duplicated, not shared, since it can't cross the package boundary.
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.

@@ -77,6 +77,92 @@ test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag 
     assert.ok(!("attribution" in (registry.get("sh") as object)), "no attribution key when omitted");
 });
 
+// Materialize a package whose tags come from a dynamic runtimes hook
+// (plurnk-execs#10): writes the package.json with `plurnk.runtimesModule` and
+// an .mjs module exporting the given hook source. `hookSrc` is the body of an
+// ESM module (must `export` `runtimes` or `default`).
+const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs"): Promise<string> => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
+        name, plurnk: { kind: "exec", runtimesModule: `./${rel}` },
+    }), "utf-8");
+    await fs.writeFile(path.join(dir, rel), hookSrc, "utf-8");
+    return dir;
+};
+
+test("discover: dynamic runtimesModule hook materializes per-deployment tags (#10)", async () => {
+    const dir = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-mcp",
+        `export async function runtimes() {
+            return [
+                { name: "github", glyph: "🐙", example: "EXEC[github]:create_issue {}:EXEC", documentation: "gh tools" },
+                { name: "figma", glyph: "🎨" },
+            ];
+        }`,
+    );
+    const { registry } = await discover({ packageDirs: [dir] });
+
+    assert.equal(registry.size, 2);
+    assert.deepEqual(registry.get("github"), {
+        runtime: "github", glyph: "🐙", example: "EXEC[github]:create_issue {}:EXEC",
+        documentation: "gh tools", packageName: "@plurnk/plurnk-execs-mcp",
+    });
+    assert.deepEqual(registry.get("figma"), {
+        runtime: "figma", glyph: "🎨", example: "", documentation: "", packageName: "@plurnk/plurnk-execs-mcp",
+    });
+});
+
+test("discover: the dynamic hook accepts a default export and a sync return", async () => {
+    const dir = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-mcp",
+        `export default () => [{ name: "slack" }];`,
+    );
+    const { registry } = await discover({ packageDirs: [dir] });
+    assert.deepEqual([...registry.keys()], ["slack"]);
+});
+
+test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
+    const missing = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", "// no exports", "gone.mjs");
+    // Point at a file that doesn't exist on disk → unloadable.
+    await fs.rm(path.join(missing, "gone.mjs"));
+    await assert.rejects(discover({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-mcp/);
+
+    const noFn = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = 42;`);
+    await assert.rejects(discover({ packageDirs: [noFn] }), /runtimes hook invalid:.*must export 'runtimes'/);
+
+    const threw = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export function runtimes() { throw new Error("boom"); }`);
+    await assert.rejects(discover({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-mcp/);
+
+    const nonArray = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = () => ({ name: "x" });`);
+    await assert.rejects(discover({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
+});
+
+test("discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate before import)", async () => {
+    // If the gate failed to guard the import, this hook would throw and the
+    // rejection would surface — proving execution. Under the gate it must be
+    // skipped silently instead.
+    const acme = await makeDynamicPkg(
+        "@acme/acme-execs-rogue",
+        `export function runtimes() { throw new Error("hook executed — gate breached"); }`,
+    );
+    await withGate("1", async () => {
+        const { registry, skipped } = await discover({ packageDirs: [acme] });
+        assert.equal(registry.size, 0, "untrusted dynamic package registers nothing");
+        assert.deepEqual(skipped, ["@acme/acme-execs-rogue"], "reported as skipped, hook never ran");
+    });
+});
+
+test("discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
+        name: "@plurnk/plurnk-execs-both",
+        plurnk: { kind: "exec", runtimes: [{ name: "static" }], runtimesModule: "./runtimes.mjs" },
+    }), "utf-8");
+    await fs.writeFile(path.join(dir, "runtimes.mjs"), `export function runtimes() { throw new Error("should not load"); }`, "utf-8");
+    const { registry } = await discover({ packageDirs: [dir] });
+    assert.deepEqual([...registry.keys()], ["static"], "static array short-circuits the hook");
+});
+
 test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",
