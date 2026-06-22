@@ -261,6 +261,16 @@ First path segment = provider plugin; rest = provider's own model id.
 
 Author-facing contract: [plurnk-schemes#1](https://github.com/plurnk/plurnk-schemes/issues/1). Below: what plurnk-service exposes to schemes and orchestrates over them.
 
+### §scheme-address Address resolution (RFC 3986)
+
+Every op targets a URI; the entry key is `(scope, scheme, pathname)`. The URI parses per RFC 3986 (`scheme://[authority]/path`) and maps to that key by one rule — no per-scheme carve-out:
+
+- A **registered** scheme is a plurnk namespace: its authority is a leading path segment, folded into the pathname (`Engine.#extractTarget` → `foldAuthorityIntoPath`). So `known://x`, `known:///x`, and pathname `/x` are the same entry — the authority is never a host, and the two-slash and three-slash forms are not distinct resources. {§scheme-address-namespace-fold}
+- A **foreign** scheme (unregistered — `http`/`https`) is a real web host: its authority stays in `hostname`, never folded.
+- `file` persists `scheme = NULL`; a relative path resolves against the workspace root to the namespace-absolute `/rel` key (RFC §5 reference resolution), and a path escaping the root is 403 (§membership).
+
+Storage keys on the resolved `(scheme, pathname)` **verbatim** — the leading slash is the namespace origin, not a filesystem absolute, and is never re-normalized at the storage boundary.
+
 ### §scheme-manifest Manifest
 
 Per author contract. Each scheme declares a `static manifest: SchemeManifest` with `name`, `channels`, `defaultChannel`, `category`, `scope`, `writableBy`, `volatile`, `modelVisible`, optional `flags`. {§scheme-manifest-manifest} Identity match enforced at plugin load: `manifest.name` must equal `package.json#plurnk.name`.

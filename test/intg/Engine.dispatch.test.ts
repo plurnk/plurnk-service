@@ -68,7 +68,7 @@ test("Engine.dispatch: KILL against known:/// permanently deletes the entry (200
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: known://x (authority form) folds to the same entry as known:///x — RFC namespace authority", async () => {
+test("[§scheme-address-namespace-fold] known://x (authority form) folds to the same entry as known:///x", async () => {
     const { db, engine, env } = await setup();
     try {
         // create via the path form: known:///config.json => /config.json
