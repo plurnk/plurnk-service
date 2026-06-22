@@ -37,7 +37,7 @@ The framework calls `YourClass.fromEnv(env, model)` (sync or async) and expects 
 
 ## Discovery & trust
 
-`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "provider"`, returning `{ registry, skipped }` (name → package specifier).
+`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "provider"`, returning `{ registry, skipped, attributions }` (registry/skipped: name → package specifier; attributions: name → the package's raw `plurnk.attribution` for author credit, #21).
 
 - **Name collisions are fail-hard.** Two packages claiming the same provider name throw at discovery, naming both.
 - **The standard table wins.** A scanned package whose name duplicates a built-in standard provider (`openai`, `groq`, …) is shadowed — tier 1 resolves first.

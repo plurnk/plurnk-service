@@ -33,6 +33,12 @@ export type DiscoverOptions = {
 export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
+    // name → raw `plurnk.attribution` (string | string[]) declared by a registered
+    // provider package's manifest, for crediting the provider's author (#21,
+    // plurnk-service#249). Surfaced verbatim — the consumer applies the reservation
+    // policy (`@plurnk/` tags only from `@plurnk/`-scoped packages). Absent for
+    // providers that declare none.
+    attributions: Map<string, string | string[]>;
 };
 
 // OFF (unset/empty/"0") → every installed provider is trusted (no regression).
@@ -51,6 +57,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 
     const registry = new Map<string, string>();
     const skipped = new Map<string, string>();
+    const attributions = new Map<string, string | string[]>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
@@ -66,8 +73,9 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
             );
         }
         registry.set(info.name, info.packageName);
+        if (info.attribution !== undefined) attributions.set(info.name, info.attribution);
     }
-    return { registry, skipped };
+    return { registry, skipped, attributions };
 };
 
 // Enumerate every installed package directory — scoped and unscoped — under
@@ -96,9 +104,11 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
     return dirs;
 };
 
-// One { name, packageName } for a provider package, or null for anything that
-// isn't one (missing/invalid package.json, no plurnk block, wrong kind, no name).
-type ProviderInfo = { name: string; packageName: string };
+// One { name, packageName, attribution? } for a provider package, or null for
+// anything that isn't one (missing/invalid package.json, no plurnk block, wrong
+// kind, no name). `attribution` mirrors `plurnk.attribution` when it's a string
+// or string[] (anything else is ignored).
+type ProviderInfo = { name: string; packageName: string; attribution?: string | string[] };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     let raw: string;
@@ -121,5 +131,9 @@ const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     if (plurnkRec.kind !== "provider") return null;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
     if (typeof record.name !== "string" || record.name === "") return null;
-    return { name: plurnkRec.name, packageName: record.name };
+    const attr = plurnkRec.attribution;
+    const attribution = typeof attr === "string" ? attr
+        : Array.isArray(attr) && attr.every((x) => typeof x === "string") ? (attr as string[])
+        : undefined;
+    return { name: plurnkRec.name, packageName: record.name, attribution };
 };

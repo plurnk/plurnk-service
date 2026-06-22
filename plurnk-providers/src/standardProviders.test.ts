@@ -380,6 +380,21 @@ test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the regi
     );
 });
 
+test("bedrock: contextSize resolves from the catalog via the inference-profile's publisher (#22)", async () => {
+    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" };
+    const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-5");
+    assert.equal(p!.contextSize, 200000); // from the anthropic catalog, no PLURNK_PROVIDER_CONTEXT_SIZE set
+    // cost is NOT taken from the native anthropic rate (bedrock marks up) — stays 0
+    assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
+});
+
+test("bedrock: a publisher the catalog lacks (meta) → contextSize null; PLURNK_PROVIDER_CONTEXT_SIZE still wins", async () => {
+    const base = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-east-1" };
+    assert.equal((await standardProviderFromEnv("bedrock", base, "us.meta.llama-3-70b"))!.contextSize, null);
+    const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDER_CONTEXT_SIZE: "128000" }, "us.meta.llama-3-70b");
+    assert.equal(pinned!.contextSize, 128000);
+});
+
 test("PLURNK_GBNF_DEBUG=1 wires through: an invalid grammar throws without a chat call", async () => {
     const calls = mockEndpoint({ metaNctx: 4096 }); // llama fingerprint → grammarStyle llamacpp
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x", PLURNK_GBNF_DEBUG: "1" }, "m");

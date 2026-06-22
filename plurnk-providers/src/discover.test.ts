@@ -66,6 +66,21 @@ test("discover: node_modules entries with no package.json or malformed JSON are 
     await fs.rm(root, { recursive: true, force: true });
 });
 
+test("discover: surfaces plurnk.attribution (string or string[]) for registered providers (#21)", async () => {
+    const root = await buildModules({
+        "@acme/provider-solo": { name: "@acme/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@acme/solo" } },
+        "@acme/provider-multi": { name: "@acme/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@acme/a", "@acme/b"] } },
+        "@acme/provider-none": { name: "@acme/provider-none", plurnk: { kind: "provider", name: "none" } },
+        "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } }, // non-string/array
+    });
+    const { attributions } = await discover({ cwd: root });
+    assert.equal(attributions.get("solo"), "@acme/solo");
+    assert.deepEqual(attributions.get("multi"), ["@acme/a", "@acme/b"]);
+    assert.equal(attributions.has("none"), false); // declared none → absent
+    assert.equal(attributions.has("bad"), false);  // non-string/array ignored, not surfaced
+    await fs.rm(root, { recursive: true, force: true });
+});
+
 test("discover: missing node_modules yields an empty registry, not an error", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "providers-empty-"));
     const { registry } = await discover({ cwd: root });

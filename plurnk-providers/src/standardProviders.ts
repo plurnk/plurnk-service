@@ -40,6 +40,11 @@ type StandardProviderSpec = {
     // default — for endpoints whose URL is templated from standard env (bedrock
     // builds it from AWS_REGION). Throws a named error if it can't derive.
     baseUrlFromEnv?: (env: NodeJS.ProcessEnv) => string | undefined;
+    // Custom catalog context-window resolver for a relay whose model id the
+    // models.dev catalog doesn't key directly (bedrock inference profiles, #22).
+    // Returns the model's context window or undefined. When set, the catalog COST
+    // path is skipped — the model's native rate isn't this relay's rate.
+    catalogContextLookup?: (model: string) => number | undefined;
     // Path appended to the (slash-trimmed) base to reach chat-completions.
     chatPath: string;
     // When true (generic "openai" only), strip a trailing /v1 from the
@@ -148,9 +153,10 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // with AWS creds already exported needs no extra var. (Note the OpenAI-compat
     // path is /openai/v1, not /v1.) Multi-model relay (Claude, gpt-oss, Llama, …)
     // → no single reasoning toggle. Model ids are inference profiles like
-    // `us.anthropic.claude-sonnet-4-6`, which the models.dev catalog does NOT key
-    // on — so bedrock has no catalog context/cost; set PLURNK_PROVIDER_CONTEXT_SIZE
-    // for a context window (a catalog inference-profile mapping is a follow-on, #19).
+    // `us.anthropic.claude-sonnet-4-6`; `catalogContextLookup` strips the region and
+    // resolves the window under the model's publisher (#22). Cost stays unknown
+    // (bedrock marks up over the native rate); set PLURNK_PROVIDER_CONTEXT_SIZE for
+    // a publisher the catalog lacks (e.g. meta).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
@@ -158,6 +164,16 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
             const region = firstSet(env, ["AWS_REGION", "AWS_DEFAULT_REGION"]);
             if (region === undefined) throw new Error("bedrock provider: BEDROCK_BASE_URL must be set, or AWS_REGION / AWS_DEFAULT_REGION to derive it");
             return `https://bedrock-runtime.${region}.amazonaws.com/openai/v1`;
+        },
+        // Inference profile <region>.<publisher>.<model> — the catalog has no
+        // `bedrock` provider, so strip the region scope and look the model up under
+        // its PUBLISHER (anthropic, …). Only the context window rides; bedrock marks
+        // up, so the native cost is NOT used (cost stays unknown, #22).
+        catalogContextLookup: (model) => {
+            const stripped = model.replace(/^(?:us-gov|us|eu|apac)\./, "");
+            const dot = stripped.indexOf(".");
+            if (dot < 0) return undefined;
+            return lookup(stripped.slice(0, dot), stripped.slice(dot + 1))?.contextWindow;
         },
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
@@ -318,8 +334,11 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // probe). A local llama-server model misses the catalog and keeps its
     // probed n_ctx. Standard providers carry NO live pricing, so the catalog is
     // the sole — never shadowing — cost source; per-1M USD → pico-USD/token (×1e6).
-    const fallback = lookup(name, wireModel);
-    contextSize ??= fallback?.contextWindow ?? null;
+    // A relay with a catalogContextLookup (bedrock) resolves its window via the
+    // underlying model's publisher and carries NO catalog cost (native rate ≠ relay
+    // rate, #22); everyone else keys the catalog directly on (name, wireModel).
+    const fallback = spec.catalogContextLookup === undefined ? lookup(name, wireModel) : undefined;
+    contextSize ??= (spec.catalogContextLookup !== undefined ? spec.catalogContextLookup(wireModel) : fallback?.contextWindow) ?? null;
     const cost = fallback?.cost;
     const costFor = cost === undefined
         ? undefined

@@ -4,7 +4,7 @@ import { parseAliasesFromEnv, resolveActiveAlias, instantiateProvider, loadActiv
 
 const fakeProvider = { contextSize: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
-    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)) });
+    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model>", () => {
     const env = {
@@ -92,7 +92,7 @@ test("instantiateProvider: standard name resolves in-framework, no scan, no impo
     let scanned = false;
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        async () => { scanned = true; return { registry: new Map(), skipped: new Map() }; });
+        async () => { scanned = true; return { registry: new Map(), skipped: new Map(), attributions: new Map() }; });
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // tier 1 never touches the importer…
     assert.equal(scanned, false); // …nor the scan
