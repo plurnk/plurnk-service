@@ -19,6 +19,11 @@ SELECT flags FROM loops WHERE id = $loop_id;
 -- Updates the loop's persisted flags (json). Called by loop.run RPC handler.
 UPDATE loops SET flags = $flags WHERE id = $loop_id;
 
+-- PREP: engine_tag_loop_attributions
+-- #249 — tag the loop with its active plugins' attribution tags (string[] JSON), write-once: the
+-- active set is loop-stable, so the `= '[]'` guard keeps later turns from rewriting it.
+UPDATE loops SET attributions = $attributions WHERE id = $loop_id AND attributions = '[]';
+
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
 -- system-origin EDIT against plurnk:///prompt/<loop_id>/1 (§packet), at the

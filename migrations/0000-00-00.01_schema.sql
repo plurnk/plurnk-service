@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS loops (
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 508)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
+    -- #249 — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
+    -- with what its plugins offer. Same set the engine rides on each turn's generate() wire.
+    attributions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attributions)),
     -- §run-scheme loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
     -- terminal_message is the deliverable — the SEND[200] body or the abandonment

@@ -14,6 +14,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 
 const sendDone = parseDsl("<<PLAN::PLAN\n<<SEND[200]:done:SEND");
 const turn = (ops: PlurnkStatement[]): MockResponse => ({
@@ -71,4 +72,22 @@ test("[§attribution-plurnk-namespace-reserved] @plurnk/ is reserved to @plurnk/
         "a @plurnk/-scoped package may carry an @plurnk/ attribution",
     );
     assert.deepEqual(PluginAttribution.normalize("@acme/widgets", "ok-pkg"), ["@acme/widgets"], "a non-@plurnk scoped tag is always allowed");
+});
+
+test("#249 — the loop is tagged with its active plugins' attribution tags, stored on the loop", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `loop-attr-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const schemes = new SchemeRegistry();
+        schemes.attributions = () => ["npm:jane", "@acme/widgets"]; // the active plugins' declared tags
+        const engine = new Engine({ db, schemes });
+        const provider = new Mock({ contextSize: 100000, responses: [turn(sendDone)] });
+
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        const row = await (db.test_loops_get_attributions as PrepMethod).get<{ attributions: string }>({ loop_id: loopId });
+        assert.deepEqual(JSON.parse(row!.attributions), ["@acme/widgets", "npm:jane"], "the activity is tagged with its plugins' tags, deduped + sorted");
+    } finally { await db.close(); }
 });

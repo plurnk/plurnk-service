@@ -882,6 +882,8 @@ export default class Engine {
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
+        // #249 — tag the loop (the activity) with its active plugins' attribution tags, write-once.
+        if (attributions.length > 0) await (this.#db.engine_tag_loop_attributions as PrepMethod).run({ loop_id: loopId, attributions: JSON.stringify(attributions) });
         // #249 — session-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
         const { client } = await SessionSettings.read(this.#db, sessionId);
         try {
