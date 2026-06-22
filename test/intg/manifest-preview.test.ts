@@ -1,8 +1,7 @@
-// PLURNK_MANIFEST_ITEMS — turn-0 manifest preview foist (§actor-boundary). When
-// set, a plurnk-origin READ of plurnk:///manifest.json is foisted into the model's
-// turn 0 (sliced to the first N items via jsonpath for positive N, full for -1);
-// off by default. The READ runs AFTER the per-turn manifest write, so it hits the
-// catalog, not a 404.
+// PLURNK_MANIFEST_ITEMS — turn-0 catalog preview foist (§actor-boundary). When set, a
+// plurnk-origin FIND(scheme:///**) is foisted into the model's turn 0 for each scheme that
+// holds entries (capped to the first N rows per scheme for positive N, full for -1); off by
+// default. The catalog is FIND-served — there is no manifest.json entry to READ.
 //
 // NOTE: sets a process-global env var. node --test isolates each file in its own
 // process, so this doesn't leak across files; the on/off cases run sequentially.

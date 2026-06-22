@@ -4,7 +4,7 @@
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
 // `pick`. This module resolves that membership and (when token accounting is
 // available) materializes active members' disk content into a body channel,
-// so they appear in the manifest catalog (plurnk:///manifest.json) and are READ-able.
+// so they appear in the entry catalog (FIND-served) and are READ-able.
 //
 // Decisions realized here:
 //   D1 — workspace identity lives on the session (project_root).

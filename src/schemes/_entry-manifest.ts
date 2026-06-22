@@ -25,8 +25,6 @@ type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; 
 export type CatalogEntry = { path: string; seconds?: number; tags?: string[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
-    static #MANIFEST_PATH = "plurnk:///manifest.json";
-
     // Public — the catalog's path-rendering is the single source of truth for the
     // addressable key, shared by FIND (EntryFind aligns matched pathnames to catalog rows).
     static toPath(scheme: string | null, pathname: string): string {
@@ -36,10 +34,9 @@ export default class EntryManifest {
         return scheme === null ? pathname.replace(/^\//, "") : renderAddress(scheme, pathname);
     }
 
-    // Read-only catalog rows for a scheme (or all entries when undefined) — the manifest's
-    // CatalogEntry[] WITHOUT the derivation pump. The per-scheme FIND(scheme:///**) catalog
-    // (#270) renders these as its JSON result; buildManifestBody keeps the pump. Transitional
-    // parity — converges with buildManifestBody when plurnk:///manifest.json retires.
+    // Read-only catalog rows for a scheme (or all entries when undefined) — the CatalogEntry[]
+    // a per-scheme FIND(scheme:///**) renders as its JSON result, WITHOUT the derivation pump
+    // (maintainDerivations runs that once per turn; FIND reads the channels it leaves).
     static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null): Promise<CatalogEntry[]> {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
@@ -54,7 +51,6 @@ export default class EntryManifest {
         const byEntry = new Map<string, CatalogEntry>();
         for (const r of rows) {
             const path = EntryManifest.toPath(r.scheme, r.pathname);
-            if (path === EntryManifest.#MANIFEST_PATH) continue;
             let entry = byEntry.get(path);
             if (entry === undefined) {
                 entry = { path, channels: {} };
@@ -94,7 +90,6 @@ export default class EntryManifest {
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         for (const r of rows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
-            if (EntryManifest.toPath(r.scheme, r.pathname) === EntryManifest.#MANIFEST_PATH) continue; // the catalog never derives itself
             const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
             if (hash === r.deep_hash) continue; // unchanged since last derivation → deep rows persist
             try {
