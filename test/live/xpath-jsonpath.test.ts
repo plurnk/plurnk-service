@@ -1,7 +1,10 @@
 // Live xpath/jsonpath coverage. Each test SEEDS its entry (the model never writes
 // the JSON/HTML), so a green means the model actually drove the matcher — not that
-// it recited a value it had just authored. As of 2026-06-02 all four pass on
-// localhost: plurnk-mimetypes#3 has landed and the dialects are wired through.
+// it recited a value it had just authored. The wildcard + compose-chain green the full stack —
+// addressing, authority-fold (§scheme-address), matcher (verified deterministically: $.host => 200
+// "db.internal"), structural <L>. The two single-value probes are RED under live gemma: the loop SENDs
+// before it consumes its own READ result. Per [[never blame the model]] that's a packet question —
+// deferred to the post-epic live/demo sweep (AGENTS § Demo-surfaced backlog), not a model verdict.
 
 import test from "node:test";
 import assert from "node:assert/strict";
