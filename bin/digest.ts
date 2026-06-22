@@ -24,6 +24,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import PacketWire from "../src/core/packet-wire.ts";
 
@@ -254,6 +255,18 @@ export default class Digest {
         }, null, 2);
     }
 
+    // Default DB path — mirrors the service (`Service.#expandHome(PLURNK_DB_PATH)`; the
+    // `.env.example` floor is `~/.plurnk/plurnk.db`). The old repo-local default broke when
+    // the DB moved to `~/.plurnk`; a no-arg digest now reads the service's actual DB.
+    static defaultDbPath(): string {
+        const env = process.env.PLURNK_DB_PATH;
+        if (env !== undefined && env.length > 0) {
+            if (env === "~") return homedir();
+            return env.startsWith("~/") ? resolve(homedir(), env.slice(2)) : env;
+        }
+        return resolve(homedir(), ".plurnk", "plurnk.db");
+    }
+
     static run(opts: DigestOptions): void {
         const binDir = dirname(fileURLToPath(import.meta.url));
         const dbPath = resolve(opts.dbPath);
@@ -328,12 +341,12 @@ export default class Digest {
 }
 
 // CLI entry — guarded so `import Digest from ".../bin/digest.ts"` has NO side effect
-// (the #264 blocker for plurnk-bench). Bin behavior is identical: same default DB,
-// same default test/digest output, same exit-1 on a missing DB.
+// (the #264 blocker for plurnk-bench). Default DB = the SERVICE's DB (PLURNK_DB_PATH,
+// ~/.plurnk/plurnk.db floor), NOT the repo-local db; same test/digest output, same
+// exit-1 on a missing DB.
 if (import.meta.main) {
-    const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     try {
-        Digest.run({ dbPath: process.argv[2] ?? join(projectRoot, "plurnk.db") });
+        Digest.run({ dbPath: process.argv[2] ?? Digest.defaultDbPath() });
     } catch (err) {
         process.stderr.write(`${(err as Error).message}\n`);
         process.exit(1);
