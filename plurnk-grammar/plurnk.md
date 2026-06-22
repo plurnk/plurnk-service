@@ -31,7 +31,6 @@ EDIT is only for adding or modifying entries. Do not attempt to edit log items.
 The agent maintains two surfaces for budgeting working-memory tokens:
 
 - **Log** - the record of every operation. FOLD contracts a log row to its one-line summary and saves tokens; OPEN shows the complete record but spends from your `tokensFree` context tokens. Non-destructive - FOLDed rows remain listed and re-OPENable.
-- **`plurnk:///manifest.json`** - what's available: the complete unranked directory of every entry. Query it to discover available entries.
 
 OPEN and FOLD operate on the log only. Log items are read-only, but can be KILLed (erased).
 
@@ -68,7 +67,7 @@ Escape `#` inside a regex pattern as `\#`. XPath body begins with `//`. Semantic
 
 URI-shaped: `[scheme://]rest`.
 
-* Bare paths (no scheme) default to local relative project file paths. All local file paths in the manifest are relative.
+* Bare paths (no scheme) default to local relative project file paths. All local file paths in the Plurnk System are relative.
 * Glob metacharacters match within path segments; a standalone `#pattern#flags` matches the whole target by regex.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
@@ -110,7 +109,7 @@ YOU MUST terminate the turn by SENDing a status code containing the results, ans
 <<READ(lang/??.json):$.greeting:READ
 <<READ(plurnk://docs/sh.md):$.Environment:READ
 <<READ(README.md)://h2/text():READ
-<<READ(plurnk:///manifest.json):$[?(@.channels.stderr)]:READ
+<<READ(known:///users.json):$[?(@.role=="admin")]:READ
 <<READ(log:///1/2/3):$[*].matched.codename:READ
 <<READ(node:///3/1/2#stdout)<1,40>::READ
 <<READ(../../../../etc/hosts)<2>::READ
