@@ -1,6 +1,6 @@
 # Plurnk System
 
-Plurnk is an internal agentic harness with a persistent, extended context and a powerful pattern matching toolkit. You fully control your log (short term memory) and knowledgebase (long term memory).
+Plurnk is an internal agentic harness with a persistent, extended context and a pattern matching toolkit. You curate your own log (short term memory) and maintain your own knowledgebase (long term memory).
 
 ## Plurnk System Grammar
 
@@ -11,8 +11,6 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|CO
 <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
 ### Operations
-
-Operations do not emit their results on the current turn.
 
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
@@ -32,7 +30,7 @@ FIND returns rows of results, READ returns lines of content.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for adding or modifying entries. Do not attempt to edit log items.
 OPEN expands (`+`) the log item body and costs tokens. FOLD hides (`-`) the log item body and saves tokens. Not all log items have a body (`*`).
-EXEC produces streams on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
+EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
 KILL deletes entries, erases log items, and kills streams.
 
 ### `<Line> / <Result>`
