@@ -31,7 +31,7 @@ interface StatementTx {
     lineMarker?: { marks?: number[] } | null;
     body?: string | { raw?: unknown } | null;
 }
-interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown }
+interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown }
 interface LogEntryView {
     coordinate?: unknown;
     op?: unknown;
@@ -376,6 +376,11 @@ export default class PacketWire {
                 } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
+                }
+                // The matched set's content weight (sum of the entries' live channel tokens) — the
+                // FIND self-describes its hits' READ-cost; carries the per-scheme roll-up in the foist.
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number") {
+                    meta.itemsTokenTotal = rx.itemsTokenTotal;
                 }
             }
 
