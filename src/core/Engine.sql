@@ -186,6 +186,40 @@ INSERT INTO log_entries (
     'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
 );
 
+-- PREP: engine_run_stream_channels
+-- §exec-stream — every stream channel the run owns (an EXEC's stdout/stderr live on the
+-- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
+-- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
+SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
+    ec.name AS channel, ec.content AS content, ec.state AS state
+FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+JOIN entry_channels ec ON ec.entry_id = s.entry_id
+WHERE s.run_id = $run_id
+ORDER BY s.id, ec.name;
+
+-- PREP: engine_stream_cursor
+-- §exec-stream — bytes of this channel already shown to the run: the streamEnd recorded on its
+-- latest foisted delta (the caller defaults to 0 when none exists yet).
+SELECT attrs
+FROM log_entries
+WHERE run_id = $run_id AND origin = 'plurnk' AND op = 'READ'
+    AND scheme = $scheme AND pathname = $pathname AND fragment = $fragment
+ORDER BY id DESC LIMIT 1;
+
+-- PREP: engine_insert_stream_delta
+-- §exec-stream / §environment-observation — materialize a channel's unshown byte-delta as a
+-- foisted READ@200 row (the model READs the stream it never typed). origin=plurnk; fragment is
+-- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
+-- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream-fold-open
+INSERT INTO log_entries (
+    run_id, loop_id, turn_id, sequence, origin, source,
+    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
+) VALUES (
+    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
+    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', 200, $attrs, $expanded
+);
+
 -- PREP: engine_pull_loop_terminations
 -- §run-scheme — sibling runs' loops that reached a terminal status since this run last
 -- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]

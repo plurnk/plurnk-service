@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
-import { logEntries } from "./_helpers.ts";
+import { logEntries, packetSection } from "./_helpers.ts";
 
 test("regression: a model's EXEC result surfaces in the NEXT turn's log, not just the DB", async () => {
     // Turn 1: EXEC + SEND[102] (continue). Turn 2: SEND[200] (terminate). The
@@ -33,11 +33,20 @@ test("regression: a model's EXEC result surfaces in the NEXT turn's log, not jus
 
             const turn2 = turnIds![1];
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
-            const streams = logEntries(JSON.parse(row?.packet ?? "{}")).map((e) => String(e.stream ?? ""));
+            const packet = JSON.parse(row?.packet ?? "{}");
+            const entries = logEntries(packet);
             assert.ok(
-                streams.some((s) => s.startsWith("sh:///")),
-                `turn-2 log must link the exec result via stream= so the model can READ it; got ${JSON.stringify(streams)}`,
+                entries.some((e) => String(e.stream ?? "").startsWith("sh:///")),
+                `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
+            // §exec-stream — the environment-observation machine foists a READ of the exec stream
+            // into the NEXT turn (origin=plurnk), OPEN because the channel closed: the model SEES
+            // its output, it never has to find+pull it. This is the loop the live demo exposed.
+            assert.ok(
+                entries.some((e) => e.op === "READ" && e.origin === "plurnk" && String(e.target ?? "").includes("stdout")),
+                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ op: e.op, origin: e.origin, target: e.target })))}`,
+            );
+            assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
         } finally { ws.close(); }
     });
 });

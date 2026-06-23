@@ -890,10 +890,13 @@ export default class Engine {
             }
         }
 
-        // §env-delta — pre-seed environment deltas (changes since this run last
-        // reconciled) as system EDIT rows, before the packet composes; advance
-        // the action index past them so model ops continue after.
+        // §environment-observation — pre-seed the run's ambient observations (what changed since
+        // it last looked) as foisted rows before the packet composes; advance the action index
+        // past them so model ops continue after. Two instances of one machine: env-delta (sibling
+        // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
+        // terminal delta opens). §env-delta §exec-stream
         nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materializeStreamDeltas({ runId, loopId, turnId, fromSequence: nextActionIndex });
 
         // SPEC §telemetry — git working-tree state for the telemetry section, read once
         // (a service-side `git status` shell-out) and threaded into the budget
@@ -1516,6 +1519,38 @@ export default class Engine {
                 source: String(t.run_id), pathname: `/${t.run_name}`,
                 rx: t.terminal_message ?? `loop "${t.prompt}" ended (${t.status})`,
                 status: t.status,
+            });
+            written++;
+        }
+        return written;
+    }
+
+    // §environment-observation — exec streams as an instance of the ambient-observe machine:
+    // each turn, emit each owned channel's unshown byte-delta as a foisted READ@200 row. Folded
+    // while the channel streams; the terminal delta (channel closed) auto-OPENs. The cursor is the
+    // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the
+    // env-observe loop with a byte cursor where env-delta uses a timestamp. §exec-stream
+    async #materializeStreamDeltas(args: {
+        runId: number; loopId: number; turnId: number; fromSequence: number;
+    }): Promise<number> {
+        const { runId, loopId, turnId, fromSequence } = args;
+        const channels = await (this.#db.engine_run_stream_channels as PrepMethod).all<{
+            subscription_id: number; runtime: string; coord: string; channel: string; content: string; state: string;
+        }>({ run_id: runId });
+        let written = 0;
+        for (const ch of channels) {
+            const prior = await (this.#db.engine_stream_cursor as PrepMethod).get<{ attrs: string }>({
+                run_id: runId, scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+            });
+            const cursor = prior !== undefined ? ((JSON.parse(prior.attrs) as { streamEnd?: number }).streamEnd ?? 0) : 0;
+            if (ch.content.length <= cursor) continue;  // nothing new to show this turn
+            const closed = ch.state === "closed" || ch.state === "errored";
+            await (this.#db.engine_insert_stream_delta as PrepMethod).run({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+                rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream" }),
+                attrs: JSON.stringify({ streamEnd: ch.content.length }),
+                expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds
             });
             written++;
         }

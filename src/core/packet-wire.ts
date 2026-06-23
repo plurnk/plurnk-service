@@ -22,7 +22,7 @@ import type { GitStatus } from "./git-state.ts";
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
 // leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
 // checks below (boundaries validate). Engine's RequestPacket is strict.
-interface ActionTarget { scheme?: string | null; pathname?: string | null }
+interface ActionTarget { scheme?: string | null; pathname?: string | null; fragment?: string | null }
 interface StatementTx {
     op?: unknown;
     suffix?: unknown;
@@ -441,7 +441,11 @@ export default class PacketWire {
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
         const rendered = PacketWire.#renderModelUri(target.scheme, target.pathname);
-        return rendered.length > 0 ? rendered : null;
+        if (rendered.length === 0) return null;
+        // The channel fragment (#stdout/#stderr) is part of the address — a stream delta has to
+        // say WHICH channel it is, not just the entry. §exec-stream
+        const fragment = typeof target.fragment === "string" && target.fragment.length > 0 ? `#${target.fragment}` : "";
+        return rendered + fragment;
     }
 
     // Render TelemetryEvent[] → meta line per event, optionally followed by
