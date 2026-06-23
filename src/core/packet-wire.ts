@@ -379,56 +379,56 @@ export default class PacketWire {
                 }
             }
 
-            // The foldable body — computed FIRST because `tokens` measures it (the body
-            // cost IS exactly what a FOLD elides). "" ⇒ no body (a folded row, an empty
-            // EDIT span, a @204): the meta line carries the whole signal.
+            // The foldable body — computed ALWAYS (folded too), because `tokens` measures it: for
+            // an open row that's what a FOLD would save, for a folded row what an OPEN would cost.
+            // "" ⇒ genuinely no body (an empty FIND, an empty EDIT span, a @204).
             let body = "";
-            if (e.folded !== true) {
-                if (op === "FIND" && e.status === 200 && items === 0) {
-                    // Empty FIND result → meta-only. items:0 already says "empty"; rendering []
-                    // under a fence is redundant noise + a misleading tokens count on a row whose
-                    // weight is all meta. No body, no statement re-emit. (The always-foisted empty
-                    // known:///** / unknown:///** workspace rows are the common case.)
-                    body = "";
-                } else if ((op === "READ" || op === "FIND") && e.status === 200 &&
-                    rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
-                    // READ@200 / FIND@200: the content READ pulled, or the catalog rows /
-                    // matched entries FIND returned (§render-rule-find-renders-result) — the
-                    // turn-0 foisted FIND(scheme:///**) reaches the packet here. Line-navigable
-                    // mimetypes get the N:\t prefix (§render-rule-line-navigable-prefix); tree-
-                    // navigable (JSON/XML/HTML) render verbatim (§render-rule-tree-navigable-verbatim)
-                    // so jsonpath/xpath navigation isn't shifted.
-                    const fence = target ?? `log:///${coordinate}`;
-                    const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                    if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
-                        const start = typeof rx.startLine === "number" ? rx.startLine : 1;
-                        body = PacketWire.#wrapHeredocBody(fence, PacketWire.#numberLines(rx.content, start));
-                    } else {
-                        body = PacketWire.#wrapHeredocBody(fence, rx.content);
-                    }
-                } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
-                    // EDIT (§edit-result-render): the resulting span as it looks now. Empty
-                    // span (content emptied) ⇒ no body — the meta line stands alone.
-                    const span = (rx as { span: string }).span;
-                    if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
+            if (op === "FIND" && e.status === 200 && items === 0) {
+                // Empty FIND result → no body. items:0 already says "empty"; rendering [] under a
+                // fence is redundant noise. (The always-foisted empty known:///** / unknown:///**
+                // workspace rows are the common case.)
+                body = "";
+            } else if ((op === "READ" || op === "FIND") && e.status === 200 &&
+                rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
+                // READ@200 / FIND@200: the content READ pulled, or the catalog rows / matched
+                // entries FIND returned (§render-rule-find-renders-result) — the turn-0 foisted
+                // FIND(scheme:///**) reaches the packet here. Line-navigable mimetypes get the N:\t
+                // prefix (§render-rule-line-navigable-prefix); tree-navigable (JSON/XML/HTML) render
+                // verbatim (§render-rule-tree-navigable-verbatim) so jsonpath/xpath isn't shifted.
+                const fence = target ?? `log:///${coordinate}`;
+                const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
+                if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
+                    const start = typeof rx.startLine === "number" ? rx.startLine : 1;
+                    body = PacketWire.#wrapHeredocBody(fence, PacketWire.#numberLines(rx.content, start));
                 } else {
-                    // Every other op — EXEC, SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty
-                    // READ/FIND or a span-less EDIT — re-emit the model's own statement in its
-                    // native heredoc, so the row records what it wrote, not just a status code.
-                    const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
-                    if (heredoc !== null) body = heredoc;
+                    body = PacketWire.#wrapHeredocBody(fence, rx.content);
                 }
+            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
+                // EDIT (§edit-result-render): the resulting span as it looks now. Empty span
+                // (content emptied) ⇒ no body — the meta line stands alone.
+                const span = (rx as { span: string }).span;
+                if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
+            } else {
+                // Every other op — EXEC, SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty
+                // READ/FIND or a span-less EDIT — re-emit the model's own statement in its
+                // native heredoc, so the row records what it wrote, not just a status code.
+                const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
+                if (heredoc !== null) body = heredoc;
             }
 
-            // Stamp items + the body's token cost so the model can reason about OPEN/FOLD:
-            // items present even at 0 (a real "found nothing"); tokens IS the FOLD saving.
+            // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
+            // it; for a folded row this is the cost an OPEN would add. items present even at 0.
             if (items !== null) meta.items = items;
-            if (body.length > 0) meta.tokens = countTokens(body);
+            // 0 for a genuinely empty body — never call countTokens("") (some providers return
+            // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
+            meta.tokens = body.length > 0 ? countTokens(body) : 0;
 
-            // Body-state marker: `-` folded (OPEN to expand) · `+` open (body shown) · `*` none.
-            const marker = e.folded === true ? "-" : body.length > 0 ? "+" : "*";
+            // Body-state marker — body-aware so `-` never sits on a bodyless row:
+            // `*` no body (nothing to OPEN) · `+` open (body shown) · `-` folded (OPEN to expand).
+            const marker = body.length === 0 ? "*" : e.folded === true ? "-" : "+";
             const metaLine = `${marker} ${PacketWire.#canonicalJson(meta)}`;
-            return body.length > 0 ? `${metaLine}\n${body}` : metaLine;
+            // Render the body only when OPEN; a folded row is its meta line alone (body hidden).
+            return (e.folded !== true && body.length > 0) ? `${metaLine}\n${body}` : metaLine;
         }).join("\n");
     }
 

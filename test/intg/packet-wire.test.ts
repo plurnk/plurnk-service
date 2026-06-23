@@ -25,7 +25,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
+    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
 });
 
 test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
