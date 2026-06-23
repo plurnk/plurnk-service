@@ -800,16 +800,13 @@ export default class Daemon {
                 return;
             }
 
-            // No slept loop. An active drain folds the conclusion into the live loop's next turn
-            // (the model reads the concluded stream from the manifest) — no new loop.
+            // No slept loop. A live loop surfaces the concluded stream ambiently via the
+            // environment-observation injector (§exec-stream) on its next turn — there is no prompt
+            // to inject and NO task to overwrite. The obsolete "automated environment update"
+            // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
             if (this.#activeDrains.has(payload.runId)) {
-                const result = await this.inject({
-                    sessionId: payload.sessionId, runId: payload.runId,
-                    prompt: `${payload.summary}\n\nAutomated environment update; response optional.`,
-                    provider: this.#provider, systemPrompt,
-                });
                 this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
-                    ...payload, wakeAction: "no-op-active-loop", wakeLoopId: result.loopId,
+                    ...payload, wakeAction: "no-op-active-loop",
                 });
                 return;
             }
