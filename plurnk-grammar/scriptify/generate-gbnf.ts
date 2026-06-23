@@ -200,6 +200,10 @@ export const buildModel = (): GModel => {
     const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    // send-final-no200: the terminal SEND for a turn that DID middle ops — every status-final
+    // code except 200. A turn cannot do work and claim verified-completion in the same turn
+    // (ops do not emit results until the next turn), so 200 is reserved for op-free turns.
+    const sendFinalNo200Entries: Array<{ literal: string; tails: GSeq[] }> = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -236,17 +240,19 @@ export const buildModel = (): GModel => {
                 sendFinalEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
+                sendFinalNo200Entries.push({ literal: open, tails: [
+                    [lit("["), ref("status-final-no200"), lit("]"), opt(ref("target")), ...bodyNE],
+                ] });
             } else if (op === "EXEC") {
                 opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), ...body]] });
             } else if (op === "PLAN") {
                 // Slotless bare reasoning body, REQUIRED non-empty (no blank statement of
-                // intent). The standalone `plan` rule is the MANDATORY turn anchor (root-turn
-                // references it); PLAN is ALSO an inert mid-op, so it joins the op-statement
-                // trie too. Both share the `plan-b0ne` non-empty body automaton.
+                // intent). PLAN is the MANDATORY turn anchor and the FIRST op only — root-turn
+                // references the standalone `plan` rule and PLAN is NOT in the op-statement
+                // trie, so a second PLAN cannot appear mid-batch.
                 bodyRulesNonEmpty(model, name, close);
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
-                opEntries.push({ literal: open, tails: [[...bodyNE]] });
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
@@ -297,10 +303,18 @@ export const buildModel = (): GModel => {
     model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
     model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
     model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
-    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
+    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("turn-body"), ref("sep")]]);
+    // turn-body forks on op-presence so 200 is reachable ONLY by an op-free turn:
+    //   no mid-ops  -> send-final-any   (any terminal, incl 200 — pure report/deliver)
+    //   mid-ops     -> send-final-no200 (200 excluded — work done, results not yet in)
+    model.set("turn-body", [
+        [ref("send-final-any")],
+        [ref("batch-step"), star(ref("batch-step")), ref("send-final-no200")],
+    ]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);
+    trieRules(model, "send-final-no200", sendFinalNo200Entries);
     // statement / send-statement: single-statement entries used only by the corpus and
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
@@ -314,6 +328,8 @@ export const buildModel = (): GModel => {
     // persisted (Loop.status) are meant to differ — see plurnk-service#33.
     // status-mid: any 3-digit code EXCEPT the terminals 102, 200, 202, 300, 499.
     model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("300")], [lit("499")]]);
+    // status-final-no200: the op-present turn's terminal set — status-final minus 200.
+    model.set("status-final-no200", [[lit("102")], [lit("202")], [lit("300")], [lit("499")]]);
     model.set("status-mid", [
         [lit("10"), cls([R("0", "1"), R("3", "9")])],
         [lit("1"), cls([R("1", "9")]), DIGIT],

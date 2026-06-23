@@ -204,12 +204,13 @@ test("GBNF: every plurnk.md example derives from statement", () => {
 // -------------------------------------------------------------------------
 
 test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
-    // PLAN first, then ops, closed by a terminal SEND.
-    assert.equal(derives("root-turn", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
+    // PLAN first, then ops, closed by a terminal SEND (non-200: a turn with ops can't claim
+    // verified completion — see the dedicated 200-requires-no-ops test).
+    assert.equal(derives("root-turn", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:done:SEND"), true);
     // minimal: PLAN then the closing SEND.
     assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), true);
     // op-first (no PLAN) is NOT a turn.
-    assert.equal(derives("root-turn", "<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-turn", "<<READ(known:///x)::READ\n<<SEND[102]:done:SEND"), false);
     // bare SEND (no PLAN) is NOT a turn.
     assert.equal(derives("root-turn", "<<SEND[200]:done:SEND"), false);
     // PLAN alone (no terminal SEND) is NOT a turn.
@@ -314,7 +315,7 @@ test("GBNF: SEND[499] (give-up) is a terminal disposition; 500 (engine verdict) 
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]:abort:SEND\n<<SEND[200]:done:SEND"), false); // 499 is terminal-only
     // 500 is an engine verdict, never a model terminal — only usable as a mid message code
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND"), false); // 500 not a terminal
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[200]:done:SEND"), true); // 500 ok as a mid code
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[102]:done:SEND"), true); // 500 ok as a mid code
 });
 
 test("GBNF: SEND[300] (user-question) is an allowed terminal, reserved from mid (untaught in canon)", () => {
@@ -325,10 +326,10 @@ test("GBNF: SEND[300] (user-question) is an allowed terminal, reserved from mid 
 
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, non-loop status) before the final", () => {
     // mid SENDs must NOT carry a loop code (102/202/200) — those are terminal-always.
-    const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[200]:done:SEND";
+    const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derives("root-turn", batch), true);
     // a loop code on a mid (non-final) SEND is rejected — it would end the turn early
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](agent://supervisor):progress:SEND\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](agent://supervisor):progress:SEND\n<<SEND[102]:done:SEND"), false);
 });
 
 test("GBNF: root rejects a batch with no final status SEND", () => {
@@ -357,9 +358,14 @@ test("GBNF: root rejects two consecutive status SENDs", () => {
 // Statement layer: per-op shapes and canon boundaries
 // -------------------------------------------------------------------------
 
-test("GBNF: PLAN derives bare (slotless) at the statement layer", () => {
-    assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), true);
-    assert.equal(derives("statement", "<<PLAN[tagged]:thoughts:PLAN"), false); // dictated form is slotless
+test("GBNF: PLAN is the turn anchor only — first op, not a statement-layer op", () => {
+    // PLAN is first-only: NOT in the statement trie, so it never appears mid-batch.
+    assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), false);
+    // as the anchor it is slotless (no tag signal) and non-empty.
+    assert.equal(derives("root-turn", "<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN[tagged]:thoughts:PLAN\n<<SEND[200]:done:SEND"), false); // slotless
+    // a second PLAN after the anchor is not derivable.
+    assert.equal(derives("root-turn", "<<PLAN:first:PLAN\n<<PLAN:second:PLAN\n<<SEND[102]:done:SEND"), false);
 });
 
 test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivable", () => {
@@ -367,11 +373,22 @@ test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivabl
 });
 
 test("GBNF: PLAN body is required non-empty — no blank statement of intent", () => {
-    assert.equal(derives("statement", "<<PLAN:x:PLAN"), true);
-    assert.equal(derives("statement", "<<PLAN::PLAN"), false);   // blank plan rejected
-    // also rejected as the mandatory turn anchor
-    assert.equal(derives("root-turn", "<<PLAN::PLAN\n<<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-turn", "<<PLAN::PLAN\n<<SEND[200]:done:SEND"), false);   // blank plan rejected
     assert.equal(derives("root-turn", "<<PLAN:go:PLAN\n<<SEND[200]:done:SEND"), true);
+});
+
+test("GBNF: 200 is reserved for op-free turns — a turn with mid-ops cannot terminate 200", () => {
+    // op-free turn: any terminal disposition, including 200 (pure report/deliver).
+    assert.equal(derives("root-turn", "<<PLAN:answer from memory:PLAN\n<<SEND[200]:Paris:SEND"), true);
+    // mid-op present: 200 is forbidden (can't claim verified completion in the same turn).
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), false);
+    // ...the work turn must continue (102) or park/ask/fail (202/300/499) instead.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[499]:cannot proceed:SEND"), true);
+    // a mid-SEND (communication) also counts as a mid-op — still no 200.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(run://peer):ping:SEND\n<<SEND[200]:done:SEND"), false);
+    // ...but PLAN -> SEND[102] (continue, coordinating via the terminal) stays legal (no mid-op).
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]:coordinating:SEND"), true);
 });
 
 test("GBNF: terminal SEND body is required non-empty — a turn must not end empty-handed", () => {
@@ -379,8 +396,8 @@ test("GBNF: terminal SEND body is required non-empty — a turn must not end emp
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]::SEND"), false);          // empty terminal
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]::SEND"), false);          // any terminal code
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](run://parent)::SEND"), false); // targeted, still empty
-    // MID sends stay lax — terse/empty comms allowed before the terminal
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND::SEND\n<<SEND[200]:done:SEND"), true);
+    // MID sends stay lax — terse/empty comms allowed before the terminal (non-200: mid-op present)
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND::SEND\n<<SEND[102]:done:SEND"), true);
 });
 
 test("GBNF: digit-suffixed statement quoting an inner op derives", () => {
@@ -401,7 +418,7 @@ test("GBNF: statusless SEND is a valid mid-batch message (pathless or targeted)"
     assert.equal(derives("statement", "<<SEND(agent://supervisor):heads up:SEND"), true);
     // ...but a statusless SEND is NOT a terminator — the turn still needs a status SEND.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND:done:SEND"), false);
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND:note:SEND\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND:note:SEND\n<<SEND[102]:done:SEND"), true);
 });
 
 test("GBNF: SEND signal must be three digits", () => {
@@ -444,18 +461,19 @@ test("GBNF: decimal line markers derive — insert-between, threshold, mixed", (
 
 test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected", () => {
     const lead = "<<PLAN:p:PLAN";
+    // non-200 terminal: these turns carry a READ mid-op (200 requires zero mid-ops).
     // glued — zero separator between ops
-    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ<<SEND[102]:done:SEND"), true);
     // mixed whitespace separator (CRLF blank line + indent, within 7)
-    assert.equal(derives("root-turn", lead + "\n<<READ(known:///x)::READ \t\n  <<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", lead + "\n<<READ(known:///x)::READ \t\n  <<SEND[102]:done:SEND"), true);
     // exactly 7 whitespace chars between ops — ok
-    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[102]:done:SEND"), true);
     // 8 whitespace chars — over the cap, rejected (no unbounded stall)
-    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[200]:done:SEND"), false);
-    // leading + trailing whitespace (within cap)
+    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[102]:done:SEND"), false);
+    // leading + trailing whitespace (within cap) — op-free turn, 200 ok
     assert.equal(derives("root-turn", "  \n<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n  "), true);
     // still no non-whitespace text between ops
-    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ prose <<SEND[200]:done:SEND"), false);
+    assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ prose <<SEND[102]:done:SEND"), false);
 });
 
 test("GBNF: glued output round-trips through the parser (subset invariant)", () => {
