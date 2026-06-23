@@ -15,6 +15,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveSession, liveLoop } from "../_live-harness.ts";
 
@@ -25,7 +28,11 @@ interface DemoOpts {
 }
 
 const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void> => {
-    const s = await liveSession({ name: `demo-${label}-${crypto.randomUUID()}` });
+    // Sandbox EXEC's cwd to a throwaway temp dir — the model runs shell commands (and,
+    // when blind to its output, redirects them to files); without a project_root they'd
+    // default to the daemon's cwd and land in the live repo. §exec-cwd-sandbox
+    const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));
+    const s = await liveSession({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
     try {
         const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(s, 2, { prompt }, { timeoutMs: 240_000 });
 
@@ -40,7 +47,7 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
         assert.equal(hitMaxTurns, false, "didn't hit the safety cap");
         assert.match(lastContent, expected,
             `final reply contains the expected value; got: ${lastContent.slice(0, 200)}`);
-    } finally { await s.cleanup(); }
+    } finally { await s.cleanup(); await rm(sandbox, { recursive: true, force: true }); }
 };
 
 test("demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", async () => {
