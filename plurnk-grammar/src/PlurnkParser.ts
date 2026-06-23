@@ -7,8 +7,8 @@ import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import type { ParseItem, ParseResult, Position } from "./types.ts";
 
-// The strict turn root attaches PLAN, ops, and the terminal SEND as direct children;
-// all three are statement-bearing contexts the extraction builds into items.
+// Statement-bearing contexts the extraction builds into items. `statement` wraps every op
+// (PLAN included); the terminal SEND attaches as a direct `sendStatement` child.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
     plurnkParser.RULE_planStatement,
@@ -16,11 +16,11 @@ const STATEMENT_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
-    // grammar's `document` rule: free text before PLAN, a required PLAN, ops separated by
-    // nothing but (hidden) whitespace, and a required terminal SEND. A packet without a
-    // PLAN and a closing SEND does NOT parse — it surfaces as error items. This is THE
-    // parse: a Plurnk packet IS a turn. There is no permissive fallback.
+    // Parse a model TURN — the FORGIVING ingester (the GBNF is the strict rail). PLAN is
+    // optional and prose is tolerated anywhere (interleaved or trailing), so a rail-less
+    // weak model still parses; prose surfaces as text items, ops as statements. The one
+    // hard requirement is a terminal SEND (it carries the loop status code) — a packet with
+    // no closing SEND does NOT parse and surfaces as error items.
     static parse(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.document());
     }

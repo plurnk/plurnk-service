@@ -278,16 +278,21 @@ test("reasoning enclosure protects a drafted <<PLAN; parse anchors on the real o
     }
 });
 
-test("PlurnkParser.parse rejects non-turns — no PLAN and SEND[N] ⇒ invalid", () => {
+test("PlurnkParser.parse is the forgiving ingester — terminal SEND is the only hard rule", () => {
     const invalid = (s: string): boolean => {
         const r = PlurnkParser.parse(s);
         return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
     };
-    // prose with no PLAN and no SEND — The Gettysburg Address is not a plurnk turn
+    const valid = (s: string): boolean => !invalid(s);
+    // The one hard requirement: a terminal SEND. No SEND ⇒ not a turn.
     assert.equal(invalid("Four score and seven years ago our fathers brought forth a new nation."), true);
-    assert.equal(invalid("<<PLAN:I will answer:PLAN"), true);                        // PLAN, no terminal SEND
-    assert.equal(invalid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);  // ops + SEND, but no PLAN
-    // ...a full sandwich is valid
+    assert.equal(invalid("<<PLAN:I will answer:PLAN"), true);                  // PLAN, no terminal SEND
+    assert.equal(invalid("<<READ(known:///x)::READ"), true);                  // op, no terminal SEND
+    // PLAN optional: ops + SEND with no PLAN now parses (rail-less weak model).
+    assert.equal(valid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true);
+    // Prose tolerated anywhere — before, between ops, and trailing after the SEND.
+    assert.equal(valid("thinking out loud <<PLAN:intent:PLAN now I read <<READ(known:///x)::READ <<SEND[200]:done:SEND and done"), true);
+    // The canonical full sandwich is of course still valid.
     const ok = PlurnkParser.parse("<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND");
     assert.equal(ok.items.some((i) => i.kind === "error"), false);
     assert.equal(ok.unparsedTail, undefined);
