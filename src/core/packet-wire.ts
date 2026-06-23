@@ -120,9 +120,9 @@ export default class PacketWire {
 
     // The log section's content: the model's curated rows rendered to markdown
     // (the same #renderLogEntries the wire ships). Empty log → "" (omitted).
-    static renderLog(entries: unknown): string {
+    static renderLog(entries: unknown, countTokens: CountTokens): string {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        return log.length > 0 ? PacketWire.#renderLogEntries(log) : "";
+        return log.length > 0 ? PacketWire.#renderLogEntries(log, countTokens) : "";
     }
 
     // Read one section's content by name off a packet (Engine's or re-parsed).
@@ -157,12 +157,12 @@ export default class PacketWire {
         largest: Array<{ path: string; tokens: number }>;
     } {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries) : "";
+        const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries, countTokens) : "";
         const HEAVIEST_COUNT = 10;
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
-            const weight = countTokens(PacketWire.#renderLogEntries([e]));
+            const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             // Turn = the loop_seq/turn_seq prefix of the coordinate
@@ -341,7 +341,7 @@ export default class PacketWire {
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
-    static #renderLogEntries(entries: LogEntryView[]): string {
+    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -357,74 +357,70 @@ export default class PacketWire {
             const target = PacketWire.#renderActionTarget(e.target);
             if (target !== null) meta.target = target;
 
-            // Op-specific meta enrichment for READ + FIND: surface the matcher body
-            // and match count when a body matcher was used. Without these, the
-            // model can't distinguish "0 matches" from "empty content" — both
-            // would render as a status-204 line. The matcher comes from the
-            // stored statement (tx); the count from the result (rx).
+            // Parse rx once — reused for the matcher/items enrichment and the body.
+            const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
+
+            // READ + FIND enrichment: the matcher body (from tx) + `items`, the count
+            // of rows the op returned — a matcher's hits, or a bare catalog FIND's entry
+            // count. Without it the model can't tell "0 results" from "empty content",
+            // nor weigh a re-FIND. `matches` when the dispatch tallied it; else a FIND
+            // body is a JSON array whose length IS the count.
+            let items: number | null = null;
             if (op === "READ" || op === "FIND") {
                 const tx = e.tx;
                 if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
-                const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
                 if (rx !== null && typeof rx === "object" && typeof rx.matches === "number") {
-                    meta.matches = rx.matches;
+                    items = rx.matches;
+                } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
+                    const parsed = PacketWire.#safeParse(rx.content);
+                    if (Array.isArray(parsed)) items = parsed.length;
                 }
             }
 
-            const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
-
-            // FOLD (expanded=0): the model collapsed this row to its one-line
-            // summary (§open-fold) — render the meta line only, eliding the body.
-            // Re-OPEN restores it. The row stays listed; only its weight drops.
-            if (e.folded === true) return metaLine;
-
-            // READ@200 / FIND@200: expose the response body — the content READ pulled,
-            // or the catalog rows / matched entries FIND returned (§render-rule-find-renders-result).
-            // The model must SEE what a read/find returned, not just the echoed query; the
-            // turn-0 foisted FIND(scheme:///**) reaches the packet through this branch. @204
-            // (successfully empty) has no body; the meta line carries the signal via `matches`.
-            if ((op === "READ" || op === "FIND") && e.status === 200) {
-                const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
-                if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
+            // The foldable body — computed FIRST because `tokens` measures it (the body
+            // cost IS exactly what a FOLD elides). "" ⇒ no body (a folded row, an empty
+            // EDIT span, a @204): the meta line carries the whole signal.
+            let body = "";
+            if (e.folded !== true) {
+                if ((op === "READ" || op === "FIND") && e.status === 200 &&
+                    rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
+                    // READ@200 / FIND@200: the content READ pulled, or the catalog rows /
+                    // matched entries FIND returned (§render-rule-find-renders-result) — the
+                    // turn-0 foisted FIND(scheme:///**) reaches the packet here. Line-navigable
+                    // mimetypes get the N:\t prefix (§render-rule-line-navigable-prefix); tree-
+                    // navigable (JSON/XML/HTML) render verbatim (§render-rule-tree-navigable-verbatim)
+                    // so jsonpath/xpath navigation isn't shifted.
                     const fence = target ?? `log:///${coordinate}`;
-                    // Line-navigable mimetypes (text/markdown, text/plain,
-                    // source code, etc.) get N:\t prefix per plurnk.md. Tree-
-                    // navigable (JSON, XML, HTML) render verbatim — line
-                    // numbers in the wrapper would collide with structural
-                    // navigation (jsonpath/xpath) used on these formats.
-                    // Classifier is consumer-side in this repo (SPEC.md §render-rule, §render-rule-line-navigable-prefix, §render-rule-tree-navigable-verbatim).
                     const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
                     if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
                         const start = typeof rx.startLine === "number" ? rx.startLine : 1;
-                        return `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, PacketWire.#numberLines(rx.content, start))}`;
+                        body = PacketWire.#wrapHeredocBody(fence, PacketWire.#numberLines(rx.content, start));
+                    } else {
+                        body = PacketWire.#wrapHeredocBody(fence, rx.content);
                     }
-                    return `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.content)}`;
+                } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
+                    // EDIT (§edit-result-render): the resulting span as it looks now. Empty
+                    // span (content emptied) ⇒ no body — the meta line stands alone.
+                    const span = (rx as { span: string }).span;
+                    if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
+                } else {
+                    // Every other op — EXEC, SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty
+                    // READ/FIND or a span-less EDIT — re-emit the model's own statement in its
+                    // native heredoc, so the row records what it wrote, not just a status code.
+                    const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
+                    if (heredoc !== null) body = heredoc;
                 }
             }
-            // EDIT (§edit-result-render): render the resulting span — the edited area as it
-            // looks now — instead of the input statement. The meta line still
-            // carries op + target, so "I EDITed X" stays legible; the body says
-            // "and here's X now." Serves the model's own EDITs and the system
-            // delta-EDITs (§env-delta) identically. Empty span (content emptied) →
-            // meta line only.
-            if (op === "EDIT") {
-                const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as { span?: unknown } | null;
-                if (rx !== null && typeof rx === "object" && typeof rx.span === "string") {
-                    const fence = target ?? `log:///${coordinate}`;
-                    return rx.span.length > 0 ? `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, rx.span)}` : metaLine;
-                }
-            }
-            // Every other op: re-emit the model's statement. EXEC, SEND, COPY,
-            // MOVE, OPEN, FOLD — each gets its native heredoc form back.
-            // Without this the log row is a status code with no record of what
-            // the model actually wrote, and the model has to back into its own
-            // actions by inference (see reasoning.md trace from the pre-fix
-            // count-files run).
-            const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
-            if (heredoc !== null) return `${metaLine}\n${heredoc}`;
-            return metaLine;
+
+            // Stamp items + the body's token cost so the model can reason about OPEN/FOLD:
+            // items present even at 0 (a real "found nothing"); tokens IS the FOLD saving.
+            if (items !== null) meta.items = items;
+            if (body.length > 0) meta.tokens = countTokens(body);
+
+            const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
+            return body.length > 0 ? `${metaLine}\n${body}` : metaLine;
         }).join("\n");
     }
 

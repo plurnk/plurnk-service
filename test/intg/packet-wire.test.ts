@@ -2,6 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import PacketWire from "../../src/core/packet-wire.ts";
 
+// These render tests assert on bodies/substrings, never on token VALUES — any
+// deterministic tokenizer satisfies renderLog's signature (tokens land on the
+// body-bearing meta lines, measured by this fn).
+const tok = (s: string): number => Math.ceil(s.length / 4);
+
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
@@ -19,7 +24,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
             rx: "{\"status\":200}",
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt"\}/, "single meta line; path = log URI identity; target = action operand");
 });
 
@@ -36,7 +41,7 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
             rx: { content: "hello\nworld", mimetype: "text/markdown", startLine: 1 },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     // Line-navigable mimetype → `N:\t` prefix per line.
     assert.match(out, /<<:::\/notes\.md\n1:\thello\n2:\tworld\n:::\/notes\.md/);
 });
@@ -54,7 +59,7 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
             rx: { content: '[\n  {"line":1,"matched":"hello"}\n]', mimetype: "application/json" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
     assert.match(out, /<<:::\/notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::\/notes\.md/);
     assert.doesNotMatch(out, /<<:::\/notes\.md\n1:\t/);
@@ -86,7 +91,7 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     // Body has no leading/trailing whitespace; render is single-line — no
     // `\n` padding added on the way back. Character-perfect mirror of tx.
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
@@ -100,7 +105,7 @@ test("[§edit-result-render] log render: EDIT@200 with rx.span → renders the r
         status: 200,
         target: { scheme: "known", pathname: "/plan.md" },
         rx: { status: 200, span: "- [x] ship the fix" },
-    }]);
+    }], tok);
     // The model sees the edited area as it looks NOW, under the entry's fence — its edit's
     // effect, not the heredoc it typed. (No-span EDITs fall back to re-emitting the statement,
     // covered above.)
@@ -128,7 +133,7 @@ test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
             rx: { status: 201, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Alice"\}\]:EDIT/);
 });
 
@@ -155,7 +160,7 @@ test("log render: EDIT with multi-line body — body's own newlines decide shape
             rx: { status: 201, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<EDIT\(known:\/\/\/plan\):\n- \[ \] step a\n- \[ \] step b\n:EDIT/);
 });
 
@@ -172,7 +177,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.doesNotMatch(out, /<<EDIT\(/);
 });
 
@@ -196,7 +201,7 @@ test("log render: EDIT with line marker — heredoc carries the marker", () => {
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<EDIT\(known:\/\/\/notes\)<5>:revised:EDIT/);
 });
 
@@ -220,7 +225,7 @@ test("log render: EDIT with tags and range marker — heredoc carries both", () 
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<EDIT\[alpha,beta\]\(known:\/\/\/x\)<3,7>:body:EDIT/);
 });
 
@@ -244,7 +249,7 @@ test("log render: EDIT with fragment in target.raw — heredoc preserves it", ()
             rx: { status: 200, entryId: 5, channel: "preview" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<EDIT\(known:\/\/\/x#preview\):summary:EDIT/);
 });
 
@@ -361,7 +366,7 @@ test("[§render-rule-find-renders-result] log render: FIND@200 renders its resul
         target: { scheme: "plurnk", pathname: "" },
         tx: { op: "FIND", suffix: "", target: { kind: "url", raw: "plurnk:///**", scheme: "plurnk", pathname: "", fragment: null }, body: null, signal: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
-    }]);
+    }], tok);
     assert.match(out, /"path": "plurnk:\/\/prompt\/1\/1"/, "FIND@200 renders its result body — the model sees what the FIND returned");
     // Tree-navigable JSON → verbatim, no N:\t line-number prefix.
     assert.doesNotMatch(out, /\n1:\t/);
@@ -380,7 +385,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
             rx: { content: "<h1>Hi</h1>", mimetype: "text/html" },
         }],
     };
-    const out = PacketWire.renderLog(system.log);
+    const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<:::\/page\.html\n<h1>Hi<\/h1>\n:::\/page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });

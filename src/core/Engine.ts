@@ -803,13 +803,23 @@ export default class Engine {
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
-                for (const { scheme, entries } of catalogSchemes) {
+                // known:/// + unknown:/// ALWAYS foist, even at zero entries — else the model
+                // burns a turn running FIND(known:///**) itself, assuming its memory is merely
+                // being withheld. Every other scheme keeps the with-entries default (an empty
+                // catalog foist is noise for schemes the model isn't expected to pre-populate).
+                const foistSchemes = [...catalogSchemes];
+                for (const always of ["known", "unknown"] as const) {
+                    if (!foistSchemes.some((c) => c.scheme === always)) foistSchemes.push({ scheme: always, entries: 0 });
+                }
+                for (const { scheme, entries } of foistSchemes) {
                     const schemeName = scheme ?? "file";
                     // plurnk → its docs subtree (FIND(plurnk://docs/**), uncapped) — the self-
                     // documenting surface. The prompt is shown in # Prompt, so the plurnk catalog
                     // the model orients on IS the docs; doc links are no longer rendered inline (#270).
                     const isPlurnk = schemeName === "plurnk";
-                    const cap = isPlurnk || manifestItems < 0 ? null : Math.min(manifestItems, entries);
+                    // entries===0 (an always-foisted empty known/unknown) → uncapped: nothing to
+                    // clamp, and Math.min(items, 0)=0 would emit a degenerate <1,0> marker.
+                    const cap = isPlurnk || manifestItems < 0 || entries === 0 ? null : Math.min(manifestItems, entries);
                     const catalogFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
                         target: {
@@ -817,7 +827,7 @@ export default class Engine {
                             raw: isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`,
                             scheme: schemeName,
                             username: null, password: null, hostname: null, port: null,
-                            pathname: isPlurnk ? "/docs/**" : "",
+                            pathname: isPlurnk ? "/docs/**" : "/**",
                             params: {}, fragment: null,
                         },
                         body: null,
@@ -1208,7 +1218,7 @@ export default class Engine {
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
             { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
-            { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log), tokens: 0 },
+            { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
