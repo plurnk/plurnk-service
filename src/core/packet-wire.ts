@@ -107,17 +107,6 @@ export default class PacketWire {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
     }
 
-    // The catalog section content: a per-scheme tally (entry count + stored token weight) so
-    // the model knows which schemes hold content without probing e.g. FIND(known://**). Null
-    // scheme renders as `file` (bare workspace rows). "" when the session is empty (omitted).
-    static renderCatalog(summary: unknown): string {
-        const rows = Array.isArray(summary) ? (summary as Array<{ scheme: string | null; entries: number; tokens: number }>) : [];
-        if (rows.length === 0) return "";
-        return rows
-            .map((r) => `${r.scheme ?? "file"} — ${r.entries} ${r.entries === 1 ? "entry" : "entries"}, ${r.tokens} tokens`)
-            .join("\n");
-    }
-
     // The log section's content: the model's curated rows rendered to markdown
     // (the same #renderLogEntries the wire ships). Empty log → "" (omitted).
     static renderLog(entries: unknown, countTokens: CountTokens): string {

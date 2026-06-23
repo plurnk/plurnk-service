@@ -338,21 +338,6 @@ test("[§requirements-requirements-omitted-when-empty] empty requirements sectio
     assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the content is empty");
 });
 
-test("renderCatalog: per-scheme tally — counts + tokens, null scheme → file, count is pluralized", () => {
-    const out = PacketWire.renderCatalog([
-        { scheme: "known", entries: 5, tokens: 1240 },
-        { scheme: null, entries: 1, tokens: 80 },
-    ]);
-    assert.equal(out, "known — 5 entries, 1240 tokens\nfile — 1 entry, 80 tokens");
-});
-
-test("renderCatalog: empty/non-array → '' so the section is omitted, never throws", () => {
-    assert.equal(PacketWire.renderCatalog([]), "", "no schemes → no catalog section");
-    assert.equal(PacketWire.renderCatalog(undefined), "", "non-array tolerated as empty");
-});
-
-
-
 test("[§render-rule-find-renders-result] log render: FIND@200 renders its result catalog, not just the echoed query", () => {
     // The turn-0 foisted FIND(scheme:///**) is how a run's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),

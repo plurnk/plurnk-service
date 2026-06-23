@@ -136,13 +136,11 @@ WHERE e.scope = 'session' AND e.session_id = $session_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_scheme_catalog_summary
--- Per-scheme tally for the # Plurnk System Catalog section: distinct entry count + summed
--- stored token weight, so the model sees which schemes hold content (and roughly how much)
--- without a FIND every turn; it also sources the turn-0 per-scheme catalog foist (which
--- schemes hold entries). tokens are the write-time snapshot (a size gauge, not the live recount).
+-- Per-scheme entry tally (distinct count; scheme=null → file). Sources the turn-0 per-scheme
+-- foist so the model sees which schemes hold content without running FIND(known://**) itself;
+-- the foist FIND carries each scheme's live token weight.
 SELECT e.scheme AS scheme,
-    COUNT(DISTINCT e.id) AS entries,
-    COALESCE(SUM(ec.tokens), 0) AS tokens
+    COUNT(DISTINCT e.id) AS entries
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.scope = 'session' AND e.session_id = $session_id

@@ -44,7 +44,6 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes", "log"], "system slot order: definition → schemes → log");
         const usr = slot("user");
         assert.equal(usr[usr.length - 1], "requirements", "requirements lands last in the user slot");
-        assert.match(packetSection(packet, "catalog"), /known/, "the catalog tally names the known scheme");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally {
         await db.close();
