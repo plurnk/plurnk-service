@@ -275,7 +275,7 @@ SELECT
     le.params, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.expanded, le.source
+    le.state, le.outcome, le.expanded, le.source, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id

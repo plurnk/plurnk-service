@@ -1451,7 +1451,7 @@ export default class Engine {
             hostname: string | null; port: number | null; pathname: string | null;
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; expanded: number; source: string | null;
+            tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
         }>({ run_id: runId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -1474,6 +1474,7 @@ export default class Engine {
             mimetype_tx: r.mimetype_tx,
             folded: r.expanded === 0,
             source: r.source,
+            attrs: r.attrs === null ? null : JSON.parse(r.attrs),
         }));
     }
 
@@ -2246,12 +2247,12 @@ export default class Engine {
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
-        // EXEC stream entry addresses by RUNTIME TAG as authority (§exec): it lives at
-        // <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2) — the runtime tag
-        // is the scheme, the coordinate already unique per statement. The log row's target
-        // points at this same address; its log:/// coordinate shares the trailing
-        // <loop>/<turn>/<seq>, so the model correlates op to stream output. Runtime comes
-        // from statement.signal (EXEC's runtime slot) so it's resolvable for failed execs
+        // EXEC produces a stream entry addressed by RUNTIME TAG as authority (§exec): it lives
+        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
+        // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
+        // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
+        // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
+        // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
         // too; empty/absent = the default shell.
         if (statement.op === "EXEC") {
             const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
@@ -2260,9 +2261,8 @@ export default class Engine {
             if (seqs === undefined) throw new Error(`Engine.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
             const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
             const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
-            target.scheme = runtime;
-            target.pathname = coordPathname;
             attrsObj.pathname = coordPathname;
+            attrsObj.stream = `${runtime}://${coordPathname}`;
             // Mutate the in-memory result.attrs too: the dispatch path
             // hands originalResult.attrs to handler.applyResolution after
             // proposal accept (see #acceptResolution). Both views — the

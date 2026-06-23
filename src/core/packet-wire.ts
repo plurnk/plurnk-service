@@ -42,6 +42,7 @@ interface LogEntryView {
     rx?: unknown;
     folded?: boolean;
     source?: unknown;
+    attrs?: unknown;
 }
 interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
 // One packet section: a named, slotted, ordered unit of rendered content. The
@@ -345,6 +346,11 @@ export default class PacketWire {
             if (typeof e.status === "number") meta.status = e.status;
             const target = PacketWire.#renderActionTarget(e.target);
             if (target !== null) meta.target = target;
+            // EXEC's output is a separate stream entry (§exec-stream); its address rides in a
+            // `stream` link, distinct from `target` (the cwd / executable path it ran in).
+            if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
+                meta.stream = (e.attrs as { stream: string }).stream;
+            }
 
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
@@ -402,10 +408,16 @@ export default class PacketWire {
                 // (content emptied) ⇒ no body — the meta line stands alone.
                 const span = (rx as { span: string }).span;
                 if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
+            } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
+                // EXEC: the literal command body, :::-fenced at the op's log address — the model
+                // sees what it ran. The OUTPUT is a SEPARATE stream (meta.stream), surfaced by the
+                // stream lifecycle, never re-emitted as the <<EXEC…EXEC statement. §exec-stream
+                const cmd = (e.tx as { body: string }).body;
+                if (cmd.length > 0) body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, cmd);
             } else {
-                // Every other op — EXEC, SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty
-                // READ/FIND or a span-less EDIT — re-emit the model's own statement in its
-                // native heredoc, so the row records what it wrote, not just a status code.
+                // Every other op — SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty READ/FIND
+                // or a span-less EDIT — re-emit the model's own statement in its native heredoc,
+                // so the row records what it wrote, not just a status code.
                 const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
                 if (heredoc !== null) body = heredoc;
             }
