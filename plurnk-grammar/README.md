@@ -130,8 +130,8 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 18. Deliver the final answer
 	<<SEND[200]:Paris:SEND
 
-19. Search logs for timeout errors (case-insensitive regex body)
-	<<FIND(log:///**/error):#timeout|deadline exceeded#i:FIND
+19. Search logs for budget-overflow errors (case-insensitive regex body)
+	<<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 
 20. Find entries whose content begins with "Paris" (glob body)
 	<<FIND(known:///countries/**):Paris*:FIND
