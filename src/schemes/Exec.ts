@@ -13,7 +13,6 @@ import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
-import ExecReceipt from "./exec-receipt.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,7 +25,7 @@ interface ExecAttrs {
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec:///<pathname> (e.g. exec:///sh/1/1/2)
-    inline?: boolean;       // effect=read/pure → auto-run (no human gate), result inline
+    inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
 }
 
@@ -80,7 +79,7 @@ export default class Exec {
         volatile: true,
         modelVisible: true,
         example: "<<EXEC[sqlite]:SELECT 22.0 / 7.0:EXEC",
-        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — with output streaming into the `exec:///<runtime>/<loop>/<turn>/<seq>` entry's stdout/stderr. A host-effecting command proposes for review before it runs; a read-only/pure one runs inline and returns its output the same turn. READ the entry on a later turn to see how a backgrounded run finished.",
+        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — output streams into the run's `<runtime>:///<loop>/<turn>/<seq>` entry, channels stdout/stderr. A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -164,7 +163,7 @@ export default class Exec {
         const cwdFromOp = cwdFromTarget(statement.target);
         // Effect on the RAW target (pre-cwd-default) decides the lifecycle:
         // host → propose, read/pure → auto-run inline (plurnk-service#182).
-        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));  // pure/read auto-run inline — §exec-readpure-inline
+        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));  // pure/read auto-run ungated — §exec-readpure-ungated
         // Default cwd to the session's project_root so EXEC runs in the
         // same directory File scheme writes to. Without this default, the
         // model creates a file via EDIT (lands in project_root) and then
@@ -272,24 +271,13 @@ export default class Exec {
         const tail = this.#runExecutor({
             executor: resolved.executor,
             runtime, command, cwd, ctx, pathname,
-            entryId, subscriptionId, signal: controller.signal,
-            inline: attrs.inline === true, tempPath,
+            entryId, subscriptionId, signal: controller.signal, tempPath,
         });
 
-        // read/pure (inline): await the run, then return a RECEIPT — the output's
-        // address + a structural OrientIndex, never the body inline (#240 containment;
-        // the model READs <tag>:///<coord> to pull content). Same reflex as host
-        // streams, just resolved this turn instead of a turn later.
-        if (attrs.inline === true) {
-            const closeStatus = await tail;
-            const read = await EntryCrud.readEntry(pathname, ctx, runtime);
-            const address = renderAddress(runtime, pathname); // canonical 3-slash form (pathname has a leading /), matches the manifest handle
-            const channel = read.entry?.channels[resolved.executor.defaultChannel];
-            const body = channel === undefined
-                ? `${address} — (no output)`
-                : ExecReceipt.build(address, channel.content, channel.mimetype);
-            return { status: closeStatus, body };
-        }
+        // Every exec backgrounds + streams (§exec-stream): no same-turn receipt — the output
+        // surfaces as the environment-observation injector's delta on the next turn (folded while
+        // it runs, opened when it finishes). Pure/read commands still auto-accept (attrs.inline =
+        // no human gate); they just resolve a turn later, uniformly with host streams.
         this.#activeSpawns.set(subscriptionId, tail);
         return { status: 200, outcome: "started" };
     }
@@ -309,9 +297,9 @@ export default class Exec {
         executor: Executor;
         runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
-        inline: boolean; tempPath: string | null;
+        tempPath: string | null;
     }): Promise<number> {
-        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, inline, tempPath } = opts;
+        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
         let queue: Promise<void> = Promise.resolve();
@@ -359,9 +347,9 @@ export default class Exec {
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            // Inline runs are delivered synchronously in the EXEC result —
-            // there's nothing to wake a later turn for.
-            if (!inline && ctx.wakeRunNotify !== undefined) {
+            // Every run backgrounds now (§exec-stream) — wake a parked loop on completion so the
+            // run resumes to the turn where the stream's terminal delta surfaces.
+            if (ctx.wakeRunNotify !== undefined) {
                 ctx.wakeRunNotify({
                     sessionId: ctx.sessionId, runId: ctx.runId,
                     entryId, target: `${runtime}://${pathname}`, subscriptionId, closeStatus,

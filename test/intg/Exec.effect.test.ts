@@ -1,11 +1,12 @@
 // Effect-gating (plurnk-service#182): the executor declares its effect, the
 // service owns the policy. `host` runtimes (sh/node/python, file-backed
 // sqlite) propose — a human gate. `read`/`pure` runtimes (search, :memory:
-// sqlite) auto-run in-process: no proposal, no notification, resolved inline.
+// sqlite) auto-run ungated: no proposal, no notification — but, like every
+// exec, they background and stream their output (§exec-stream), not in-band.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -21,15 +22,6 @@ const execStmt = (runtime: string, target: string | null, body: string): ExecSta
     target: target === null ? null : { kind: "local", raw: target },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
-
-const readStmt = (address: string): ReadStatement => {
-    const [scheme, pathname] = address.split(":///");
-    return {
-        op: "READ", suffix: "", signal: null,
-        target: { kind: "url", raw: address, scheme, username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, params: {}, fragment: null },
-        lineMarker: null, body: null, position: { line: 1, column: 1 },
-    };
-};
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -52,7 +44,7 @@ const wire = async () => {
     return { db, engine, exec, sessionId, runId, loopId, turnId };
 };
 
-test("[§exec-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs in-process, returns output in-band — no proposal", async () => {
+test("[§exec-readpure-ungated] effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
         // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
@@ -61,11 +53,11 @@ test("[§exec-readpure-inline] effect-gating: sqlite :memory: (pure) auto-runs i
             statement: execStmt("sqlite", null, "SELECT 1 AS n;"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal");
+        assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal — it skips the gate");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
-        // #240 receipt-only: inline returns the output's ADDRESS + structural index in-band
-        // this turn — never the content. The model READs the address to pull the result.
-        assert.match(result.body as string, /^sqlite:\/\/\/\S+ — /, "inline returns a receipt (address + index) in-band, not the raw content");
+        // No in-band receipt: like every exec it backgrounds + streams (§exec-stream); the output
+        // reaches the model via the env-observation injector next turn, not here.
+        assert.equal(result.body, undefined, "pure auto-run returns no in-band body — it streams");
         await exec.idle();
     } finally { await db.close(); }
 });
@@ -83,36 +75,12 @@ test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the 
             statement: execStmt("sqlite", null, "SELECT 'Paris' AS capital;"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.notEqual(result.status, 202, "pure runtime auto-runs inline, no proposal");
+        assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
-        // #240 receipt-only: the body is the output receipt; a clean receipt means the db
-        // opened + the query ran with a directory cwd (#216), the content READable at the address.
-        assert.match(result.body as string, /^sqlite:\/\/\//, "a directory cwd no longer fails the open — the exec resolved + produced an output receipt");
+        // A clean resolve (not 202, < 400) is the #216 signal: the db opened + the query ran with
+        // a DIRECTORY cwd. The output then streams like any exec (§exec-stream), no in-band body.
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
-});
-
-// #240 receipt-only round-trip: EXEC returns ONLY the receipt (address + index), and the
-// content is READable at that address (the read-fix's tag-scoped path + the receipt loop).
-// This is "the handle goes in the manifest/receipt, the read goes in the log" end-to-end.
-test("receipt-only round-trip: EXEC returns a receipt, READ <tag>:// pulls the content (#240)", async () => {
-    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
-    try {
-        const execResult = await engine.dispatch({
-            statement: execStmt("sqlite", null, "SELECT 'Bogota' AS capital;"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
-        });
-        assert.match(execResult.body as string, /^sqlite:\/\/\//, "EXEC returns the receipt (address), not the content");
-        assert.doesNotMatch(execResult.body as string, /Bogota/, "the content is NOT inline — it's behind the receipt");
-        const address = (execResult.body as string).split(" — ")[0];
-        const readResult = await engine.dispatch({
-            statement: readStmt(address),
-            sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
-        });
-        assert.ok(readResult.status < 400, `READ ${address} resolves; got ${readResult.status}`);
-        assert.match(readResult.content as string, /Bogota/, "the content is READable at the receipt address — the read-fix + receipt-only round-trip");
-        await exec.idle();
-    } finally { await db.close(); }
 });
 
 test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
