@@ -9,8 +9,11 @@
 //                                   op list with target + status + error)
 //   test/digest/digest.json         Same data, machine-queryable
 //   test/digest/reasoning.md        Per-turn reasoning text (full)
-//   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message
-//                                         the LLM received on turn id NNN.
+//   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message the LLM
+//                                         received on TURN N (0-based). Turn 0 is the
+//                                         plurnk doc-materialization / setup turn (no model
+//                                         packet — a one-line note); the model's turns are
+//                                         Turn 1, 2, … (packet001, packet002, …).
 //   test/digest/packetNNN.user.md         Same for the user message.
 //   test/digest/packetNNN.assistant.md     Model emission (content string).
 //   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
@@ -208,12 +211,24 @@ export default class Digest {
     // project through PacketWire). system/user are markdown; assistantRaw is JSON.
     static #writePacketFiles(m: DigestModel): string[] {
         const written: string[] = [];
-        for (const t of m.turns) {
+        // 0-based TURN index, NOT the DB id: Turn 0 is the plurnk doc-materialization
+        // (setup) turn; the model's turns are Turn 1, 2, …, so the model's first packet is
+        // packet001 — not packet002-by-id. id-sorted so the index is chronological.
+        m.turns.toSorted((a, b) => a.id - b.id).forEach((t, index) => {
             const packet = Digest.#parseJson(t.packet, {}) as {
                 sections?: unknown; assistant?: { content?: unknown }; assistantRaw?: unknown;
             };
-            const padded = String(t.id).padStart(3, "0");
             const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
+            const padded = String(index).padStart(3, "0");
+            if (sections.length === 0) {
+                // No assembled packet — the setup turn dispatches its doc EDITs without one.
+                // Write ONE labeled note rather than four blank files, so opening Turn 0 reads
+                // as "setup," not "the packet is empty, where is it?".
+                const note = `# Turn ${index} — setup, no model packet\n\nThe plurnk doc-materialization run dispatched its ops (the scheme/exec docs) without assembling a model packet. The model's first packet is Turn 1 — packet001. See digest.md for this turn's ops.\n`;
+                writeFileSync(join(m.digestDir, `packet${padded}.system.md`), note);
+                written.push(`packet${padded}.system.md`);
+                return;
+            }
             const systemMd = PacketWire.renderSlot(sections, "system");
             const userMd = PacketWire.renderSlot(sections, "user");
             const assistantText = typeof packet.assistant?.content === "string" ? packet.assistant.content : "";
@@ -228,7 +243,7 @@ export default class Digest {
                 writeFileSync(join(m.digestDir, file), body);
                 written.push(file);
             }
-        }
+        });
         return written;
     }
 
@@ -333,8 +348,9 @@ export default class Digest {
         writeFileSync(join(digestDir, "digest.json"), Digest.#renderJson(m));
         writeFileSync(join(digestDir, "reasoning.md"), Digest.#renderReasoning(m));
         const packetFiles = Digest.#writePacketFiles(m);
+        const packetIds = [...new Set(packetFiles.map((f) => f.slice(0, f.indexOf("."))))];
 
-        console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files`);
+        console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
         console.log(`  sessions=${sessions.length} runs=${runs.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);
     }
