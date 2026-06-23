@@ -384,7 +384,13 @@ export default class PacketWire {
             // EDIT span, a @204): the meta line carries the whole signal.
             let body = "";
             if (e.folded !== true) {
-                if ((op === "READ" || op === "FIND") && e.status === 200 &&
+                if (op === "FIND" && e.status === 200 && items === 0) {
+                    // Empty FIND result → meta-only. items:0 already says "empty"; rendering []
+                    // under a fence is redundant noise + a misleading tokens count on a row whose
+                    // weight is all meta. No body, no statement re-emit. (The always-foisted empty
+                    // known:///** / unknown:///** workspace rows are the common case.)
+                    body = "";
+                } else if ((op === "READ" || op === "FIND") && e.status === 200 &&
                     rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                     // READ@200 / FIND@200: the content READ pulled, or the catalog rows /
                     // matched entries FIND returned (§render-rule-find-renders-result) — the
