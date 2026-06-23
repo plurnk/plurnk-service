@@ -191,6 +191,18 @@ export default class PacketWire {
         return trailingNewline ? `${numbered}\n` : numbered;
     }
 
+    // The single content-body renderer EVERY output-emitting op routes through, so the line-number
+    // convention the model orients on can't drift: line-navigable mimetypes (text/*) get the `N:\t`
+    // prefix from `startLine`; tree-navigable (JSON/XML/HTML) render verbatim so jsonpath/xpath
+    // isn't shifted. Empty content ⇒ "" (the meta line stands alone). §render-rule-line-navigable-prefix
+    static #renderContentBody(fence: string, content: string, mimetype: string, startLine = 1): string {
+        if (content.length === 0) return "";
+        const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype)
+            ? PacketWire.#numberLines(content, startLine)
+            : content;
+        return PacketWire.#wrapHeredocBody(fence, rendered);
+    }
+
     // Tolerant JSON parser for log entries' rx/tx fields. The engine
     // pre-parses application/json mimetypes, but render may also receive
     // strings (legacy paths, manual tests). Returns null on parse failure.
@@ -392,28 +404,24 @@ export default class PacketWire {
                 rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
                 // READ@200 / FIND@200: the content READ pulled, or the catalog rows / matched
                 // entries FIND returned (§render-rule-find-renders-result) — the turn-0 foisted
-                // FIND(scheme:///**) reaches the packet here. Line-navigable mimetypes get the N:\t
-                // prefix (§render-rule-line-navigable-prefix); tree-navigable (JSON/XML/HTML) render
-                // verbatim (§render-rule-tree-navigable-verbatim) so jsonpath/xpath isn't shifted.
-                const fence = target ?? `log:///${coordinate}`;
+                // FIND(scheme:///**) reaches the packet here, as does the exec-stream injector's
+                // foisted READ of the channel. #renderContentBody applies the line-number convention
+                // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                if (MimetypeBinary.isLineNavigableMimetype(mimetype)) {
-                    const start = typeof rx.startLine === "number" ? rx.startLine : 1;
-                    body = PacketWire.#wrapHeredocBody(fence, PacketWire.#numberLines(rx.content, start));
-                } else {
-                    body = PacketWire.#wrapHeredocBody(fence, rx.content);
-                }
+                const start = typeof rx.startLine === "number" ? rx.startLine : 1;
+                body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
             } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
-                // EDIT (§edit-result-render): the resulting span as it looks now. Empty span
-                // (content emptied) ⇒ no body — the meta line stands alone.
+                // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
+                // line-numbered it with the changed region's REAL offsets (e.g. 50:\t…), so wrap
+                // verbatim — re-numbering here would double it (1:\t50:\t…) and lose the true line
+                // position. Empty span (content emptied) ⇒ no body — the meta line stands alone.
                 const span = (rx as { span: string }).span;
                 if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
             } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
-                // EXEC: the literal command body, :::-fenced at the op's log address — the model
-                // sees what it ran. The OUTPUT is a SEPARATE stream (meta.stream), surfaced by the
-                // stream lifecycle, never re-emitted as the <<EXEC…EXEC statement. §exec-stream
-                const cmd = (e.tx as { body: string }).body;
-                if (cmd.length > 0) body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, cmd);
+                // EXEC: the literal command body, :::-fenced + line-numbered at the op's log address —
+                // the model sees what it ran and can reference lines of its own code. The OUTPUT is a
+                // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
+                body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, "text/plain");
             } else {
                 // Every other op — SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty READ/FIND
                 // or a span-less EDIT — re-emit the model's own statement in its native heredoc,

@@ -1545,10 +1545,13 @@ export default class Engine {
             const cursor = prior !== undefined ? ((JSON.parse(prior.attrs) as { streamEnd?: number }).streamEnd ?? 0) : 0;
             if (ch.content.length <= cursor) continue;  // nothing new to show this turn
             const closed = ch.state === "closed" || ch.state === "errored";
+            // startLine continues the line count across turns: a multi-turn stream's deltas number
+            // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. §exec-stream
+            const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
             await (this.#db.engine_insert_stream_delta as PrepMethod).run({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
-                rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream" }),
+                rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine }),
                 attrs: JSON.stringify({ streamEnd: ch.content.length }),
                 expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds
             });

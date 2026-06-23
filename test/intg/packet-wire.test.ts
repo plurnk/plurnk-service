@@ -97,19 +97,43 @@ test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
     assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
 });
 
-test("[§edit-result-render] log render: EDIT@200 with rx.span → renders the resulting span under the fence, not the statement", () => {
+test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
         op: "EDIT",
         status: 200,
         target: { scheme: "known", pathname: "/plan.md" },
-        rx: { status: 200, span: "- [x] ship the fix" },
+        rx: { status: 200, span: "3:\t- [x] ship the fix" },  // editedSpan emits N:\t with the changed region's REAL offset
     }], tok);
-    // The model sees the edited area as it looks NOW, under the entry's fence — its edit's
-    // effect, not the heredoc it typed. (No-span EDITs fall back to re-emitting the statement,
-    // covered above.)
-    assert.match(out, /<<:::known:\/\/\/plan\.md\n- \[x\] ship the fix\n:::known:\/\/\/plan\.md/, "EDIT renders rx.span verbatim under the target fence");
+    // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
+    // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:\t3:\t…)
+    // and lose the real position. (No-span EDITs fall back to re-emitting the statement, above.)
+    assert.match(out, /<<:::known:\/\/\/plan\.md\n3:\t- \[x\] ship the fix\n:::known:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
+    assert.doesNotMatch(out, /1:\t3:\t/, "must NOT re-number an already-numbered span");
+});
+
+test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream)", () => {
+    // The model orients on line numbers, so EVERY op that emits a content body must number
+    // line-navigable (text/*) bodies and leave tree-navigable (JSON) verbatim — else it has its
+    // bearings on one op's output but not another's. Pins the invariant across READ, FIND, EDIT-span,
+    // EXEC-body, and the foisted exec-stream delta (incl. its cross-turn startLine): the exact gaps
+    // this sweep closed, so no future content branch can silently diverge.
+    const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "known", pathname: "/a" } };
+    const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
+    const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
+        { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:\talpha\n2:\tbeta/ },
+        { label: "READ json → verbatim", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n\{"k":1\}\n/, anti: /\d:\t/ },
+        { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:\tm1\n2:\tm2/ },
+        { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:\tx\n6:\ty" } }, want: /5:\tx\n6:\ty/, anti: /1:\t5:\t/ },
+        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:\tls\n2:\tpwd/ },
+        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:\tout5\n6:\tout6/ },
+    ];
+    for (const c of cases) {
+        const out = PacketWire.renderLog([c.entry], tok);
+        assert.match(out, c.want, c.label);
+        if (c.anti !== undefined) assert.doesNotMatch(out, c.anti, `${c.label} — tree-navigable must stay verbatim`);
+    }
 });
 
 test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
