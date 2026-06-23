@@ -44,8 +44,8 @@ test("Engine.runTurn: budget readout — ratio-derived ceiling, free reconciles 
         const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
         const budget = packetSection(packet, "budget");
         // default ratio 0.9 → floor(4000 × 0.9) = 3600
-        assert.match(budget, /ceiling 3600 · usage \d+ \(\d+%\) · free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
-        const free = Number(/free (\d+)/.exec(budget)?.[1]);
+        assert.match(budget, /Token Ceiling 3600 · Token Usage \d+ \(\d+%\) · Tokens Free \d+/, "headline carries the ratio-derived ceiling, usage, percent, and free");
+        const free = Number(/Tokens Free (\d+)/.exec(budget)?.[1]);
         const total = packet.sections.reduce((n, s) => n + s.tokens, 0); // summed per-section render-weights (the assembled request size, inter-section joins aside)
         assert.ok(free > 0 && free < 3600, `free ${free} within (0, 3600)`);
         // Reconciles to ceiling − assembled total, within the placeholder/number

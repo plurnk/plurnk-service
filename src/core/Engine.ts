@@ -1263,13 +1263,14 @@ export default class Engine {
         ceiling: number | null,
     ): string {
         const lines: string[] = [];
-        if (ceiling !== null) lines.push(`ceiling ${ceiling} · usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · free ${TOKENS_FREE_PLACEHOLDER}`);
+        if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
         if (log.entries > 0) {
+            if (lines.length > 0) lines.push("");
             lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
             // Per-turn weight — the grinder's rollback unit, oldest first: the
             // model sees what's first to go (§tokenomics {§tokenomics-turn-totals}).
             if (log.byTurn.length > 0) {
-                lines.push("Turns:", "| turn | tokens |", "|---|--:|");
+                lines.push("", "Turns:", "| turn | tokens |", "|---|--:|");
                 for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
             }
             // The heaviest individual log items — the FOLD targets behind the weight
@@ -1277,7 +1278,7 @@ export default class Engine {
             // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
             // is only for entries. Do not attempt to edit log items.").
             if (log.largest.length > 0) {
-                lines.push("Heaviest items:", "| item | tokens |", "|---|--:|");
+                lines.push("", "Heaviest items:", "| item | tokens |", "|---|--:|");
                 for (const e of log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
             }
         }

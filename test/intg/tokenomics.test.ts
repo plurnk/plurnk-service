@@ -97,7 +97,7 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const budget = packetSection(JSON.parse(row!.packet), "budget");
-        const m = budget.match(/ceiling (\d+) · usage (\d+) \((?:<1|\d+)%\) · free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((?:<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
         assert.ok(usage > 0, "usage is the measured render-weight, not zero or a leftover placeholder");
@@ -160,7 +160,7 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
         const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/ceiling (\d+) · usage (\d+) \((<1|\d+)%\) · free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const pct = m![3];
         const exact = (usage / ceiling) * 100;
@@ -184,7 +184,7 @@ test("[§tokenomics-over-budget-floor] over budget, free floors at 0 and percent
         const provider = new Mock({ contextSize: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/ceiling (\d+) · usage (\d+) \((\d+)%\) · free (\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
         const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
         assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
