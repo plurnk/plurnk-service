@@ -888,12 +888,12 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: free text before an op breaks that op (grammar 0.70) — no dispatch, no-ops 422", async () => {
+test("Engine.runTurn: free text before an op is tolerated — the trailing op still parses (grammar 0.74.9)", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // grammar 0.70 has no free-text-between-ops: prose before a statement makes that
-        // statement unparseable, so the SEND is NOT dispatched — the turn is no-ops (422)
-        // and carries a parse_error. (The old #free-text-capture synthesis is retired.)
+        // grammar 0.74.9 recovers free text before a statement (#free-text-capture is back):
+        // the prose is captured and the SEND[200] after it STILL parses + dispatches, so the
+        // turn terminates at 200 — reversing 0.70's strict "prose breaks the op → 422".
         const provider = new Mock({
             contextSize: 100000,
             responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
@@ -902,8 +902,8 @@ test("Engine.runTurn: free text before an op breaks that op (grammar 0.70) — n
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        assert.deepEqual(result.statuses, [200], "only the PLAN dispatched; the SEND after free text never parsed");
-        assert.equal(result.status, 422, "no terminal SEND (PLAN is a no-op) → 422");
+        assert.deepEqual(result.statuses, [200, 200], "the prose is captured AND the SEND after it parses + dispatches");
+        assert.equal(result.status, 200, "the SEND terminates the turn — free text no longer breaks the op");
     } finally { await db.close(); }
 });
 
