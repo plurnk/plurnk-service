@@ -173,6 +173,8 @@ export default class EntryFind {
             const row = byPath.get(EntryManifest.toPath(scheme, pathname));
             if (row !== undefined) results.push(row);
         }
-        return { status: 200, content: JSON.stringify(results, null, 2), mimetype: "application/json", results };
+        // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
+        // whitespace of the catalog body, tokens the wire doesn't need.
+        return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results };
     }
 }

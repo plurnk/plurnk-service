@@ -91,8 +91,9 @@ export default class Log {
                 underlyingContent = rx.content;
                 underlyingMimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
             } else {
-                // Non-content op (EDIT/SEND/etc.) — render the whole rx as JSON.
-                underlyingContent = JSON.stringify(rx, null, 2);
+                // Non-content op (EDIT/SEND/etc.) — render the whole rx as compact JSON
+                // (the model parses it natively; pretty-print is whitespace the wire doesn't need).
+                underlyingContent = JSON.stringify(rx);
                 underlyingMimetype = "application/json";
             }
         } catch {
