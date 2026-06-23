@@ -322,12 +322,12 @@ test("[§requirements-requirements-render-last] requirements renders LAST in the
     // §requirements: requirements is the contract that must win conflicts with the
     // natural-language prompt, so it renders closest to the assistant turn —
     // after the prompt, budget, and errors, with nothing following it.
-    assert.match(out, /# Plurnk System Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
+    assert.match(out, /## Plurnk System Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
         "requirements renders LAST under its own header, nothing after it");
-    const reqIdx = out.indexOf("# Plurnk System Requirements");
-    assert.ok(reqIdx > out.indexOf("# Plurnk System User Prompt"), "requirements follows the prompt");
-    assert.ok(reqIdx > out.indexOf("# Plurnk System Budget"), "requirements follows the budget section");
-    assert.ok(reqIdx > out.indexOf("# Plurnk System Errors"), "requirements follows the errors section");
+    const reqIdx = out.indexOf("## Plurnk System Requirements");
+    assert.ok(reqIdx > out.indexOf("## Plurnk System User Prompt"), "requirements follows the prompt");
+    assert.ok(reqIdx > out.indexOf("## Plurnk System Budget"), "requirements follows the budget section");
+    assert.ok(reqIdx > out.indexOf("## Plurnk System Errors"), "requirements follows the errors section");
 });
 
 test("[§requirements-requirements-omitted-when-empty] empty requirements section emits no header", () => {
@@ -335,7 +335,7 @@ test("[§requirements-requirements-omitted-when-empty] empty requirements sectio
         { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: "P", tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: "", tokens: 0 },
     ], "user");
-    assert.doesNotMatch(out, /# Plurnk System Requirements/, "no requirements section when the content is empty");
+    assert.doesNotMatch(out, /## Plurnk System Requirements/, "no requirements section when the content is empty");
 });
 
 test("[§render-rule-find-renders-result] log render: FIND@200 renders its result catalog, not just the echoed query", () => {

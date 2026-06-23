@@ -509,7 +509,7 @@ export default class Engine {
         provider: Provider;
         messages: ChatMessage[];
         // The requirements section content. Rendered at the end of the user
-        // slot under `# Plurnk System Requirements`. Caller sources from
+        // slot under `## Plurnk System Requirements`. Caller sources from
         // Paths.defaultRequirements.
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
@@ -1246,7 +1246,7 @@ export default class Engine {
         return { tokens: packetTokens, sections, telemetryErrors };
     }
 
-    // Budget readout body, rendered into the `# Plurnk System Budget` section.
+    // Budget readout body, rendered into the `## Plurnk System Budget` section.
     // Headline `ceiling/free` only when a ceiling exists; section lines for the
     // curatable index/log weight the model can FOLD back. tokensFree is a
     // placeholder here — buildSystem substitutes it after measuring the packet.
@@ -1281,7 +1281,7 @@ export default class Engine {
         return lines.join("\n");
     }
 
-    // The # Plurnk System Tools capability sheet (SPEC §tools). A hook: each enabled
+    // The ## Plurnk System Tools capability sheet (SPEC §tools). A hook: each enabled
     // capability contributes one line, rendered above Requirements so the model sees what
     // it can do before the rules. Each available executor tag contributes its self-documenting
     // example (plurnk-execs#7), retiring the blind EXEC.

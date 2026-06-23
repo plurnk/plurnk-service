@@ -99,7 +99,7 @@ test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:
         // meta line (no snippet key) immediately followed by the error://<line>
         // fence wrapping the N:\t snippet.
         const wire = PacketWire.renderSlot(p2.sections, "user");
-        assert.match(wire, /# Plurnk System Errors/);
+        assert.match(wire, /## Plurnk System Errors/);
         // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
         // error://1 fence carrying the verbatim N:\t snippet, line 1, immediately after meta.

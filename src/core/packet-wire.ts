@@ -9,7 +9,7 @@
 // fenced code blocks for entry bodies, lists for arrays. No invented
 // separators. Models parse markdown natively.
 //
-// Section headers follow the `# Plurnk System X` convention so the model
+// Section headers follow the `## Plurnk System X` convention so the model
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
@@ -64,7 +64,7 @@ type CountTokens = (text: string) => number;
 export default class PacketWire {
     // Render the sections in `slot` to one ChatMessage.content string. Sections
     // render in list order; empties are omitted (no empty headers on the wire);
-    // each is `# {header}\n\n{content}` (or bare content when header is null),
+    // each is `## {header}\n\n{content}` (or bare content when header is null),
     // trailing newlines stripped, joined with a blank line.
     static renderSlot(sections: SectionView[], slot: "system" | "user"): string {
         return sections
@@ -74,14 +74,14 @@ export default class PacketWire {
             .join("\n\n");
     }
 
-    // One section → its markdown block (`# {header}\n\n{content}`, or bare
+    // One section → its markdown block (`## {header}\n\n{content}`, or bare
     // content when header is null/empty), trailing newlines stripped. Empty
     // content renders to "" so renderSlot drops it. This is the unit the
     // per-section `tokens` weight is measured over.
     static renderSection(s: SectionView): string {
         if (typeof s.content !== "string" || s.content.length === 0) return "";
         const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
-        return (header ? `# ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
+        return (header ? `## ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
     }
 
     // PLURNK_PROMPT_PREVIEW_CHARS caps the prompt body rendered in the prompt
@@ -165,7 +165,7 @@ export default class PacketWire {
         }
         return {
             entries: logEntries.length,
-            tokens: logBody ? countTokens(`# Plurnk System Log\n\n${logBody}`) : 0,
+            tokens: logBody ? countTokens(`## Plurnk System Log\n\n${logBody}`) : 0,
             byTurn: [...byTurn.entries()]
                 .map(([turn, tokens]) => ({ turn, tokens }))
                 .toSorted((a, b) => {
