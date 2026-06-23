@@ -124,13 +124,13 @@ const MIN_PACKET = JSON.stringify({
 export const packetSection = (packet: unknown, name: string): string =>
     PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
 
-// Parse the rendered log section's meta lines (`* {json}`) back into structured
-// records — lets tests assert on the model's actual log VIEW with field
-// precision (coordinate via `path`, the model-facing `target` URI, op, status,
-// origin). Test-only: assumes entry bodies carry no `* `-prefixed lines.
+// Parse the rendered log section's meta lines (`<marker> {json}`, marker */+/-) back
+// into structured records — lets tests assert on the model's actual log VIEW with field
+// precision (coordinate via `path`, the model-facing `target` URI, op, status, origin).
+// Test-only: the `{` guard takes meta lines only, skipping body lines like `- [ ] x`.
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> =>
     packetSection(packet, "log").split("\n")
-        .filter((l) => l.startsWith("* "))
+        .filter((l) => /^[*+-] \{/.test(l))
         .map((l) => JSON.parse(l.slice(2)) as Record<string, unknown>);
 
 export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {

@@ -425,7 +425,9 @@ export default class PacketWire {
             if (items !== null) meta.items = items;
             if (body.length > 0) meta.tokens = countTokens(body);
 
-            const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
+            // Body-state marker: `-` folded (OPEN to expand) · `+` open (body shown) · `*` none.
+            const marker = e.folded === true ? "-" : body.length > 0 ? "+" : "*";
+            const metaLine = `${marker} ${PacketWire.#canonicalJson(meta)}`;
             return body.length > 0 ? `${metaLine}\n${body}` : metaLine;
         }).join("\n");
     }
