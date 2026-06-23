@@ -14,7 +14,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 
-test("regression: a model's EXEC result surfaces in the NEXT turn's log, not just the DB", async () => {
+test("[§exec-stream] regression: a model's EXEC result surfaces in the NEXT turn's log, not just the DB", async () => {
     // Turn 1: EXEC + SEND[102] (continue). Turn 2: SEND[200] (terminate). The
     // exec result created in turn 1 must appear in turn 2's packet log so the
     // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
