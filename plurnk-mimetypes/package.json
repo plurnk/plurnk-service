@@ -18,7 +18,7 @@
         "url": "git+https://github.com/plurnk/plurnk-mimetypes.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
