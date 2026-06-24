@@ -11,6 +11,7 @@ import {
     requireEnv,
     tokenizerFor,
     type Provider,
+    type ProviderOptions,
     type TokenizerFamily,
 } from "@plurnk/plurnk-providers";
 
@@ -27,10 +28,12 @@ const tokenizerFamilyFor = (family: string | null): TokenizerFamily =>
     family !== null && LLAMA_TOKENIZER_FAMILIES.has(family) ? "llama" : "heuristic";
 
 export default class Ollama {
-    static async fromEnv(env: NodeJS.ProcessEnv, model: string): Promise<Provider> {
-        // OLLAMA_BASE_URL (our explicit override) wins; else the official OLLAMA_HOST,
-        // which may be a bare host:port with no scheme — normalize to http:// for it.
-        const rawBase = requireEnv(env.OLLAMA_BASE_URL || env.OLLAMA_HOST, "OLLAMA_BASE_URL or OLLAMA_HOST", "ollama");
+    static async fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): Promise<Provider> {
+        // Per-alias override (PLURNK_BASEURL_<alias>) wins — it's how two aliases
+        // reach two different ollama boxes; else OLLAMA_BASE_URL, else the official
+        // OLLAMA_HOST, which may be a bare host:port with no scheme (normalized
+        // below). The chosen base drives BOTH the /api/show probe and the chat URL.
+        const rawBase = requireEnv(options?.baseUrl || env.OLLAMA_BASE_URL || env.OLLAMA_HOST, "OLLAMA_BASE_URL or OLLAMA_HOST (or a PLURNK_BASEURL_<alias> override)", "ollama");
         const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", "ollama");
         const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
         const normalizedBase = withScheme.replace(/\/$/, "");

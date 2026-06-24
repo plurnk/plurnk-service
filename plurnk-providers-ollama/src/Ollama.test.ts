@@ -25,7 +25,7 @@ test.afterEach(() => mock.restoreAll());
 // — fromEnv env guards —
 
 test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", async () => {
-    await assert.rejects(() => Ollama.fromEnv({}, "qwenzel:latest"), /OLLAMA_BASE_URL or OLLAMA_HOST must be set/);
+    await assert.rejects(() => Ollama.fromEnv({}, "qwenzel:latest"), /OLLAMA_BASE_URL or OLLAMA_HOST .* must be set/);
 });
 
 test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
@@ -33,6 +33,18 @@ test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
     assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
+});
+
+test("fromEnv: a per-alias baseUrl override wins over OLLAMA_BASE_URL and drives /api/show", async () => {
+    const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
+    await Ollama.fromEnv({ ...baseEnv, OLLAMA_BASE_URL: "http://default:11434" }, "qwenzel:latest", { baseUrl: "http://nook:11434" });
+    assert.equal(calls[0], "http://nook:11434/api/show"); // the override box, not OLLAMA_BASE_URL
+});
+
+test("fromEnv: a per-alias baseUrl override normalizes a bare host:port like OLLAMA_HOST does", async () => {
+    const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
+    await Ollama.fromEnv({ ...baseEnv }, "qwenzel:latest", { baseUrl: "hazel2:11434" });
+    assert.equal(calls[0], "http://hazel2:11434/api/show");
 });
 
 test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
