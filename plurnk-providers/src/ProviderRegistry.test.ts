@@ -52,6 +52,22 @@ test("parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
     assert.throws(() => parseAliasesFromEnv(env), /Duplicate provider alias "opus"/);
 });
 
+test("parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint override (case-folded)", () => {
+    const env = {
+        PLURNK_MODEL_HAZEL1: "openai/qwen2.5-coder",
+        PLURNK_BASEURL_HAZEL1: "http://hazel1:8080/v1",
+        PLURNK_MODEL_plain: "openai/m", // no override → no baseUrl key
+    } as NodeJS.ProcessEnv;
+    const aliases = parseAliasesFromEnv(env);
+    assert.deepEqual(aliases.find((a) => a.alias === "hazel1"), { alias: "hazel1", provider: "openai", model: "qwen2.5-coder", baseUrl: "http://hazel1:8080/v1" });
+    assert.equal("baseUrl" in (aliases.find((a) => a.alias === "plain") ?? {}), false);
+});
+
+test("parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fails hard", () => {
+    const env = { PLURNK_MODEL_a: "openai/m", PLURNK_BASEURL_typo: "http://nope" } as NodeJS.ProcessEnv;
+    assert.throws(() => parseAliasesFromEnv(env), /PLURNK_BASEURL_\* override\(s\) with no matching PLURNK_MODEL_\* alias: typo/);
+});
+
 test("resolveActiveAlias: returns null when PLURNK_MODEL unset", () => {
     const env = { PLURNK_MODEL_gemma: "openai/macher.gguf" } as NodeJS.ProcessEnv;
     assert.equal(resolveActiveAlias(env), null);
@@ -107,6 +123,31 @@ test("instantiateProvider: bespoke name resolves via the scan and imports the di
         mapOf({ openrouter: "@plurnk/plurnk-providers-openrouter" }));
     assert.equal(p, fakeProvider);
     assert.deepEqual(calls, ["@plurnk/plurnk-providers-openrouter", "anthropic/claude-opus-latest"]);
+});
+
+test("instantiateProvider: a per-alias baseUrl is passed to a bespoke factory as the 3rd-arg option", async () => {
+    resetDiscoveryCache();
+    let received: unknown;
+    await instantiateProvider("ollama", { ...fullEnv }, "qwen2.5-coder",
+        async () => ({ default: { fromEnv: async (_e: NodeJS.ProcessEnv, _m: string, options?: unknown) => { received = options; return fakeProvider; } } }),
+        mapOf({ ollama: "@plurnk/plurnk-providers-ollama" }),
+        "http://nook:11434");
+    assert.deepEqual(received, { baseUrl: "http://nook:11434" });
+});
+
+test("instantiateProvider: a per-alias baseUrl drives the standard openai probe to the override host", async () => {
+    resetDiscoveryCache();
+    const probed: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string) => {
+        probed.push(String(url));
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+    await instantiateProvider("openai", { ...fullEnv }, "m", // fullEnv.OPENAI_BASE_URL is http://x — the override must win
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        "http://hazel2:8080/v1");
+    assert.ok(probed.some((u) => u === "http://hazel2:8080/v1/models"), `probe hit the override host; saw ${probed.join(", ")}`);
+    assert.equal(probed.some((u) => u.startsWith("http://x")), false); // never the per-name OPENAI_BASE_URL
+    mock.restoreAll();
 });
 
 test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {

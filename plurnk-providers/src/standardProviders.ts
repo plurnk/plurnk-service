@@ -213,9 +213,11 @@ const firstSet = (env: NodeJS.ProcessEnv, names: readonly string[]): string | un
     return undefined;
 };
 
-const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string): string => {
-    // override var(s) → env-derived template → fixed default.
-    const base = firstSet(env, asList(spec.baseUrlVar)) ?? spec.baseUrlFromEnv?.(env) ?? spec.baseUrl;
+const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string, override?: string): string => {
+    // per-alias override (PLURNK_BASEURL_<alias>) → base-URL var(s) → env-derived
+    // template → fixed default. The override goes through the same normalization
+    // (flexBaseStrip + chatPath), so an operator pastes the box URL verbatim.
+    const base = override ?? firstSet(env, asList(spec.baseUrlVar)) ?? spec.baseUrlFromEnv?.(env) ?? spec.baseUrl;
     if (base === undefined || base.length === 0) {
         const names = asList(spec.baseUrlVar);
         throw new Error(`${label} provider: ${names.length > 0 ? names.join(" or ") : "base URL"} must be set`);
@@ -284,7 +286,7 @@ const probeSlotCount = async (chatUrl: string, headers: Record<string, string>, 
 // Returns a configured Provider, or null when `name` is not a standard
 // provider (so the consumer falls through to dynamic import). Async because a
 // probeNctx-enabled provider queries /v1/models at construction.
-export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessEnv, model: string): Promise<Provider | null> => {
+export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessEnv, model: string, baseUrlOverride?: string): Promise<Provider | null> => {
     const spec = STANDARD_PROVIDERS[name];
     if (spec === undefined) return null;
 
@@ -298,7 +300,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const headers = resolveHeaders(spec, env, name);
 
     const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
-    const url = resolveUrl(spec, env, name);
+    const url = resolveUrl(spec, env, name, baseUrlOverride);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
 
     // The probe always runs for probeNctx specs — grammar capability must not

@@ -5,6 +5,7 @@ export type {
     ProviderAlias,
     ProviderAssistant,
     ProviderFactory,
+    ProviderOptions,
     ProviderResponse,
     ProviderUsage,
 } from "./types.ts";

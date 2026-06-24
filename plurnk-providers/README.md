@@ -24,7 +24,7 @@ One package is **one** provider identity — the `<name>` segment of `PLURNK_MOD
 
 ### 2. Default-export a `fromEnv` factory
 
-The framework calls `YourClass.fromEnv(env, model)` (sync or async) and expects a `Provider`. Two ways in:
+The framework calls `YourClass.fromEnv(env, model, options?)` (sync or async) and expects a `Provider`. `options.baseUrl` is the per-alias endpoint override (`PLURNK_BASEURL_<alias>`) — honor it if you're a self-hosted provider so two aliases can reach two boxes; ignore it otherwise. Two ways in:
 
 - **OpenAI-compatible backends** (the common case): `fromEnv` reads its env (base URL, key), probes whatever it needs (catalog, context window, pricing), and returns **`new OpenAICompatProvider(config)`**. You write a `fromEnv` and a config object — the transport spine (SSE, usage normalization, `finishReason`, grammar transport, slot affinity) is inherited. See `OpenAICompatConfig` / SPEC §11.
 - **Non-OpenAI backends**: `implements Provider` directly — `generate`, `contextSize`, `model`, `countTokens(text)`, `costFor(usage)`.
@@ -47,7 +47,7 @@ First-party daughters install flat via [`@plurnk/plurnk-providers-all`](https://
 
 ## Exports
 
-- `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `FinishReason`, `ProviderFactory`, `ProviderAlias` (+ `Discovery`, `DiscoverOptions`) — types.
+- `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `FinishReason`, `ProviderFactory`, `ProviderOptions`, `ProviderAlias` (+ `Discovery`, `DiscoverOptions`) — types.
 - `parseAliasesFromEnv`, `resolveActiveAlias`, `instantiateProvider`, `loadActiveProvider`, `discover`, `resetDiscoveryCache` — alias-cascade resolution + two-tier provider instantiation (`resetDiscoveryCache` clears the memoized tier-2 scan; for tests). Tier 1 is the standard table; tier 2 is a scope-agnostic `node_modules` scan for `plurnk.kind:"provider"` packages — first-party daughters (flat via `@plurnk/plurnk-providers-all`) and third-party providers under any scope, gated by the host `PLURNK_PLUGINS_TRUSTED_ONLY` allowlist. The framework is contract-only (SPEC §5).
 - `OpenAICompatProvider` (+ `OpenAICompatConfig`, `ReasoningStyle`, `GrammarStyle`, `effortFromBudget`) — shared OpenAI-compatible transport spine; siblings extend it (SPEC §11). Transports a GBNF grammar via `grammarStyle` — `llamacpp` (top-level `grammar` field) or `response_format` (Fireworks); `none` drops it — and verifies the backend enforced it against `@plurnk/gbnf`, rejecting non-conforming output as `grammar_unenforced` (SPEC §13).
 - `chatCompletionStream`, `chatCompletion`, `OpenAiHttpError`, `StreamResponse` — the shared SSE client (`chatCompletion` is the non-streaming variant).

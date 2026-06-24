@@ -89,12 +89,24 @@ export interface ProviderAlias {
     readonly alias: string;     // lowercase, .env key suffix downcased
     readonly provider: string;  // "openai", "openrouter", "ollama", etc.
     readonly model: string;     // provider-native id; may contain "/"
+    readonly baseUrl?: string;  // PLURNK_BASEURL_<alias>: per-alias endpoint override (local boxes)
+}
+
+// Per-alias instantiation overrides, threaded from the alias cascade into the
+// factory. `baseUrl` lets two aliases on the SAME provider name (openai, ollama)
+// target DIFFERENT endpoints — the only way to run N self-hosted boxes, since the
+// provider's own base-URL env var binds one URL per name. Absent → the provider
+// resolves its base from its env var as before.
+export interface ProviderOptions {
+    readonly baseUrl?: string;
 }
 
 // Each provider package's default export MUST be a factory:
-//   static fromEnv(env, model) → Provider | Promise<Provider>
+//   static fromEnv(env, model, options?) → Provider | Promise<Provider>
 // `model` is the second positional arg because PLURNK_MODEL_<alias>=<provider>/<model>
-// is parsed by the registry; the resolved model id flows through.
+// is parsed by the registry; the resolved model id flows through. `options` is an
+// optional third arg (per-alias overrides, e.g. baseUrl); a factory that ignores
+// it keeps working unchanged.
 export interface ProviderFactory {
-    fromEnv(env: NodeJS.ProcessEnv, model: string): Provider | Promise<Provider>;
+    fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): Provider | Promise<Provider>;
 }

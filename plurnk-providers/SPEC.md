@@ -83,23 +83,24 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `generate` **verifies enforcement** when it transported a grammar: it validates the returned `content` against that grammar and rejects with a `grammar_unenforced` `ProviderError` if the backend did not actually constrain the output (§13). This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic.
 - **Backend affinity is the provider's internal guarantee, keyed by `runId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `runId` entirely.
 
-## §3 `fromEnv(env, model)` factory
+## §3 `fromEnv(env, model, options?)` factory
 
-Default export MUST have a static `fromEnv(env, model)` factory:
+Default export MUST have a static `fromEnv(env, model, options?)` factory:
 
 ```ts
 class OpenAI {
-    static fromEnv(env: NodeJS.ProcessEnv, model: string): OpenAI | Promise<OpenAI> {
+    static fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
         // plus universal operator knobs (PLURNK_PROVIDERS_REASONING_BUDGET, PLURNK_FETCH_TIMEOUT,
-        // PLURNK_PROVIDER_CONTEXT_SIZE).
+        // PLURNK_PROVIDER_CONTEXT_SIZE). `options.baseUrl`, when set, is the per-alias
+        // endpoint override (PLURNK_BASEURL_<alias>, §5) and wins over the env base URL.
         return new OpenAI({ /* ... */ });
     }
     constructor(config: OpenAIConfig) { /* ... */ }
 }
 ```
 
-The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model)` generically (§5).
+The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model, options?)` generically (§5). `options` is optional — a factory that ignores the third arg keeps working unchanged; a self-hosted provider (`openai`, `ollama`) honors `options.baseUrl` so two aliases can target two boxes.
 
 `fromEnv` MAY be sync or async; return type `Provider | Promise<Provider>`. (Why a factory, where execs/mimes use a base class + constructor injection and schemes a `static manifest`: a provider often **async-probes** at construction — model catalog, context window, slot count — which a constructor can't express. The factory is the seam for that probe.)
 
@@ -128,6 +129,19 @@ PLURNK_MODEL=gemma
 
 First path segment names the provider; rest is the model identifier (may contain `/` for tri-level providers like openrouter's `publisher/model`).
 
+**Per-alias endpoint override — `PLURNK_BASEURL_<alias>`.** A provider's base URL otherwise binds **one URL per provider *name*** (its `baseUrlVar`, §11), so two `openai/…` aliases collapse onto the same `OPENAI_BASE_URL`. That makes running **N self-hosted boxes of the same kind** — the real case for the two "bring your own box" providers, `openai` (llama.cpp/vLLM/LM Studio) and `ollama` — impossible by name alone. `PLURNK_BASEURL_<alias>` attaches an endpoint to the *alias*, case-folded to match its `PLURNK_MODEL_<alias>`, and **wins over** the provider's own base-URL var:
+
+```
+PLURNK_MODEL_HAZEL1=openai/qwen2.5-coder
+PLURNK_BASEURL_HAZEL1=http://hazel1:8080/v1      # llama.cpp box 1
+PLURNK_MODEL_HAZEL2=openai/qwen3-coder
+PLURNK_BASEURL_HAZEL2=http://hazel2:8080/v1      # llama.cpp box 2 — same provider name, different box
+PLURNK_MODEL_NOOK=ollama/qwen2.5-coder
+PLURNK_BASEURL_NOOK=http://nook:11434            # an ollama box; drives BOTH /v1/chat and /api/show
+```
+
+Each alias instantiates against its own URL and probes its own box (openai's `n_ctx`/slots, ollama's `/api/show`). The override threads through the alias → `instantiateProvider` → both tiers; on the tier-2 (daughter) path it arrives as the third `fromEnv(env, model, { baseUrl })` argument (a factory that ignores it is unaffected). A `PLURNK_BASEURL_*` with no matching alias **fails hard** (a typo, not a silent no-op). It's accepted for *any* provider but only meaningful for the self-hosted ones; the hosted providers (`groq`, `fireworks`, …) carry a canonical endpoint you'd never multi-home.
+
 This package's exported resolution surface:
 
 - `parseAliasesFromEnv(env)` — extracts alias entries.
@@ -140,7 +154,7 @@ This package's exported resolution surface:
 **Two-tier provider resolution — owned entirely by this package.** A provider name resolves in this order:
 
 1. **Standard provider** (`§11`) — if `isStandardProvider(name)`, instantiated directly via `standardProviderFromEnv(name, env, model)`. No package is imported. Covers every plain OpenAI-compatible endpoint (`openai`, `groq`, `deepseek`, `mistral`, `together`, `fireworks`, `deepinfra`, `anthropic`, `bedrock`, `plurnk`, …) — including first-party Claude (Anthropic's compat endpoint, bearer auth, the `thinking` reasoning param), AWS Bedrock (its compat endpoint at the `/openai/v1` path, Bedrock-API-key bearer; the base is `BEDROCK_BASE_URL` if set, else derived as `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` from the standard `AWS_REGION`/`AWS_DEFAULT_REGION`; its inference-profile model ids resolve a catalog **context window** by stripping the region and looking the model up under its publisher (#22), while cost stays unknown — bedrock marks up over the native rate), and the **`plurnk` hosted model** (a deliberately plain remote OpenAI endpoint at `model.plurnk.ai`, overridable via `PLURNK_BASE_URL` — it reads its *server-controlled* context window from upstream but sends no grammar and no tuning; the backend's model/window/grammar are the router's concern, invisible to the open-source client, so a 32k→48k or grammar change is a one-line server decision, never a client release); none needs a daughter. `plurnk` authenticates with a single optional bearer (`PLURNK_API_KEY`, sent only when set — the key identifies the account server-side), like any other standard bearer. A spec's `apiKeyVar`/`baseUrlVar` may be a **list** of accepted env-var aliases — the conventional names the wild uses for one credential/base (e.g. `deepinfra` → `DEEPINFRA_API_KEY` / `DEEPINFRA_API_TOKEN` / `DEEPINFRA_TOKEN`; `openai` base → `OPENAI_BASE_URL` / `OPENAI_API_BASE`). First set non-empty wins; a required key unset across *all* aliases fails hard naming each. This is alias resolution over operator-set values, never a fabricated default. (An entry MAY instead supply a custom `headersFromEnv` builder for auth a bearer can't express — multi-header/credential schemes — or a `baseUrlFromEnv` builder to template the base from env, as bedrock does.) The standard table is **authoritative**: a scanned package whose name duplicates a standard one is shadowed (tier 1 returns first).
-2. **Discovered package** — otherwise, a **scope-agnostic `node_modules` scan** (`discover()`) maps the provider name to the installed package that declares `plurnk: { kind: "provider", name }`, which is dynamic-imported and `fromEnv(env, model)`-called. Covers first-party daughters with real runtime surface (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `vertex`/`cohere`) **and any third-party provider published under its own scope** (`@acme/llm-provider-foo`) — no involvement from us, no `@plurnk` scope assumption. Two installed packages claiming the same name → fail-hard naming both. Unknown name → fail-hard. The scan runs once per process and is memoized.
+2. **Discovered package** — otherwise, a **scope-agnostic `node_modules` scan** (`discover()`) maps the provider name to the installed package that declares `plurnk: { kind: "provider", name }`, which is dynamic-imported and `fromEnv(env, model, options?)`-called. Covers first-party daughters with real runtime surface (`openrouter`, `ollama`, `google`, `xai`, `cloudflare`, the planned `vertex`/`cohere`) **and any third-party provider published under its own scope** (`@acme/llm-provider-foo`) — no involvement from us, no `@plurnk` scope assumption. Two installed packages claiming the same name → fail-hard naming both. Unknown name → fail-hard. The scan runs once per process and is memoized.
 
    Discovery honors the host **trust gate** `PLURNK_PLUGINS_TRUSTED_ONLY` — the same env var the execs/mimes/schemes families read (plurnk-service#229, #15). OFF (unset/empty/`0`) trusts every installed provider; ON (any value) trusts `@plurnk/*` plus a comma-separated allowlist and declines the rest. A declined package is recorded in `skipped` (never registered, never thrown), so requesting its name yields a precise *untrusted* error rather than *unknown*.
 
@@ -204,7 +218,7 @@ const result = await mock.generate({ messages: [] });
 
 A sibling package satisfies the contract when:
 
-1. Default export is a class with `static fromEnv(env, model)` factory.
+1. Default export is a class with `static fromEnv(env, model, options?)` factory.
 2. Instance exposes `contextSize: number | null` and `model: string` (non-empty).
 3. Instance exposes `countTokens(text): number` and `costFor(usage): number`.
 4. `countTokens("")` returns `0`; `countTokens("…")` returns a non-negative integer.
