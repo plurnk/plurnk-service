@@ -13,11 +13,12 @@ test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flig
     const prev = process.env.PLURNK_EXEC_WAIT_MS;
     process.env.PLURNK_EXEC_WAIT_MS = "300";
     try {
-        // Turn 1 backgrounds a slow exec + continues (102); turn 2 ends (200). At
-        // turn 2's boundary the sleep is still in flight → the 300ms breath fires.
+        // Turn 1 backgrounds a slow exec + continues (102); at turn 2's boundary the sleep is still in
+        // flight → the 300ms breath fires. The spawn is still live at turn 2's close, so a SEND[200]
+        // would be premature (§send the terminal contract) — turn 2 takes the 499 exit the steer sanctions.
         const mock = new Mock({ contextSize: 8192, responses: [
             makeMockResponse("<<EXEC[sh]:sleep 2:EXEC\n<<SEND[102]:running:SEND", 10),
-            makeMockResponse("<<SEND[200]:done:SEND", 10),
+            makeMockResponse("<<SEND[499]:abandoning while the spawn runs:SEND", 10),
         ] });
         await withDaemon(mock, async (_db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -28,7 +29,7 @@ test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flig
                 // loop/terminated event, so `elapsed` spans the full loop incl. the breath.
                 const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
                 const elapsed = Date.now() - t0;
-                assert.equal(finalStatus, 200);
+                assert.equal(finalStatus, 499);
                 assert.ok(elapsed >= 250, `the 300ms breath fired before turn 2 (backgrounded spawn in flight); elapsed=${elapsed}ms`);
             } finally { ws.close(); }
         });

@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -136,6 +136,27 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         }
         assert.ok(idleMsg, "idle_turn steering reached the model's packet");
         assert.ok(idleMsg.includes("terminate with 200") && idleMsg.includes("202 to hibernate"), "steering names both exits");
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // Seed a live stream the run holds: an open subscription (closed_at NULL) against a real entry.
+        const entryId = await seedEntryWithChannel(db, { sessionId, pathname: "/live-stream" });
+        await (db.open_subscription as PrepMethod).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme: "exec", handle: "live-1" });
+        const provider = new Mock({ contextSize: 100000, responses: [
+            response([sendStmt(200, "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
+            response([sendStmt(499, "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
+        ] });
+        const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
+        assert.equal(result.turnIds.length, 2, "the premature 200 was downgraded, not honored — the loop ran on");
+        assert.equal(result.finalStatus, 499, "the loop ended on the model's 499, never the premature 200");
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
+        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ kind: string; message: string }> };
+        const prem = packet.telemetryErrors?.find((e) => e.kind === "premature_terminate");
+        assert.ok(prem, "premature_terminate steering reached the model's packet");
+        assert.ok(prem.message.includes("active streams") && prem.message.includes("202 to hibernate"), "steering names the exits");
     } finally { await db.close(); }
 });
 

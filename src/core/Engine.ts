@@ -1006,24 +1006,39 @@ export default class Engine {
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
-        // Rail #41 (revised): the per-turn requirement is "emit at least one
-        // op," not "emit a terminal SEND." SEND is purely a signal verb; many
-        // turns may pass without one. An empty op list is the only strike.
+        // §send the terminal contract — two engine error states verify a terminal claim against run
+        // state, never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
+        // §grinder-strike-coupling): the loop continues, the model sees the steering hint not the strike
+        // count, and a non-resolver spins out to the engine's 500.
+        let steerStruck = false;
+
+        // Premature terminate: a SEND[200] while the run still holds a live stream/spawn — the model
+        // declared done with work running. Downgrade the 200 to 102 so it dispatches as a continue (its
+        // body is preserved, not discarded) and steer; the stream's own conclusion or a KILL is the exit.
+        if (sendOp?.signal === 200) {
+            const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+            if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) {
+                sendOp.signal = TURN_STATUS_IMPLICIT_CONTINUE; // 102 — downgraded, no longer a terminal
+                steerStruck = true;
+                this.#pushTelemetry(sessionId, loopId, {
+                    source: "engine:rail",
+                    kind: "premature_terminate",
+                    message: "Attempted termination with active streams. Terminate with 202 to hibernate until stream completion, KILL(path) with 200 again to clean up, or 499 to fail.",
+                });
+            }
+        }
+
+        // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
+        // SEND." SEND is purely a signal verb; many turns pass without one. An empty op list strikes.
         const turnStatus = sendOp !== undefined
             ? sendOp.signal
             : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
-        // §send the terminal contract — engine error states verify a terminal claim against run state,
-        // never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
-        // §grinder-strike-coupling) so the loop continues and the model sees the steering hint, not the
-        // strike count, and spins out to 500 only if it never resolves.
-        //
-        // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid
-        // op. The model continued with nothing to do. (Premature-terminate — a SEND[200] over a live
-        // stream, downgraded to 102 — joins this seam once the active-stream query lands.)
-        let steerStruck = false;
+        // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
+        // The model continued with nothing to do. (Skipped when premature already steered this turn.)
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
-        if (turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
+        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
             steerStruck = true;
             this.#pushTelemetry(sessionId, loopId, {
                 source: "engine:rail",
