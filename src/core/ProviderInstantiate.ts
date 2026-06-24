@@ -18,7 +18,10 @@ export default class ProviderInstantiate {
         // OpenAICompat transport. `openai` here replaces the former
         // @plurnk/plurnk-providers-openai sibling verbatim.
         if (isStandardProvider(alias.provider)) {
-            const provider = await standardProviderFromEnv(alias.provider, env, alias.model);
+            // alias.baseUrl MUST thread through — it's the per-alias PLURNK_BASEURL_<alias>
+            // override. Drop it and every openai-compat alias silently collapses to a shared
+            // OPENAI_BASE_URL (or fails hard), so a multi-endpoint setup runs the wrong box.
+            const provider = await standardProviderFromEnv(alias.provider, env, alias.model, alias.baseUrl);
             if (provider === null) throw new Error(`standard provider '${alias.provider}' returned null for model '${alias.model}'`);
             return provider;
         }
@@ -37,7 +40,7 @@ export default class ProviderInstantiate {
                 `${packageName}: default export must have a static \`fromEnv(env, model)\` factory`,
             );
         }
-        return await factory.fromEnv(env, alias.model);
+        return await factory.fromEnv(env, alias.model, alias.baseUrl !== undefined ? { baseUrl: alias.baseUrl } : undefined);
     }
 
     // Convenience: resolve + instantiate in one call. Returns null when no
