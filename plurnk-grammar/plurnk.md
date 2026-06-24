@@ -12,18 +12,20 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|CO
 
 ### Operations
 
+The `(target)` is required for every operation except PLAN, EXEC, and SEND. Other fields are optional unless specified otherwise.
+
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
 | PLAN | -           | -          | -                   | plan / reasoning |
-| FIND | filter tags | required   | results `N,M`       | matcher          |
-| READ | filter tags | required   | lines `N,M`         | matcher          |
-| EDIT | tags        | required   | lines `N,M`         | content          |
-| COPY | apply tags  | required   | lines `N,M`         | destination URI  |
-| MOVE | apply tags  | required   | lines `N,M`         | destination URI  |
-| OPEN | filter tags | log path   | results `N,M`       | matcher          |
-| FOLD | filter tags | log path   | results `N,M`       | matcher          |
-| EXEC | executor    | varied     | -                   | command or code  |
-| KILL | signal      | required   | -                   | -                |
+| FIND | filter tags | path       | results `N,M`       | filter           |
+| READ | filter tags | path       | lines `N,M`         | filter           |
+| EDIT | tags        | path       | lines `N,M`         | content          |
+| COPY | apply tags  | path       | lines `N,M`         | destination path |
+| MOVE | apply tags  | path       | lines `N,M`         | destination path |
+| OPEN | filter tags | path (log) | results `N,M`       | filter           |
+| FOLD | filter tags | path (log) | results `N,M`       | filter           |
+| EXEC | executor    | path / cwd | -                   | command or code  |
+| KILL | signal      | path       | -                   | -                |
 | SEND | status code | recipient  | -                   | message body     |
 
 FIND returns rows of results, READ returns lines of content.
@@ -42,7 +44,7 @@ Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (ap
 
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
-`<0.7>` selects results scoring at least 0.7 (`~` matchers).
+`<0.7>` selects results scoring at least 0.7 (`~` filters).
 `<0.7,10,20>` selects results scoring at least 0.7, positions 10 through 20 (threshold, then range).
 
 On structured entries and items, `<Result>` addresses result index, not line number.
