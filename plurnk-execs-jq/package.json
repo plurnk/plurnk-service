@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-jq",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter/transform JSON for EXEC[jq].",
     "keywords": [
         "plurnk",
@@ -20,7 +20,7 @@
         "url": "git+https://github.com/plurnk/plurnk-execs-jq.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
@@ -58,7 +58,7 @@
         "prepare": "npm run build"
     },
     "devDependencies": {
-        "@types/node": "^25.8.0",
+        "@types/node": "^26.0.0",
         "typescript": "^6.0.3",
         "@plurnk/plurnk-execs": "^0.4.16"
     },
