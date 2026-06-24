@@ -56,7 +56,7 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.18",
         "@plurnk/plurnk-execs-all": "0.1.9",
-        "@plurnk/plurnk-grammar": "0.74.12",
+        "@plurnk/plurnk-grammar": "0.74.14",
         "@plurnk/plurnk-mimetypes": "0.15.24",
         "@plurnk/plurnk-mimetypes-all": "0.5.3",
         "@plurnk/plurnk-mimetypes-text-html": "0.6.3",
