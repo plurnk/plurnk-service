@@ -100,7 +100,7 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
-YOU MUST SEND[102] after an operation with results in order to receive its results.
+YOU MUST SEND[102] to receive the results of operations you submitted.
 
 ## Examples
 
