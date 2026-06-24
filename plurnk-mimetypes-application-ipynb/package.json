@@ -8,7 +8,7 @@
         "access": "public"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "plurnk": {
         "kind": "mimetype",
