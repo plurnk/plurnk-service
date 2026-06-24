@@ -156,6 +156,9 @@ _fw-*
 *.gbnf
 scratch/
 
+# One-off forensic / analysis scripts — local-only, never a build step.
+scriptify/
+
 # SQLite working files (WAL mode)
 *.db
 *.db-shm
