@@ -9,6 +9,9 @@
 // asserts); liveLoop is the single loop-driver (always server-YOLO, the live/demo
 // stance). Everything funnels through these two so the tier has exactly one path.
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { WebSocket } from "ws";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -47,12 +50,22 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
     const ws = await connect(addr);
+    // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
+    // PLURNK_GIT_ALLOWED=1 + PLURNK_GIT_AUTO=1 + PLURNK_MANIFEST_ITEMS=-1 (the live/demo .env), an
+    // in-repo projectRoot makes git membership materialize + embed ALL of plurnk-service every turn
+    // — the embed cycle that turns a 7s task into a 240s timeout. seedEntry writes to the DB, so an
+    // empty root costs the tests nothing. Caller may override (e.g. with a fixture git repo).
+    const ownsSandbox = opts.projectRoot === undefined;
+    const projectRoot = opts.projectRoot ?? await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
     const created = (await rpcCall(ws, 1, "session.create", {
-        name: opts.name, ...(opts.projectRoot !== undefined ? { projectRoot: opts.projectRoot } : {}),
+        name: opts.name, projectRoot,
     })).result as { id: number };
     return {
         db, ws, sessionId: created.id,
-        cleanup: async () => { ws.close(); await daemon.stop(); await db.close(); },
+        cleanup: async () => {
+            ws.close(); await daemon.stop(); await db.close();
+            if (ownsSandbox) await rm(projectRoot, { recursive: true, force: true });
+        },
     };
 };
 
@@ -96,8 +109,13 @@ export const seedEntry = async (
     db: Db, sessionId: number,
     opts: { scheme?: string | null; pathname: string; content: string; mimetype?: string },
 ): Promise<number> => {
+    // known:///lines.md resolves to pathname "/lines.md" — the prod write path canonicalizes to that
+    // leading-slash form, so storing the bare arg ("lines.md") 404'd the model's READ by one char.
+    // Honor the convention. (readSessionEntry is a direct scheme+pathname+channel lookup — no
+    // membership filter — so a plain session entry resolves; no git materialization needed.)
+    const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
     const e = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({
-        session_id: sessionId, scheme: opts.scheme ?? "known", pathname: opts.pathname,
+        session_id: sessionId, scheme: opts.scheme ?? "known", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
     await (db.crud_write_channel as PrepMethod).run({
@@ -109,7 +127,8 @@ export const seedEntry = async (
 // Forensic read-back: an entry's body content by pathname (undefined once the
 // channel/entry is gone). Assert what the OP did to the db, never the model's words.
 export const readBody = async (db: Db, pathname: string): Promise<string | undefined> => {
-    const row = await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname });
+    const canonical = pathname.startsWith("/") ? pathname : `/${pathname}`;  // match seedEntry's canonical form
+    const row = await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: canonical });
     return row?.content;
 };
 
