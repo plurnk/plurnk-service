@@ -23,12 +23,9 @@ import type { GitStatus } from "./git-state.ts";
 // leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
 // checks below (boundaries validate). Engine's RequestPacket is strict.
 interface ActionTarget { scheme?: string | null; pathname?: string | null; fragment?: string | null }
+// Only `body` is read off the log row's tx now — the mirror renders the model's WORK as content
+// (PLAN/SEND bodies, EXEC commands, READ/FIND matchers), never the op's emission tag re-serialized.
 interface StatementTx {
-    op?: unknown;
-    suffix?: unknown;
-    signal?: unknown;
-    target?: { raw?: unknown } | null;
-    lineMarker?: { marks?: number[] } | null;
     body?: string | { raw?: unknown } | null;
 }
 interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown }
@@ -251,60 +248,6 @@ export default class PacketWire {
         return PacketWire.#wrapHeredocBody(fence, body);
     }
 
-    // Re-render a plurnk statement (from log_entries.tx) as the heredoc form
-    // the model would have emitted. Used by the log render so the model sees
-    // its own ops in its own native syntax — what it wrote, mirrored back.
-    //
-    // Faithfulness over cleverness: render the parts as recorded. `target.raw`
-    // preserves exactly what the model wrote (URL with fragment, bare path,
-    // etc.) instead of round-tripping through scheme/pathname/fragment fields.
-    // Returns null when tx isn't a parseable PlurnkStatement (callers fall
-    // back to the meta line alone).
-    //
-    // Signal renders to `[…]`:
-    //   - array of strings (tags) → `[tag1,tag2]`
-    //   - number (status code, e.g. SEND[200]) → `[200]`
-    //   - string (runtime, e.g. EXEC[python]) → `[python]`
-    //   - null/missing → omitted
-    // All plurnk statements share the same syntactic frame; signal type
-    // varies by op but renders uniformly.
-    static #renderStatementHeredoc(tx: StatementTx | null): string | null {
-        if (tx === null || typeof tx !== "object" || typeof tx.op !== "string" || tx.op.length === 0) return null;
-        const op = tx.op;
-        const suffix = typeof tx.suffix === "string" ? tx.suffix : "";
-        let signalStr = "";
-        const signal = tx.signal;
-        if (Array.isArray(signal)) {
-            const tags = signal.filter((t): t is string => typeof t === "string");
-            if (tags.length > 0) signalStr = `[${tags.join(",")}]`;
-        } else if (typeof signal === "number") {
-            signalStr = `[${signal}]`;
-        } else if (typeof signal === "string" && signal.length > 0) {
-            signalStr = `[${signal}]`;
-        }
-        let targetStr = "";
-        const target = tx.target;
-        if (target !== null && target !== undefined && typeof target === "object" && typeof target.raw === "string") {
-            targetStr = `(${target.raw})`;
-        }
-        let markerStr = "";
-        const lm = tx.lineMarker;
-        if (lm !== null && lm !== undefined && typeof lm === "object" && Array.isArray(lm.marks) && lm.marks.length > 0) {
-            markerStr = lm.marks.length > 1 ? `<${lm.marks[0]},${lm.marks[1]}>` : `<${lm.marks[0]}>`;
-        }
-        let body: string;
-        if (typeof tx.body === "string") body = tx.body;
-        else if (tx.body !== null && tx.body !== undefined && typeof tx.body === "object" && typeof tx.body.raw === "string") body = tx.body.raw;
-        else body = "";
-        // Character-perfect: no padding around body. The body string IS
-        // whatever the model wrote between the colons, including any leading
-        // or trailing whitespace it chose. Adding `\n` here would inflate
-        // single-line emissions into multi-line and nudge the model toward
-        // verbose forms — and it would violate the grammar's "body content
-        // is character-perfect" guarantee on the way back.
-        return `<<${op}${suffix}${signalStr}${targetStr}${markerStr}:${body}:${op}${suffix}`;
-    }
-
     // Render a (scheme, pathname) tuple as the URI the model should SEE.
     // Null scheme → bare pathname. The `file` scheme never reaches this
     // function because Engine.#extractTarget normalizes it to null at the
@@ -422,12 +365,15 @@ export default class PacketWire {
                 // the model sees what it ran and can reference lines of its own code. The OUTPUT is a
                 // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
                 body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, "text/plain");
-            } else {
-                // Every other op — SEND, COPY, MOVE, OPEN, FOLD, plus a non-200/empty READ/FIND
-                // or a span-less EDIT — re-emit the model's own statement in its native heredoc,
-                // so the row records what it wrote, not just a status code.
-                const heredoc = PacketWire.#renderStatementHeredoc(e.tx ?? null);
-                if (heredoc !== null) body = heredoc;
+            } else if ((op === "PLAN" || op === "SEND") && e.tx !== null && e.tx !== undefined) {
+                // PLAN's plan / SEND's message ride into the log as N:\t content at the op's log address —
+                // the log mirrors the model's WORK, NEVER a repeated <<OP:…:OP tag (tags are emission
+                // syntax, not the log paradigm). Bodyless ops (COPY/MOVE/OPEN/FOLD, a non-200 READ/FIND
+                // whose matcher already rides in meta, a span-less EDIT) fall through to their meta line.
+                const b = e.tx.body;
+                const opBody = typeof b === "string" ? b
+                    : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
+                if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
             }
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh

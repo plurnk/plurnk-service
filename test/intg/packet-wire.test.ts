@@ -70,33 +70,6 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
 // packet (that format belongs in client communication, where humans want
 // colored before/after rendering).
 
-test("log render: EDIT@200 — re-emit the statement in heredoc form", () => {
-    const system = {
-        system_definition: "SD",
-        index: [],
-        log: [{
-            coordinate: "1/1/2",
-            origin: "model",
-            op: "EDIT",
-            status: 200,
-            target: { scheme: "known", pathname: "/users.json" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///users.json", scheme: "known", pathname: "/users.json", fragment: null },
-                body: '[{"name":"Eve"}]',
-                signal: null,
-                lineMarker: null,
-            },
-            rx: { status: 200, entryId: 5, channel: "body" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    // Body has no leading/trailing whitespace; render is single-line — no
-    // `\n` padding added on the way back. Character-perfect mirror of tx.
-    assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Eve"\}\]:EDIT/);
-});
-
 test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
@@ -108,17 +81,19 @@ test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
     // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:\t3:\t…)
-    // and lose the real position. (No-span EDITs fall back to re-emitting the statement, above.)
+    // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
+    // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
     assert.match(out, /<<:::known:\/\/\/plan\.md\n3:\t- \[x\] ship the fix\n:::known:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
     assert.doesNotMatch(out, /1:\t3:\t/, "must NOT re-number an already-numbered span");
 });
 
-test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream)", () => {
+test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream/PLAN/SEND)", () => {
     // The model orients on line numbers, so EVERY op that emits a content body must number
     // line-navigable (text/*) bodies and leave tree-navigable (JSON) verbatim — else it has its
     // bearings on one op's output but not another's. Pins the invariant across READ, FIND, EDIT-span,
-    // EXEC-body, and the foisted exec-stream delta (incl. its cross-turn startLine): the exact gaps
-    // this sweep closed, so no future content branch can silently diverge.
+    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
+    // which ride into the log as N:\t content, NEVER re-serialized as a <<OP:…:OP tag (the log mirrors
+    // the model's WORK, not its emission syntax). No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "known", pathname: "/a" } };
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
@@ -128,64 +103,14 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:\tx\n6:\ty" } }, want: /5:\tx\n6:\ty/, anti: /1:\t5:\t/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:\tls\n2:\tpwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:\tout5\n6:\tout6/ },
+        { label: "PLAN body → numbered content, never a <<PLAN tag", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:\tread line 2\n2:\tthen answer/, anti: /<<PLAN/ },
+        { label: "SEND body → numbered content, never a <<SEND tag", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:\there is the answer/, anti: /<<SEND/ },
     ];
     for (const c of cases) {
         const out = PacketWire.renderLog([c.entry], tok);
         assert.match(out, c.want, c.label);
-        if (c.anti !== undefined) assert.doesNotMatch(out, c.anti, `${c.label} — tree-navigable must stay verbatim`);
+        if (c.anti !== undefined) assert.doesNotMatch(out, c.anti, `${c.label} — anti-pattern must be absent`);
     }
-});
-
-test("log render: EDIT@201 (entry created) — heredoc with full body", () => {
-    const system = {
-        system_definition: "SD",
-        index: [],
-        log: [{
-            coordinate: "1/1/1",
-            origin: "model",
-            op: "EDIT",
-            status: 201,
-            target: { scheme: "known", pathname: "/users.json" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///users.json", scheme: "known", pathname: "/users.json", fragment: null },
-                body: '[{"name":"Alice"}]',
-                signal: null,
-                lineMarker: null,
-            },
-            rx: { status: 201, entryId: 5, channel: "body" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<EDIT\(known:\/\/\/users\.json\):\[\{"name":"Alice"\}\]:EDIT/);
-});
-
-test("log render: EDIT with multi-line body — body's own newlines decide shape (no added padding)", () => {
-    const system = {
-        system_definition: "SD",
-        index: [],
-        log: [{
-            coordinate: "1/1/4",
-            origin: "model",
-            op: "EDIT",
-            status: 201,
-            target: { scheme: "known", pathname: "/plan" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///plan", scheme: "known", pathname: "/plan", fragment: null },
-                // Model emitted with newlines around the body — those
-                // newlines are part of the body. Render mirrors verbatim.
-                body: "\n- [ ] step a\n- [ ] step b\n",
-                signal: null,
-                lineMarker: null,
-            },
-            rx: { status: 201, entryId: 5, channel: "body" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<EDIT\(known:\/\/\/plan\):\n- \[ \] step a\n- \[ \] step b\n:EDIT/);
 });
 
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
@@ -203,78 +128,6 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
     };
     const out = PacketWire.renderLog(system.log, tok);
     assert.doesNotMatch(out, /<<EDIT\(/);
-});
-
-test("log render: EDIT with line marker — heredoc carries the marker", () => {
-    const system = {
-        system_definition: "SD", index: [],
-        log: [{
-            coordinate: "1/1/5",
-            origin: "model",
-            op: "EDIT",
-            status: 200,
-            target: { scheme: "known", pathname: "/notes" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///notes", scheme: "known", pathname: "/notes", fragment: null },
-                body: "revised",
-                signal: null,
-                lineMarker: { marks: [5] },
-            },
-            rx: { status: 200, entryId: 5, channel: "body" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<EDIT\(known:\/\/\/notes\)<5>:revised:EDIT/);
-});
-
-test("log render: EDIT with tags and range marker — heredoc carries both", () => {
-    const system = {
-        system_definition: "SD", index: [],
-        log: [{
-            coordinate: "1/1/6",
-            origin: "model",
-            op: "EDIT",
-            status: 200,
-            target: { scheme: "known", pathname: "/x" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///x", scheme: "known", pathname: "/x", fragment: null },
-                body: "body",
-                signal: ["alpha", "beta"],
-                lineMarker: { marks: [3, 7] },
-            },
-            rx: { status: 200, entryId: 5, channel: "body" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<EDIT\[alpha,beta\]\(known:\/\/\/x\)<3,7>:body:EDIT/);
-});
-
-test("log render: EDIT with fragment in target.raw — heredoc preserves it", () => {
-    const system = {
-        system_definition: "SD", index: [],
-        log: [{
-            coordinate: "1/1/7",
-            origin: "model",
-            op: "EDIT",
-            status: 200,
-            target: { scheme: "known", pathname: "/x" },
-            tx: {
-                op: "EDIT",
-                suffix: "",
-                target: { kind: "url", raw: "known:///x#preview", scheme: "known", pathname: "/x", fragment: "preview" },
-                body: "summary",
-                signal: null,
-                lineMarker: null,
-            },
-            rx: { status: 200, entryId: 5, channel: "preview" },
-        }],
-    };
-    const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<EDIT\(known:\/\/\/x#preview\):summary:EDIT/);
 });
 
 test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from the structured log", () => {
