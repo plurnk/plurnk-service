@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schemes",
-    "version": "0.29.14",
+    "version": "0.30.0",
     "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler family.",
     "keywords": [
         "plurnk",
@@ -16,7 +16,7 @@
         "url": "git+https://github.com/plurnk/plurnk-schemes.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
@@ -51,7 +51,7 @@
     "devDependencies": {
         "@plurnk/plurnk-grammar": "0.74.12",
         "@plurnk/plurnk-mimetypes": "0.15.23",
-        "@types/node": "^25.8.0",
-        "typescript": "^6.0.3"
+        "@types/node": "26.0.0",
+        "typescript": "6.0.3"
     }
 }
