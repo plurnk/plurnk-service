@@ -15,7 +15,7 @@
         "./package.json": "./package.json"
     },
     "bin": {
-        "plurnk-service": "./dist/service.js"
+        "plurnk-service": "dist/service.js"
     },
     "files": [
         ".env.example",
