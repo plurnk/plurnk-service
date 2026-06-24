@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
     "keywords": [
         "plurnk",
@@ -17,7 +17,7 @@
         "url": "git+https://github.com/plurnk/plurnk-providers.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
@@ -46,7 +46,7 @@
         "prepare": "npm run build"
     },
     "devDependencies": {
-        "@types/node": "^25.9.1",
+        "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
     "dependencies": {
