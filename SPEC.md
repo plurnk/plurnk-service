@@ -562,8 +562,26 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 
 AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: number | null }`.
 
-- **Broadcast** (path null): terminal status (200/499) updates `loop.status` and ends loop. Other codes return `{status}` with no state change.
-- **Directed** (path non-null): routes to `scheme.send` per §send-dispatch.
+- **Broadcast** (path null): the loop's disposition verb. `signal` is the model's *claim* about the run's state — see the terminal contract.
+- **Directed** (path non-null): routes to `scheme.send` per §send-dispatch — stream control / cross-run irc, never a loop terminal.
+
+**Terminal contract — the model's surface.** A broadcast SEND's status is a claim the engine **verifies against the run's actual state**, never a verdict it trusts. The model is trusted with exactly four codes:
+
+| signal | claim | effect |
+|---|---|---|
+| **102** | continue | turn closes, another turn fires. Not terminal. |
+| **200** | done | terminal — *only* when the run holds no live stream/spawn; otherwise the Premature-Terminate state below fires. Updates `loop.status`, ends the loop. |
+| **202** | hibernate | terminal-but-resumable: the loop **sleeps** awaiting a wake edge — a stream-status transition or a directed prompt (§actor-boundary-passive-wake, §run-lifecycle-wake-liveness). NOT advertised to the model: it lives in `run.md` and reaches the model only via the engine's steering, never the hot-path packet. Distinct from the dispatch-internal proposal-202 (§proposal), which the model never emits. |
+| **499** | give up | terminal — the model's **one** self-decided failure (a self-cancel; 499 = cancelled, §state-terms). The only failure it is trusted to declare for itself. |
+
+The engine's failure terminals — **500** (strike threshold) and **508** (cycle), §engine-rails — are never the model's to pick; they are the engine ruling the loop failed. The surface is small on purpose: the model says done, waiting, or giving up, and is never asked to hold a correct opinion about *how* it failed or *whether* it can be woken — the engine decides those from state.
+
+**Two engine error states verify the claim.** Neither is a status code the model learns; both are engine machinery (§engine-rails), pushed to the model as a steering hint on the next packet and **never** as the strike itself (the model sees errors that happened, never the engine's accounting — the gamification policy, §engine-rails). Each strikes (`turnErrors`) and lets the loop continue so the model can correct; a model that ignores the hint and keeps offending spins out to the engine's 500, seeing only the repeated hint, never the count. (Both live at `Engine.runLoop`'s turn close; anchored when wired.)
+
+- **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. Steer: *"complete → 200; awaiting a stream or run → 202."*
+- **Premature terminate** — a `SEND[200]` while the run holds a live stream or spawn (§subscriptions, §run-lifecycle-total-reap). The model declared done with work still running. The engine **rejects the 200** (no terminate) and steers: *"202 to hibernate until it concludes / `KILL(path)` then 200 to clean up / 499 to fail."*
+
+**Dead-park caveat — read before changing 202.** A 202 is a real hibernation only when a wake edge exists; a 202 with *no* wake edge sleeps forever. Today's guard is **preventive** — un-advertising 202 plus the two steering states keep the model from declaring a spurious 202 — **not** a daemon-side wake-edge check that terminates a wake-edge-less 202. That check is the known backstop, **deferred**. Until it lands, a model that emits 202 with nothing to wake it *can* hang; do not assume a wake-edge guarantee exists.
 
 ### §exec EXEC
 
