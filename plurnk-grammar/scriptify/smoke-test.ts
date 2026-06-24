@@ -1,7 +1,7 @@
 // Smoke test: pack the grammar package, install the tarball into a temp
 // sibling dir, and verify a real `import { PlurnkParser, Validator }` works
 // at runtime. Catches issues like #4 (npm-installed package failing because
-// of Node 25's node_modules type-stripping restriction).
+// of Node's node_modules type-stripping restriction).
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";

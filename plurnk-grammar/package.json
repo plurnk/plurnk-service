@@ -8,7 +8,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=25"
+    "node": ">=26"
   },
   "exports": {
     ".": {
@@ -52,7 +52,7 @@
     "xpath": "^0.0.34"
   },
   "devDependencies": {
-    "@types/node": "^25.8.0",
+    "@types/node": "^26.0.0",
     "antlr-ng": "^1.0.10",
     "json-schema-to-typescript": "^15.0.4",
     "typescript": "^6.0.3"
