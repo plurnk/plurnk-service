@@ -1187,11 +1187,11 @@ export default class Engine {
         // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
         const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
-        // The op syntax leads the requirements. PLAN is mandated unconditionally by
-        // plurnk.md §Imperatives (grammar 0.70 requires every turn to lead with PLAN),
-        // so the service injects no separate plan directive here — the former PLURNK_PLAN
-        // gating is retired (PLURNK_PLAN is no longer a flag).
-        const requirementsText = `Syntax: <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix\n\n${baseRequirements}`;
+        // No injected syntax line: the grammar already headlines the system definition (§Syntax) and
+        // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
+        // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
+        // lead with PLAN), so the service injects no separate plan directive either (the former
+        // PLURNK_PLAN gating is retired — PLURNK_PLAN is no longer a flag).
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
@@ -1223,7 +1223,7 @@ export default class Engine {
             { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
-            { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: requirementsText, tokens: 0 },
+            { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: baseRequirements, tokens: 0 },
         ];
         // Plugin packet control (§packet-construction): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
