@@ -200,10 +200,6 @@ export const buildModel = (): GModel => {
     const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
-    // send-final-no200: the terminal SEND for a turn that DID middle ops — every status-final
-    // code except 200. A turn cannot do work and claim verified-completion in the same turn
-    // (ops do not emit results until the next turn), so 200 is reserved for op-free turns.
-    const sendFinalNo200Entries: Array<{ literal: string; tails: GSeq[] }> = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -217,31 +213,25 @@ export const buildModel = (): GModel => {
             bodyRules(model, name, close);
             const body = [lit(":"), ref(`${name}-b0`), lit(close)];
             if (op === "SEND") {
-                // The loop-disposition codes (102/202/200) are RESERVED for loop control:
-                // they are terminal-ALWAYS, excluded from every mid form, so a SEND carrying
-                // one ends the turn regardless of whether it has a path (#29). The terminal
-                // is therefore path-AGNOSTIC — `send-final` takes an optional target, so a
-                // turn can terminate-and-report in one op (e.g. a child reporting its result
-                // to its parent run). Every mid SEND is communication, not loop control:
-                // non-loop status (status-mid) or none, targeted or pathless.
+                // A SEND is comms; the LAST SEND before EOS is the turn's disposition. Mid
+                // SENDs are unrestricted — any 3-digit status (status-mid) or none, targeted
+                // or pathless, empty body allowed. The TERMINAL SEND requires a code from the
+                // fixed disposition set (status-final) and a non-empty body — a turn must not
+                // end empty-handed. The rail no longer polices which codes are mid vs terminal,
+                // nor whether ops precede a 200; that is canon guidance, not a rail constraint.
                 // Tails are factored behind the shared `<<SEND…` opener trie (no leading
                 // `lit(open)` — the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
-                // MID sends may be empty-bodied (terse comms); the TERMINAL send must carry
-                // a payload — a turn that ends empty-handed is hollow training data.
                 bodyRulesNonEmpty(model, name, close);
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 sendMidEntries.push({ literal: open, tails: [
-                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, non-loop status
+                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, any status
                     [ref("target"), ...body],                                          // targeted, statusless
-                    [lit("["), ref("status-mid"), lit("]"), ...body],                  // pathless, non-loop status
+                    [lit("["), ref("status-mid"), lit("]"), ...body],                  // pathless, any status
                     [...body],                                                          // pathless, statusless
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...bodyNE],
-                ] });
-                sendFinalNo200Entries.push({ literal: open, tails: [
-                    [lit("["), ref("status-final-no200"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
                 opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), ...body]] });
@@ -303,18 +293,14 @@ export const buildModel = (): GModel => {
     model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
     model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
     model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
-    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("turn-body"), ref("sep")]]);
-    // turn-body forks on op-presence so 200 is reachable ONLY by an op-free turn:
-    //   no mid-ops  -> send-final-any   (any terminal, incl 200 — pure report/deliver)
-    //   mid-ops     -> send-final-no200 (200 excluded — work done, results not yet in)
-    model.set("turn-body", [
-        [ref("send-final-any")],
-        [ref("batch-step"), star(ref("batch-step")), ref("send-final-no200")],
-    ]);
+    // Flat turn: PLAN, then any batch of ops/SENDs, then the terminal SEND. The rail no
+    // longer forks on op-presence or polices mid-op/status combinations — 200 is reachable
+    // regardless of ops; mid SENDs carry any code. Discipline (102-after-ops, etc.) is canon
+    // guidance, not a rail constraint.
+    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);
-    trieRules(model, "send-final-no200", sendFinalNo200Entries);
     // statement / send-statement: single-statement entries used only by the corpus and
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
@@ -326,21 +312,10 @@ export const buildModel = (): GModel => {
     // degrades gracefully (no state change) until the service handles it. NOT 500:
     // "failed" is an ENGINE verdict, never a model SEND (persisted-only). Emittable vs
     // persisted (Loop.status) are meant to differ — see plurnk-service#33.
-    // status-mid: any 3-digit code EXCEPT the terminals 102, 200, 202, 300, 499.
+    // status-mid: any 3-digit code — a mid SEND is free comms (the rail no longer reserves
+    // the terminal codes from mid use).
     model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("300")], [lit("499")]]);
-    // status-final-no200: the op-present turn's terminal set — status-final minus 200.
-    model.set("status-final-no200", [[lit("102")], [lit("202")], [lit("300")], [lit("499")]]);
-    model.set("status-mid", [
-        [lit("10"), cls([R("0", "1"), R("3", "9")])],
-        [lit("1"), cls([R("1", "9")]), DIGIT],
-        [lit("20"), cls([R("1", "1"), R("3", "9")])],
-        [lit("2"), cls([R("1", "9")]), DIGIT],
-        [lit("30"), cls([R("1", "9")])],
-        [lit("3"), cls([R("1", "9")]), DIGIT],
-        [lit("4"), cls([R("0", "8")]), DIGIT],
-        [lit("49"), cls([R("0", "8")])],
-        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],
-    ]);
+    model.set("status-mid", [[DIGIT, DIGIT, DIGIT]]);
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
