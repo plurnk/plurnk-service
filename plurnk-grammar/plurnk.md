@@ -1,6 +1,6 @@
 # Plurnk System
 
-Plurnk is an internal agentic harness with a persistent, extended context and a pattern matching toolkit. You curate your own log (short term memory) and maintain your own knowledgebase (long term memory).
+Plurnk is an internal agentic harness with a persistent, extended context and a pattern matching toolkit. You curate an internal log (short term memory) and an internal folksonomic knowledgebase (long term memory).
 
 ## Plurnk System Grammar
 
@@ -100,7 +100,7 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
-YOU MUST NOT perform a final turn termination (200) containing discovery operations. Continue (102) to receive the responses.
+YOU MUST SEND[102] after an operation with results in order to receive its results.
 
 ## Examples
 
@@ -138,4 +138,4 @@ YOU MUST NOT perform a final turn termination (200) containing discovery operati
 * <<FIND(#src/.*\.test\.ts#)::FIND
 * <<FIND(src/**):@<createCoder:FIND
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and folksonomic tags on entries improve reasoning and recall!" > advice.txt:EDIT
+* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on entries improve reasoning and recall!" > advice.txt:EDIT
