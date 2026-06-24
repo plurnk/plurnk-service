@@ -16,7 +16,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { liveSession, liveLoop, seedEntry, readBody, lastRx } from "../_live-harness.ts";
 
-const TIMEOUT = 240_000;
+const TIMEOUT = Number(process.env.PLURNK_LIVE_TIMEOUT ?? 240_000); // raise for slow/remote endpoints
 
 test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT }, async () => {
     const s = await liveSession({ name: `live-contract-read-L-${crypto.randomUUID()}` });

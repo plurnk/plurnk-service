@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { liveSession, liveLoop, seedEntry } from "../_live-harness.ts";
 
-const TIMEOUT = 240_000;
+const TIMEOUT = Number(process.env.PLURNK_LIVE_TIMEOUT ?? 240_000); // raise for slow/remote endpoints
 
 test("live: jsonpath $.field on known:///config.json extracts a value", { timeout: TIMEOUT }, async () => {
     const s = await liveSession({ name: `live-xpjp-jsonpath-field-${crypto.randomUUID()}` });
