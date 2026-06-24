@@ -17,13 +17,13 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND. Othe
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
 | PLAN | -           | -          | -                   | plan / reasoning |
-| FIND | filter tags | path       | results `N,M`       | filter           |
-| READ | filter tags | path       | lines `N,M`         | filter           |
+| FIND | filter tags | path       | results `N,M`       | pattern           |
+| READ | filter tags | path       | lines `N,M`         | pattern           |
 | EDIT | tags        | path       | lines `N,M`         | content          |
 | COPY | apply tags  | path       | lines `N,M`         | destination path |
 | MOVE | apply tags  | path       | lines `N,M`         | destination path |
-| OPEN | filter tags | path (log) | results `N,M`       | filter           |
-| FOLD | filter tags | path (log) | results `N,M`       | filter           |
+| OPEN | filter tags | path (log) | results `N,M`       | pattern           |
+| FOLD | filter tags | path (log) | results `N,M`       | pattern           |
 | EXEC | executor    | path / cwd | -                   | command or code  |
 | KILL | signal      | path       | -                   | -                |
 | SEND | status code | recipient  | -                   | message body     |
@@ -37,7 +37,8 @@ KILL deletes entries, erases log items, and kills streams.
 
 ### `<Line> / <Result>`
 
-`<N>` selects position N.
+`<<READ(file.md)<N>::READ` selects line N
+`<<FIND(src/**)<N>::FIND` selects result N
 `<N,M>` selects the inclusive range N through M. N and M are signed numbers.
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
