@@ -72,7 +72,9 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     try {
         const provider = new Mock({
             contextSize: 100000,
-            responses: Array.from({ length: 10 }, () => response([sendStmt(102, "more")])),
+            // Each turn does real work (distinct EDIT) then continues — a bare SEND[102] is now an
+            // idle-strike (§send the terminal contract); distinct paths keep the cycle rail quiet too.
+            responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), sendStmt(102, "more")])),
         });
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId, maxTurns: 3,
@@ -95,11 +97,13 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
         // terminator would also wrongly stop at turn 1 — this guards that too.)
         const provider = new Mock({
             contextSize: 100000,
+            // Non-terminal turns carry a work op (distinct EDIT) so they're real continues, not
+            // idle-strikes (§send the terminal contract); the final turn terminates on SEND[200].
             responses: [
-                response([sendStmt(102, "1")]),
-                response([sendStmt(102, "2")]),
-                response([sendStmt(102, "3")]),
-                response([sendStmt(102, "4")]),
+                response([editStmt("/1", "x"), sendStmt(102, "1")]),
+                response([editStmt("/2", "x"), sendStmt(102, "2")]),
+                response([editStmt("/3", "x"), sendStmt(102, "3")]),
+                response([editStmt("/4", "x"), sendStmt(102, "4")]),
                 response([sendStmt(200, "done")]),
             ],
         });
@@ -110,6 +114,28 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
         assert.equal(result.turnIds.length, 5, "ran all five turns — no turn cap");
         assert.equal(result.finalStatus, 200);
         assert.equal(result.hitMaxTurns, false);
+    } finally { await db.close(); }
+});
+
+test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // A bare SEND[102] is a continue that did no work — an idle turn (§send the terminal contract).
+        // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
+        // the engine's 500, never its own 499.
+        const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
+        const result = await engine.runLoop({ provider, sessionId, runId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
+        assert.equal(result.finalStatus, 500, "idle spin-out is the engine ruling failure, not the model's 499");
+        assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");
+        let idleMsg: string | undefined;
+        for (const id of result.turnIds) {
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
+            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ kind: string; message: string }> };
+            const idle = packet.telemetryErrors?.find((e) => e.kind === "idle_turn");
+            if (idle) idleMsg = idle.message;
+        }
+        assert.ok(idleMsg, "idle_turn steering reached the model's packet");
+        assert.ok(idleMsg.includes("terminate with 200") && idleMsg.includes("202 to hibernate"), "steering names both exits");
     } finally { await db.close(); }
 });
 

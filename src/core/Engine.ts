@@ -608,6 +608,7 @@ export default class Engine {
             if (cycle.detected) state.turnErrors++;
             // SPEC §grinder: a non-soft grinder fire counts toward the strike streak.
             if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — §grinder-strike-coupling
+            if (turn.steerStruck) state.turnErrors++; // idle / premature-terminate steer struck — §send the terminal contract
             this.#strikeState.set(loopId, state);
 
             // Rail #38: strike accounting. Three sources strike a turn:
@@ -670,7 +671,7 @@ export default class Engine {
         // are augmented with the durable state (index/log/telemetry).
         turnNumber?: number;
         maxTurns?: number;
-    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string; budgetStruck: boolean; budgetHardStop: boolean }> {
+    }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string; budgetStruck: boolean; budgetHardStop: boolean; steerStruck: boolean }> {
         // === Turn-as-container model ===
         //
         // Turn rows are created at runTurn OPEN (status=102, placeholder
@@ -928,7 +929,7 @@ export default class Engine {
                 usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
                 finish_reason: "budget_hard_stop", model: provider.model,
             });
-            return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true };
+            return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
         }
         const modelMessages = this.#packetToWireMessages(requestPacket);
         // maxTokens = remaining context window (loop policy, plurnk-providers#10).
@@ -1012,6 +1013,25 @@ export default class Engine {
             ? sendOp.signal
             : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
+        // §send the terminal contract — engine error states verify a terminal claim against run state,
+        // never trusting the model's code. Both strike via turn.steerStruck (turnErrors,
+        // §grinder-strike-coupling) so the loop continues and the model sees the steering hint, not the
+        // strike count, and spins out to 500 only if it never resolves.
+        //
+        // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid
+        // op. The model continued with nothing to do. (Premature-terminate — a SEND[200] over a live
+        // stream, downgraded to 102 — joins this seam once the active-stream query lands.)
+        let steerStruck = false;
+        const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
+        if (turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
+            steerStruck = true;
+            this.#pushTelemetry(sessionId, loopId, {
+                source: "engine:rail",
+                kind: "idle_turn",
+                message: "If the turn's work is complete, terminate with 200. If awaiting a stream or run trigger, terminate with 202 to hibernate.",
+            });
+        }
+
         // Close the turn with the final packet, status, and usage stats.
         const packet = this.#completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
         const { usage, finishReason, model } = callMetadata;
@@ -1078,7 +1098,7 @@ export default class Engine {
         // struck turn; the model just sees an empty packet next turn.
         // Per SPEC §telemetry gamification policy.
 
-        return { turnId, status: turnStatus, statuses, fingerprint: Engine.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false };
+        return { turnId, status: turnStatus, statuses, fingerprint: Engine.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false, steerStruck };
     }
 
     // Split the wire-level ProviderResponse into the two destinations:

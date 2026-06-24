@@ -613,9 +613,11 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
     try {
         const provider = new Mock({
             contextSize: 100000,
+            // Non-terminal turns carry a work op so they're real continues, not idle-strikes
+            // (§send the terminal contract) — else the two would strike out at maxStrikes:2 before SEND[200].
             responses: [
-                response([sendStmt(102, "1")]),
-                response([sendStmt(102, "2")]),
+                response([editStmt("/1", "x"), sendStmt(102, "1")]),
+                response([editStmt("/2", "x"), sendStmt(102, "2")]),
                 response([sendStmt(200, "done")]),
             ],
         });
