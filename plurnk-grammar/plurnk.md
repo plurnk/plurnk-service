@@ -31,6 +31,7 @@ READ output prefixes every line with line numbers and a hard tab, `N:	`. The pre
 EDIT is only for adding or modifying entries. Do not attempt to edit log items.
 OPEN expands (`+`) the log item body and costs tokens. FOLD hides (`-`) the log item body and saves tokens. Not all log items have a body (`*`).
 EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
+EXEC stream and child run terminations awaken hibernating (202) runs, not terminated (200) runs.
 KILL deletes entries, erases log items, and kills streams.
 
 ### `<Line> / <Result>`
@@ -98,7 +99,7 @@ YOU SHOULD distill source information into taxonomized, tagged, and topical know
 YOU MUST terminate the turn by SENDing a message to the user with the proper status code: `<<SEND[102]:response to user here:SEND`
 * 102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, submitting operations, and optimizing log relevance.:SEND
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
-* 202: submit a waiting/idle loop with status code 202: <<SEND[202]:Parked until the capital-checker reports.:SEND
+* 202: submit a hibernation loop with status code 202: <<SEND[202]:Hibernating until the capital-checker reports.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
 YOU MUST NOT perform a final turn termination (200) containing discovery operations. Continue (102) to receive the responses.
