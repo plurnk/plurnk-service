@@ -24,7 +24,7 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
     cwd: string | null;     // working directory, or null = daemon's cwd
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped by Engine.#writeLog as <runtime>/<loop>/<turn>/<seq>; entry lives at exec:///<pathname> (e.g. exec:///sh/1/1/2)
+    pathname: string;       // stamped by Engine.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
 }
@@ -138,8 +138,8 @@ export default class Exec {
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
     // applyResolution spawns the subprocess; output streams into the
-    // coordinate-stamped exec:///<pathname> entry's stdout/stderr channels.
-    // The model READs that entry on a subsequent turn to see what happened.
+    // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
+    // (e.g. sh:///1/1/2, §exec/#240). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
         const command = statement.body ?? "";
         // #201 — a plurnk-scheme target carries content the scheme resolves at

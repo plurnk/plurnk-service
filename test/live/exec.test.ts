@@ -19,7 +19,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         const userPrompt = [
             "Two-turn probe.",
             "",
-            "If you see an `exec:///...` log entry with stdout containing",
+            "If you see the exec's stdout stream (a `sh:///...` entry) containing",
             "`plurnk-exec-live-ok`, emit:",
             "  <<SEND[200]:plurnk-exec-live-ok:SEND",
             "",
@@ -27,7 +27,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
             "log will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
             "  <<EXEC[sh]:echo plurnk-exec-live-ok:EXEC",
             "",
-            "Do not repeat the EXEC once you see the exec:///... entry in the log.",
+            "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",
         ].join("\n");
 
         const { finalStatus, hitMaxTurns, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { timeoutMs: 240_000 });
@@ -43,22 +43,24 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         assert.equal(finalStatus, 200);
         assert.equal(hitMaxTurns, false);
 
-        // Verify a real exec entry was created and captured the probe string.
+        // Verify a real exec-output entry was created and captured the probe string.
+        // §exec / #240: EXEC[sh] output persists under the RUNTIME TAG scheme ("sh"),
+        // addressed sh:///<loop>/<turn>/<seq> — NOT scheme="exec" (exec:// is process-control only).
         const execEntryCount = (await (s.db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
-            session_id: s.sessionId, scheme: "exec",
+            session_id: s.sessionId, scheme: "sh",
         }))?.n ?? 0;
-        assert.ok(execEntryCount >= 1, "at least one exec:///r-<id> entry was created");
+        assert.ok(execEntryCount >= 1, "at least one sh:/// exec-output entry was created");
 
-        // Find the exec entry and verify its stdout captured the probe. We don't
-        // know the auto-generated id from outside; list session entries to find
-        // any exec:///r-<id>.
+        // Find the exec-output entry and verify its stdout captured the probe. We don't
+        // know the auto-generated coordinate from outside; list session entries to find
+        // any sh:///<coord>.
         type EntryListRow = { scheme: string; pathname: string };
         const allEntries = await (s.db.test_list_entries_by_session_session_pathname as PrepMethod).all<EntryListRow>({ session_id: s.sessionId });
-        const execEntries = allEntries.filter((e) => e.scheme === "exec");
+        const execEntries = allEntries.filter((e) => e.scheme === "sh");
         let foundProbe = false;
         for (const e of execEntries) {
             const entryRow = await (s.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-                scheme: "exec", pathname: e.pathname,
+                scheme: "sh", pathname: e.pathname,
             });
             if (entryRow === undefined) continue;
             const stdout = await (s.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
@@ -74,13 +76,13 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
             await dumpTurns();
             for (const e of execEntries) {
                 const entryRow = await (s.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
-                    scheme: "exec", pathname: e.pathname,
+                    scheme: "sh", pathname: e.pathname,
                 });
                 if (entryRow === undefined) continue;
                 const stdout = await (s.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
                     entry_id: entryRow.id, name: "stdout",
                 });
-                console.error(`exec:///${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);
+                console.error(`sh:///${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);
             }
         }
         assert.ok(foundProbe, "an exec stdout channel captured the probe string");
