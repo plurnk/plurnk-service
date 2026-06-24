@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-pdf",
-    "version": "0.6.3",
+    "version": "0.6.4",
     "description": "application/pdf mimetype handler for plurnk-service. Binary content; hybrid preview surfaces bookmark outline/Title when present and falls back to extracted page text otherwise; query supports regex/glob via extracted text and jsonpath against the outline.",
     "type": "module",
     "license": "MIT",
@@ -46,9 +46,9 @@
         "pdfjs-dist": "^6.0.227"
     },
     "devDependencies": {
-        "@types/node": "^25.8.0",
+        "@types/node": "^26.0.0",
         "typescript": "^6.0.3",
-        "@plurnk/plurnk-mimetypes": "^0.15.0"
+        "@plurnk/plurnk-mimetypes": "0.15.25"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.0"
