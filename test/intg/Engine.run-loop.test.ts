@@ -117,7 +117,7 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
+test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // A bare SEND[102] is a continue that did no work — an idle turn (§send the terminal contract).
@@ -139,7 +139,7 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
+test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // Seed a live stream the run holds: an open subscription (closed_at NULL) against a real entry.
