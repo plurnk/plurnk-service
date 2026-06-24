@@ -39,7 +39,7 @@ test("manifest declares the sqlite runtime tag", async () => {
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["sqlite"]);
     // #7: the tag carries a one-line self-documenting example for the tools sheet
     // — a file-target db, since the sysprompt already shows a naked :memory: form.
-    assert.equal(pkg.plurnk.runtimes[0].example, "EXEC[sqlite](./app.db):SELECT count(*) FROM users:EXEC");
+    assert.equal(pkg.plurnk.runtimes[0].example, "<<EXEC[sqlite](./app.db):SELECT count(*) FROM users:EXEC");
 });
 
 test("declares a results channel (application/json)", () => {
