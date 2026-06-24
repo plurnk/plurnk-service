@@ -13,7 +13,7 @@ Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler family. Consum
 npm install @plurnk/plurnk-mimetypes
 ```
 
-Node ≥ 25, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: add the languages you use, or the whole family at once.
+Node ≥ 26, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: add the languages you use, or the whole family at once.
 
 ```
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
