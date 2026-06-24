@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
     "keywords": [
         "plurnk",
@@ -20,7 +20,7 @@
         "url": "git+https://github.com/plurnk/plurnk-execs-git.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
@@ -63,7 +63,7 @@
         "prepare": "npm run build"
     },
     "devDependencies": {
-        "@types/node": "^25.8.0",
+        "@types/node": "^26.0.0",
         "typescript": "^6.0.3",
         "@plurnk/plurnk-execs": "^0.4.16"
     },
