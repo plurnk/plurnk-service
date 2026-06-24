@@ -286,16 +286,32 @@ test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap
     assert.ok(warnings.some((w) => (w as Error & { code?: string }).code === "PLURNK_GRAMMAR_UNVERIFIABLE"), "emitted the verify-gap warning");
 });
 
-// — PLURNK_GBNF_DEBUG: validate the grammar locally, never pass it to the model —
+// — PLURNK_GBNF_DEBUG: run unconstrained, then verify the free output against the grammar —
 
-test("gbnfDebug: a valid grammar is NOT transported and the output is not enforced (runs unconstrained)", async () => {
+test("gbnfDebug: the grammar is NOT transported but conforming free output passes through", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
-    const calls = installFetch([{ choices: [{ delta: { content: "non-conforming output" }, finish_reason: "stop" }] }]);
+    const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);            // grammar never sent
+    assert.equal("grammar" in body, false);            // grammar never sent — model ran unconstrained
     assert.equal("repeat_penalty" in body, false);
-    assert.equal(assistant.content, "non-conforming output"); // returned as-is — enforcement skipped (we didn't constrain)
+    assert.equal(assistant.content, "ok");             // free output happens to conform → returned
+});
+
+test("gbnfDebug: a conflict throws grammar_unenforced carrying the full unconstrained output (both channels)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "non-conforming output" }, finish_reason: "stop" }] }]);
+    await assert.rejects(
+        () => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }),
+        (err: Error) => {
+            assert.match(err.message, /output rejected by the transported grammar at code point 0 \("n"\)/); // divergence point
+            assert.match(err.message, /\[reasoning channel\] \nlet me think about ok/);                       // free reasoning surfaced
+            assert.match(err.message, /\[content channel[^\]]*\]\nnon-conforming output/);                     // free content surfaced
+            return true;
+        },
+    );
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal("grammar" in body, false);            // still never sent — the conflict is diagnosed, not enforced
 });
 
 test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {
