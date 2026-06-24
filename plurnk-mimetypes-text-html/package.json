@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-html",
-    "version": "0.6.3",
+    "version": "0.6.4",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Structural extraction via parse5; readable markdown (content channel) via Readability + turndown.",
     "type": "module",
     "license": "MIT",
@@ -58,10 +58,10 @@
         "xpath": "^0.0.34"
     },
     "devDependencies": {
-        "@types/node": "^25.8.0",
+        "@types/node": "^26.0.0",
         "@types/turndown": "^5.0.6",
         "typescript": "^6.0.3",
-        "@plurnk/plurnk-mimetypes": "^0.15.10"
+        "@plurnk/plurnk-mimetypes": "0.15.25"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.10"
