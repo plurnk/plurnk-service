@@ -166,11 +166,12 @@ async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
         isEvalSupported: false,
         verbosity: 0,
     } as unknown as Parameters<typeof pdfjs.getDocument>[0];
-    const doc = await pdfjs.getDocument(params).promise;
+    const loadingTask = pdfjs.getDocument(params);
+    const doc = await loadingTask.promise;
     try {
         return await collectSymbols(doc);
     } finally {
-        await doc.destroy();
+        await loadingTask.destroy();
     }
 }
 
@@ -204,11 +205,12 @@ async function extractAllText(bytes: Uint8Array): Promise<string> {
         isEvalSupported: false,
         verbosity: 0,
     } as unknown as Parameters<typeof pdfjs.getDocument>[0];
-    const doc = await pdfjs.getDocument(params).promise;
+    const loadingTask = pdfjs.getDocument(params);
+    const doc = await loadingTask.promise;
     try {
         return await readAllPagesText(doc);
     } finally {
-        await doc.destroy();
+        await loadingTask.destroy();
     }
 }
 
