@@ -14,10 +14,10 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 
 | Term | Meaning |
 |---|---|
-| **agent** | The plurnk runtime singleton. Owns agent-scoped state (default scheme registry, agent-wide entries). One per process. |
+| **agent** | The plurnk runtime. Acts in-session as the reserved `plurnk` run (§actor-boundary self-hosting), never a privileged singleton owning its own entries — the old *agent scope* is retired (entry scope is now `session` / `run`, §machine-processes). |
 | **session** | Durable user-named workspace. Persists across runs and process restarts. Identity: `sessions.id` + unique `sessions.name`. |
 | **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns the log entries. |
-| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {100 pending · 102 running · 200 done · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 508 runaway}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
+| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {100 pending · 102 running · 200 done · 202 parked (resumable, §send) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 508 runaway}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
 | **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
 | **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
@@ -30,7 +30,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 |---|---|
 | **entry** | The unit of canonical state. Identity: `(scope, scheme, pathname)`. Holds one or more `channels` of content plus `tags` and `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
-| **scope** | `"agent"` or `"session"`. Determines who reads. Agent-scope entries visible to every run; session-scope entries to that session's runs. |
+| **scope** | `"session"` or `"run"`. Determines who reads: session-scope entries are the shared world (every run in the session), run-scope entries are a run's private scratch (§machine-processes). *Agent scope is retired.* |
 | **scheme** | A URI prefix + handler. `known`, `unknown`, `file`, `https`, `exec`. The scheme handler interprets paths under its prefix and implements the op surface. Consumption surface §scheme-surface; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface §mimetype-surface; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
 | **provider** | An LLM transport. Implements `generate({messages, signal})` against a wire protocol. Consumption surface §provider; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
@@ -43,7 +43,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 |---|---|---|
 | **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue (§send-dispatch). |
 | **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
-| **entry state** | `proposed \| resolved \| cancelled` | Proposal lifecycle. `proposed` = pending client accept; `resolved` = side effect happened; `cancelled` = client rejected. Distinct from channel state. |
+| **entry state** | `proposed \| resolved \| failed \| cancelled` | Proposal lifecycle (`log_entries.state`). `proposed` = pending client accept; `resolved` = accepted, side effect happened; `failed` = rejected (no effect); `cancelled` = the proposal was cancelled (loop abandoning). Distinct from channel state. |
 | **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
 
 ### §authority-terms Writer / authority
@@ -64,8 +64,8 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
 | **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only (no side-effecting ops); act = full surface. |
 | **flag** | Per-loop boolean shaping the active toolset: `yolo` (auto-accept proposals), `noWeb`, `noInteraction`, `noProposals`. |
-| **proposal** | A deferred side-effecting action awaiting client accept/reject (full lifecycle §proposal). State machine: `proposed → resolved` or `proposed → cancelled`. `yolo` short-circuits to immediate. |
-| **resolution** | Client's accept/reject of a proposal via `op.resolve` RPC. |
+| **proposal** | A deferred side-effecting action awaiting client accept/reject (full lifecycle §proposal). State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). `yolo` short-circuits to immediate. |
+| **resolution** | Client's accept / reject / cancel of a proposal via the `loop.resolve` RPC (§methods). |
 
 ### §packet-terms Packet terms
 
@@ -99,10 +99,10 @@ Dependency direction (from root to leaf):
 - **`plurnk-grammar`** — root. Owns the JSON-Schema contracts (Packet, TelemetryEvent, AST shapes), the ANTLR parser that turns model output into `PlurnkStatement[]`, and `PlurnkParseError` with its `toTelemetryEvent()` helper. Nothing in the ecosystem can speak the DSL without it; everything else pins it exactly.
 - **Framework siblings** consume grammar and define their own author-facing contracts:
     - `plurnk-providers` — Provider/Alias types, `parseAliasesFromEnv`, `resolveActiveAlias`, `Mock`, `ProviderUsage` (currency-aware, includes `reasoning`). Vendor-specific implementations are children: `plurnk-providers-openai`, `-google`, `-ollama`, `-openrouter`, `-cloudflare`, `-xai`.
-    - `plurnk-mimetypes` — handler base classes, discovery, fitting algorithm, matcher dispatch. Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
+    - `plurnk-mimetypes` — handler base classes, discovery, the fitting algorithm, and the match primitives (`queryGlob`/`queryRegex`/`queryJsonpathObject`/`queryXpathString`) the service's matcher dispatches over (§matcher-dispatch). Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
     - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
     - `plurnk-execs` — `BaseExecutor`, `SubprocessExecutor`, runtime resolver, discovery. Children declare runtimes: `plurnk-execs-sh`, future `plurnk-execs-search`, `plurnk-execs-node`, …
-- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, hosts the daemon (`src/service.ts` over WebSocket + JSON-RPC), and projects packets to the wire per `Packet.json`. Most of the substantive runtime work lives here.
+- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, hosts the daemon (`src/service.ts` over WebSocket + JSON-RPC), and projects packets to the wire (the packet shape is service-owned since grammar 0.67 deleted `Packet.json`, §packet). Most of the substantive runtime work lives here.
 - **`plurnk`** (client) — terminal UI consuming the daemon's RPC surface. Renders `telemetry/event` notifications, subscribes to log/stream/proposal events. No engine logic of its own.
 
 The grammar is the contract. The frameworks consume the contract and add author-facing surfaces. The service consumes the frameworks and runs the engine. The client consumes the service and renders to humans. Each tier is its own published package; each tier's evolution happens in its own repo.
@@ -152,7 +152,7 @@ Server posture: this package is the runtime. User-facing CLI lives in `plurnk` a
 
 **Question.** §actor-boundary isolates runs and lets the runtime self-host, but it stands on an ownership model it never states: what does a *session* own versus a *run*; what is shared versus private; and what does a fork carry? Unstated, the downstream questions — which run `log.read` reads, what a fork copies, where a per-client window onto the workspace would live — grow subtle, then metastasize. Drawn once, they vanish.
 
-**Decision — the session is the world; a run is a log on it.** A **session** is the world: one shared filesystem — the `session`-scoped entries, surfaced as `plurnk:///manifest.json` (§packet) — under one membership overlay (§membership). Exactly one filesystem and one overlay per session; neither is per-run. A **run** is a process whose private memory is its **log** (§lifecycle-terms) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, §env-delta), and fold-state (`expanded`). A run owns **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
+**Decision — the session is the world; a run is a log on it.** A **session** is the world: one shared filesystem — the `session`-scoped entries, surfaced as the per-scheme catalog (`FIND(scheme:///**)`, §packet) — under one membership overlay (§membership). Exactly one filesystem and one overlay per session; neither is per-run. A **run** is a process whose private memory is its **log** (§lifecycle-terms) — its loops, turns, and rows, each row carrying its own content, attribution (`origin`/`source`, §env-delta), and fold-state (`expanded`). A run owns **no membership**; even its visibility is not a possession but a bit on its own rows. It is a *history over the shared world, not a world*.
 
 **One filesystem.** The entries are the session's: `entries.session_id`, never a run. A write by any run is a write to the one filesystem every run reads; there is no per-run entry set. {§machine-processes-one-filesystem}
 
@@ -267,7 +267,7 @@ Every op targets a URI; the entry key is `(scope, scheme, pathname)`. The URI pa
 
 - A **registered** scheme is a plurnk namespace: its authority is a leading path segment, folded into the pathname (`Engine.#extractTarget` → `foldAuthorityIntoPath`). So `known://x`, `known:///x`, and pathname `/x` are the same entry — the authority is never a host, and the two-slash and three-slash forms are not distinct resources. {§scheme-address-namespace-fold}
 - A **foreign** scheme (unregistered — `http`/`https`) is a real web host: its authority stays in `hostname`, never folded.
-- `file` persists `scheme = NULL`; a relative path resolves against the workspace root to the namespace-absolute `/rel` key (RFC §5 reference resolution), and a path escaping the root is 403 (§membership).
+- `file` persists `scheme = NULL`; a relative path resolves against the workspace root to the namespace-absolute `/rel` key (RFC 3986 §5 reference resolution), and a path escaping the root is 403 (§membership).
 
 Storage keys on the resolved `(scheme, pathname)` **verbatim** — the leading slash is the namespace origin, not a filesystem absolute, and is never re-normalized at the storage boundary.
 
@@ -327,15 +327,20 @@ interface PlurnkSchemeContext {
     readonly runId: number;
     readonly loopId: number;
     readonly turnId: number;
-    readonly writer: "model" | "client" | "plurnk" | "plugin";
+    readonly writer: "model" | "client" | "plurnk" | "plugin"; // WriterTier
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeRunNotify?: WakeRunNotify;
+    readonly injectRun?: InjectRunNotify;            // run:// spawn/fork/irc loop-start (§run-scheme)
     readonly mimetypes?: Mimetypes;
+    readonly executors?: ExecutorRegistry;           // boot-discovered EXEC runtimes (§exec)
+    readonly tokenize?: (text: string) => number;    // write-time tokenizer (§tokenomics)
+    readonly defaultChannelFor?: (scheme: string | null) => string;
+    readonly pushTelemetry?: (event: TelemetryEvent) => void; // → next packet errors[] + telemetry/event (§telemetry)
 }
 ```
 
-Notifier fields populated by the Daemon; absent in test fixtures.
+The optional engine-/daemon-populated capabilities (the notifiers, `injectRun`, `executors`, `tokenize`, `defaultChannelFor`, `pushTelemetry`) are absent in bare test fixtures; a handler that needs one **fail-hards** rather than silently degrading (no default runtime, no silent zero-token write).
 
 Engine → scheme guarantees:
 
@@ -345,7 +350,7 @@ Engine → scheme guarantees:
 - `ctx.signal` is wired to the run's AbortController (§provider-guarantees-signal-wired).
 - Scheme exceptions become the action-entry's outcome (status 500); summary surfaces in next turn's `errors` section (§telemetry). {§scheme-surface-exception-500}
 
-**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.provider.countTokens` (§tokenomics-tokens-stored-at-write). Raw DB writes bypass tokenization — out of API scope.
+**Tokenization participation.** Schemes route writes through the shared `_entry-crud.ts` write helper (in plurnk-service today; migrates to plurnk-schemes). Helper populates `entry_channels.tokens` at write time via `ctx.tokenize` (§tokenomics-tokens-stored-at-write). Raw DB writes bypass tokenization — out of API scope.
 
 ---
 
@@ -409,7 +414,7 @@ new Mimetypes({
 
 Fallback heuristic is a boot-before-provider-resolved tripwire.
 
-**Manifest build.** `EntryManifest.buildManifestBody` is the engine-side packet-assembly pass (the §mimetype firing point) that walks **every** entry. It calls `process({ content, hint })` per channel for the catalog's `lines` (`totalLines`) and, for the body channel, pulls `symbols`+`references` from the *same* call to (re)build the `@graph` symbol index (`symbol_defs`/`symbol_refs`) via `EntryGraph.populateFrom` — one parse, two projections:
+**Derivation pump.** `EntryManifest.maintainDerivations` is the per-turn engine-side pass (the §mimetype firing point) that walks **every** entry. It calls `process({ content, hint })` per channel for the catalog's `lines` (`totalLines`) and, for the body channel, pulls `symbols`+`references` from the *same* call to (re)build the `@graph` symbol index (`symbol_defs`/`symbol_refs`) via `EntryGraph.populateFrom` — one parse, two projections:
 
 ```ts
 const result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references"] });
@@ -437,7 +442,7 @@ Schemes MAY declare multiple channels (`exec`: stdout/stderr/stdin; `http`: body
 
 ### §no-visibility Entries carry no visibility
 
-Every entry is uniformly listed in `plurnk:///manifest.json` (§packet) and READable — entries have no per-run open/folded state. Context curation is the model's, on the **log** (via OPEN/FOLD, §open-fold), never on entries.
+Every entry is uniformly listed in the catalog (`FIND(scheme:///**)`, §packet) and READable — entries have no per-run open/folded state. Context curation is the model's, on the **log** (via OPEN/FOLD, §open-fold), never on entries.
 
 ### §channel-mimetype Mimetype is a (scheme, channel) property — never a default
 
@@ -460,8 +465,8 @@ Rules:
 |---|---|
 | `known:///france/capital` | body (default) |
 | `known:///france/capital#symbols` | symbols |
-| `exec:///sh/1/1/2#stdout` | stdout |
-| `exec:///sh/1/1/2#stderr` | stderr |
+| `sh:///1/1/2#stdout` | stdout |
+| `sh:///1/1/2#stderr` | stderr |
 | `sse://feed/y#data` | data |
 | `log:///N/T/A` | (no channel concept; atomic log row) |
 
@@ -476,8 +481,8 @@ RPC params carry fragments inline via the `target` string (`{ target: "known:///
 
 ```
 <<notes.md:...:notes.md             — file scheme (bare)
-<<exec:///sh/1/1/2:...:exec:///sh/1/1/2 — exec default (stdout)
-<<exec:///sh/1/1/2#stderr:...:exec:///sh/1/1/2#stderr — non-default
+<<sh:///1/1/2:...:sh:///1/1/2         — exec output default (stdout)
+<<sh:///1/1/2#stderr:...:sh:///1/1/2#stderr — non-default
 <<log:///1/1/0:...:log:///1/1/0       — atomic log row
 ```
 
@@ -517,7 +522,7 @@ AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineM
 
 - Returns channel content + mimetype {§read-read-content}, or 404 {§read-read-404}.
 - `lineMarker` slices per §slice-semantics.
-- `body` matcher dispatches through `Mimetypes.query` per §matcher-dispatch (all four dialects wired).
+- `body` matcher dispatches through the in-tree `Matcher` per §matcher-dispatch (all four content dialects wired).
 
 ### §open-fold OPEN / FOLD
 
@@ -589,13 +594,13 @@ AST: `{ op: "EXEC", target (cwd), body: string | null (command), signal: string 
 
 Engine routes unconditionally to `exec` scheme (path slot is `cwd`, not a URI). The runtime slot (`signal`) selects an executor, resolved against the boot-time `ExecutorRegistry` — siblings discovered and probed at startup, availability cached, default `sh`. Unknown or unavailable runtime → 501 carrying the probe `detail`. {§exec-registry-resolves}
 
-**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose** (lifecycle §proposal): the run waits for a human gate, then spawns and writes stdout/stderr to channels of an `exec:///<runtime>/<loop>/<turn>/<seq>` entry (the executor is the URI authority; the coordinate that follows matches the op's log-row coordinate, e.g. `exec:///sh/1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive what the model sees at subsequent turn boundaries (§channel-state). {§exec-host-proposes}
+**Effect-gating.** Each executor declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). A `host` runtime (subprocess; file-backed sqlite) mutates the host → **propose** (lifecycle §proposal): the run waits for a human gate, then spawns and writes stdout/stderr to channels of a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag is the URI scheme, §exec/#240; the coordinate matches the op's log-row coordinate, e.g. `sh:///1/1/2`), returning `102 Processing` immediately. Channel state transitions (`active` → `closed`/`errored`) drive what the model sees at subsequent turn boundaries (§channel-state). {§exec-host-proposes}
 
 A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of the stream's new bytes each turn, §exec-stream), never a same-turn receipt. {§exec-readpure-ungated}
 
 **Stream surfacing.** An exec's output is *observed, not fetched*. Each turn the environment-observation injector — the same machine §env-delta rides — reads each of the run's open channels from a per-channel byte cursor and foists the new bytes as an `origin=plurnk` READ at `<runtime>:///<coord>#<channel>`, then advances the cursor — each delta carries the `startLine` that cursor implies, so a stream spanning turns numbers into one continuous sequence (lines 1–k, then k+1–m), not a fresh `1:` each turn. The delta is **folded** while the channel streams and auto-**opened** on the terminal one (the channel closed): a model ignores a chatty background run but always SEES a finished one. It never types these READs — it consumes them. The EXEC row itself renders the *command* it ran, `:::`-fenced and line-numbered per §render-rule so the model can line-reference its own code — the input, distinct from the stream above (the output). This is exec as an instance of one ambient machine, env-delta as another (sibling edits, timestamp cursor, always folded). {§exec-stream}
 
-`SEND[499](exec:///<runtime>/<loop>/<turn>/<seq>)` cancels in-flight subprocess via subscription registry's stored AbortController (§stream-control).
+`SEND[499](exec:///<loop>/<turn>/<seq>)` cancels the in-flight subprocess via the subscription registry's stored `AbortController` — the coordinate addresses the spawn (`exec://` is the process-control face); the `<runtime>://` output entry delegates the same KILL to the one `Exec` handler that owns the abort state (§stream-control).
 
 **Scoped environment.** An EXEC subprocess inherits the *project's* environment — its `.env`, the standard shell vars — so the model's commands run as the project expects; but never plurnk's own secrets: the provider API keys and `PLURNK_*` config are stripped before the spawn, so a model-run command can't `printenv` the engine's keys. The service owns the scoping policy (the denylist); the executor spawns with the env it is handed. {§exec-env-scoped}
 
@@ -656,7 +661,7 @@ Model sees lifecycle events in the `log` section per turn.
 
 ### §stream-constraints Engine constraints
 
-ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `entry_channels.content` (migrations/001_schema.sql). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
+ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `entry_channels.content` (the genesis schema migration, `migrations/0000-00-00.01_schema.sql`). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
 
 All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else. {§stream-constraints-engine-one-cap}
 
@@ -676,8 +681,9 @@ SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-ali
 
 No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, explicit `NOT NULL`, indexed query paths, deliberate FK `ON DELETE`/`ON UPDATE`, `WITHOUT ROWID` where access pattern warrants, generated columns, FTS5.
 
-- One migration file per cohesive concern. Numbered, deterministic apply order.
-- `migrate` CLI: idempotent; skips applied markers in `applied_migrations`.
+- One `.sql` file per cohesive concern under `migrations/`, **date-prefixed and basename-sorted** for deterministic apply order (`0000-00-00.01_schema.sql` is the genesis).
+- DDL lives in `-- INIT: <name>` blocks (`CREATE TABLE IF NOT EXISTS`) that `@possumtech/sqlrite` runs idempotently at DB open — re-running is a no-op by construction, so today there is no separate `migrate` CLI or applied-marker table. A fresh DB is the recovery story while the project is greenfield-solo.
+- **Forward — apply-once evolution.** The idempotent-`INIT` model creates a fresh schema but does not *evolve* a populated one. When persisted state outlives a "just nuke it" reset, the date-prefixed ordering is the foundation a real migration policy layers onto: ordered `ALTER` files applied once and recorded in a marker table, not recreated idempotently. The current scheme is chosen so that transition is **additive** — a marker table plus apply-once dispatch — never a restructuring of how DDL is authored or ordered.
 - **Schema-alignment test**: loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
 
@@ -727,7 +733,7 @@ Env vars configure installed plugins; never declare existence. Filesystem is the
 
 Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plurnk/*`.
 
-**Providers in-tree (`src/providers/`):** `Mock` (intg-only test fixture + worked example).
+**Providers in-tree:** none. `Mock` (the intg-only test fixture + worked example) is a sibling, `@plurnk/plurnk-providers` (§mock-provider); `ProviderInstantiate.ts` dynamically imports the selected provider package.
 
 **Mimetypes in-tree:** none. Framework + handlers are all siblings.
 
@@ -763,7 +769,7 @@ Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plu
 - Channel state (`active`/`closed`/`errored`) — subscription registry, not on `ChannelContent`.
 - Backpressure caps — none (§stream-constraints).
 - Stream cancel — `SEND[499]` (§stream-control).
-- Delete — MOVE to `/dev/null` (§move); `SEND[410]` also deletes as a side-effect (§send-dispatch).
+- Delete — `KILL` (entry-KILL, the canonical delete; the MOVE→`/dev/null` idiom is retired, §move); `SEND[410]` also deletes as a side-effect (§send-dispatch).
 - Per-loop flags — `loops.flags` JSON column; `yolo` end-to-end today, others scheduled.
 - Default-channel wire rendering — §channel-selection.
 
@@ -788,9 +794,9 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§engine-rails).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§engine-rails).            |
 | `PLURNK_MD_<ALIAS>`                  | (unset)            | enforced   | Operator reference doc: materializes `<path>` as `plurnk:///<ALIAS>.md`, auto-READ into every model run's turn 0 (§actor-boundary). `~` expands to home. |
-| `PLURNK_MANIFEST_ITEMS`              | `0`                | enforced   | Turn-0 manifest preview foisted into the model's first turn. `-1` = full `plurnk:///manifest.json`; positive `N` = the first N items (jsonpath slice); `0` / unset = off (§actor-boundary-manifest-preview). |
+| `PLURNK_MANIFEST_ITEMS`              | `0`                | enforced   | Turn-0 catalog preview foisted into the model's first turn, one `FIND(scheme:///**)` per active scheme. `-1` = each scheme's full catalog; positive `N` = its first N rows (`<L>` cap); `0` / unset = off (§actor-boundary-manifest-preview). |
 | `PLURNK_PROPOSAL_TIMEOUT_MS`         | `300000`           | enforced   | ms wait for a proposed entry (status=202) to be resolved before timing out.  |
-| `PLURNK_PROVIDERS_REASON_LEVEL`                      | `0`                | enforced   | Reasoning **magnitude** sent to the providers: `0` = none, positive = effort/budget the provider module translates to wire format (o-series tiers, Anthropic `budget_tokens`). The on/off is the `PLURNK_PROVIDERS_REASONING` gate. |
+| `PLURNK_PROVIDERS_REASONING_BUDGET`  | `-1`               | enforced   | The single provider reasoning gate (REQUIRED — fail-hard if unset). `0` = native reasoning off (in-DSL PLAN does it), `-1` = adaptive / no cap, `N` = capped at N tokens; provider modules translate per model family (reasoning_effort tiers, Anthropic `budget_tokens`). Floor (gemma): `0`. |
 | `PLURNK_FETCH_TIMEOUT`               | `600000`           | enforced   | Service-wide ms ceiling on any outbound request (providers, future http schemes). Module-specific overrides are allowed below the ceiling. |
 | `PLURNK_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
@@ -798,7 +804,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 **enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.example` (forward-spec) but no-op until wired.
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ENABLED` (`=0` flatly denies git service-wide, §membership), `PLURNK_BUDGET_CEILING` (§tokenomics), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_GIT_ALLOWED` (`=0` flatly denies git service-wide, §membership), `PLURNK_BUDGET_CEILING` (§tokenomics), `PLURNK_MAX_COMMANDS`, `PLURNK_MAX_STRIKES`, `PLURNK_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
@@ -843,16 +849,16 @@ Success response: `{ "jsonrpc": "2.0", "id": …, "result": … }`. Failure: `{ 
 ### §method-registration Method registration
 
 ```ts
-registry.register("loop.run", {
+registry.registerMethod("loop.run", {
     handler: async (params, ctx) => { /* ... */ },
     description: "Run a model-driven loop with a prompt.",
     params: {
         prompt: "string — the user prompt for the loop",
-        sessionId: "number? — defaults to current attached session",
         maxTurns: "number? — defaults to PLURNK_MAX_TURNS",
+        alias: "string? — overrides the boot-time PLURNK_MODEL",
     },
     requiresInit: true,
-    longRunning: true,
+    longRunning: false, // returns immediately (finalStatus:100); the loop runs async, §methods
 });
 ```
 
@@ -1015,7 +1021,7 @@ Server-initiated events on the same WebSocket.
 
 **The client's run.** A client connection is an actor (§machine-processes); its `op.*` write to its **own run** — `origin = "client"`, one loop per connection — and `log.read` reads that run. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client run.
 
-`loop.run` and `inject` target the **model's run** — a separate run holding the conversation, `origin = "model"`. Both runs share the session's one filesystem (§machine-processes); the packet renders only the model's run, so the client's ops are structurally absent from it — no origin filter (§actor-boundary-isolation). *Migration:* the daemon today opens both loops in the connection's one run (the conflation §machine-processes corrects); the build gives the client and the model their separate runs.
+`loop.run` and `inject` target the **model's run** — a separate run holding the conversation, `origin = "model"`. Both runs share the session's one filesystem (§machine-processes); the packet renders only the model's run, so the client's ops are structurally absent from it — no origin filter (§actor-boundary-isolation). The model run (`Envelope.ensureModelRun`) and the connection's client run are distinct, each lazily allocated on first use — the §machine-processes conflation is corrected.
 
 ### §errors Errors
 
@@ -1100,7 +1106,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Tier — session is the world; permissions are the session's.** Membership, the overlay, and the git flags are **session-tier** (`session_constraints.session_id`, service/session config) — never per-run. Every run in a session shares one world (§machine-processes: one filesystem, one overlay); a run is a *log* — a perspective over that world — owning no membership of its own. A declaration reshapes the one world for every run, never per-connection. `runs.origin` is attribution (whose perspective), not a permission.
 
-**Workspace identity.** No `projects` table; `sessions.project_root TEXT` (nullable = headless) anchors the workspace. `entries.scope` unchanged (`∈ {'agent','session'}`). Workspace = session; no users/auth/multi-tenant.
+**Workspace identity.** No `projects` table; `sessions.project_root TEXT` (nullable = headless) anchors the workspace. `entries.scope ∈ {'session','run'}` (agent-scope retired). Workspace = session; no users/auth/multi-tenant.
 
 **git is the substrate.** {§membership-git-membership} git-tracked files (`git ls-files`) are members with no explicit overlay — channel-less markers, disk is truth. git absent → no fs-walk (non-git/headless get no substrate membership); `pick` is then the sole source.
 
@@ -1131,11 +1137,11 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 **Rationale.** Session is the right scope unit; membership *is* the curation, outsourced and tiered: git bounds it by tracking, the client supersedes by overlay, the model curates its own render by READ/FOLD — the engine curates nothing. The forest falls out of "session = world": one workspace can be many repos, so membership is their union, declared not guessed (the scan and its security are the client's). Exhaustiveness is a property of *coverage*, not *work*: every member is checked every turn so no drift hides, but unchanged members cost only a detect — the full-repo cost is git's to bound (what it tracks) and the client's to bound (`hide`), never the engine's to pay re-reading what hasn't moved.
 
-**Migration path.** `session_constraints.effect` gains `repo`; the three renames (`add`→`pick`, `ignore`→`hide`, `read-only`→`view`) are wire-surface changes on `session.constrain`. Forest resolution iterates declared repos (was one `ls-files` at root). The change-detect adds a per-member stored signal — mtime+size or content hash, and *that choice is the EMI reliability bound* — gating the existing materialize. `PLURNK_GIT_ALLOWED` replaces `PLURNK_GIT_ENABLED`; `PLURNK_GIT_AUTO` is new. Tenancy / cross-session shared workspaces still require a `workspaces` table lifting constraints off `session_constraints`.
+**Migration path.** `session_constraints.effect` gains `repo`; the three renames (`add`→`pick`, `ignore`→`hide`, `read-only`→`view`) are wire-surface changes on `session.constrain`. Forest resolution iterates declared repos (was one `ls-files` at root). The change-detect adds a per-member stored signal — mtime+size or content hash, and *that choice is the EMI reliability bound* — gating the existing materialize. `PLURNK_GIT_ALLOWED` (the hard ceiling) and `PLURNK_GIT_AUTO` (the default declaration) are the git flags (§membership-git-flags). Tenancy / cross-session shared workspaces still require a `workspaces` table lifting constraints off `session_constraints`.
 
 ### §grinder Budget enforcement: the grinder
 
-**Question.** §tokenomics surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Two states defeat self-regulation, neither the model's doing: a jumbo prompt (the turn-0 environment), and an unexpectedly large read. (A jumbo repo is no longer its own case — with no index nothing auto-renders the repo; it surfaces only as a large `manifest.json` READ, which the model chunks like any big read.) What enforces the ceiling when the signal isn't enough?
+**Question.** §tokenomics surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Two states defeat self-regulation, neither the model's doing: a jumbo prompt (the turn-0 environment), and an unexpectedly large read. (A jumbo repo is no longer its own case — with no index nothing auto-renders the repo; it surfaces only as a large catalog `FIND`, which the model pages like any big result.) What enforces the ceiling when the signal isn't enough?
 
 **Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`#buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§tokenomics) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§grinder-overflow-only} On overflow it reverts the prior turn, then hard-stops if that isn't enough:
 
@@ -1146,7 +1152,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 **What the model sees.** A `budget_overflow` telemetry event (§telemetry), in the model's own terms: which of its entries left the window, by scheme. No mechanism vocabulary — no "layer," no "grinder," no "reclaim" — and no advice. The engine reports *what happened to the model's world*; the budget readout (§tokenomics) — its turn and entry weights — is the diagnostic surface, and the model — which can see what changed in its repo, its reads, its turn — diagnoses the cause the engine can't attribute. {§grinder-event-model-terms} Per the gamification policy (§telemetry), the *strike* the overflow triggers stays engine-internal; the model sees the hidden entries, never the accounting.
 
-**Rationale.** The model owns curation (§tokenomics); the grinder is the exceptional backstop. It only *folds* — reversibly — the prior turn's render; nothing is deleted, so the model can OPEN it back and log history stays intact. Rummy's §1316 spec described clearing log *bodies*, but its code instead folded the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
+**Rationale.** The model owns curation (§tokenomics); the grinder is the exceptional backstop. It only *folds* — reversibly — the prior turn's render; nothing is deleted, so the model can OPEN it back and log history stays intact. Rummy's own spec described clearing log *bodies*, but its code instead folded the prior turn whole — because body-clearing is destructive (it deletes the read result) and bespoke. The code was the lesson; plurnk follows it.
 
 **Migration path.** None on mechanism. Speculative or non-overflow trimming is a different feature, deliberately excluded — the grinder fires only in response to actual overflow.
 
@@ -1292,17 +1298,17 @@ Rendered at the END of the user packet under `## Plurnk System Requirements` {§
 
 Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-char classification (`//` xpath, `/` regex, `$` jsonpath, otherwise glob). `<L>`: line-navigable → by line, structured → by item.
 
-### §matcher-dispatch Matcher dispatch (delegated to `Mimetypes.query`)
+### §matcher-dispatch Matcher dispatch (service-owned, over daughter primitives)
 
-`matchAgainstContent` (exported from `@plurnk/plurnk-schemes`) is an adapter over `Mimetypes.query(input, expression)`. Framework parses leading prefix, resolves per-mimetype handler, returns `QueryMatch[]`. Adapter maps typed errors:
+`Matcher.matchAgainstContent` (in-tree, `src/content/matcher.ts`) is the **service's own** dialect dispatch — `Mimetypes.query` is NOT consumed (§mimetype-methods). It switches on the matcher's dialect and calls the daughter's individual primitives: `glob → queryGlob` and `regex → queryRegex` over the raw content; `jsonpath → queryJsonpathObject` over the `deepJson` projection and `xpath → queryXpathString` over `deepXml` (both pulled from `mimetypes.process({channels})`, so a structural dialect works over any source type). `~semantic` is service-side and parked; `@graph` resolves over the service's own symbol indexes (§mimetype-methods). Each returns `QueryMatch[]`, rendered as `<source-line>:\t<value>`. Status mapping:
 
-| Framework error | HTTP status |
+| Result | HTTP status |
 |---|---|
-| `UnsupportedDialectError` | 415 |
-| `InvalidExpressionError` | 400 |
-| `QueryParseFailureError` | 203 (soft fallback: raw content as `text/markdown` with `reason`) |
-| Empty match array | 204 |
 | Match array | 200 |
+| Empty match array | 204 |
+| Malformed matcher expression | 400 |
+| Source unparseable for its mimetype | 203 (soft fallback: raw content as text with `reason`) |
+| `~semantic` (parked, needs vector design) | 501 |
 
 203 is HTTP-creative ("Non-Authoritative Information"). On parse failure, returns raw bytes as text primitive with `reason` so the model can fall back to regex/visual parsing or fix source. {§matcher-dispatch-203-soft-fallback}
 
@@ -1425,7 +1431,7 @@ Carried from the contract walk; durable.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - **COPY `<L>`** → source range, symmetric with READ `<L>`.
 - **READ rx** prefixes each line with `N:\t` per §render-rule. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
-- **FIND body matcher** applies to entry content (all dialects), per-candidate via `Matcher.matchAgainstContent` → `Mimetypes.query` (status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
+- **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` (§matcher-dispatch; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries (§open-fold) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; §move): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** is owned by the streaming scheme that holds the subscription.
 - **File scheme** reads disk content with mimetype detected via `Mimetypes.detect({ path })` (plumbed through `PlurnkSchemeContext.mimetypes`). Binary mimetypes → 415 on READ and EDIT.
