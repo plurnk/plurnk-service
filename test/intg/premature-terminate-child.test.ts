@@ -38,3 +38,27 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run downgrades to
         assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
     } finally { await db.close(); }
 });
+
+test("[§send-premature-terminate] a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
+    // The 200-vs-202 robustness: a confused model that keeps declaring done while its child runs is
+    // not allowed to falsely complete — each premature 200 strikes, and it abandons at 500. It can't
+    // hang the runtime, and it can't lie about being done.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `prem-strike-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        // A persistently live child (its loop stays non-terminal through the parent's whole loop).
+        const childRun = await insertRun(db, sessionId, parentRun);
+        await insertLoop(db, childRun, 1, "child");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } })) });
+        const result = await engine.runLoop({ provider, sessionId, runId: parentRun, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
+        // The engine rails abandon it: identical repeated premature-200 turns trip CYCLE detection (508)
+        // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
+        // and never gets a false 200. The robustness guarantee: a confused model can't falsely complete
+        // (no 200 terminal) and can't hang (it terminates), it just abandons via the rails.
+        assert.ok([500, 508].includes(result.finalStatus), `premature-200 spammer abandons via the rails (500 strike / 508 cycle); got ${result.finalStatus}`);
+        assert.notEqual(result.finalStatus, 200, "a model declaring done with work running NEVER gets a false 200");
+    } finally { await db.close(); }
+});

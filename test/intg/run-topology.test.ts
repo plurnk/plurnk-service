@@ -35,6 +35,61 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
     });
 });
 
+test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent — any conclusion is a wake edge", async () => {
+    // A child that abandons (SEND[499]) is still "done"; the parent must wake, not wait forever.
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<EDIT(run://flaky):try the risky thing:EDIT\n<<SEND[202]:waiting on flaky:SEND", 10),
+        makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
+        makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "child-fail" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn flaky, wait", flags: { yolo: true } });
+            assert.equal(finalStatus, 200, "the parent woke on the child's 499 and concluded — a failed child is still a wake edge");
+        } finally { ws.close(); }
+    });
+});
+
+test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
+    // Each level parks until the one below concludes — so the order is forced and the recursion shows:
+    // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<EDIT(run://child):do subwork:EDIT\n<<SEND[202]:awaiting child:SEND", 10),       // parent t1
+        makeMockResponse("<<EDIT(run://grandchild):do leaf work:EDIT\n<<SEND[202]:awaiting grandchild:SEND", 10), // child t1
+        makeMockResponse("<<SEND[200]:leaf done:SEND", 10),                                                   // grandchild
+        makeMockResponse("<<SEND[200]:child done:SEND", 10),                                                  // child t2 (woken)
+        makeMockResponse("<<SEND[200]:all done:SEND", 10),                                                    // parent t2 (woken)
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "grandchild" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a 2-deep chain and wait", flags: { yolo: true } });
+            assert.equal(finalStatus, 200, "the wake propagated up two levels — the parent concluded only after the whole subtree did");
+        } finally { ws.close(); }
+    });
+});
+
+test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<EDIT(run://w1):first job:EDIT\n<<SEND[202]:awaiting w1:SEND", 10), // parent t1
+        makeMockResponse("<<SEND[200]:w1 done:SEND", 10),                                       // w1
+        makeMockResponse("<<EDIT(run://w2):second job:EDIT\n<<SEND[202]:awaiting w2:SEND", 10),// parent t2 (woken by w1)
+        makeMockResponse("<<SEND[200]:w2 done:SEND", 10),                                       // w2
+        makeMockResponse("<<SEND[200]:both done:SEND", 10),                                     // parent t3 (woken by w2)
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "sequential" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { yolo: true } });
+            assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
+        } finally { ws.close(); }
+    });
+});
+
 test("[§run-lifecycle-quiesced] a 202 with an idle subtree fires loop/quiesced — reawakable, not a terminal", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [
         // Park at 202 with nothing running under it — an idle subtree.
