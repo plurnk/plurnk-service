@@ -90,6 +90,10 @@ export default class Daemon {
     // any single (ephemeral) drain; replaced with a fresh controller once
     // aborted so a later loop.run isn't born cancelled.
     #runAborts = new Map<number, AbortController>();
+    // grammar 0.74.20 EXEC `<T,P>` — per-run hibernation poll-wake timer. When a loop parks at
+    // SEND[202] with a polled stream, a timer fires every P seconds to resume it (§exec-poll). One
+    // per run (the tightest cadence); cleared/replaced on each park and on cancel.
+    #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
     // Per-run drain-transition lock — see #withDrainLock (R4 / §run-lifecycle-single-drain).
     #drainLocks = new Map<number, Promise<unknown>>();
 
@@ -245,6 +249,8 @@ export default class Daemon {
         // a long-running command. Covers runs whose drain already exited but
         // whose exec is still in flight.
         for (const scope of this.#runAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
+        for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
+        this.#pollTimers.clear();
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
@@ -532,8 +538,10 @@ export default class Daemon {
                     });
                     if (result.finalStatus === 202) {
                         // The loop SLEPT (SEND[202]) — suspended, not terminated. Leave it at 202
-                        // (resumable); no loop/terminated, no orphan-reconcile. An OPEN event
-                        // (#handleWakeRun) re-queues it to resume in place. §run-lifecycle-wake-liveness.
+                        // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
+                        // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
+                        // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
+                        void this.#schedulePollWake(sessionId, runId, provider, systemPrompt);
                         continue;
                     }
                     const usage = await this.#engine.loopUsage(loopRow.id);
@@ -692,6 +700,9 @@ export default class Daemon {
      */
     cancelDrain(runId: number, reason: string = "user_cancelled"): boolean {
         const hadWork = this.#activeDrains.has(runId) || this.#runHasActiveStreams(runId);
+        // A cancel is deliberate — kill any pending hibernation poll-wake so it can't resurrect the run.
+        const pollTimer = this.#pollTimers.get(runId);
+        if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(runId); }
         // Stop the active drain's turn-generation (its loop closes 499). The run
         // signal is the optimization path — the fast, listener-driven reap.
         const scope = this.#runAborts.get(runId);
@@ -819,6 +830,45 @@ export default class Daemon {
         } catch (err) {
             console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));
         }
+    }
+
+    /**
+     * grammar 0.74.20 EXEC `<T,P>` — schedule a hibernation poll-wake. Called when a loop parks at
+     * SEND[202]; if the run holds an open polled stream, arm a timer for its tightest cadence P that
+     * resumes the slept loop so the model inspects progress. While the loop is ACTIVE there is no
+     * poll work — ambient folded stream deltas already surface progress (§exec-stream); the wake
+     * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. §exec-poll
+     */
+    async #schedulePollWake(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {
+        const existing = this.#pollTimers.get(runId);
+        if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(runId); }
+        const row = await (this.#db.drain_run_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ run_id: runId });
+        const pollSec = row?.poll_seconds ?? null;
+        if (pollSec === null || pollSec <= 0) return; // no polled stream → the 202 just sleeps (woken only by conclusion)
+        const timer = setTimeout(() => {
+            this.#pollTimers.delete(runId);
+            void this.#pollWake(sessionId, runId, provider, systemPrompt);
+        }, pollSec * 1000);
+        timer.unref();
+        this.#pollTimers.set(runId, timer);
+    }
+
+    /** The poll cadence elapsed while the loop hibernated → resume the slept loop in place to inspect
+     *  its polled stream — the same 202→100 resume #handleWakeRun uses, minus a wake payload. A no-op if
+     *  the run was cancelled or already resumed/concluded (no slept loop). §exec-poll */
+    async #pollWake(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {
+        const scope = this.#runAborts.get(runId);
+        if (scope?.signal.aborted === true && !this.#activeDrains.has(runId)) return; // cancelled — no resurrection
+        const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
+        if (slept === undefined) return; // already active/concluded — nothing to wake
+        await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+        const started = await this.#ensureDrain({
+            sessionId, runId, provider, systemPrompt,
+            maxTurns: Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+        });
+        started?.drainPromise?.catch((err: unknown) => {
+            console.error("poll-wake resume drain failed:", err instanceof Error ? err.message : String(err));
+        });
     }
 
     #onConnection(ws: WebSocket): void {

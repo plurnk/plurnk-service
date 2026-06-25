@@ -32,8 +32,8 @@ SET content = $content, tokens = $tokens
 WHERE entry_id = $entry_id AND name = $channel;
 
 -- PREP: open_subscription
-INSERT INTO subscriptions (run_id, entry_id, scheme, handle)
-VALUES ($run_id, $entry_id, $scheme, $handle)
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, poll_seconds)
+VALUES ($run_id, $entry_id, $scheme, $handle, $poll_seconds)
 RETURNING id;
 
 -- PREP: close_subscription

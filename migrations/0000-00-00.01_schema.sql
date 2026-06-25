@@ -417,6 +417,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
+    -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream (§exec-poll).
+    poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds > 0),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
     CHECK ((closed_at IS NULL AND close_status IS NULL)

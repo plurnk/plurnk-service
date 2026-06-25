@@ -259,6 +259,7 @@ export default class Exec {
         const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
             runId: ctx.runId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
+            pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // §exec-poll — hibernation wake cadence
         });
 
         const controller = new AbortController();

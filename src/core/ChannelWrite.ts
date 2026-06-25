@@ -156,9 +156,9 @@ export default class ChannelWrite {
     // (SEND[499] / KILL) routes to the right live subscription. §subscriptions-subscription-registry-routes-cancellation
     static async openSubscription(
         db: Db,
-        { runId, entryId, scheme, handle }: { runId: number; entryId: number; scheme: string; handle: string },
+        { runId, entryId, scheme, handle, pollSeconds }: { runId: number; entryId: number; scheme: string; handle: string; pollSeconds?: number | null },
     ): Promise<number> {
-        const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle });
+        const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle, poll_seconds: pollSeconds ?? null });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
         return row.id;
     }

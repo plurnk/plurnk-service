@@ -90,3 +90,9 @@ SELECT id FROM loops WHERE run_id = $run_id AND status = 202 ORDER BY sequence D
 -- Re-queue a slept (202) loop to status 100 so the drain re-claims and CONTINUES it. The
 -- engine's next-turn-sequence is DB-derived, so the resumed loop foists no prompt (seq > 1).
 UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
+
+-- PREP: drain_run_min_poll
+-- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a run's OPEN
+-- polled subscriptions. NULL when the run holds no polled stream → no hibernation poll-wake.
+SELECT MIN(poll_seconds) AS poll_seconds
+FROM subscriptions WHERE run_id = $run_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
