@@ -30,10 +30,27 @@ const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", 
 // precedent: the framework ships no model weights.
 const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
 
+// Progress + cancellation for bulk embedding (plurnk-service#272).
+export interface EmbedProgress {
+    completed: number;
+    total: number;
+}
+export interface EmbedBatchOptions {
+    // Fires as each text finishes (out of input order — completion order).
+    onProgress?(progress: EmbedProgress): void;
+    // Cancels in-flight work; rejects the batch.
+    signal?: AbortSignal;
+}
+
 // Surface the embeddings package must export.
 interface Embedder {
     // text → native-endian raw Float32 bytes (4 × dimension).
     embed(text: string): Promise<Uint8Array>;
+    // Bulk embedding (embeddings 0.5.0): same bytes as embed() per text,
+    // data-parallel across a worker pool, returned in INPUT order. Optional —
+    // an embedder predating it omits it and Mimetypes.embedBatch() falls back
+    // to a sequential embed() loop (still honoring onProgress/signal).
+    embedBatch?(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
     readonly dimension: number;
     // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37+q8"). Surfaced on
     // ProcessResult.embeddingModel so consumers can store it alongside
@@ -464,6 +481,41 @@ export default class Mimetypes {
             countTokens: (text) => countTokens.call(embedder, text),
             ...(typeof model === "string" && { model }),
         };
+    }
+
+    // Bulk embedding entry for the host's corpus ingest (plurnk-service#272).
+    // Returns one vector per input text, in INPUT order — bit-identical to
+    // calling the embedding channel per text, so nothing already stored needs
+    // re-embedding. Delegates to the embedder's data-parallel embedBatch() when
+    // present (embeddings 0.5.0+, ~6x at 8 workers); falls back to a sequential
+    // embed() loop for older embedders, still firing onProgress and honoring
+    // signal. Single embedder seam: resolution + model identity stay framework-
+    // owned (pair with embedderInfo() for chunk budgeting), so the host never
+    // reaches into the embeddings package directly.
+    //
+    // Unlike the per-entry channel (which degrades to empty bytes when the
+    // package is absent), this is an explicit bulk call — a missing embedder is
+    // a misconfiguration, so it throws rather than silently storing empties.
+    async embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
+        const embedder = await this.#getEmbedder();
+        if (embedder === null) {
+            throw new Error(
+                `embedBatch() requested but ${EMBEDDINGS_PACKAGE} is not installed. `
+                + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
+            );
+        }
+        if (typeof embedder.embedBatch === "function") {
+            return embedder.embedBatch(texts, options);
+        }
+        // Fallback: embedder predates embedBatch. Sequential, but the host's
+        // progress and cancellation contract is honored regardless.
+        const out: Uint8Array[] = [];
+        for (let i = 0; i < texts.length; i += 1) {
+            options?.signal?.throwIfAborted();
+            out.push(await embedder.embed(texts[i]));
+            options?.onProgress?.({ completed: i + 1, total: texts.length });
+        }
+        return out;
     }
 
     // Release native resources so a consumer can drain its event loop and exit
