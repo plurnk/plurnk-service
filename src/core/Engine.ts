@@ -17,7 +17,7 @@ import GitState, { type GitStatus } from "./git-state.ts";
 import Fork from "./fork.ts";
 import RunCap from "./run-cap.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
-import { readPacketInject } from "./packet-inject.ts";
+import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import SessionSettings from "./session-settings.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
@@ -1248,11 +1248,17 @@ export default class Engine {
         // peer sections (unbundled). The budget section carries its {{tokensFree}}
         // placeholders here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
+        const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
+        const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_POLICY)
+        const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_PROJECT)
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
             { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
+            // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
+            { name: "system-policy", slot: "system", header: "Plurnk System Policy", content: systemPolicy ?? "", tokens: 0 },
+            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
             // budget at the BOTTOM of the SYSTEM slot — budget is LAW (the ceiling is a hard constraint the model must obey), so it belongs in the lean privileged zone, not as user-slot status.
             { name: "budget", slot: "system", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
