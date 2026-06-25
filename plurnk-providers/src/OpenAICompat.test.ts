@@ -288,30 +288,33 @@ test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap
 
 // — PLURNK_GBNF_DEBUG: run unconstrained, then verify the free output against the grammar —
 
-test("gbnfDebug: the grammar is NOT transported but conforming free output passes through", async () => {
+test("gbnfDebug: the grammar is NOT transported; conforming free output passes through with NO telemetry", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
-    const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);            // grammar never sent — model ran unconstrained
     assert.equal("repeat_penalty" in body, false);
-    assert.equal(assistant.content, "ok");             // free output happens to conform → returned
+    assert.equal(res.assistant.content, "ok");         // free output happens to conform → returned
+    assert.equal("telemetry" in res, false);           // conforming → no event
 });
 
-test("gbnfDebug: a conflict throws grammar_unenforced carrying the full unconstrained output (both channels)", async () => {
+test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a grammar_unenforced telemetry event with the divergence position (#24)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
-    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "non-conforming output" }, finish_reason: "stop" }] }]);
-    await assert.rejects(
-        () => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }),
-        (err: Error) => {
-            assert.match(err.message, /output rejected by the transported grammar at code point 0 \("n"\)/); // divergence point
-            assert.match(err.message, /\[reasoning channel\] \nlet me think about ok/);                       // free reasoning surfaced
-            assert.match(err.message, /\[content channel[^\]]*\]\nnon-conforming output/);                     // free content surfaced
-            return true;
-        },
-    );
+    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "xon-conforming output" }, finish_reason: "stop" }] }]);
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    // The model's bytes survive — not discarded by a throw (the empty-turn cascade root cause).
+    assert.equal(res.assistant.content, "xon-conforming output");
+    assert.equal(res.assistant.reasoning, "let me think about ok");
+    // Non-fatal telemetry carries the divergence so the consumer can self-correct.
+    assert.equal(res.telemetry?.length, 1);
+    const [event] = res.telemetry ?? [];
+    assert.equal(event.source, "provider:test");
+    assert.equal(event.kind, "grammar_unenforced");
+    assert.equal(event.position, 0);                   // 'x' rejected at code point 0
+    assert.match(event.message ?? "", /output rejected by the transported grammar at code point 0 \("x"\)/);
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal("grammar" in body, false);            // still never sent — the conflict is diagnosed, not enforced
+    assert.equal("grammar" in body, false);            // still never sent — diagnosed, not enforced
 });
 
 test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {

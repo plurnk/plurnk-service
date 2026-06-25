@@ -11,7 +11,7 @@
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
-import { toProviderError, classifyProviderError, ProviderError } from "./telemetry.ts";
+import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
 // How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
@@ -128,20 +128,6 @@ const describeUnenforced = (v: Exclude<Verdict, { status: "accept" }>): string =
     }
     return `grammar not enforced: output is an incomplete match of the transported grammar — a valid prefix of ${v.pos} code points that never terminated`;
 };
-
-// PLURNK_GBNF_DEBUG diagnostic: the terse verdict PLUS the full unconstrained
-// output the model actually produced — both channels, labeled — so the operator
-// sees what the model wanted to say and exactly where it collides with the
-// grammar. The §12 terseness policy is for production transport errors; this is
-// gated behind an explicit debug toggle, where the whole point is the full text.
-// The divergence code point is an offset into the content channel (the validated
-// string); the reasoning channel is shown for context, not validated.
-const describeConflict = (v: Exclude<Verdict, { status: "accept" }>, reasoning: string, content: string): string => [
-    describeUnenforced(v),
-    "PLURNK_GBNF_DEBUG — unconstrained output the model produced:",
-    `[reasoning channel] ${reasoning.length > 0 ? `\n${reasoning}` : "(empty)"}`,
-    `[content channel — the string the code point above indexes into]\n${content}`,
-].join("\n");
 
 export default class OpenAICompatProvider implements Provider {
     #model: string;
@@ -275,22 +261,42 @@ export default class OpenAICompatProvider implements Provider {
     // verify gap: warn, don't fail a transport that may have worked. This is a
     // conformance check against the grammar we already hold, NOT a plurnk-DSL
     // parse (§8) — it stays grammar-generic and backend-agnostic.
-    #verifyGrammarEnforced(grammar: string, content: string, debugReasoning?: string): void {
-        let verdict: Verdict;
+    // Validate output against the grammar. Returns the verdict, or null on the
+    // verify GAP — a grammar our own validator can't parse (a port-vs-llama.cpp
+    // gap): warn, don't manufacture a conflict from a check that didn't run.
+    #grammarVerdict(grammar: string, content: string): Verdict | null {
         try {
-            verdict = validateGbnf(grammar, content);
+            return validateGbnf(grammar, content);
         } catch (cause) {
             process.emitWarning(
                 `${this.#source}: could not verify grammar enforcement — the transported grammar did not parse in @plurnk/gbnf (${(cause as Error).message})`,
                 { code: "PLURNK_GRAMMAR_UNVERIFIABLE" },
             );
-            return;
+            return null;
         }
-        if (verdict.status === "accept") return;
-        // Debug mode passes the reasoning channel → the throw carries the full
-        // unconstrained output; production stays terse (§12).
-        const message = debugReasoning !== undefined ? describeConflict(verdict, debugReasoning, content) : describeUnenforced(verdict);
-        throw new ProviderError(this.#source, "grammar_unenforced", message);
+    }
+
+    // CONSTRAINED path (grammar transported, grammarStyle !== "none"): the backend
+    // MUST have constrained the output — some silently drop the grammar field or
+    // mislabel the channel. STRICT: any non-accept verdict throws a terminal
+    // grammar_unenforced ProviderError. A conformance check against the grammar we
+    // already hold, NOT a plurnk-DSL parse (§8) — backend-agnostic.
+    #verifyGrammarEnforced(grammar: string, content: string): void {
+        const verdict = this.#grammarVerdict(grammar, content);
+        if (verdict === null || verdict.status === "accept") return;
+        throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict));
+    }
+
+    // GBNF-FILTER path (PLURNK_GBNF_DEBUG: grammar withheld, output validated after
+    // the fact). Non-conformance is EXPECTED here, so it does NOT throw — it returns
+    // a non-fatal grammar_unenforced TelemetryEvent carrying the divergence position
+    // (the model's bytes ride the response, not the message), so the consumer can
+    // render the model its own emission around `position` and let it self-correct
+    // (#24). null when the output conforms or the verify gap fired.
+    #grammarConflictEvent(grammar: string, content: string): TelemetryEvent | null {
+        const verdict = this.#grammarVerdict(grammar, content);
+        if (verdict === null || verdict.status === "accept") return null;
+        return { source: this.#source, kind: "grammar_unenforced", message: describeUnenforced(verdict), position: verdict.pos };
     }
 
     // PLURNK_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
@@ -383,12 +389,22 @@ export default class OpenAICompatProvider implements Provider {
             }
         }
 
-        // Verify the backend honored the grammar we transported (§13) before the content reaches the
-        // consumer. PLURNK_GBNF_DEBUG withholds the grammar (unconstrained generation) but still runs
-        // the output back through it, so a free answer the grammar would reject surfaces as
-        // grammar_unenforced — the conflict-debugging mode, not just a gbnf-syntax check against "".
-        if (sendGrammar !== undefined) this.#verifyGrammarEnforced(sendGrammar, raw.content);
-        else if (wantGrammar && this.#gbnfDebug) this.#verifyGrammarEnforced(grammar!, raw.content, raw.reasoning_content);
+        // Grammar conformance (§13). Two paths from one check, splitting on whether
+        // we actually transported the grammar:
+        //   - CONSTRAINED (sendGrammar): the backend was told to enforce → a non-accept
+        //     verdict is a hard failure, THROW grammar_unenforced before the content
+        //     reaches the consumer.
+        //   - FILTER (PLURNK_GBNF_DEBUG): grammar withheld, model ran unconstrained →
+        //     non-conformance is expected diagnostic, NOT a failure. Attach it as a
+        //     non-fatal telemetry event so the model's bytes still flow and the
+        //     consumer can feed the divergence back for self-correction (#24).
+        let telemetry: TelemetryEvent[] | undefined;
+        if (sendGrammar !== undefined) {
+            this.#verifyGrammarEnforced(sendGrammar, raw.content);
+        } else if (wantGrammar && this.#gbnfDebug) {
+            const event = this.#grammarConflictEvent(grammar!, raw.content);
+            if (event !== null) telemetry = [event];
+        }
 
         const meta = this.#buildMeta(raw.chunkMetadata);
 
@@ -402,6 +418,7 @@ export default class OpenAICompatProvider implements Provider {
             },
             assistantRaw: raw,
             ...(meta !== undefined ? { meta } : {}),
+            ...(telemetry !== undefined ? { telemetry } : {}),
         };
     }
 }

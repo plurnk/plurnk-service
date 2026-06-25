@@ -2,6 +2,8 @@
 // content unparsed (consumer parses via @plurnk/plurnk-grammar), reasoning
 // is the wire-reported CoT only.
 
+import type { TelemetryEvent } from "./telemetry.ts";
+
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
     content: string;
@@ -42,6 +44,16 @@ export interface ProviderResponse {
     // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
     // Absent when the backend reported no extra fields (#23, generalized).
     readonly meta?: Record<string, unknown>;
+    // Non-fatal provider telemetry attached to a SUCCESSFUL turn (#24). The model's
+    // bytes still flow through `assistant`; these events annotate them. Today: a
+    // `grammar_unenforced` event raised in GBNF-filter mode (PLURNK_GBNF_DEBUG —
+    // grammar withheld, output validated after the fact) carrying the divergence
+    // `position` so the consumer can render the model its own emission and let it
+    // self-correct, instead of the provider throwing and discarding the turn. The
+    // constrained path still THROWS a grammar_unenforced ProviderError (a backend
+    // that was sent a grammar and ignored it is a hard failure, SPEC §13). Absent
+    // when the turn produced no telemetry.
+    readonly telemetry?: readonly TelemetryEvent[];
 }
 
 export interface Provider {

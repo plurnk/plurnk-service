@@ -9,13 +9,16 @@
 import { OpenAiHttpError } from "./openaiStream.ts";
 
 // Required by the schema: source (producer id) + kind (discriminator). message
-// and position are optional; provider events carry null position (a transport
-// failure isn't localizable into the model's prior content).
+// and position are optional. A transport failure isn't localizable, so it carries
+// a null position; a `grammar_unenforced` event (#24) carries the divergence
+// code-point offset into the model's emission, so the consumer can render a
+// snippet around it — same recovery affordance the consumer already gives DSL
+// parse errors.
 export type TelemetryEvent = {
     source: string;            // e.g. "provider:openai" — schema pattern ^[a-z]+(:[a-z][a-z0-9-]*)?$
     kind: string;              // open vocabulary; providers mint from ProviderTelemetryKind
     message?: string | null;
-    position?: null;
+    position?: number | null;
 };
 
 // The kinds plurnk-service routes provider failures on.
@@ -26,9 +29,12 @@ export type ProviderTelemetryKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
-    // The transported grammar was not enforced — the backend returned output that
-    // does not conform to the GBNF we sent (silently ignored/mislabeled it). The
-    // provider verifies enforcement and mints this directly (SPEC §13); terminal.
+    // Output did not conform to the GBNF. On the CONSTRAINED path (grammar sent,
+    // backend should enforce) the provider throws this as a terminal ProviderError
+    // — a backend that ignored the grammar is a hard failure. In GBNF-filter mode
+    // (grammar withheld, validated after the fact) it is NON-fatal: minted as a
+    // TelemetryEvent on the returned response, carrying the divergence position so
+    // the consumer can let the model self-correct (#24, SPEC §13).
     | "grammar_unenforced";
 
 // Build a provider source label (`provider:<vendor>`), schema-pattern-valid.
