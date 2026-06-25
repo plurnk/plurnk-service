@@ -185,6 +185,9 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
     // Package-level `binary: true` flag applies to every handler in the
     // package — typical for whole-package binary handlers (PDF, images).
     const binary = plurnkRec.binary === true;
+    // Package-level attribution tags (issue #37). Like `binary`, declared once
+    // and applied to every handler entry. Pass-through — the host owns policy.
+    const attribution = normalizeAttribution(plurnkRec.attribution);
     const infos: HandlerInfo[] = [];
 
     for (const entry of plurnkRec.handlers) {
@@ -198,10 +201,25 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
             extensions: filterExtensions(e.extensions),
             binary,
             source: "package",
+            ...(attribution !== undefined && { attribution }),
         });
     }
 
     return infos;
+}
+
+// Normalize `plurnk.attribution` to string | string[] | undefined (issue #37).
+// A dumb scanner: a single non-empty string passes through; an array is
+// filtered to its non-empty strings (undefined if none survive); anything else
+// (number, object, "", []) is treated as absent. Validation/reservation policy
+// is the host's concern, not ours.
+function normalizeAttribution(raw: unknown): string | string[] | undefined {
+    if (typeof raw === "string") return raw === "" ? undefined : raw;
+    if (Array.isArray(raw)) {
+        const tags = raw.filter((t): t is string => typeof t === "string" && t !== "");
+        return tags.length > 0 ? tags : undefined;
+    }
+    return undefined;
 }
 
 function filterExtensions(raw: unknown): string[] {

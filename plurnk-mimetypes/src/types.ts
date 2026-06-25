@@ -106,6 +106,16 @@ export interface HandlerInfo {
     // @plurnk packages take precedence — tree-sitter entries only fill in
     // mimetypes that no @plurnk package claims.
     source: "package" | "treesitter";
+    // Raw `plurnk.attribution` (string | string[]) declared at the top of the
+    // package's plurnk block — plugin attribution tags the host unions onto
+    // model `generate({ attributions })` calls (issue #37 / plurnk-service#249).
+    // Package-level, like `binary`: applies to every handler entry in the
+    // package. discover() passes it through verbatim; the host (plurnk-service)
+    // applies the reservation policy (`@plurnk/` tags allowed only from
+    // `@plurnk/`-scoped packages). Undefined when the package declares none,
+    // and always absent for source: "treesitter" (framework built-ins carry no
+    // attribution).
+    attribution?: string | string[];
 }
 
 export interface Discovery {

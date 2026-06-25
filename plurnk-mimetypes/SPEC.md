@@ -87,6 +87,7 @@ Multi-handler example (one package serving variants of the same content type):
 |---|---|---|---|
 | `kind` | `"mimetype"` | yes | Distinguishes mimetype handlers from `"provider"` and `"scheme"` siblings in the plurnk family |
 | `binary` | boolean | no | `true` if all handlers in the package consume `Uint8Array` content. Default `false` (utf-8 string). |
+| `attribution` | string \| string[] | no | Plugin attribution tags (issue #37). Surfaced raw on every discovered handler's `HandlerInfo.attribution`; the host unions active plugins' tags onto model `generate({ attributions })` calls. `discover()` passes it through verbatim — the host owns the reservation policy (`@plurnk/` tags allowed only from `@plurnk/`-scoped packages). Absent for framework tree-sitter built-ins. |
 | `handlers` | HandlerDecl[] | yes | One or more handler entries (canonical shape) |
 
 `HandlerDecl`:
