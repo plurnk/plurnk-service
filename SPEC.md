@@ -988,6 +988,7 @@ Server-initiated events on the same WebSocket.
 |--------------------|-------------------------------------|------------|
 | `log/entry`        | `{ entry: LogEntry }`               | Every `log_entries` write. {§notifications-log-entry-notify} |
 | `loop/terminated`  | `{ loopId, finalStatus, hitMaxTurns }` | Loop reaches terminal status. |
+| `loop/quiesced`    | `{ loopId, runId, status: 202 }` | A loop parked at `SEND[202]` reached subtree-quiescence (no open stream, no non-terminal child) — idle/complete-for-now but **reawakable**, distinct from `loop/terminated` (§run-lifecycle-quiesced). |
 | `loop/proposal`    | `{ logEntryId, sessionId, runId, loopId, turnId, op, target, body, attrs, flags }` | Dispatch pauses on status=202. Carries `flags` so server-YOLO clients can suppress review UI. Client responds with `loop.resolve` (or `PLURNK_PROPOSAL_TIMEOUT_MS` fires). |
 | `session/created`  | `{ id, name, projectRoot }` | Any client creates a session. |
 | `stream/event`     | `{ entryId, channel, state, contentLength }` | Channel content grows or state transitions. {§notifications-stream-event-on-channel-change} |
