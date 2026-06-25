@@ -1027,19 +1027,22 @@ export default class Engine {
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
 
-        // Premature terminate: a SEND[200] while the run still holds a live stream/spawn — the model
-        // declared done with work running. Downgrade the 200 to 102 so it dispatches as a continue (its
-        // body is preserved, not discarded) and steer; the stream's own conclusion or a KILL is the exit.
+        // Premature terminate: a SEND[200] while the run still holds a live thing — an open stream/spawn
+        // OR a non-terminal child run (§run-lifecycle: children and streams are the same kind of "live
+        // thing a run holds"). The model declared done with work running. Downgrade the 200 to 102 so it
+        // dispatches as a continue (its body is preserved, not discarded) and steer; the stream's/child's
+        // own conclusion (the wake edge) or a KILL is the exit.
         if (sendOp?.signal === 200) {
             const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
             const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-            if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) {
+            const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+            if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true || liveChild !== undefined) {
                 sendOp.signal = TURN_STATUS_IMPLICIT_CONTINUE; // 102 — downgraded, no longer a terminal
                 steerStruck = true;
                 this.#pushTelemetry(sessionId, loopId, {
                     source: "engine:rail",
                     kind: "premature_terminate",
-                    message: "Attempted termination with active streams. Terminate with 202 to hibernate until stream completion, KILL(path) with 200 again to clean up, or 499 to fail.",
+                    message: "Attempted termination with active streams or child runs. Terminate with 202 to hibernate until they complete, KILL(path) with 200 again to clean up, or 499 to fail.",
                 });
             }
         }

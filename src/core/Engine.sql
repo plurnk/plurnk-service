@@ -3,6 +3,13 @@
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
 
+-- PREP: engine_run_has_live_child
+-- A non-terminal CHILD run (run:// spawn/fork set parent_run_id) — a "live thing the run holds",
+-- like an open stream. A SEND[200] while one exists is a premature-terminate (§send-premature-terminate).
+-- Live = any loop in a child run still pending/running/parked (100/102/202).
+SELECT 1 AS live FROM loops l JOIN runs r ON r.id = l.run_id
+WHERE r.parent_run_id = $run_id AND l.status IN (100, 102, 202) LIMIT 1;
+
 -- PREP: engine_count_active_loops_for_run
 -- Wake-on-completion uses this to decide whether to open a new loop or
 -- let the existing one pick up the channel transition at the next turn
