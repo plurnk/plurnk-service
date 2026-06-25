@@ -9,6 +9,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -132,5 +135,51 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
     });
 });
 
-test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run firing ops, not a privileged engine pathway",
-    { todo: "Phase 2 — the keystone (dispatchAsPlurnk) + the EMI repatriation make this assertable" }, () => {});
+test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run firing ops — the EDIT lands in the plurnk run's log; a sibling reaches the result through the environment door", async () => {
+    // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_MD_<ALIAS>
+    // doc — IS the self-hosting contract: a runtime op runs as the reserved `plurnk` actor, not a
+    // privileged engine write. doc-injection.test.ts pins the negatives (the EDIT is absent from the
+    // model's log; the model sees only the READ). Here we pin the POSITIVE structure the anchor states:
+    // the EDIT is IN the plurnk run's log (origin=plurnk), and the model run reaches the resulting entry
+    // through the shared filesystem — the environment door — exactly as it would any sibling actor's edit.
+    // (The §env-delta materialization + git auto-add legs repatriate onto this same seam later, gated on
+    // the Multi-repo membership change-detector; this proves the seam itself, decoupled from that.)
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
+    const docPath = join(dir, "selfhost.md");
+    await writeFile(docPath, "# Self-hosting\nThe runtime is an actor.\n", "utf8");
+    const prev = process.env.PLURNK_MD_SELFHOST;
+    process.env.PLURNK_MD_SELFHOST = docPath;
+    try {
+        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                const sessionId = ((await rpcCall(ws, 1, "session.create", { name: "selfhost" })).result as { id: number }).id;
+                const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
+                const modelRunId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))!.run_id;
+
+                // 1. The reserved plurnk run exists, is distinct from the model run, and OWNS the
+                //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
+                const plurnkRun = (await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" }))!;
+                assert.ok(plurnkRun !== undefined, "the reserved plurnk run was spawned to do the runtime work");
+                assert.notEqual(plurnkRun.id, modelRunId, "the plurnk run is a sibling actor, distinct from the model run");
+                const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ run_id: plurnkRun.id });
+                const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md");
+                assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk run's log — an op, not a privileged engine pathway");
+                assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
+
+                // 2. The model run's log NEVER carries that EDIT — isolation by run holds; nothing privileged leaked in.
+                const modelLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ run_id: modelRunId });
+                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md"), "the model run never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
+
+                // 3. The environment door: the model run reaches the entry the plurnk actor produced (a 200 READ),
+                //    exactly as it reaches any sibling's edit to the shared filesystem. Dogfooding, not a back channel.
+                const docRead = modelLog.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md");
+                assert.ok(docRead !== undefined && docRead.status_rx === 200, "the model run reaches the plurnk actor's entry through the shared filesystem (env door)");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MD_SELFHOST; else process.env.PLURNK_MD_SELFHOST = prev;
+        await rm(dir, { recursive: true, force: true });
+    }
+});
