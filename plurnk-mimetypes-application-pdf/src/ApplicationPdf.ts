@@ -120,6 +120,23 @@ interface PdfDocument {
     getOutline(): Promise<unknown>;
     getMetadata(): Promise<{ info?: unknown }>;
     getPage(i: number): Promise<{ getTextContent(): Promise<{ items: unknown[] }>; cleanup(): void }>;
+    // Security-signal sources (mature pdfjs APIs). Optional in our local type so
+    // a future build that lacks them degrades to "no signal" rather than failing.
+    getJSActions?(): Promise<Record<string, unknown> | null>;
+    getAttachments?(): Promise<Record<string, unknown> | null>;
+}
+
+// The jsonpath-queryable document model deepJson exposes. Everything pdfjs
+// gives us from the document model without rendering: structure (outline),
+// metadata, and detect-only security signals. Never executes or extracts
+// active content — it reports presence (plurnk-mimetypes#38 posture).
+interface PdfDocModel {
+    type: "document";
+    line: number;
+    endLine: number;
+    metadata: Record<string, unknown>;
+    security: { hasJavaScript: boolean; hasEmbeddedFiles: boolean };
+    children: Array<{ type: "outline_item"; name: string; level?: number; line: number; endLine: number }>;
 }
 
 export default class ApplicationPdf extends BaseHandler {
@@ -155,28 +172,10 @@ export default class ApplicationPdf extends BaseHandler {
     // since the content isn't xpath-queryable in any meaningful way.
     override async deepJson(content: HandlerContent): Promise<unknown> {
         const bytes = toBytes(content);
-        let symbols: MimeSymbol[];
-        try {
-            symbols = await extractStructure(bytes);
-        } catch {
-            return null;
-        }
-        if (symbols.length === 0) return null;
-        // Build a containment-nested tree from the symbol list (the outline
-        // items already carry headings/levels appropriate for jsonpath
-        // navigation by name).
-        return {
-            type: "document",
-            line: 1,
-            endLine: symbols.reduce((m, s) => Math.max(m, s.endLine), 1),
-            children: symbols.map((s) => ({
-                type: "outline_item",
-                name: s.name,
-                level: s.level,
-                line: s.line,
-                endLine: s.endLine,
-            })),
-        };
+        // Always-present for a parseable PDF: even outline-less documents carry
+        // metadata + security signals, so the deep channel is no longer dark
+        // for the common un-bookmarked PDF. null only on a parse failure.
+        return await buildDocumentModel(bytes);
     }
 
     protected override async toText(content: string | Uint8Array): Promise<string> {
@@ -200,6 +199,9 @@ export default class ApplicationPdf extends BaseHandler {
         flags?: string,
     ): Promise<QueryMatch[]> {
         if (dialect === "jsonpath") {
+            // Bookmark-by-name navigation: `$['Chapter 1']['Section 1.1']`. The
+            // deepJson channel carries the richer document model (metadata +
+            // security); this path stays the ergonomic outline query.
             const bytes = toBytes(content);
             let symbols: MimeSymbol[];
             try {
@@ -255,6 +257,82 @@ async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMeta
 
 async function extractAllText(bytes: Uint8Array): Promise<string> {
     return withDocument(bytes, (doc) => readAllPagesText(doc));
+}
+
+// The full document model — structure + metadata + security signals — in one
+// parse. Shared by deepJson() and the jsonpath query path so they can't drift.
+// null on a parse failure (or over-cap input), matching the channel's
+// degrade-to-dark policy.
+async function buildDocumentModel(bytes: Uint8Array): Promise<PdfDocModel | null> {
+    try {
+        return await withDocument(bytes, async (doc) => {
+            const [symbols, metadata, security] = await Promise.all([
+                collectSymbols(doc),
+                collectMetadata(doc),
+                collectSecurity(doc),
+            ]);
+            return {
+                type: "document" as const,
+                line: 1,
+                endLine: Math.max(doc.numPages, 1),
+                metadata,
+                security,
+                children: symbols.map((s) => ({
+                    type: "outline_item" as const,
+                    name: s.name,
+                    ...(typeof s.level === "number" && { level: s.level }),
+                    line: s.line,
+                    endLine: s.endLine,
+                })),
+            };
+        });
+    } catch {
+        return null;
+    }
+}
+
+// Document metadata from the info dictionary — only non-empty fields, plus the
+// always-present pageCount. Dates pass through as their raw PDF strings if they
+// don't match the D:YYYYMMDD form (lossless; the host can parse).
+async function collectMetadata(doc: PdfDocument): Promise<Record<string, unknown>> {
+    const meta = await doc.getMetadata();
+    const info = (meta.info ?? {}) as Record<string, unknown>;
+    const out: Record<string, unknown> = { pageCount: doc.numPages };
+    const str = (v: unknown): string | undefined =>
+        typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+    const fields: Array<[string, string]> = [
+        ["title", "Title"], ["author", "Author"], ["subject", "Subject"],
+        ["keywords", "Keywords"], ["creator", "Creator"], ["producer", "Producer"],
+        ["pdfVersion", "PDFFormatVersion"],
+    ];
+    for (const [key, src] of fields) {
+        const v = str(info[src]);
+        if (v !== undefined) out[key] = v;
+    }
+    const created = pdfDate(info.CreationDate); if (created) out.created = created;
+    const modified = pdfDate(info.ModDate); if (modified) out.modified = modified;
+    return out;
+}
+
+function pdfDate(raw: unknown): string | undefined {
+    if (typeof raw !== "string" || raw.length === 0) return undefined;
+    const m = raw.match(/^D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?/);
+    if (!m) return raw;
+    const [, y, mo, d, h = "00", mi = "00", s = "00"] = m;
+    return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
+}
+
+// Detect-only security signals. We never execute the JS or extract the files —
+// presence is the signal the host wants (plurnk-mimetypes#38). Defensive: a
+// build without these APIs, or a malformed doc, reports "no signal".
+async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boolean; hasEmbeddedFiles: boolean }> {
+    const present = (v: Record<string, unknown> | null | undefined): boolean =>
+        v != null && Object.keys(v).length > 0;
+    const js = typeof doc.getJSActions === "function"
+        ? await doc.getJSActions().catch(() => null) : null;
+    const files = typeof doc.getAttachments === "function"
+        ? await doc.getAttachments().catch(() => null) : null;
+    return { hasJavaScript: present(js), hasEmbeddedFiles: present(files) };
 }
 
 async function readAllPagesText(doc: PdfDocument): Promise<string> {
