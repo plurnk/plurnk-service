@@ -91,8 +91,9 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
     } finally { db.close(); }
 });
 
-test("[§actor-boundary-two-doors] state crosses runs via the §env-delta delta; messages via inject — no third channel",
-    { todo: "Phase 1 — the voice door (inject, #193) is unbuilt; the environment door is exercised under §env-delta" }, () => {});
+// [§actor-boundary-two-doors] is a REAL test now in Engine.env-delta.test.ts (both doors —
+// state-via-delta + message-via-inject). The stale "voice door unbuilt" stub is retired: the
+// voice door (inject), and irc through it, resume parked runs in place (#55).
 
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,

@@ -82,6 +82,42 @@ test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through
     }
 });
 
+test("[§actor-boundary-two-doors] exactly two cross-run channels — state via the env-delta, a message via inject", async () => {
+    // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
+    // and irc through it, resume parked runs in place, #55.) No third channel — by design.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `two-doors-${crypto.randomUUID()}`);
+        const runA = await insertRun(db, sessionId);
+        const loopA = await insertLoop(db, runA, 1, "go");
+        const runB = await insertRun(db, sessionId);
+        const loopB = await insertLoop(db, runB, 1);
+        const turnB = await insertTurn(db, loopB, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+
+        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await sleep(2);
+
+        // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
+        await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), sessionId, runId: runB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; pathname: string; source: string | null }>({ run_id: runA });
+        assert.ok(
+            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === String(runB)),
+            "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)",
+        );
+
+        // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
+        await (db.test_set_loop_status as PrepMethod).run({ id: loopA, status: 102 }); // A is the active loop
+        const injected = await eng.inject(runA, "a directed message for A");
+        assert.notEqual(injected, null, "voice door: the inject found A's loop and delivered");
+        assert.equal(injected!.loopId, loopA, "the message landed on A's loop — directed, not ambient");
+    } finally {
+        await db.close();
+    }
+});
+
 test("an out-of-band disk change surfaces as a source=file delta — the plurnk run narrates the fs fiction (§env-delta)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
