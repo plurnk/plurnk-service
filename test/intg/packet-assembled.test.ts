@@ -7,6 +7,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -76,6 +79,42 @@ test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces mater
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
+
+test("[§policy-sections] assembled packet: PLURNK_POLICY + PLURNK_PROJECT render as privileged system-slot policy sections", async () => {
+    const priorPolicy = process.env.PLURNK_POLICY;
+    const priorProject = process.env.PLURNK_PROJECT;
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
+    const db = await openMigrated();
+    try {
+        const sysPath = join(dir, "system-AGENTS.md");
+        const projPath = join(dir, "project-AGENTS.md");
+        await writeFile(sysPath, "# House rules\nNEVER guess a file path.");
+        await writeFile(projPath, "# Project rules\nThe budget is law.");
+        process.env.PLURNK_POLICY = sysPath;
+        process.env.PLURNK_PROJECT = projPath;
+
+        const sessionId = await insertSession(db, `pkt-policy-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const packet = await getPacket(db, result.turnId);
+
+        // Policy is the client's foot in the privileged zone — both sections ride the SYSTEM slot
+        // (not user, not a curatable READable entry), carrying the operator's authoritative rules.
+        const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
+        assert.ok(slot("system").includes("system-policy"), "PLURNK_POLICY rides the system slot — privileged, not a READable entry");
+        assert.ok(slot("system").includes("project-policy"), "PLURNK_PROJECT rides the system slot");
+        assert.match(packetSection(packet, "system-policy"), /NEVER guess a file path/, "the system policy content reaches the model");
+        assert.match(packetSection(packet, "project-policy"), /budget is law/, "the project policy content reaches the model");
+    } finally {
+        await db.close();
+        if (priorPolicy === undefined) delete process.env.PLURNK_POLICY; else process.env.PLURNK_POLICY = priorPolicy;
+        if (priorProject === undefined) delete process.env.PLURNK_PROJECT; else process.env.PLURNK_PROJECT = priorProject;
+        await rm(dir, { recursive: true, force: true });
     }
 });
 

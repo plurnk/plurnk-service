@@ -1058,7 +1058,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `Engine.#buildRequestPacket`, then lets trusted plugins rewrite it.
 
-**Decision.** Two stages. (1) The engine builds the default section list — the kernel sections `definition`, `tools`, `schemes`, `log` (system slot), then `prompt`, `budget`, `errors`, `git`, `requirements` (user slot). (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
+**Decision.** Two stages. (1) The engine builds the default section list — the system-slot sections `definition`, `tools`, `schemes`, the policy sections `system-policy`/`project-policy`, and `budget` (budget is law — a privileged constraint kept in the lean system zone), then the user-slot sections `prompt`, `errors`, `log`, `git`, `requirements` (the log is short-term memory — data, rendered at the action point, not a privileged rule). (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
 
 **Why a whole-list transform, not a per-section hook.** It is the legible, fork-avoiding seam: a plugin that can reshape the packet to its needs never has a reason to fork the engine (§ecosystem). And it is **strictly in-process and trusted** (behind `PLURNK_PLUGINS_TRUSTED_ONLY`) — the client/RPC wire never reaches the packet, because handing an untrusted connection the model's entire context is exactly the actor-boundary violation the engine exists to prevent. Pure list-in/list-out; no context is handed to plugins.
 
@@ -1203,7 +1203,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 ```ts
 type PacketSection = {
-    name: string;                       // stable id: definition, tools, schemes, log, prompt, budget, errors, git, requirements — or a plugin's own
+    name: string;                       // stable id: definition, tools, schemes, system-policy, project-policy, budget, prompt, errors, log, git, requirements — or a plugin's own
     slot: "system" | "user";            // the prompt-cache boundary; system-slot sections build the cache-stable system message
     header: string | null;              // "## Plurnk System X", or null (definition renders verbatim)
     content: string;                    // rendered markdown — what the model saw
@@ -1270,7 +1270,11 @@ A `## Plurnk System Schemes` section renders in the system slot **after the defi
 
 ### §inject system.inject — the operator injection
 
-When `PLURNK_PACKET_INJECT` names a readable markdown file, its content renders as a `## Plurnk Operator Notes` section in the system slot **right after the teaching** (definition → tools → schemes → inject), before the log — part of the cached prefix. Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section. {§packet-inject}
+When `PLURNK_PACKET_INJECT` names a readable markdown file, its content renders as a `## Plurnk Operator Notes` section in the system slot **right after the teaching** (definition → tools → schemes → inject), ahead of the policy sections and budget — part of the cached prefix. Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section. {§packet-inject}
+
+### §policy system.policy — the client's policy injection
+
+Two sections ride the system slot **below the operator notes, above budget**: `## Plurnk System Policy` from `PLURNK_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the session root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference/scratch docs are NOT policy — they ride `PLURNK_MD_*` (materialized as READ-able entries, §operator-config), which is where the dev-notes AGENTS.md used to hold belong. {§policy-sections}
 
 **The scheme self-doc contract.** `example` is the hot-path one-liner; `documentation` is the deep doc — the exact shape execs already use (`example` + `documentation`). `SchemeRegistry.teach()` renders the directory; `docEntries()` materializes the docs (per loop.run, alongside the operator docs). `documentation` rides a service-side `SchemeManifest` extension until plurnk-schemes#25 lands it in the contract.
 

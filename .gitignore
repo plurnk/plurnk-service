@@ -144,6 +144,7 @@ vite.config.ts.timestamp-*
 
 # plurnk-service
 AGENTS.md
+SCRATCH.md
 
 # Forensic artifacts written by bin/digest.js. Instance-specific; per-run
 # packet dumps, reasoning extracts, waterfalls. Re-generated on demand by
