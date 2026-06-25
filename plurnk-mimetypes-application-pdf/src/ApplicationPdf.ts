@@ -119,7 +119,11 @@ interface PdfDocument {
     numPages: number;
     getOutline(): Promise<unknown>;
     getMetadata(): Promise<{ info?: unknown }>;
-    getPage(i: number): Promise<{ getTextContent(): Promise<{ items: unknown[] }>; cleanup(): void }>;
+    getPage(i: number): Promise<{
+        getTextContent(): Promise<{ items: unknown[] }>;
+        getAnnotations?(): Promise<unknown[]>;
+        cleanup(): void;
+    }>;
     // Security-signal sources (mature pdfjs APIs). Optional in our local type so
     // a future build that lacks them degrades to "no signal" rather than failing.
     getJSActions?(): Promise<Record<string, unknown> | null>;
@@ -136,6 +140,7 @@ interface PdfDocModel {
     endLine: number;
     metadata: Record<string, unknown>;
     security: { hasJavaScript: boolean; hasEmbeddedFiles: boolean };
+    links: Array<{ url: string; page: number }>;
     children: Array<{ type: "outline_item"; name: string; level?: number; line: number; endLine: number }>;
 }
 
@@ -266,10 +271,11 @@ async function extractAllText(bytes: Uint8Array): Promise<string> {
 async function buildDocumentModel(bytes: Uint8Array): Promise<PdfDocModel | null> {
     try {
         return await withDocument(bytes, async (doc) => {
-            const [symbols, metadata, security] = await Promise.all([
+            const [symbols, metadata, security, links] = await Promise.all([
                 collectSymbols(doc),
                 collectMetadata(doc),
                 collectSecurity(doc),
+                collectLinks(doc),
             ]);
             return {
                 type: "document" as const,
@@ -277,6 +283,7 @@ async function buildDocumentModel(bytes: Uint8Array): Promise<PdfDocModel | null
                 endLine: Math.max(doc.numPages, 1),
                 metadata,
                 security,
+                links,
                 children: symbols.map((s) => ({
                     type: "outline_item" as const,
                     name: s.name,
@@ -333,6 +340,34 @@ async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boole
     const files = typeof doc.getAttachments === "function"
         ? await doc.getAttachments().catch(() => null) : null;
     return { hasJavaScript: present(js), hasEmbeddedFiles: present(files) };
+}
+
+// External hyperlinks from Link annotations (URI actions), per page. These are
+// document data, not code-nav references (the references channel's RefKind is
+// frozen to code semantics), so they live in the document model. Page-bounded
+// like text; deduped by url+page. Never follows a link — just surfaces it.
+async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; page: number }>> {
+    const out: Array<{ url: string; page: number }> = [];
+    const seen = new Set<string>();
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    for (let i = 1; i <= limit; i += 1) {
+        const page = await doc.getPage(i);
+        try {
+            if (typeof page.getAnnotations !== "function") continue;
+            const annots = await page.getAnnotations().catch(() => [] as unknown[]);
+            for (const a of annots) {
+                const annot = a as { subtype?: unknown; url?: unknown };
+                if (annot.subtype !== "Link" || typeof annot.url !== "string" || annot.url.length === 0) continue;
+                const key = `${i} ${annot.url}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push({ url: annot.url, page: i });
+            }
+        } finally {
+            page.cleanup();
+        }
+    }
+    return out;
 }
 
 async function readAllPagesText(doc: PdfDocument): Promise<string> {

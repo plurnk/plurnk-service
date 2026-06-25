@@ -10,6 +10,8 @@ export interface OutlineDesc {
 export interface PdfShape {
     title?: string;
     outline?: OutlineDesc[];
+    // URI link annotations, all placed on the single page.
+    links?: string[];
 }
 
 interface OutlineEntry {
@@ -67,6 +69,21 @@ export function buildPdf(shape: PdfShape): Uint8Array {
     if (typeof shape.title === "string") {
         infoNum = objects.length + 1;
         objects.push(`<< /Title (${pdfString(shape.title)}) >>`);
+    }
+
+    // URI link annotations on the page (object 3). Allocate them, then patch the
+    // page dict's /Annots (same fill-last pattern as the catalog).
+    if (shape.links && shape.links.length > 0) {
+        const annotNums: number[] = [];
+        for (const url of shape.links) {
+            annotNums.push(objects.length + 1);
+            objects.push(
+                `<< /Type /Annot /Subtype /Link /Rect [0 0 100 20] `
+                + `/A << /S /URI /URI (${pdfString(url)}) >> >>`,
+            );
+        }
+        const annots = annotNums.map((n) => `${n} 0 R`).join(" ");
+        objects[2] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Annots [${annots}] >>`;
     }
 
     // Fill in the catalog now that outline root is known.
