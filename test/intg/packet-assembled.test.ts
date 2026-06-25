@@ -39,11 +39,14 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         assert.match(log, /known:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
 
-        // Section presence + order: system definition → schemes → log; requirements last in user.
+        // Section presence + order: system holds the rules (definition → schemes, NO log); the log
+        // is data, so it lives at the bottom of the user slot — just above requirements (the action point).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes", "log"], "system slot order: definition → schemes → log");
+        assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes"], "system slot: definition → schemes, no log (the log is data, not a privileged rule)");
+        assert.ok(slot("system").includes("budget"), "budget lives in system — it's LAW (the ceiling), a privileged constraint, not status");
+        assert.ok(!slot("system").includes("git"), "git stays in user — workspace status, not law");
         const usr = slot("user");
-        assert.equal(usr[usr.length - 1], "requirements", "requirements lands last in the user slot");
+        assert.deepEqual(usr.slice(-3), ["log", "git", "requirements"], "user slot ends: log → git → requirements");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally {
         await db.close();

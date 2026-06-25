@@ -1253,10 +1253,12 @@ export default class Engine {
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
             { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
-            { name: "log", slot: "system", header: "Plurnk System Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            // budget at the BOTTOM of the SYSTEM slot — budget is LAW (the ceiling is a hard constraint the model must obey), so it belongs in the lean privileged zone, not as user-slot status.
+            { name: "budget", slot: "system", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
-            { name: "budget", slot: "user", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            // log in the USER slot, low: short-term memory (data, not rules) at the action point, so the model consults its history instead of skimming it. git follows it as workspace status — not law, so it stays in user, never system.
+            { name: "log", slot: "user", header: "Plurnk System Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
             { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: baseRequirements, tokens: 0 },
         ];
