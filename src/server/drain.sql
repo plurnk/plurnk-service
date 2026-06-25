@@ -96,3 +96,8 @@ UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
 -- polled subscriptions. NULL when the run holds no polled stream → no hibernation poll-wake.
 SELECT MIN(poll_seconds) AS poll_seconds
 FROM subscriptions WHERE run_id = $run_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
+
+-- PREP: run_parent_id
+-- A run's parent (run:// spawn / fork set parent_run_id, §lifecycle-terms). NULL = a root run.
+-- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
+SELECT parent_run_id FROM runs WHERE id = $run_id;

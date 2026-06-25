@@ -616,6 +616,10 @@ export default class Daemon {
 
         handle.promise = drainPromise;
         this.#activeDrains.set(runId, handle);
+        // Topology join (§run-lifecycle): when this drain exits having CONCLUDED the run, wake its parent
+        // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
+        // final state; speculative (#onDrainExit no-ops unless the run concluded AND the parent is parked).
+        drainPromise.then(() => this.#onDrainExit(sessionId, runId, provider, systemPrompt)).catch(() => {});
         // Swallow unhandled rejections (drain aborts with no awaiter); the
         // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
@@ -847,16 +851,17 @@ export default class Daemon {
         if (pollSec === null || pollSec <= 0) return; // no polled stream → the 202 just sleeps (woken only by conclusion)
         const timer = setTimeout(() => {
             this.#pollTimers.delete(runId);
-            void this.#pollWake(sessionId, runId, provider, systemPrompt);
+            void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt);
         }, pollSec * 1000);
         timer.unref();
         this.#pollTimers.set(runId, timer);
     }
 
-    /** The poll cadence elapsed while the loop hibernated → resume the slept loop in place to inspect
-     *  its polled stream — the same 202→100 resume #handleWakeRun uses, minus a wake payload. A no-op if
-     *  the run was cancelled or already resumed/concluded (no slept loop). §exec-poll */
-    async #pollWake(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {
+    /** Resume `runId`'s slept (202) loop in place — the same 202→100 resume #handleWakeRun uses, minus a
+     *  wake payload. The shared wake primitive: a poll cadence (§exec-poll), a watched stream concluding,
+     *  or a child run finishing (§run-lifecycle topology join) all call this. A no-op if the run was
+     *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
+    async #wakeParkedRun(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {
         const scope = this.#runAborts.get(runId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(runId)) return; // cancelled — no resurrection
         const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
@@ -867,8 +872,24 @@ export default class Daemon {
             maxTurns: Number(process.env.PLURNK_MAX_TURNS ?? "50"),
         });
         started?.drainPromise?.catch((err: unknown) => {
-            console.error("poll-wake resume drain failed:", err instanceof Error ? err.message : String(err));
+            console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));
         });
+    }
+
+    /** A run's drain exited. If the run truly CONCLUDED — no parked 202 loop, no open stream — it has
+     *  quiesced: wake its PARENT in place if the parent is parked (the structured-concurrency join — a
+     *  child finishing is a wake edge for a parent that parked awaiting it, §run-lifecycle). A run that
+     *  parked at 202, or still holds a stream, is NOT concluded — its own wake edges drive it, not this.
+     *  The parent reads the child's deliverable from its own log (the §run-scheme-collect delta) on
+     *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
+    async #onDrainExit(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {
+        const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
+        if (slept !== undefined) return; // parked at 202 — not concluded, the run is still alive
+        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
+        const parent = await (this.#db.run_parent_id as PrepMethod).get<{ parent_run_id: number | null }>({ run_id: runId });
+        if (parent?.parent_run_id == null) return; // a root run — nobody to wake
+        await this.#wakeParkedRun(sessionId, parent.parent_run_id, provider, systemPrompt);
     }
 
     #onConnection(ws: WebSocket): void {
