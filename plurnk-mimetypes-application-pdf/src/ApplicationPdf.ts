@@ -129,6 +129,7 @@ interface PdfDocument {
     // a future build that lacks them degrades to "no signal" rather than failing.
     getJSActions?(): Promise<Record<string, unknown> | null>;
     getAttachments?(): Promise<Record<string, unknown> | null>;
+    getFieldObjects?(): Promise<Record<string, unknown[]> | null>;
 }
 
 // The jsonpath-queryable document model deepJson exposes. Everything pdfjs
@@ -142,6 +143,7 @@ interface PdfDocModel {
     metadata: Record<string, unknown>;
     security: { hasJavaScript: boolean; hasEmbeddedFiles: boolean };
     links: Array<{ url: string; page: number }>;
+    forms: Array<{ name: string; value: string; type: string; page: number }>;
     children: Array<{ type: "outline_item"; name: string; level?: number; line: number; endLine: number }>;
 }
 
@@ -358,11 +360,12 @@ async function extractAllText(bytes: Uint8Array): Promise<string> {
 async function buildDocumentModel(bytes: Uint8Array): Promise<PdfDocModel | null> {
     try {
         return await withDocument(bytes, async (doc) => {
-            const [symbols, metadata, security, links] = await Promise.all([
+            const [symbols, metadata, security, links, forms] = await Promise.all([
                 collectSymbols(doc),
                 collectMetadata(doc),
                 collectSecurity(doc),
                 collectLinks(doc),
+                collectForms(doc),
             ]);
             return {
                 type: "document" as const,
@@ -371,6 +374,7 @@ async function buildDocumentModel(bytes: Uint8Array): Promise<PdfDocModel | null
                 metadata,
                 security,
                 links,
+                forms,
                 children: symbols.map((s) => ({
                     type: "outline_item" as const,
                     name: s.name,
@@ -452,6 +456,29 @@ async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; page
             }
         } finally {
             page.cleanup();
+        }
+    }
+    return out;
+}
+
+// AcroForm fields (name / value / type / page) from getFieldObjects. Document
+// data, read-only — surfaces what a form holds without filling or executing it.
+// Non-string values (checkboxes, choices) are stringified; page is 1-indexed.
+async function collectForms(doc: PdfDocument): Promise<Array<{ name: string; value: string; type: string; page: number }>> {
+    if (typeof doc.getFieldObjects !== "function") return [];
+    const fields = await doc.getFieldObjects().catch(() => null);
+    if (!fields) return [];
+    const out: Array<{ name: string; value: string; type: string; page: number }> = [];
+    for (const group of Object.values(fields)) {
+        for (const raw of group) {
+            const f = raw as { name?: unknown; value?: unknown; type?: unknown; page?: unknown };
+            if (typeof f.name !== "string" || f.name.length === 0) continue;
+            out.push({
+                name: f.name,
+                value: f.value == null ? "" : String(f.value),
+                type: typeof f.type === "string" ? f.type : "unknown",
+                page: (typeof f.page === "number" ? f.page : 0) + 1,
+            });
         }
     }
     return out;
