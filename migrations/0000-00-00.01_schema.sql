@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS turns (
     packet           TEXT    NOT NULL           CHECK (json_valid(packet)),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
+    -- #252 — opaque provider→client metadata passthrough (e.g. balancePico). Stored
+    -- UNENFORCED (json_valid only, no schema): the canonical-field contract lives between
+    -- the provider framework (normalizes) and the client (renders), never the service.
+    meta             TEXT    NOT NULL DEFAULT '{}'     CHECK (json_valid(meta)),
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
 ) STRICT;
 

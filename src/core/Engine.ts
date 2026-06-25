@@ -448,8 +448,8 @@ export default class Engine {
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
     // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costPico is the stored pico-dollar unit.
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number }> {
-        const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number; context: number | null }>({ loop_id: loopId });
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number; meta: Record<string, unknown> }> {
+        const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number; context: number | null; meta: string | null }>({ loop_id: loopId });
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
@@ -457,6 +457,9 @@ export default class Engine {
             // #263 — the last turn's prompt tokens = current window occupancy (gauge numerator), NOT the
             // summed promptTokens above, which overcounts a context that grows across turns.
             contextTokens: row?.context ?? 0,
+            // #252 — the latest turn's opaque provider blob, parsed for the wire. Empty {} when the
+            // provider returned no meta. The service forwards it; it never reads a field within.
+            meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
         };
     }
 
@@ -901,7 +904,7 @@ export default class Engine {
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
                 usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
-                finish_reason: "budget_hard_stop", model: provider.model,
+                finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
         }
@@ -1034,6 +1037,9 @@ export default class Engine {
             usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
             finish_reason: finishReason,
             model,
+            // #252 — opaque provider→client metadata passthrough (e.g. balancePico the
+            // provider normalized). Stored verbatim, unenforced; the service never reads a field.
+            meta: JSON.stringify(response.meta ?? {}),
         });
 
         // Dispatch model ops starting at nextActionIndex (continues the

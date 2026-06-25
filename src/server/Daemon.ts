@@ -315,7 +315,7 @@ export default class Daemon {
                 loopId: "number",
                 finalStatus: "number — terminal status code (200, 499, etc.)",
                 hitMaxTurns: "boolean",
-                usage: "{promptTokens, completionTokens, costPico, contextTokens} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens, the window-occupancy numerator for a used%/window gauge (#263)",
+                usage: "{promptTokens, completionTokens, costPico, contextTokens, meta} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens (#263); meta is the latest turn's OPAQUE provider→client metadata blob (e.g. balancePico), passed through unenforced — the field contract is the provider↔client's, not the service's (#252)",
             },
         });
         // §notifications-stream-event-on-channel-change
@@ -568,7 +568,7 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
-                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0 }
+                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
                         this.#broadcast({ sessionId }, null, "loop/terminated", {

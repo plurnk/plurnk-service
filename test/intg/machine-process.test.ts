@@ -122,7 +122,7 @@ test("#254 — a fork inherits the log but spends no new money: session cost is 
         await (db.engine_close_turn as PrepMethod).run({
             id: turnId, status: 200, packet: "{}",
             usage_prompt: 100, usage_completion: 50, usage_cached: 0, usage_cost_pico: 1000,
-            finish_reason: null, model: "mock",
+            finish_reason: null, model: "mock", meta: "{}",
         });
         const sessionCost = async () =>
             (await (db.envelope_list_sessions as PrepMethod).all<{ id: number; cost_pico: number }>({})).find((s) => s.id === sessionId)?.cost_pico;

@@ -81,7 +81,10 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
        COALESCE(SUM(usage_cost_pico), 0)  AS cost_pico,
-       (SELECT usage_prompt FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context
+       (SELECT usage_prompt FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context,
+       -- #252 — the opaque provider meta blob from the LATEST turn (e.g. balancePico, a
+       -- point-in-time snapshot; latest wins). Service-unenforced passthrough to the client.
+       (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
 FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_turn_seqs
@@ -115,7 +118,8 @@ UPDATE turns SET
     usage_cached = $usage_cached,
     usage_cost_pico = $usage_cost_pico,
     finish_reason = $finish_reason,
-    model = $model
+    model = $model,
+    meta = $meta
 WHERE id = $id;
 
 -- PREP: engine_list_session_entries

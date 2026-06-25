@@ -209,11 +209,13 @@ Author-facing contract: [plurnk-providers#1](https://github.com/plurnk/plurnk-pr
 
 Three entry points:
 
-- `provider.generate({messages, signal})` — once per turn; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`. {§provider-surface-generate}
+- `provider.generate({messages, signal})` — once per turn; returns `{ assistant: { content, reasoning, usage, finishReason, model }, assistantRaw, meta? }`. **Engine parses `assistant.content`** into `PlurnkStatement[]` via `@plurnk/plurnk-grammar`. {§provider-surface-generate}
 - `provider.countTokens(text)` — synchronous, called at write-time (§tokenomics) and render-time. Non-negative integer. {§provider-surface-counttokens}
 - `provider.costFor(usage)` — once per completed turn; pico-USD. Engine writes to `turns.usage_cost_pico`; triggers cascade to `runs.cost_pico` / `sessions.cost_pico`. {§provider-surface-costfor}
 
 Plus immutable identity: `provider.contextSize` (token total, or `null` → "no budget info"), read by the budget {§provider-surface-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§tokenomics), exposed but not yet consumed here.
+
+**Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag — e.g. a hosted provider's running `balancePico`. The service stores it **unenforced** per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob to the client on the loop usage payload (`loop.run` result / `loop/terminated`, §methods). **The service never reads a field within it.** The canonical-field contract — which fields exist and their shapes — is the *provider framework's* (it normalizes raw vendor data into the agreed set) and the *client's* (it renders that set); a provider and client can ship a feature with **zero service change** as long as the blob flows. Absent → `{}` (the client renders nothing; never fabricated). The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` (§attribution). {§meta-passthrough}
 
 ### §provider-guarantees Engine → provider guarantees
 
