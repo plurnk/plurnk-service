@@ -21,4 +21,11 @@ export default class ExecAbort {
     static killReason(signal: number | null): { signal: number | null } {
         return { signal };
     }
+
+    // grammar 0.74.20 EXEC `<T>` timeout — the spawn outlived its T-second budget. A BOUNDED reap
+    // (polite signal then SIGKILL after graceMs), same protocol as teardown so a signal-ignoring
+    // spawn still dies; the caller stamps the distinct 504 close status (a timeout, not a plain kill).
+    static timeoutReason(): { housekeeping: true; graceMs: number } {
+        return { housekeeping: true, graceMs: ExecAbort.graceMs };
+    }
 }

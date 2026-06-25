@@ -27,6 +27,8 @@ interface ExecAttrs {
     pathname: string;       // stamped by Engine.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
+    timeoutSec?: number;    // grammar 0.74.20 — `<T,P>` mark[0]: kill the spawn after T seconds (504). Absent/≤0 = unbounded.
+    pollSec?: number;       // grammar 0.74.20 — `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -178,7 +180,17 @@ export default class Exec {
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.
-        const attrs: ExecAttrs = { runtime, cwd, command, pathname: "", inline: policy === "auto", ...(schemeTarget !== null ? { schemeTarget } : {}) };
+        // grammar 0.74.20 — EXEC repurposes the `<L>` slot as `<timeout, poll>` (seconds): mark[0]
+        // caps the spawn's lifetime, mark[1] sets the hibernation poll-wake cadence (§exec-poll).
+        const marks = statement.lineMarker?.marks;
+        const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) : undefined;
+        const pollSec = typeof marks?.[1] === "number" && marks[1] > 0 ? Math.floor(marks[1]) : undefined;
+        const attrs: ExecAttrs = {
+            runtime, cwd, command, pathname: "", inline: policy === "auto",
+            ...(schemeTarget !== null ? { schemeTarget } : {}),
+            ...(timeoutSec !== undefined ? { timeoutSec } : {}),
+            ...(pollSec !== undefined ? { pollSec } : {}),
+        };
         // Body shown to client during proposal review — `$ command` is the
         // most-readable summary regardless of runtime.
         const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
@@ -271,7 +283,8 @@ export default class Exec {
         const tail = this.#runExecutor({
             executor: resolved.executor,
             runtime, command, cwd, ctx, pathname,
-            entryId, subscriptionId, signal: controller.signal, tempPath,
+            entryId, subscriptionId, signal: controller.signal, controller, tempPath,
+            timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
 
         // Every exec backgrounds + streams (§exec-stream): no same-turn receipt — the output
@@ -297,11 +310,19 @@ export default class Exec {
         executor: Executor;
         runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
+        controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
     }): Promise<number> {
-        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, tempPath } = opts;
+        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
+        // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
+        // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
+        let timedOut = false;
+        const timeoutTimer = timeoutSec !== null
+            ? setTimeout(() => { timedOut = true; controller.abort(ExecAbort.timeoutReason()); }, timeoutSec * 1000)
+            : null;
+        timeoutTimer?.unref();
         let queue: Promise<void> = Promise.resolve();
         const enqueue = (op: () => Promise<void>): void => {
             queue = queue.then(op, op);
@@ -330,7 +351,11 @@ export default class Exec {
 
             const exitCode = result.exitCode ?? -1;
             closeStatus = result.status;
-            exitLabel = closeStatus === 499 ? "aborted"
+            // A timeout aborts the spawn → the executor reports 499; restamp it 504 so the model
+            // sees "ran out of time" distinct from a deliberate kill/cancel (§exec-timeout).
+            if (timedOut && closeStatus === 499) closeStatus = 504;
+            exitLabel = closeStatus === 504 ? `timed out after ${timeoutSec}s`
+                : closeStatus === 499 ? "aborted"
                 : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
                 : `exit ${exitCode}`;
             await ChannelWrite.closeSubscription(db, { subscriptionId, status: closeStatus });
@@ -340,6 +365,7 @@ export default class Exec {
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
+            if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // #201 — a materialized data-source temp file outlives the spawn it fed;
             // unlink it once the run settles (open-unlink is safe on Linux).
             if (tempPath !== null) await unlink(tempPath).catch(() => {});
