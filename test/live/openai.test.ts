@@ -57,11 +57,13 @@ test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () =
         assert.ok(turnIds.length >= 1, "at least one turn ran");
         assert.ok(lastContent.length > 0, "model emitted non-empty content");
 
-        // The answer was stored where the prompt asked.
-        const entries = await (s.db.test_parser_entries_first as PrepMethod).all<{ scheme: string; pathname: string }>();
+        // The answer was stored where the prompt asked. Use the unbounded pathname query —
+        // test_parser_entries_first is a LIMIT-1 helper (parser_roundtrip's single-entry world)
+        // and against a multi-entry session DB only ever returns the first-inserted doc.
+        const pathnames = (await (s.db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>()).map((e) => e.pathname);
         assert.ok(
-            entries.some((e) => /france|capital/.test(e.pathname)),
-            `the answer was stored under known:///france/capital; got ${JSON.stringify(entries.map((e) => e.pathname))}`,
+            pathnames.some((p) => /france|capital/.test(p)),
+            `the answer was stored under known:///france/capital; got ${JSON.stringify(pathnames)}`,
         );
     } finally { await s.cleanup(); }
 });
