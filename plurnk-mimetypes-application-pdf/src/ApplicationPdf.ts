@@ -465,13 +465,29 @@ async function readAllPagesText(doc: PdfDocument): Promise<string> {
     for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
-        const pageText = tc.items
-            .map((it: unknown) => (it as { str?: string }).str ?? "")
-            .join(" ");
-        pages.push(pageText);
+        pages.push(pageToText(tc.items));
         page.cleanup();
     }
     return pages.join("\n\n");
+}
+
+// Reading-order page text using pdfjs's own hasEOL line markers — NOT custom
+// geometry heuristics (which are the unstable part of PDF→text). Runs on a line
+// are space-joined; hasEOL ends the line. Whitespace is normalized lightly and
+// runs of blank lines collapse to a single paragraph break. The flat space-join
+// remains the floor: a PDF with no EOL markers still yields one line per page.
+function pageToText(items: unknown[]): string {
+    let out = "";
+    for (const raw of items) {
+        const it = raw as { str?: string; hasEOL?: boolean };
+        out += it.str ?? "";
+        out += it.hasEOL ? "\n" : " ";
+    }
+    return out
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 }
 
 function walkOutline(
