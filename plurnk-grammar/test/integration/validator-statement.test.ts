@@ -150,10 +150,10 @@ test("PlurnkStatement: EXEC rejects numeric signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: EXEC rejects non-null lineMarker", () => {
-    const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { marks: [1] } };
+test("PlurnkStatement: EXEC accepts a lineMarker (timeout,poll)", () => {
+    const stmt = { ...baseFields("EXEC"), signal: "node", lineMarker: { marks: [60, 5] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
-    assert.equal(valid, false);
+    assert.equal(valid, true);
 });
 
 test("PlurnkStatement: PLAN rejects numeric signal", () => {

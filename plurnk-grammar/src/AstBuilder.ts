@@ -56,7 +56,7 @@ type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
-type ExecSlots = { signal: string | null; target: ParsedPath | null };
+type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -193,7 +193,6 @@ export default class AstBuilder {
             op: "EXEC",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
             ...slots,
-            lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
@@ -247,6 +246,7 @@ export default class AstBuilder {
         return {
             signal: identNode !== null ? identNode.getText() : null,
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
 

@@ -362,6 +362,13 @@ test("GBNF: two consecutive status SENDs now derive — the first is a mid comms
 // Statement layer: per-op shapes and canon boundaries
 // -------------------------------------------------------------------------
 
+test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,target,line order)", () => {
+    assert.equal(derives("op-statement", "<<EXEC[node](sh:///x):cmd:EXEC"), true);        // no slot
+    assert.equal(derives("op-statement", "<<EXEC[node](sh:///x)<60>:cmd:EXEC"), true);     // timeout only
+    assert.equal(derives("op-statement", "<<EXEC[node](sh:///x)<60,5>:cmd:EXEC"), true);   // timeout + poll
+    assert.equal(derives("op-statement", "<<EXEC(sh:///x)<60,5>:cmd:EXEC"), true);         // slotless executor
+});
+
 test("GBNF: PLAN is the turn anchor only — first op, not a statement-layer op", () => {
     // PLAN is first-only: NOT in the statement trie, so it never appears mid-batch.
     assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), false);

@@ -234,7 +234,8 @@ export const buildModel = (): GModel => {
                     [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
-                opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), ...body]] });
+                // EXEC's optional `<timeout,poll>` rides the shared `line` slot (numbers; runtime-interpreted).
+                opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), opt(ref("line")), ...body]] });
             } else if (op === "PLAN") {
                 // Slotless bare reasoning body, REQUIRED non-empty (no blank statement of
                 // intent). PLAN is the MANDATORY turn anchor and the FIRST op only — root-turn

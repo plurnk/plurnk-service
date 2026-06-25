@@ -67,9 +67,11 @@ intOpModifiers
     | target intSignal?
     ;
 
+// EXEC's lineMarker carries an optional `<timeout,poll>` (numbers; runtime-interpreted).
 execModifiers
-    : identSignal target?
-    | target identSignal?
+    : identSignal (target lineMarker? | lineMarker target?)?
+    | target (identSignal lineMarker? | lineMarker identSignal?)?
+    | lineMarker (identSignal target? | target identSignal?)?
     ;
 
 // Signal productions — permissive where the interpretation is deterministic.

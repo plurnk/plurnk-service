@@ -1073,11 +1073,13 @@ test("slot order: duplicate line markers rejected", () => {
     assert.ok(errors.length >= 1);
 });
 
-test("SEND/EXEC: <L> slot is rejected (not just unused)", () => {
+test("SEND: <L> slot rejected; EXEC: <L> slot accepted (timeout,poll)", () => {
     const r1 = PlurnkParser.parseStatements("<<SEND[200]<1>:msg:SEND");
-    assert.ok(r1.items.filter((i) => i.kind === "error").length >= 1);
-    const r2 = PlurnkParser.parseStatements("<<EXEC[node]<1>(./):cmd:EXEC");
-    assert.ok(r2.items.filter((i) => i.kind === "error").length >= 1);
+    assert.ok(r1.items.filter((i) => i.kind === "error").length >= 1); // SEND has no <L>
+    const r2 = PlurnkParser.parseStatements("<<EXEC[node]<60,5>(./):cmd:EXEC");
+    assert.equal(r2.items.filter((i) => i.kind === "error").length, 0, `EXEC <timeout,poll> should parse: ${JSON.stringify(r2.items)}`);
+    const stmt = r2.items.find((i) => i.kind === "statement");
+    assert.ok(stmt?.kind === "statement" && stmt.statement.op === "EXEC" && stmt.statement.lineMarker !== null, "EXEC lineMarker should be populated");
 });
 
 // -------------------------------------------------------------------------

@@ -17,14 +17,14 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND. Othe
 | OP   | `[signal]`  | `(target)` | `<Line> / <Result>` | body             |
 |------|-------------|------------|---------------------|------------------|
 | PLAN | -           | -          | -                   | plan / reasoning |
-| FIND | filter tags | path       | results `N,M`       | pattern           |
-| READ | filter tags | path       | lines `N,M`         | pattern           |
+| FIND | filter tags | path       | results `N,M`       | pattern          |
+| READ | filter tags | path       | lines `N,M`         | pattern          |
 | EDIT | tags        | path       | lines `N,M`         | content          |
 | COPY | apply tags  | path       | lines `N,M`         | destination path |
 | MOVE | apply tags  | path       | lines `N,M`         | destination path |
-| OPEN | filter tags | path (log) | results `N,M`       | pattern           |
-| FOLD | filter tags | path (log) | results `N,M`       | pattern           |
-| EXEC | executor    | path / cwd | -                   | command or code  |
+| OPEN | filter tags | path (log) | results `N,M`       | pattern          |
+| FOLD | filter tags | path (log) | results `N,M`       | pattern          |
+| EXEC | executor    | path / cwd | timeout, poll `T,P` | command or code  |
 | KILL | signal      | path       | -                   | -                |
 | SEND | status code | recipient  | -                   | message body     |
 
@@ -34,6 +34,7 @@ EDIT is only for adding or modifying entries. Do not attempt to edit log items.
 OPEN expands (`+`) the log item body and costs tokens. FOLD hides (`-`) the log item body and saves tokens. Not all log items have a body (`*`).
 EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
 KILL deletes entries, erases log items, and kills streams.
+SEND[202] to hibernate on runs with ongoing polled streams. SEND[200] fully ends the run.
 
 ### `<Line> / <Result>`
 
@@ -98,9 +99,10 @@ YOU MUST prune irrelevant log items with FOLD or KILL to maximize signal/token a
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries, preferring source content over recall.
 
-YOU MUST terminate the turn by SENDing a message to the user with the proper status code: `<<SEND[102]:response to user here:SEND`
+YOU MUST terminate the turn by SENDing a message to the user with the proper status code.
 * 102: submit a continuing turn with status code 102: <<SEND[102]:Forking a research run, submitting operations, and optimizing log relevance.:SEND
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
+* 202: submit a hibernation turn with status code 202: <<SEND[202]:Checking on background task in 10 minutes.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
 YOU MUST SEND[102] to receive the results of operations you submitted.
