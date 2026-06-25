@@ -213,6 +213,32 @@ test("log.read entries have hydrated JSON columns", async () => {
     });
 });
 
+test("[§methods-log-read] log.read by full L/T/S coordinate resolves the single entry's full shape (#271)", async () => {
+    await withDaemon(async (_db, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "log-coord-test" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///a", content: "alpha" });
+            await rpcCall(ws, 3, "op.send", { status: 200, body: "Paris" });
+
+            // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
+            const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
+            const send = all.entries.find((e) => e.op === "SEND");
+            assert.ok(send, "the SEND entry is in the log");
+
+            // #271 — one call by L/T/S returns exactly that entry, full shape.
+            const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send!.loop_seq, turnSeq: send!.turn_seq, sequence: send!.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
+            assert.equal(r.status, 200);
+            assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
+            assert.equal(r.entries[0].id, send!.id, "the coordinate resolves the SEND entry");
+            // THE GAP: a SEND's rx is just {status} — the model's message ('Paris') lives in tx,
+            // which op.read(log:///L/T/S) (rx-only, for matcher-chaining) can't reach. By coordinate
+            // through log.read it now is, server-resolved — no client fetch-all + match.
+            assert.match(JSON.stringify(r.entries[0].tx), /Paris/, "the SEND tx body is reachable by coordinate");
+        } finally { ws.close(); }
+    });
+});
+
 test("log.read is session-scoped — doesn't see other sessions' logs", async () => {
     await withDaemon(async (_db, addr) => {
         const wsA = await connect(addr);

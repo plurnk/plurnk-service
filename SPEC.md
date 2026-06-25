@@ -944,7 +944,7 @@ registry.registerMethod("loop.run", {
 | Method        | Params                              | Result                 | Notes |
 |---------------|-------------------------------------|------------------------|-------|
 | `entry.read`  | `target: string`                    | `{ status, entry }`    | Read the full entry shape (channels + tags + metadata) at the given URI. {§methods-entry-read} |
-| `log.read`    | `loopId?: number`, …                | `{ entries: LogEntry[] }` | Read recent log entries from the attached session, optionally filtered by loop. {§methods-log-read} |
+| `log.read`    | `loopId?`, `turnId?`, `loopSeq?`, `turnSeq?`, `sequence?`, `sinceId?`, `limit?` | `{ entries: LogEntry[] }` | Read recent log entries from the attached session. A full display coordinate (`loopSeq`+`turnSeq`+`sequence`) resolves the single entry behind an `L/T/S` waterfall line — full shape (tx + rx), server-side, no client fetch-all+match (#271). {§methods-log-read} |
 
 **Log coordinate.** Every `LogEntry` — from `log.read` and the `log/entry` notification alike — carries `loop_seq`/`turn_seq`, the loop+turn ordinals, beside the `loop_id`/`turn_id` DB keys, so a client renders the logical coordinate (e.g. `01/02/03`) without resolving ids. {§methods-log-coordinate}
 

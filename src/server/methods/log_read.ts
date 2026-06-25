@@ -12,6 +12,11 @@ interface Params {
     turnId?: number;
     sinceId?: number;
     limit?: number;
+    // #271 — target by DISPLAY coordinate (loop_seq/turn_seq/op-sequence) instead of
+    // DB ids; a full triple resolves the single entry behind a `L/T/S` waterfall line.
+    loopSeq?: number;
+    turnSeq?: number;
+    sequence?: number;
 }
 
 export default class LogReadMethod {
@@ -25,6 +30,9 @@ export default class LogReadMethod {
             loop_id: typeof filters.loopId === "number" ? filters.loopId : null,
             turn_id: typeof filters.turnId === "number" ? filters.turnId : null,
             since_id: typeof filters.sinceId === "number" ? filters.sinceId : null,
+            loop_seq: typeof filters.loopSeq === "number" ? filters.loopSeq : null,
+            turn_seq: typeof filters.turnSeq === "number" ? filters.turnSeq : null,
+            sequence: typeof filters.sequence === "number" ? filters.sequence : null,
             limit,
         });
         const entries: LogEntryWire[] = [];
@@ -50,12 +58,15 @@ export default class LogReadMethod {
                 const entries = await LogReadMethod.#fetchLogEntries(ctx.db, runId, p);
                 return { status: 200, entries };
             },
-            description: "Read recent log entries from the attached session, optionally filtered.",
+            description: "Read recent log entries from the attached session, optionally filtered. Pass the full display coordinate (loopSeq+turnSeq+sequence) to resolve the single entry behind an `L/T/S` waterfall line — the full shape (tx + rx), no client-side fetch-all+match (#271).",
             params: {
                 runId: "number? — read another run in this session (the model run for a conversation client); defaults to the connection's own run",
                 loopId: "number? — filter to one loop",
                 turnId: "number? — filter to one turn (within whatever loop)",
                 sinceId: "number? — return entries with id > sinceId (for incremental fetch)",
+                loopSeq: "number? — filter by loop display ordinal (the L in L/T/S)",
+                turnSeq: "number? — filter by turn display ordinal (the T in L/T/S)",
+                sequence: "number? — filter by op display ordinal (the S in L/T/S); loopSeq+turnSeq+sequence together target one entry",
                 limit: "number? — max entries to return (default 100, max 1000)",
             },
             requiresInit: true,
