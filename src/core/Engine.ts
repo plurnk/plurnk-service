@@ -797,7 +797,7 @@ export default class Engine {
         // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
         if (seq === 1) {
             // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
-            const { manifestItems: sessionMI, autoReadAgents } = await SessionSettings.read(this.#db, sessionId);
+            const { manifestItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
             const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
             if (manifestItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
                 // engine_scheme_catalog_summary is the scheme source: session-scoped, ordered,
@@ -837,32 +837,6 @@ export default class Engine {
                     };
                     await this.dispatch({
                         statement: catalogFind, sessionId, runId, loopId, turnId,
-                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                    });
-                    nextActionIndex++;
-                }
-            }
-            // #268 — auto-READ the configured AGENTS file(s) into THIS first model turn. Env-driven
-            // (PLURNK_AGENTS_AUTO / PLURNK_AGENTS_FILES), overridable per-session by autoReadAgents; the
-            // matching files are auto-PICKed into membership at session setup (envelope). The model sees
-            // only the READ — a normal file:/// member READ, read-write so it edits the scratchpad back.
-            const { auto: agentsAuto, files: agentsFiles } = SessionSettings.resolveAgentsAutoload(autoReadAgents);
-            if (agentsAuto && runFirstLoop) { // #269 — run-once, the run's first loop
-                for (const file of agentsFiles) {
-                    const pathname = file.startsWith("/") ? file : `/${file}`;
-                    const member = await (this.#db.crud_get_member_sig as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname });
-                    if (member === undefined) continue; // absent / non-git session → not a member → skip
-                    const agentsRead: ReadStatement = {
-                        op: "READ", suffix: "", signal: null, lineMarker: null,
-                        target: {
-                            kind: "url", raw: `file://${pathname}`, scheme: "file",
-                            username: null, password: null, hostname: null, port: null,
-                            pathname, params: {}, fragment: null,
-                        },
-                        body: null, position: { line: 1, column: 1 },
-                    };
-                    await this.dispatch({
-                        statement: agentsRead, sessionId, runId, loopId, turnId,
                         sequence: nextActionIndex, origin: "plurnk", onDispatch,
                     });
                     nextActionIndex++;

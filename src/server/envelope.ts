@@ -8,7 +8,6 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
-import SessionSettings from "../core/session-settings.ts";
 
 export interface SessionRow {
     id: number;
@@ -71,14 +70,6 @@ export default class Envelope {
         const projectRoot = opts.projectRoot ?? null;
         const session = await (db.envelope_insert_session as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
         if (session === undefined) throw new Error("createClientEnvelope: session insert returned no row");
-        // #268 — auto-PICK the configured AGENTS file(s) into membership (env PLURNK_AGENTS_*, overridable
-        // by the session's autoReadAgents) BEFORE resolving membership, so they're admitted from turn 0.
-        const { auto: agentsAuto, files: agentsFiles } = SessionSettings.resolveAgentsAutoload((await SessionSettings.read(db, session.id)).autoReadAgents);
-        if (agentsAuto && session.project_root !== null) { // headless has no workspace to pick into
-            for (const f of agentsFiles) {
-                await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: session.id, effect: "pick", glob: f }); // "pick" is the admit verb (overlay), not "add"
-            }
-        }
         // SPEC §membership D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
