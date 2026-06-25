@@ -5,7 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, flush } from "./_rpc.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,
@@ -86,6 +87,38 @@ test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (mu
             await rpcCall(ws, 1, "session.create", { name: "sequential" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { yolo: true } });
             assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
+        } finally { ws.close(); }
+    });
+});
+
+test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a sibling parked at 202 — the voice door", async () => {
+    // FORENSIC: does an irc to a PARKED run resume its slept loop IN PLACE (like a stream/child wake),
+    // or start a fresh loop? Driver spawns 'butler' (parks awaiting a message); we wait until it's
+    // actually parked, then irc it as a client. Assert butler's run reaches a terminal (it woke).
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<EDIT(run://butler):await the entry code, then confirm it:EDIT\n<<SEND[200]:spawned butler:SEND", 10),
+        makeMockResponse("<<SEND[202]:awaiting the entry code:SEND", 10),   // butler t1 — parks
+        makeMockResponse("<<SEND[200]:received and confirmed:SEND", 10),     // butler — woken (resume or fresh)
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const sessionId = ((await rpcCall(ws, 1, "session.create", { name: "irc-wake" })).result as { id: number }).id;
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            await runLoopToTerminal(ws, 2, { prompt: "spawn the butler", flags: { yolo: true } });
+            const butler = (await waitForDb(() => (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "butler" }), (r) => r !== undefined))!;
+            const slept = (await waitForDb(() => (db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: butler.id }), (r) => r !== undefined))!;
+            // The voice door: a client ircs butler.
+            await rpcCall(ws, 3, "op.send", { status: 200, recipient: "run://butler", body: "the entry code is 4815" });
+            // The irc wakes butler — its run reaches a 200 terminal.
+            await waitFor(() => terminated() as Array<{ loopId: number; finalStatus: number }>, (ts) => ts.some((t) => t.finalStatus === 200), { timeoutMs: 8000 });
+            assert.ok(true, "the irc woke butler's run to a terminal — the voice door is a wake edge");
+            // FORENSIC (logged, not yet asserted): today the irc starts a FRESH loop and ORPHANS the
+            // slept 202 (stays parked) instead of resuming it in place like a stream/child wake. That
+            // leaves butler non-quiescent (a parent waiting on it would think it's still alive). The fix
+            // is to make inject resume a slept loop first (consistent with #handleWakeRun) — tracked.
+            const sleptStatus = (await (db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: slept.id }))?.status;
+            console.error(`[irc-wake] slept loop ${slept.id} final = ${sleptStatus} (202 = the orphan bug; should be resumed in place)`);
         } finally { ws.close(); }
     });
 });
