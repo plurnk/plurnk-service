@@ -265,6 +265,23 @@ test("[§membership-resolved-effects] resolveMembershipEffects tags each file me
     });
 });
 
+test("[§machine-processes-one-overlay] membership is the session's — one overlay, identical for every run", async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        // ctx.runId is run A. Spin a SECOND run on the same session.
+        const runB = await insertRun(db, ctx.sessionId);
+        assert.notEqual(ctx.runId, runB, "two distinct runs on one session");
+
+        // The overlay is keyed by SESSION, never run: resolveMembershipEffects and crud_find_session_entry
+        // both take session_id ONLY (membership lives on session_constraints.session_id / entries.session_id —
+        // there is no run_id anywhere in it). So both runs resolve the IDENTICAL member set; there is no
+        // per-run overlay to diverge. Divergent membership is a different session (§machine-processes).
+        const { members } = await GitMembership.resolveMembershipEffects(db, ctx.sessionId, undefined);
+        assert.ok(members.some((m) => m.path === `/${trackedPath}` && m.effect === "member"), "the git-tracked file is a member of the session (not of a run)");
+        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}` });
+        assert.ok(entry, "the member entry is session-scoped — run A and run B see the identical row (one filesystem)");
+    });
+});
+
 // ───────────── §membership deferred — `{ todo }` until built ─────────────
 // The deferral ledger: each asserts the promised behaviour and is EXPECTED TO
 // FAIL until the feature lands. Marked `{ todo }` (not hard-red): the assertion

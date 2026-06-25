@@ -51,8 +51,9 @@ test("[§machine-processes-one-filesystem] the entries are the session's — a s
     } finally { db.close(); }
 });
 
-test("[§machine-processes-one-overlay] membership is the session's — one overlay, identical for every run",
-    { todo: "membership is session-level; the cross-run-identical proof is a focused test (two runs, one resolved member set) — deferred pending it" }, () => {});
+// [§machine-processes-one-overlay] is a REAL test now in contract-workspace.test.ts (two runs on one
+// session resolve the IDENTICAL git-member overlay — membership is session-keyed, no run_id). It lives
+// there for the git-fixture deps (withGitWorkspace); the stub here is retired.
 
 test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
     const db = await openMigrated();
