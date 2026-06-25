@@ -502,6 +502,21 @@ export default class Engine {
         return slice.join("\n");
     }
 
+    // A @plurnk/gbnf divergence position (providers#24) is a CODE-POINT offset into the
+    // model's content; the snippet/telemetry surface speaks 1-based line + 0-based column.
+    // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
+    // clamping out-of-range offsets to the content's end.
+    #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {
+        const cps = Array.from(content);
+        const clamped = Math.max(0, Math.min(offset, cps.length));
+        let line = 1;
+        let column = 0;
+        for (let i = 0; i < clamped; i++) {
+            if (cps[i] === "\n") { line++; column = 0; } else { column++; }
+        }
+        return { line, column };
+    }
+
     async runLoop({
         provider, messages, requirements = "", sessionId, runId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
@@ -932,6 +947,9 @@ export default class Engine {
             // accepted: fall through as an empty no-op turn so the strike rail retries. Every other
             // kind (rate_limit, network_failure, unauthorized, …) is terminal — telemetry'd, then
             // propagated to end the loop (rather than only the opaque loop.run rejection).
+            // NOTE (providers 0.19.0 / #275): only the CONSTRAINED path still throws grammar_unenforced.
+            // In GBNF-filter mode the provider returns the bytes with a grammar_unenforced telemetry
+            // event instead — recovered on the success path below (response.telemetry), no empty turn.
             if (err instanceof ProviderError) {
                 this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message });
                 if (err.kind !== "grammar_unenforced") throw err;
@@ -970,6 +988,26 @@ export default class Engine {
                 position: { type: "content-offset", line, column },
                 snippet: this.#extractSnippet(packetAssistant.content, line, 2),
                 parserSource: source,
+            });
+        }
+        // providers#24 / #275: non-fatal provider telemetry on a SUCCESSFUL turn. In GBNF-filter
+        // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
+        // (here, packetAssistant.content) and attaches the conflict as a telemetry event carrying
+        // the divergence code-point position. Mirror the parse_error path: forward each event, and
+        // when it locates a position, render the model its own emission around that line so it can
+        // self-correct — the exact recovery affordance parse errors already get, instead of the
+        // empty-turn cascade the old throw produced.
+        for (const event of response.telemetry ?? []) {
+            const located = typeof event.position === "number"
+                ? this.#offsetToLineColumn(packetAssistant.content, event.position)
+                : null;
+            this.#pushTelemetry(sessionId, loopId, {
+                source: event.source,
+                kind: event.kind,
+                message: event.message ?? "",
+                ...(located !== null
+                    ? { position: { type: "content-offset", line: located.line, column: located.column }, snippet: this.#extractSnippet(packetAssistant.content, located.line, 2) }
+                    : {}),
             });
         }
         const opsCount = packetAssistant.ops.length;

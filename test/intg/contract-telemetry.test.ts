@@ -183,6 +183,48 @@ test("#256 — grammar_unenforced provider error surfaces as telemetry on the ne
     } finally { await db.close(); }
 });
 
+test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a telemetry event with the divergence snippet drains onto the next packet", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        // GBNF-filter mode (providers 0.19.0): generate() returns the model's UNCONSTRAINED bytes
+        // and attaches a non-fatal grammar_unenforced TelemetryEvent carrying the code-point
+        // divergence position — it does NOT throw. The engine must persist the bytes (no empty
+        // turn, the old cascade root cause) AND drain the event with a content-offset snippet so
+        // the model sees its own emission and self-corrects.
+        const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
+        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] }); // turn 2 drains
+        const realGenerate = provider.generate.bind(provider);
+        let did = false;
+        provider.generate = async (req) => {
+            if (did) return realGenerate(req);
+            did = true;
+            return {
+                assistant: { content: FREE, reasoning: "thought about it", usage: { prompt: 5, completion: 10, reasoning: 2, cached: 0, total: 17 }, finishReason: "stop", model: "mock" },
+                assistantRaw: { id: "x", filtered: true },
+                telemetry: [{ source: "provider:mock", kind: "grammar_unenforced", message: "grammar not enforced: output rejected by the transported grammar at code point 26", position: 26 }],
+            };
+        };
+
+        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        // #24 root-cause fix: the model's bytes SURVIVE — not nulled into an empty turn.
+        const p1 = await getPacket(db, t1.turnId) as { assistant?: { content?: string }; assistantRaw?: unknown };
+        assert.equal(p1.assistant?.content, FREE, "the unconstrained emission is persisted, not discarded");
+        assert.notEqual(p1.assistantRaw, null, "assistantRaw populated — no empty-turn write");
+
+        // The conflict drains onto turn 2's packet exactly once, with the provider's own source,
+        // a real content-offset position, and a snippet of the model's bytes around the divergence.
+        const p2 = await getPacket(db, t2.turnId);
+        const ge = p2.telemetryErrors.filter((e) => e.kind === "grammar_unenforced");
+        assert.equal(ge.length, 1, "grammar_unenforced telemetry drained exactly once");
+        assert.equal(ge[0].source, "provider:mock", "attributed to the minting provider");
+        assert.deepEqual(ge[0].position, { type: "content-offset", line: 2, column: 4 }, "code-point offset → content-offset line/column");
+        assert.equal(ge[0].snippet, `1:\t<<PLAN:reasoning:PLAN\n2:\t<<SEND[103]:noted:SEND`, "the model's own bytes around the divergence line");
+        assert.match(String(ge[0].message), /not enforced/i, "carries the provider's verdict");
+    } finally { await db.close(); }
+});
+
 test("provider error: a terminal kind (network_failure) telemetries live, then ends the loop", async () => {
     const db = await openMigrated();
     try {
