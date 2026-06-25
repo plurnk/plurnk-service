@@ -120,8 +120,9 @@ interface PdfDocument {
     getOutline(): Promise<unknown>;
     getMetadata(): Promise<{ info?: unknown }>;
     getPage(i: number): Promise<{
-        getTextContent(): Promise<{ items: unknown[] }>;
+        getTextContent(options?: { includeMarkedContent?: boolean }): Promise<{ items: unknown[] }>;
         getAnnotations?(): Promise<unknown[]>;
+        getStructTree?(): Promise<StructNode | null>;
         cleanup(): void;
     }>;
     // Security-signal sources (mature pdfjs APIs). Optional in our local type so
@@ -237,7 +238,30 @@ async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
     return withDocument(bytes, (doc) => collectSymbols(doc));
 }
 
-async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMetadata: () => Promise<{ info?: unknown }> }): Promise<MimeSymbol[]> {
+// A node in pdfjs's logical structure tree (tagged PDFs). Leaf content nodes
+// reference marked content by id; that id correlates with the marked-content
+// items getTextContent({ includeMarkedContent: true }) emits.
+interface StructContent { type: "content"; id: string }
+interface StructNode { role?: string; children?: Array<StructNode | StructContent> }
+
+function isContent(x: StructNode | StructContent): x is StructContent {
+    return (x as StructContent).type === "content";
+}
+
+// Heading role → level. H1..H6 carry their level; bare H / Title are level 1.
+function headingLevel(role: string | undefined): number | null {
+    if (role === "H" || role === "Title") return 1;
+    const m = role ? /^H([1-6])$/.exec(role) : null;
+    return m ? Number(m[1]) : null;
+}
+
+// Symbols cascade: prefer the logical structure tree (real H1..H6 hierarchy for
+// tagged PDFs) → outline bookmarks → metadata Title. Each is strictly better
+// signal than the next; the first non-empty source wins.
+async function collectSymbols(doc: PdfDocument): Promise<MimeSymbol[]> {
+    const tagged = await collectStructHeadings(doc).catch(() => [] as MimeSymbol[]);
+    if (tagged.length > 0) return tagged;
+
     const symbols: MimeSymbol[] = [];
     const outline = (await doc.getOutline()) as OutlineItem[] | null;
     if (outline !== null && outline.length > 0) {
@@ -258,6 +282,69 @@ async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMeta
         }
     }
     return symbols;
+}
+
+// Logical-structure headings from a tagged PDF. Per page: walk getStructTree()
+// for heading roles, resolve each heading's text by correlating its leaf
+// content ids with the marked-content text from getTextContent. line = page
+// number (PDF's unit of navigation). Page-bounded by the same cap as text.
+async function collectStructHeadings(doc: PdfDocument): Promise<MimeSymbol[]> {
+    const out: MimeSymbol[] = [];
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    for (let p = 1; p <= limit; p += 1) {
+        const page = await doc.getPage(p);
+        try {
+            if (typeof page.getStructTree !== "function") continue;
+            const tree = await page.getStructTree().catch(() => null);
+            if (!tree) continue;
+            const idText = await markedContentText(page);
+            walkStruct(tree, p, idText, out);
+        } finally {
+            page.cleanup();
+        }
+    }
+    return out;
+}
+
+// id → concatenated text, from marked-content-aware text items. str items
+// attribute to the innermost open marked-content id (the heading's own id).
+async function markedContentText(page: {
+    getTextContent(options?: { includeMarkedContent?: boolean }): Promise<{ items: unknown[] }>;
+}): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const tc = await page.getTextContent({ includeMarkedContent: true }).catch(() => ({ items: [] as unknown[] }));
+    const stack: string[] = [];
+    for (const raw of tc.items) {
+        const it = raw as { type?: string; id?: string; str?: string };
+        if (it.type === "beginMarkedContent" || it.type === "beginMarkedContentProps") {
+            stack.push(typeof it.id === "string" ? it.id : "");
+        } else if (it.type === "endMarkedContent") {
+            stack.pop();
+        } else if (typeof it.str === "string" && stack.length > 0) {
+            const id = stack[stack.length - 1];
+            if (id) map.set(id, (map.get(id) ?? "") + it.str);
+        }
+    }
+    return map;
+}
+
+function walkStruct(node: StructNode, page: number, idText: Map<string, string>, out: MimeSymbol[]): void {
+    const level = headingLevel(node.role);
+    if (level !== null) {
+        const text = contentText(node, idText).trim();
+        if (text.length > 0) out.push({ name: text, kind: "heading", level, line: page, endLine: page });
+    }
+    for (const child of node.children ?? []) {
+        if (!isContent(child)) walkStruct(child, page, idText, out);
+    }
+}
+
+function contentText(node: StructNode, idText: Map<string, string>): string {
+    let s = "";
+    for (const child of node.children ?? []) {
+        s += isContent(child) ? (idText.get(child.id) ?? "") : contentText(child, idText);
+    }
+    return s;
 }
 
 async function extractAllText(bytes: Uint8Array): Promise<string> {
