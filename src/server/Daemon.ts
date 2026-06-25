@@ -431,6 +431,24 @@ export default class Daemon {
             }
         }
 
+        // #55 — a run PARKED at 202 RESUMES that slept loop in place: the voice door (irc / loop.inject)
+        // is a wake edge like a stream/child conclusion, not a fresh loop that orphans the parked one
+        // (which would leave the run non-quiescent forever). engine.inject writes the message as the
+        // slept loop's next-turn prompt (the directed message — distinct from the env door, which
+        // resumes promptless); then re-queue + drain it. §run-lifecycle-wake-liveness.
+        if (!this.#activeDrains.has(runId)) {
+            const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
+            if (slept !== undefined) {
+                const injected = await this.#engine.inject(runId, prompt);
+                await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+                const started = await this.#ensureDrain({
+                    sessionId, runId, provider: args.provider, systemPrompt: args.systemPrompt,
+                    maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+                });
+                return { action: "injected_next_turn", loopId: slept.id, ...(injected?.turnSeq !== undefined ? { turnSeq: injected.turnSeq } : {}), ...(started ?? {}) };
+            }
+        }
+
         // Enqueue a fresh loop. Persist flags on the row.
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ run_id: runId });
         if (seqRow === undefined) throw new Error("inject: next-sequence query returned no row");

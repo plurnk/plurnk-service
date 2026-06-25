@@ -23,12 +23,13 @@ WHERE id = (
 RETURNING id, sequence, prompt, flags;
 
 -- PREP: drain_current_loop_for_run
--- The currently-executing loop for a run (status=102). At most one per run
--- under drain semantics. Engine.inject uses this to write the prompt entry
--- for the right loop's next turn.
+-- The run's current NON-TERMINAL loop — active (102) or parked (202). At most one per run
+-- under drain semantics. Engine.inject uses it to write the prompt entry for the right loop's
+-- next turn; including 202 lets an irc target a PARKED loop's resume turn (#55) instead of
+-- orphaning it with a fresh loop. (102 preferred if both somehow exist.)
 SELECT id, sequence FROM loops
-WHERE run_id = $run_id AND status = 102
-ORDER BY sequence ASC
+WHERE run_id = $run_id AND status IN (102, 202)
+ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
 -- PREP: drain_next_turn_seq_for_loop

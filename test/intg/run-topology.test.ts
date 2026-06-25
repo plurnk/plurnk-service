@@ -110,15 +110,14 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a sibling p
             const slept = (await waitForDb(() => (db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: butler.id }), (r) => r !== undefined))!;
             // The voice door: a client ircs butler.
             await rpcCall(ws, 3, "op.send", { status: 200, recipient: "run://butler", body: "the entry code is 4815" });
-            // The irc wakes butler — its run reaches a 200 terminal.
-            await waitFor(() => terminated() as Array<{ loopId: number; finalStatus: number }>, (ts) => ts.some((t) => t.finalStatus === 200), { timeoutMs: 8000 });
-            assert.ok(true, "the irc woke butler's run to a terminal — the voice door is a wake edge");
-            // FORENSIC (logged, not yet asserted): today the irc starts a FRESH loop and ORPHANS the
-            // slept 202 (stays parked) instead of resuming it in place like a stream/child wake. That
-            // leaves butler non-quiescent (a parent waiting on it would think it's still alive). The fix
-            // is to make inject resume a slept loop first (consistent with #handleWakeRun) — tracked.
-            const sleptStatus = (await (db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: slept.id }))?.status;
-            console.error(`[irc-wake] slept loop ${slept.id} final = ${sleptStatus} (202 = the orphan bug; should be resumed in place)`);
+            // #55 — RESUME IN PLACE, not a fresh loop: the SLEPT loop ITSELF carries the wake to its
+            // terminal (202 → 200). A fresh-loop orphan would leave slept stuck at 202 forever.
+            const sleptStatus = (await waitForDb(
+                () => (db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: slept.id }),
+                (s) => s?.status === 200,
+                { timeoutMs: 8000 },
+            ))?.status;
+            assert.equal(sleptStatus, 200, "the irc resumed butler's slept loop IN PLACE (202→200), not a fresh loop orphaning it");
         } finally { ws.close(); }
     });
 });
