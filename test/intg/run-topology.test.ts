@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, flush } from "./_rpc.ts";
 
 test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,
@@ -31,6 +31,29 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
             // Both runs concluded 200 — the worker's terminal and the parent's resumed terminal.
             const concluded = (terminated() as Array<{ finalStatus: number }>).filter((t) => t.finalStatus === 200);
             assert.ok(concluded.length >= 2, `parent + child both conclude 200; saw ${JSON.stringify((terminated() as Array<{ finalStatus: number }>).map((t) => t.finalStatus))}`);
+        } finally { ws.close(); }
+    });
+});
+
+test("[§run-lifecycle-quiesced] a 202 with an idle subtree fires loop/quiesced — reawakable, not a terminal", async () => {
+    const mock = new Mock({ contextSize: 8192, responses: [
+        // Park at 202 with nothing running under it — an idle subtree.
+        makeMockResponse("<<SEND[202]:nothing running; parking idle:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "quiesce" });
+            const quiesced = subscribeNotifications(ws, "loop/quiesced");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            // loop.run returns immediately (100); the turn parks at 202 with no stream/child.
+            await rpcCall(ws, 2, "loop.run", { prompt: "park with nothing to do", flags: { yolo: true } });
+            const q = await waitFor(() => quiesced() as Array<{ runId: number; status: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
+            assert.equal(q.length, 1, "one quiesced signal for the idle-parked 202");
+            assert.equal(q[0].status, 202, "quiesced carries 202 (parked, reawakable) — never a terminal code");
+            await flush();
+            // The honest distinction: idle ≠ concluded. The loop did NOT terminate — it's reawakable.
+            assert.equal((terminated() as unknown[]).length, 0, "a quiesced 202 is NOT a terminal — no loop/terminated");
         } finally { ws.close(); }
     });
 });

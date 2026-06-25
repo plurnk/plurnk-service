@@ -324,6 +324,18 @@ export default class Daemon {
                 usage: "{promptTokens, completionTokens, costPico, contextTokens, meta} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens (#263); meta is the latest turn's OPAQUE provider→client metadata blob (e.g. balancePico), passed through unenforced — the field contract is the provider↔client's, not the service's (#252)",
             },
         });
+        // §run-lifecycle-quiesced — a SOFT completion signal, NOT a terminal. A loop parked at SEND[202]
+        // whose subtree is now idle (no open stream, no non-terminal child). The CLI's honest yes/no
+        // ("nothing is running under this run right now"), but the loop stays at 202 and is REAWAKABLE —
+        // a later irc / loop.run resumes it (then it re-quiesces and re-fires). Never reuses a terminal code.
+        this.#registry.registerNotification("loop/quiesced", {
+            description: "A loop parked at SEND[202] reached subtree-quiescence (no open stream, no non-terminal child) — idle/complete-for-now but REAWAKABLE, distinct from loop/terminated. Scoped to the session.",
+            params: {
+                loopId: "number",
+                runId: "number",
+                status: "number — always 202 (parked, reawakable); NOT a terminal",
+            },
+        });
         // §notifications-stream-event-on-channel-change
         this.#registry.registerNotification("stream/event", {
             description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
@@ -542,6 +554,7 @@ export default class Daemon {
                         // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
                         void this.#schedulePollWake(sessionId, runId, provider, systemPrompt);
+                        void this.#maybeSignalQuiesced(sessionId, runId, loopRow.id);
                         continue;
                     }
                     const usage = await this.#engine.loopUsage(loopRow.id);
@@ -874,6 +887,18 @@ export default class Daemon {
         started?.drainPromise?.catch((err: unknown) => {
             console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));
         });
+    }
+
+    /** §run-lifecycle-quiesced — a loop just parked at 202. If its subtree is idle (no open stream, no
+     *  non-terminal child) it has nothing left running under it: emit the soft `loop/quiesced` signal —
+     *  the client's honest "idle/done-for-now". The loop STAYS parked (reawakable); this is not a
+     *  terminal. A subtree with a live thing emits nothing — its conclusion is the wake edge. */
+    async #maybeSignalQuiesced(sessionId: number, runId: number, loopId: number): Promise<void> {
+        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        if (openSubs.length > 0) return; // a stream still runs — not idle
+        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        if (liveChild !== undefined) return; // a child still runs — not idle
+        this.#broadcast({ sessionId }, null, "loop/quiesced", { loopId, runId, status: 202 });
     }
 
     /** A run's drain exited. If the run truly CONCLUDED — no parked 202 loop, no open stream — it has
