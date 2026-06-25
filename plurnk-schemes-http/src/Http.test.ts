@@ -119,7 +119,16 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header"]);
     // Self-doc for the model's packet listing (deep docs ride plurnk://schemes/http.md).
     assert.equal(Http.manifest.glyph, "🌐");
-    assert.match(Http.manifest.example ?? "", /^READ\(https?:\/\//);
+    // example must be a complete, copy-pasteable op (http#2): the service renders
+    // it verbatim into the scheme directory, so a `<<`-less / `::OP`-less form
+    // mis-trains small models on op shape. Guard the well-formed `<<OP(…)::OP`
+    // heredoc with a matching opener/closer op — catches the regression class
+    // without taking a direct grammar dep (siblings pin only @plurnk/plurnk-schemes).
+    const example = Http.manifest.example ?? "";
+    const op = example.match(/^<<([A-Z]+)\(.+\)::([A-Z]+)$/);
+    assert.ok(op, `example must be a well-formed <<OP(…)::OP heredoc, got: ${example}`);
+    assert.equal(op[1], op[2], "example opener and closer op must match");
+    assert.equal(op[1], "READ");
 });
 
 test("manifest: documentation is loaded verbatim from docs/http.md", async () => {
