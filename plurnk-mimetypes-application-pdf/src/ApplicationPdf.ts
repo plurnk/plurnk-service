@@ -41,18 +41,85 @@ import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 // the framework's orchestrator reads the file fresh per call, which avoids
 // the issue.
 //
-// Salvage pattern from rummy.web/WebFetcher.js: pdfjs-dist legacy build
-// (Node-compatible), isEvalSupported:false (no PDF JS execution),
-// verbosity:0 (silences "standardFontDataUrl not provided" noise).
+// All pdfjs access goes through withDocument() with the hardened, render-free
+// loadParams() (no script execution, no fonts, no offscreen canvas, no external
+// fetch) and DoS caps — see those definitions below. pdfjs-dist legacy build
+// (Node-compatible).
 
 // "%PDF-" — every PDF starts with this 5-byte magic, optionally preceded by
 // a UTF-8 BOM that some tools insert.
 const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 
+// Resource caps (DoS resistance — decompression bombs, pathological page
+// counts). A PDF over the byte cap never reaches the parser; text extraction
+// is bounded to the page cap (the document still parses, we just stop reading).
+// Both degrade through the handler's existing per-channel error policy. Read at
+// call time and overridable via env for operators on tighter/looser budgets
+// (mirrors the ecosystem's PLURNK_* knob convention).
+const DEFAULT_MAX_PDF_BYTES = 100 * 1024 * 1024;
+const DEFAULT_MAX_TEXT_PAGES = 5000;
+
+function envCap(name: string, fallback: number): number {
+    const raw = Number(process.env[name]);
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
 interface OutlineItem {
     title: string;
     items?: OutlineItem[];
+}
+
+// Hardened, render-free getDocument parameters. This handler extracts text and
+// structure only — it never rasterizes a page — so the native @napi-rs/canvas
+// path that pdfjs lazy-`require`s (only inside page.render()) is never reached,
+// and a missing/broken canvas binary cannot crash detect() or the read path
+// (plurnk-mimetypes#38). The flags below make that posture explicit and shut
+// every active-content / external-resource door:
+//   isEvalSupported:false            — no embedded-PDF JavaScript execution
+//   disableFontFace / useSystemFonts — no font rendering, no system font access
+//   isOffscreenCanvasSupported:false — never take an (offscreen) canvas path
+//   disableAutoFetch / disableStream — data is fully in-memory; no external fetch
+function loadParams(bytes: Uint8Array): Record<string, unknown> {
+    return {
+        data: bytes,
+        isEvalSupported: false,
+        disableFontFace: true,
+        useSystemFonts: false,
+        isOffscreenCanvasSupported: false,
+        disableAutoFetch: true,
+        disableStream: true,
+        verbosity: 0,
+    };
+}
+
+// Single hardened entry: cap → harden → parse → guaranteed teardown. Every
+// pdfjs access in this handler goes through here (one security surface, not
+// three). Over-cap input throws before the parser is touched; callers route
+// that through their per-channel degrade policy.
+async function withDocument<T>(
+    bytes: Uint8Array,
+    use: (doc: PdfDocument) => Promise<T>,
+): Promise<T> {
+    const maxBytes = envCap("PLURNK_PDF_MAX_BYTES", DEFAULT_MAX_PDF_BYTES);
+    if (bytes.byteLength > maxBytes) {
+        throw new RangeError(`PDF exceeds ${maxBytes}-byte cap (${bytes.byteLength})`);
+    }
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const loadingTask = pdfjs.getDocument(loadParams(bytes) as Parameters<typeof pdfjs.getDocument>[0]);
+    const doc = (await loadingTask.promise) as unknown as PdfDocument;
+    try {
+        return await use(doc);
+    } finally {
+        await loadingTask.destroy();
+    }
+}
+
+interface PdfDocument {
+    numPages: number;
+    getOutline(): Promise<unknown>;
+    getMetadata(): Promise<{ info?: unknown }>;
+    getPage(i: number): Promise<{ getTextContent(): Promise<{ items: unknown[] }>; cleanup(): void }>;
 }
 
 export default class ApplicationPdf extends BaseHandler {
@@ -160,19 +227,7 @@ function toBytes(content: string | Uint8Array): Uint8Array {
 }
 
 async function extractStructure(bytes: Uint8Array): Promise<MimeSymbol[]> {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const params = {
-        data: bytes,
-        isEvalSupported: false,
-        verbosity: 0,
-    } as unknown as Parameters<typeof pdfjs.getDocument>[0];
-    const loadingTask = pdfjs.getDocument(params);
-    const doc = await loadingTask.promise;
-    try {
-        return await collectSymbols(doc);
-    } finally {
-        await loadingTask.destroy();
-    }
+    return withDocument(bytes, (doc) => collectSymbols(doc));
 }
 
 async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMetadata: () => Promise<{ info?: unknown }> }): Promise<MimeSymbol[]> {
@@ -199,30 +254,15 @@ async function collectSymbols(doc: { getOutline: () => Promise<unknown>; getMeta
 }
 
 async function extractAllText(bytes: Uint8Array): Promise<string> {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const params = {
-        data: bytes,
-        isEvalSupported: false,
-        verbosity: 0,
-    } as unknown as Parameters<typeof pdfjs.getDocument>[0];
-    const loadingTask = pdfjs.getDocument(params);
-    const doc = await loadingTask.promise;
-    try {
-        return await readAllPagesText(doc);
-    } finally {
-        await loadingTask.destroy();
-    }
+    return withDocument(bytes, (doc) => readAllPagesText(doc));
 }
 
-async function readAllPagesText(doc: {
-    numPages: number;
-    getPage: (i: number) => Promise<{
-        getTextContent: () => Promise<{ items: unknown[] }>;
-        cleanup: () => void;
-    }>;
-}): Promise<string> {
+async function readAllPagesText(doc: PdfDocument): Promise<string> {
     const pages: string[] = [];
-    for (let i = 1; i <= doc.numPages; i += 1) {
+    // Bound the read — a multi-million-page PDF can't pin the event loop here.
+    // The cap is well past any real document.
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
         const pageText = tc.items
