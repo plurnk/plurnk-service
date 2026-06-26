@@ -1,4 +1,4 @@
-import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-dotenv (.env) handler — Tier 4, no parser dep.
@@ -43,6 +43,19 @@ export default class Dotenv extends BaseHandler {
             return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
         }
         return super.query(content, dialect, pattern, flags);
+    }
+
+    // deep-xml carries the SAME source lines as jsonpath (#41): stamp pk:line
+    // from the same parseDotenv positions during projection.
+    override deepXml(content: HandlerContent): Promise<string> {
+        const byPointer = new Map<string, number>();
+        for (const v of parseDotenv(toText(content))) byPointer.set(`/${ptr(v.key)}`, v.line);
+        const span = (pointer: string): { line: number; endLine: number } | undefined => {
+            if (pointer === "") return { line: 1, endLine: 1 };
+            const ln = byPointer.get(pointer);
+            return ln === undefined ? undefined : { line: ln, endLine: ln };
+        };
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 }
 
