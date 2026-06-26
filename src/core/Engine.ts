@@ -995,16 +995,10 @@ export default class Engine {
         // the snippet, the model sees "invalid xpath at 1:0" but can't
         // connect that to what IT wrote — and tends to regenerate the
         // same broken emission. See edit-todo demo for the canonical case.
-        for (const { message, line, column, source } of parseErrors ?? []) {
-            this.#pushTelemetry(sessionId, loopId, {
-                source: "grammar",
-                kind: "parse_error",
-                message,
-                position: { type: "content-offset", line, column },
-                snippet: this.#extractSnippet(packetAssistant.content, line, 2),
-                parserSource: source,
-            });
-        }
+        // Parse errors are LOG ITEMS now (§telemetry — one budget surface): each failed-to-parse
+        // emission records an actionless `error` row below, after the turn's dispatched ops are
+        // sequenced (see the parse-error log write past the dispatch loop). The errors section
+        // derives a pointer to it from log≥400, uniform with action_failure.
         // providers#24 / #275: non-fatal provider telemetry on a SUCCESSFUL turn. In GBNF-filter
         // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
         // (here, packetAssistant.content) and attaches the conflict as a telemetry event carrying
@@ -1141,6 +1135,28 @@ export default class Engine {
                 kind: "max_commands_exceeded",
                 emitted: opsCount,
                 dropped: droppedCount,
+            });
+        }
+
+        // §telemetry — parse errors as LOG ITEMS: a failed-to-parse emission records an actionless
+        // `error` row (status 400, no target, snippet = the foldable body) at the turn's next free
+        // sequence (after the dispatched ops). The model folds/kills/recalls it like any log entry,
+        // and the errors section derives a pointer (status + coordinate) from log≥400 — one surface.
+        let errSeq = nextActionIndex + opsToDispatch.length;
+        for (const { message, line, column, source } of parseErrors ?? []) {
+            const snippet = this.#extractSnippet(packetAssistant.content, line, 2);
+            await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
+                origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
+                scheme: null, username: null, password: null, hostname: null, port: null,
+                pathname: null, params: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain",
+                // `message`/`snippet` render as the foldable body (not a pointer `error` field), so the
+                // derived errors-section pointer stays minimal (status + coordinate), the bloated parser
+                // message lives in the log row, reclaimable on FOLD.
+                rx: JSON.stringify({ message, position: { type: "content-offset", line, column }, snippet, parserSource: source }),
+                mimetype_rx: "application/json",
+                status_rx: 400, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
         }
 

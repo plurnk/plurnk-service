@@ -54,6 +54,29 @@ const drainTurn = opsResponse([]);
 // degrades to glob in grammar 0.20.0, so it no longer errors.)
 const BROKEN_STMT = "<<SEND[x]:y:SEND";
 
+// An engine NOTICE provider (providers#24 filter mode): returns the model's bytes + a non-fatal
+// `grammar_unenforced` TelemetryEvent at a code-point divergence. A NOTICE is telemetry (ephemeral,
+// drain-on-read, broadcast) — distinct from a model ERROR, which is now a log item (§telemetry).
+// `extraDrains` clean turns follow so the buffer can be observed draining.
+const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
+const NOTICE_POS = 26; // → content-offset line 2, column 4
+const NOTICE_SNIPPET = `1:\t<<PLAN:reasoning:PLAN\n2:\t<<SEND[103]:noted:SEND`;
+const noticeProvider = (extraDrains: number) => {
+    const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
+    const real = provider.generate.bind(provider);
+    let did = false;
+    provider.generate = async (req) => {
+        if (did) return real(req);
+        did = true;
+        return {
+            assistant: { content: NOTICE_CONTENT, reasoning: null, usage: { prompt: 5, completion: 10, reasoning: 0, cached: 0, total: 15 }, finishReason: "stop", model: "mock" },
+            assistantRaw: { id: "x", filtered: true },
+            telemetry: [{ source: "provider:mock", kind: "grammar_unenforced", message: "grammar not enforced at code point 26", position: NOTICE_POS }],
+        };
+    };
+    return provider;
+};
+
 const setup = async () => {
     const db = await openMigrated();
     const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
@@ -71,72 +94,49 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     };
 };
 
-test("[§telemetry-content-offset-snippet] content-offset parse_error renders N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
+test("[§telemetry-content-offset-snippet] a content-offset NOTICE (grammar_unenforced) renders its N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
+    // Errors are log items now; the content-offset snippet render belongs to the remaining engine
+    // NOTICES (telemetry) — here grammar_unenforced, which carries a code-point divergence position.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        const provider = new Mock({
-            contextSize: 100000,
-            responses: [
-                contentResponse(BROKEN_STMT),                 // turn 1: real parse_error
-                drainTurn,        // turn 2: clean — drains the buffer
-            ],
-        });
+        const provider = noticeProvider(1);
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const p2 = await getPacket(db, t2.turnId);
-        const parseErr = p2.telemetryErrors.find((e) => e.kind === "parse_error");
-        assert.ok(parseErr !== undefined, "parse_error surfaced on the next packet");
-        // Real content-offset position — the malformed SEND is on line 2 now
-        // (line 1 is the required PLAN lead, grammar 0.70).
-        assert.deepEqual(parseErr.position, { type: "content-offset", line: 2, column: 7 });
-        // Snippet is the model's own offending bytes, N:\t-prefixed by #extractSnippet.
-        assert.equal(parseErr.source, "grammar");
-        assert.equal(parseErr.parserSource, "lexer");
-        assert.equal(parseErr.snippet, `1:\t<<PLAN::PLAN\n2:\t${BROKEN_STMT}`);
+        const notice = p2.telemetryErrors.find((e) => e.kind === "grammar_unenforced");
+        assert.ok(notice !== undefined, "the notice surfaced on the next packet");
+        assert.deepEqual(notice.position, { type: "content-offset", line: 2, column: 4 });
+        assert.equal(notice.snippet, NOTICE_SNIPPET);
 
-        // Render the wire the model actually receives and assert the layout:
-        // meta line (no snippet key) immediately followed by the error://<line>
-        // fence wrapping the N:\t snippet.
+        // The wire: meta line (no snippet key) immediately followed by the error://<line> fence.
         const wire = PacketWire.renderSlot(p2.sections, "user");
         assert.match(wire, /## Plurnk System Errors/);
-        // The snippet field must NOT appear in the meta JSON line — it lives in the body block once.
         assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
-        // error://1 fence carrying the verbatim N:\t snippet, line 1, immediately after meta.
-        const fenced = `<<:::error://2\n1:\t<<PLAN::PLAN\n2:\t${BROKEN_STMT}\n:::error://2`;
+        const fenced = `<<:::error://2\n${NOTICE_SNIPPET}\n:::error://2`;
         assert.ok(wire.includes(fenced), "snippet rendered under error://<line> fence with N:\\t prefix");
-        // Meta line precedes the fence (event meta, then locator block).
-        const metaIdx = wire.indexOf('"kind":"parse_error"');
+        const metaIdx = wire.indexOf('"kind":"grammar_unenforced"');
         const fenceIdx = wire.indexOf("<<:::error://2");
         assert.ok(metaIdx !== -1 && fenceIdx !== -1 && metaIdx < fenceIdx, "meta line precedes the snippet fence");
     } finally { await db.close(); }
 });
 
-test("[§telemetry-drain-on-read] telemetry buffer drains — parse_error appears on exactly one packet, then is gone", async () => {
+test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notice appears on exactly one packet, then is gone", async () => {
+    // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        const provider = new Mock({
-            contextSize: 100000,
-            responses: [
-                contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed to buffer
-                drainTurn,       // turn 2: reads (drains) the buffer
-                drainTurn,        // turn 3: buffer already empty
-            ],
-        });
+        const provider = noticeProvider(2);
         const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const kindsOf = async (turnId: number) =>
             (await getPacket(db, turnId)).telemetryErrors
-                .filter((e) => e.kind === "parse_error").length;
+                .filter((e) => e.kind === "grammar_unenforced").length;
 
-        // Turn 1's own packet predates the failure → no parse_error yet.
-        assert.equal(await kindsOf(t1.turnId), 0, "failure not visible on the turn that produced it");
-        // Turn 2 drains the single buffered parse_error.
-        assert.equal(await kindsOf(t2.turnId), 1, "parse_error drained exactly once on read");
-        // Turn 3: buffer was emptied at the drain — the error does NOT replay.
-        assert.equal(await kindsOf(t3.turnId), 0, "drained error does not reappear on subsequent packets");
+        assert.equal(await kindsOf(t1.turnId), 0, "notice not visible on the turn that produced it");
+        assert.equal(await kindsOf(t2.turnId), 1, "notice drained exactly once on read");
+        assert.equal(await kindsOf(t3.turnId), 0, "drained notice does not reappear on subsequent packets");
     } finally { await db.close(); }
 });
 
@@ -255,7 +255,7 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
     } finally { await db.close(); }
 });
 
-test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry, not a queryable error:// entry namespace", async () => {
+test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -266,26 +266,25 @@ test("[§telemetry-no-error-scheme] actionless parse failures route to telemetry
             ],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
-        // The failure IS surfaced — as telemetry, the actionless alert channel.
-        const p2 = await getPacket(db, t2.turnId);
-        assert.ok(
-            p2.telemetryErrors.some((e) => e.kind === "parse_error"),
-            "actionless failure routed to telemetry.errors[]",
-        );
+        // The failure is a DURABLE log row — op='error', status_rx 400, actionless (no target).
+        // It folds/kills/recalls like any log entry (§telemetry — errors are log items), so the
+        // grinder's prior-turn rollback can reclaim it: one budget surface, the log.
+        const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string | null }>({ loop_id: loopId });
+        const errRow = rows.find((r) => r.op === "error" && r.status_rx === 400);
+        assert.ok(errRow !== undefined, "parse failure recorded as a log:///…/error item (status 400), not ephemeral telemetry");
+        assert.equal(errRow!.scheme, null, "an error row is actionless — no target scheme");
 
-        // It is NOT materialized as an addressable entry under an `error://`
-        // scheme. No `error` scheme namespace exists in storage.
+        // No `error://` SCHEME namespace — errors live in the LOG (log:///), not a bespoke scheme.
         const errorScheme = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
             session_id: sessionId, scheme: "error",
         });
-        assert.equal(errorScheme?.n, 0, "no error:// scheme entries — actionless failures aren't a queryable namespace");
+        assert.equal(errorScheme?.n ?? 0, 0, "no error:// scheme entries — errors are log items, queried via log:///");
 
-        // The only `error://` token the model ever sees is the snippet-fence
-        // LOCATOR in the rendered telemetry, not an entry it can address.
-        const wire = PacketWire.renderSlot(p2.sections, "user");
-        assert.ok(wire.includes("error://2"), "error://<line> is render-time locator context only");
+        // The errors section derives a POINTER (status + coordinate) to the log item.
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const p2 = await getPacket(db, t2.turnId);
+        assert.ok(p2.telemetryErrors.some((e) => e.op === "error" && e.status === 400), "errors section surfaces a derived pointer to the error log item");
     } finally { await db.close(); }
 });
 
@@ -305,31 +304,26 @@ test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live wi
             telemetryEventNotify: (sid, payload) => { broadcasts.push({ sessionId: sid, payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
 
-        const provider = new Mock({
-            contextSize: 100000,
-            responses: [
-                contentResponse(BROKEN_STMT),                 // turn 1: parse_error pushed + broadcast live
-                drainTurn,        // turn 2: model drains it on read
-            ],
-        });
+        const provider = noticeProvider(1);                   // turn 1: grammar_unenforced NOTICE pushed + broadcast live
+        // NOTE: errors are log items (no telemetry/event); the broadcast surface is for engine NOTICES.
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         // Client side: the event broadcast live, scoped to the loop's session,
         // BEFORE turn 2 ever builds a packet.
-        const liveParse = broadcasts.filter((b) => b.payload.event.kind === "parse_error");
-        assert.equal(liveParse.length, 1, "parse_error broadcast live exactly once");
+        const liveParse = broadcasts.filter((b) => b.payload.event.kind === "grammar_unenforced");
+        assert.equal(liveParse.length, 1, "the notice broadcast live exactly once");
         assert.equal(liveParse[0].sessionId, sessionId, "scoped to the loop's session");
         assert.equal(liveParse[0].payload.loopId, loopId);
         const liveEvent = liveParse[0].payload.event;
-        assert.equal(liveEvent.source, "grammar");
-        assert.equal(liveEvent.kind, "parse_error");
-        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 2, column: 7 });
+        assert.equal(liveEvent.source, "provider:mock");
+        assert.equal(liveEvent.kind, "grammar_unenforced");
+        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 2, column: 4 });
 
         // Model side: the SAME envelope drains onto the next packet's
         // telemetry.errors[]. Same source/kind/message/position on both sides.
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        const drained = p2.telemetryErrors.find((e) => e.kind === "parse_error");
+        const drained = p2.telemetryErrors.find((e) => e.kind === "grammar_unenforced");
         assert.ok(drained !== undefined, "same event drains onto the model's next packet");
         assert.equal(drained.source, liveEvent.source, "source matches on both sides");
         assert.equal(drained.message, liveEvent.message, "message matches on both sides");

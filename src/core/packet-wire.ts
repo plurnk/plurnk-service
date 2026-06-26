@@ -374,6 +374,16 @@ export default class PacketWire {
                 const opBody = typeof b === "string" ? b
                     : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
                 if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
+            } else if (op === "error") {
+                // §telemetry — a parse-error row is a LOG ITEM; its body is the failure detail the model
+                // needs to self-correct: the parser message + its own offending line(s) (snippet, already
+                // N:\t-prefixed by #extractSnippet). Foldable like any body, so a stale error reclaims its
+                // bytes on FOLD; the errors section keeps only a pointer (status + coordinate).
+                const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown; snippet?: unknown };
+                const parts: string[] = [];
+                if (typeof detail.message === "string" && detail.message.length > 0) parts.push(detail.message);
+                if (typeof detail.snippet === "string" && detail.snippet.length > 0) parts.push(detail.snippet);
+                if (parts.length > 0) body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, parts.join("\n"));
             }
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh

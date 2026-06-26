@@ -272,7 +272,10 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- NULL = the owning run itself (self), rendered without a run= label.
     source          TEXT,
 
-    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL', 'PLAN')),
+    -- 'error' is an ACTIONLESS row (§telemetry — errors are log items): a parse failure that
+    -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
+    -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
+    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL', 'PLAN', 'error')),
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 

@@ -21,7 +21,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
 | **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
-| **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log:///<L>/<T>/<S>/<op>`. |
+| **action** | One executed op. Action and op are the same thing in different states (op = parsed; action = executed). The execution produces a log_entries row at `log:///<L>/<T>/<S>/<op>`. (The log also holds an *actionless* `op='error'` row — a model emission that failed to parse, §telemetry — so a failure is curatable like any row.) |
 | **dispatch** | The engine routing a statement to its scheme's op handler. |
 
 ### §storage-terms Storage terms
@@ -1241,7 +1241,12 @@ The wire projection (`PacketWire.renderSlot`) groups sections by slot into the s
 
 ### §telemetry user.telemetry — model-facing runtime telemetry
 
-Telemetry the model MUST react to immediately. Errors render in their own `errors` section (§packet-assembly unbundled them from a single telemetry block) — transient, appearing on the turn AFTER the failure, clearing once seen. The `log` section is the durable audit; the `errors` section (rendered from `packet.telemetryErrors`) is the **alert**.
+The model's runtime alert surface, with two sources by lifetime:
+
+- **Errors are LOG ITEMS.** A model FAILURE — a parse failure (an actionless `op='error'` row) or an action that returned `status_rx ≥ 400` — is a durable `log_entries` row. It folds, kills, and budgets like any log entry (§open-fold), so the model recalls or curates its own mistakes and the grinder's prior-turn rollback can reclaim them — ONE budget surface, the log. The `errors` section is a derived POINTER INDEX over the recent `status_rx ≥ 400` rows (status + `log:///<coord>`), aiming the model at them; it holds no bodies and no fold/budget state of its own. Durable: an error persists until the model folds or kills it, not "cleared once seen."
+- **Engine NOTICES are telemetry.** Ephemeral events the engine emits while steering or narrating — a provider's `grammar_unenforced`, a `max_commands_exceeded` truncation, a `budget_overflow` fold, the premature-terminate/idle steers. Transient: they appear on the turn AFTER the event and drain once seen (`packet.telemetryErrors` is their only home). They are NOT the model's failures.
+
+The `log` section is the durable audit; the `errors` section surfaces both — the error pointers (durable, in the log) and the notices (ephemeral).
 
 **Grammar contract:**
 
@@ -1251,27 +1256,25 @@ Telemetry the model MUST react to immediately. Errors render in their own `error
 **Plurnk-service rendering:**
 
 - `budget` per §tokenomics: turn-weight and heaviest-entries tables with `tokenCeiling`/`tokenUsage`/`tokensFree`.
-- `errors[]` from previous turn's dispatch. Required: `kind` discriminator. Additional kind-specific fields are flat on the element — NO nested `detail`. Canonical-JSON serialization sorts keys for prefix-cache friendliness.
-- Wire: one `* {canonical-JSON}` line per error under `## Plurnk System Errors`, push order. Buffer drains on read. {§telemetry-drain-on-read}
+- **Error pointers** — derived from the previous turn's `log_entries WHERE status_rx ≥ 400`: `kind: "action_failure"`, `coordinate` (`<L>/<T>/<S>`), `op` (`error` for a parse failure, the real op for a failed action), `status`, `target`, and a terse `error`. The full body (message, snippet) lives on the foldable log row, not here.
+- **Notices** — one `* {canonical-JSON}` line per event under `## Plurnk System Errors`, push order; flat kind-specific fields (NO nested `detail`); canonical-JSON sorts keys for prefix-cache friendliness. The notice buffer drains on read — each appears on exactly one packet. {§telemetry-drain-on-read}
 - **No prose `message` field.** Errors carry structured facts. The `kind` is the alert; the named fields are the data. Guidance, advice, hints, and exhortation MUST NOT appear in telemetry. Letting the model infer what to do from facts (and the log) beats handing it instructions it will second-guess.
 - **Gamification policy (rummy precedent, plugins/error/error.js).** The model sees errors that **happened** — its actions failed, its emission didn't parse, its ops were truncated. The model does NOT see the engine's accounting *about* errors: strike streaks, cycle detection, sudden-death thresholds, no-ops bookkeeping. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics (manufacturing a clean turn to reset the strike counter, e.g.) instead of the task. Engine bookkeeping drives abandonment silently; the model just sees its actual failures.
 
-**Kinds emitted by plurnk-service:**
+**The error pointer + the engine NOTICE kinds:**
 
 | `kind` | Source | Required fields |
 |---|---|---|
-| `parse_error` | Grammar parser failed mid-statement | `source: "grammar"`, `kind`, `message`, `position` (content-offset), `snippet` (model's offending line, N:\t-prefixed), `parserSource` (`lexer`/`parser`/`visitor`) |
-| `action_failure` | Log entry with `status_rx ≥ 400` from previous turn | `kind`, `coordinate` (`<L>/<T>/<S>`), `op`, `status`, `target` (URI or null). May carry scheme-emitted `error` (a terse fact, not guidance). |
+| `action_failure` | The DERIVED error pointer — any `log_entries` row with `status_rx ≥ 400` from the previous turn: a parse failure's actionless `op='error'` row, or a failed action | `kind`, `coordinate` (`<L>/<T>/<S>`), `op`, `status`, `target` (URI or null). May carry a terse `error` fact. The full message/snippet lives on the foldable log row. |
+| `grammar_unenforced` | (provider, forwarded) GBNF-filter divergence — the model's bytes diverged from the transported grammar | `source: "provider:*"`, `kind`, `message`, `position` (content-offset), `snippet` |
 | `max_commands_exceeded` | Single emission exceeded `PLURNK_MAX_COMMANDS` cap; overflow ops dropped without dispatch | `source: "engine:rail"`, `kind`, `emitted`, `dropped` |
 | `budget_overflow` | Assembled packet exceeded the budget ceiling; entries moved out of the window to fit | `source: "engine:rail"`, `kind`, `hidden` (per-scheme `[{scheme, count}]` — entries removed from the window) |
 
-Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping are all engine-internal — they drive abandonment silently per the gamification policy above. Action-bound failures (handler returned 4xx/5xx or threw) mirror as `action_failure` kind on the next packet. Full detail queryable via `log:///`. {§telemetry-no-error-scheme}
+Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping stay engine-internal — they drive abandonment silently per the gamification policy. Both error kinds — a failed action AND an actionless parse failure — are LOG ITEMS (`log:///<coord>`, `op='error'` for the latter, `status_rx ≥ 400`), foldable and re-OPENable, with full detail (message, snippet) on the row. The `errors` section surfaces a derived pointer to each. There is **no bespoke `error://` scheme**: errors live in the log, addressable + curatable like any row — not a separate queryable namespace. {§telemetry-no-error-scheme}
 
-**No `error://` scheme.** Actionless failures route to telemetry, not a queryable scheme namespace.
+**Client surface.** Engine NOTICES broadcast live via the `telemetry/event` WS notification — same envelope as the model's drained copy (`{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema), the moment they land, scoped to the loop's session (a `grammar_unenforced` snippet in a debug panel, a session timeline). ERRORS do not broadcast on this surface: they are log rows, and the client reads them the same way the model curates them — `log.read` / the `log/entry` notification, the durable log. {§telemetry-telemetry-event-notify}
 
-**Client surface: `telemetry/event` notification.** Every event the engine pushes to the loop's telemetry buffer also broadcasts live via the `telemetry/event` WS notification. Same envelope on both sides — `{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema. The model sees the event on the NEXT packet's `errors` section (drains on read); the client sees it the moment it lands. Client uses cases: render parse errors in a debug panel (the `snippet` field is content the model emitted), surface strike/sudden_death as "loop is degrading" toasts, log everything to a session timeline. Scoped to the loop's session. {§telemetry-telemetry-event-notify}
-
-**Content-offset snippet rendering.** When telemetry carries `position: { type: "content-offset", line, column }`, plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct (canonical case: the edit-todo demo where a READ body starting with `//` got xpath-dispatched). The snippet field is stripped from the meta JSON so it appears once, in the body block. {§telemetry-content-offset-snippet}
+**Content-offset snippet rendering.** When a NOTICE carries `position: { type: "content-offset", line, column }` (e.g. a provider's `grammar_unenforced`), plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct. The snippet field is stripped from the meta JSON so it appears once, in the body block. (A parse-error LOG ROW carries the equivalent snippet in its own foldable body — the same locator, durable in the log.) {§telemetry-content-offset-snippet}
 
 ### §tools user.tools — the capability sheet
 
