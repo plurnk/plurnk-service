@@ -169,19 +169,36 @@ export default class TextHtml extends BaseHandler {
     }
 }
 
-// Translate an xpath.select return value to QueryMatch[] per grammar #17.
+// Translate an xpath.select return value to QueryMatch[] per grammar #17, with
+// real source-line spans (#41) from @xmldom/xmldom's node lineNumber — far
+// better than a faked line 1.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => ({
-            line: 1,
-            matched: serializeNode(node),
-            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-        }));
+        return result.map((node, i): QueryMatch => {
+            const line = nodeLine(node);
+            return {
+                matched: serializeNode(node),
+                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+                ...(line !== undefined && { lines: [{ line, endLine: line }] }),
+            };
+        });
     }
     if (result === null || result === undefined) return [];
-    // Primitive result (string/number/boolean from a function expression like
-    // string(...), count(...), boolean(...)).
-    return [{ line: 1, matched: typeof result === "string" ? result : String(result) }];
+    // Computed scalar (string()/count()/boolean()): no source node → no `lines`
+    // (#41). Report the value faithfully; never fake a line.
+    return [{ matched: typeof result === "string" ? result : String(result) }];
+}
+
+// 1-indexed source line of a matched node from xmldom's lineNumber. Attributes
+// borrow their owner element; other non-element nodes their parent. Undefined
+// when no position is available.
+function nodeLine(node: Node): number | undefined {
+    const direct = (node as { lineNumber?: number }).lineNumber;
+    if (typeof direct === "number" && direct > 0) return direct;
+    const owner = (node as Attr).ownerElement
+        ?? (node as { parentNode?: Node | null }).parentNode ?? null;
+    const ln = (owner as { lineNumber?: number } | null)?.lineNumber;
+    return typeof ln === "number" && ln > 0 ? ln : undefined;
 }
 
 // Convert an xpath result node to a string suitable for QueryMatch.matched.

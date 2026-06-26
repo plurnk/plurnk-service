@@ -175,6 +175,22 @@ describe("TextHtml — xpath query", () => {
         assert.ok(first.includes("<p"));
     });
 
+    it("reports the real source-line span of each match, not a faked 1 (#41)", async () => {
+        const html = "<root>\n  <p>a</p>\n  <p>b</p>\n</root>";
+        const out = await h.query(html, "xpath", "//p");
+        assert.equal(out.length, 2);
+        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(out[1].lines, [{ line: 3, endLine: 3 }]);
+    });
+
+    it("a computed scalar (count) carries no lines (#41)", async () => {
+        const html = "<root>\n  <p>a</p>\n  <p>b</p>\n</root>";
+        const out = await h.query(html, "xpath", "count(//p)");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "2");
+        assert.equal(out[0].lines, undefined);
+    });
+
     it("emits `matching` with indexed xpath form when there are multiple results", async () => {
         const html = "<html><body><p>A</p><p>B</p><p>C</p></body></html>";
         const out = await h.query(html, "xpath", "//p");
