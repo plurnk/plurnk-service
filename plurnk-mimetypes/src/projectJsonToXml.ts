@@ -104,8 +104,9 @@ function renderValue(value: unknown, elementName: string, pointer: string, lineF
         return `<${elementName}${ns}${resolvedLineAttrs(lineFor, pointer)}>${escapeText(String(value))}</${elementName}>`;
     }
     if (Array.isArray(value)) {
+        const la = resolvedLineAttrs(lineFor, pointer);
         const inner = value.map((v, i) => renderValue(v, "item", `${pointer}/${i}`, lineFor, false)).join("");
-        return `<${elementName}${ns}>${inner}</${elementName}>`;
+        return `<${elementName}${ns}${la}>${inner}</${elementName}>`;
     }
     if (typeof value === "object") {
         return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, isRoot);
