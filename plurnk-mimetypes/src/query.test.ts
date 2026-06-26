@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { queryGlob, queryJsonpathObject, queryRegex } from "./query.ts";
+import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { InvalidExpressionError } from "./QueryError.ts";
 
 describe("queryRegex — bare patterns", () => {
@@ -183,5 +184,52 @@ describe("queryJsonpathObject — custom lineFor (used by JSON/YAML/TOML handler
         assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
         assert.equal(out[1].matched, "bob");
         assert.deepEqual(out[1].lines, [{ line: 7, endLine: 7 }]);
+    });
+});
+
+describe("queryXpathString — line-less child elements walk to the enclosing span (#41 symmetry)", () => {
+    // A bare `name`/`params` field projects to a child element with no pk:line of
+    // its own; xpath must report the SAME enclosing span jsonpath's ancestor walk
+    // gives the corresponding JSON value — not an absent line.
+    const xml = projectJsonToXml({
+        type: "function_definition", line: 5, endLine: 10, name: "greet", params: ["x", "y"],
+    });
+
+    it("a matched line-less <name> inherits the nearest annotated ancestor span", () => {
+        const out = queryXpathString(xml, "//name", "text/test");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "<name>greet</name>");
+        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 10 }]);
+    });
+
+    it("a node with NO annotated ancestor honestly reports no lines (never faked)", () => {
+        const bare = projectJsonToXml({ name: "x" });
+        const out = queryXpathString(bare, "//name", "text/test");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].lines, undefined);
+    });
+});
+
+describe("outlineLineFor — bare-number outline projection resolver (#41 symmetry)", () => {
+    const outline = { Top: { Section: { Sub: 5 }, Other: 7 }, Trailer: 9 };
+    const lineFor = outlineLineFor(outline);
+
+    it("resolves a leaf pointer to its bare-number line", () => {
+        assert.deepEqual(lineFor("/Top/Section/Sub"), { line: 5, endLine: 5 });
+    });
+
+    it("resolves a subtree pointer to its min..max leaf span", () => {
+        assert.deepEqual(lineFor("/Top"), { line: 5, endLine: 7 });
+    });
+
+    it("resolves the root pointer to the whole-document span", () => {
+        assert.deepEqual(lineFor(""), { line: 5, endLine: 9 });
+    });
+
+    it("xpath over the projected outline reports the same lines as the resolver", () => {
+        const xml = projectJsonToXml(outline, "root", lineFor);
+        const out = queryXpathString(xml, "//Sub", "text/test");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
     });
 });

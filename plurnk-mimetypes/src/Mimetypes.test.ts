@@ -34,6 +34,13 @@ class FakePlainHandler extends BaseHandler {
     }
 }
 
+// A handler with no symbols and no deep tree — xpath has nothing to project.
+class FakeEmptyHandler extends BaseHandler {
+    override extractRaw(_content: string): MimeSymbol[] {
+        return [];
+    }
+}
+
 // A handler whose validate throws — exercises propagation policy.
 class FakeStrictHandler extends BaseHandler {
     override validate(content: string): void {
@@ -550,10 +557,20 @@ describe("Mimetypes — query", () => {
         assert.equal(results[1].matched, "error: c");
     });
 
-    it("dispatches xpath via // expression; default handler throws (mapped to 415 upstream)", async () => {
+    it("dispatches xpath via // against the projected symbol outline (symbols-only handlers gain xpath; #41 symmetry)", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
+        });
+        const results = await m.query({ path: "foo.txt", content: "any" }, "//Plain");
+        assert.equal(results.length, 1);
+        assert.deepEqual(results[0].lines, [{ line: 1, endLine: 1 }]);
+    });
+
+    it("xpath still throws when the handler has no deep tree and no symbols (mapped to 415 upstream)", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakeEmptyHandler }),
         });
         await assert.rejects(
             async () => {

@@ -1,7 +1,7 @@
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
-import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
 import { InvalidExpressionError, UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
@@ -67,8 +67,14 @@ export default class BaseHandler {
     // the actual source markup instead of a projected tree.
     async deepXml(content: HandlerContent): Promise<string> {
         const tree = await this.deepJson(content);
-        if (tree === null || tree === undefined) return "";
-        return projectJsonToXml(tree);
+        if (tree !== null && tree !== undefined) return projectJsonToXml(tree);
+        // Symbols-only handlers (no deepJson) still answer jsonpath via the
+        // bare-number outline fallback in query(); project that SAME outline so
+        // xpath has identical reach and real source lines (#41 dialect
+        // symmetry). Empty outline → no deep tree, so xpath stays unsupported.
+        const outline = buildJsonOutline(await this.extractRaw(content));
+        if (Object.keys(outline).length === 0) return "";
+        return projectJsonToXml(outline, "root", outlineLineFor(outline));
     }
 
     // Model-facing readable text — the content channel. Default: undefined

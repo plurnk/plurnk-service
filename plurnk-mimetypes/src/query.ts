@@ -172,12 +172,28 @@ function spanOfMatchedNode(node: Node): LineSpan | undefined {
         el = cur as unknown as Element | null;
     }
     // pk:line / pk:endLine — the source span the projection wrote onto the
-    // element (SPEC §12.3 + #12). Absent → no span (we never fake a line, #41);
-    // a projection that carries positions — including via projectJsonToXml's
-    // lineFor — yields a real span, consistent with jsonpath.
+    // element (SPEC §12.3 + #12). A line-less child (e.g. a bare `name:"g"`
+    // field projected to <name>g</name>) carries none of its own, so walk up to
+    // the nearest ancestor element that does — mirroring jsonpath's ancestorChain
+    // walk in defaultLines so both dialects report the SAME enclosing span (#41).
+    // Only when nothing in the chain is annotated do we honestly return no span;
+    // we never fake a line.
+    while (el && pkAttr(el, "line") === undefined) {
+        el = parentElement(el);
+    }
+    if (!el) return undefined;
     const line = pkAttr(el, "line");
     if (line === undefined) return undefined;
     return { line, endLine: pkAttr(el, "endLine") ?? line };
+}
+
+// Nearest ancestor ELEMENT of an element node, or null at the document root.
+function parentElement(el: Element): Element | null {
+    let cur: Node | null = (el as { parentNode?: Node | null }).parentNode ?? null;
+    while (cur && cur.nodeType !== ELEMENT_NODE) {
+        cur = (cur as { parentNode?: Node | null }).parentNode ?? null;
+    }
+    return cur as unknown as Element | null;
 }
 
 function pkAttr(el: Element | null, name: string): number | undefined {
@@ -277,6 +293,27 @@ function defaultLines(root: unknown, pointer: string, value: unknown): readonly 
         if (sp) return [sp];
     }
     return undefined;
+}
+
+// Outline → projectJsonToXml line resolver (#41 dialect symmetry). The bare-
+// number outline jsonpath falls back to carries no `line` fields — a leaf number
+// IS its line. So when a symbols-only handler projects that outline for xpath
+// (BaseHandler.deepXml), this resolves each pointer to the SAME min..max leaf
+// span jsonpath's spanOfValue computes, keeping both dialects in agreement.
+export function outlineLineFor(root: unknown): (pointer: string) => LineSpan | undefined {
+    return (pointer: string) => spanOfValue(valueAtPointer(root, pointer));
+}
+
+// Resolve a JSON Pointer (RFC 6901) to the value AT that pointer ("" → root).
+function valueAtPointer(root: unknown, pointer: string): unknown {
+    if (pointer === "" || pointer === "/") return root;
+    const tokens = pointer.split("/").slice(1).map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+    let cur: unknown = root;
+    for (const tok of tokens) {
+        if (cur === null || typeof cur !== "object") return undefined;
+        cur = (cur as Record<string, unknown>)[tok];
+    }
+    return cur;
 }
 
 function explicitSpan(value: unknown): LineSpan | undefined {

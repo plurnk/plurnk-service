@@ -108,10 +108,15 @@ export function walkAntlrTree(node: unknown): unknown {
     // recursive descent.
     const start = n.start as { line?: number } | undefined;
     const stop = n.stop as { line?: number } | undefined;
+    // An epsilon/empty-match rule context has its `stop` token set to the token
+    // BEFORE `start` (ANTLR convention), so stop.line < start.line. Clamp endLine
+    // to start.line so a span is never inverted (#41: endLine >= line always).
+    const startLine = start?.line ?? 1;
+    const stopLine = stop?.line;
     const out: Record<string, unknown> = {
         type: ruleNameOf(node),
-        line: start?.line ?? 1,
-        endLine: stop?.line ?? start?.line ?? 1,
+        line: startLine,
+        endLine: typeof stopLine === "number" && stopLine >= startLine ? stopLine : startLine,
     };
 
     const children = n.children as unknown[] | undefined;

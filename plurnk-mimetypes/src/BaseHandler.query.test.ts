@@ -71,6 +71,24 @@ describe("BaseHandler.query — xpath default", () => {
                 err.mimetype === "text/test",
         );
     });
+
+    // #41 symmetry: a symbols-only handler answers jsonpath via the bare-number
+    // outline, so xpath must reach the SAME outline with the SAME real lines.
+    it("dispatches xpath against the projected symbol outline with real lines", async () => {
+        class WithSymbols extends BaseHandler {
+            override extractRaw(): MimeSymbol[] {
+                return [
+                    { name: "Top", kind: "heading", level: 1, line: 1, endLine: 1 },
+                    { name: "Section", kind: "heading", level: 2, line: 3, endLine: 3 },
+                    { name: "Sub", kind: "heading", level: 3, line: 5, endLine: 5 },
+                ];
+            }
+        }
+        const h = new WithSymbols(metadata);
+        const out = await h.query("(unused content)", "xpath", "//Sub");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
+    });
 });
 
 describe("BaseHandler.query — subclass overrides", () => {
