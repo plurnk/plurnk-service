@@ -1,5 +1,5 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-ini (INI / config) handler — Tier 4, no parser dep.
 //
@@ -45,6 +45,32 @@ export default class Ini extends BaseHandler {
         }
         return root;
     }
+
+    // jsonpath against the nested {section:{key:value}} object, with source-line
+    // spans (#41): deepJson is line-less (raw values), so we supply a lineFor
+    // from parseIni's positions, keyed by JSON pointer. A key on line N → line N
+    // (single-line per v1). Absent for pointers we don't recognize — never faked.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            const byPointer = new Map<string, number>();
+            for (const section of parseIni(toText(content))) {
+                const base = section.name === null ? "" : `/${ptr(section.name)}`;
+                if (section.name !== null) byPointer.set(base, section.line);
+                for (const k of section.keys) byPointer.set(`${base}/${ptr(k.key)}`, k.line);
+            }
+            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                const ln = byPointer.get(pointer);
+                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+            };
+            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
 }
 
 export interface IniKey {
@@ -82,6 +108,11 @@ export function parseIni(text: string): IniSection[] {
 
     // Drop the implicit global section when it carries no top-level keys.
     return sections.filter((s) => s.name !== null || s.keys.length > 0);
+}
+
+// JSON Pointer token escape (RFC 6901): ~ → ~0, / → ~1.
+function ptr(s: string): string {
+    return s.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
 function toText(content: HandlerContent): string {
