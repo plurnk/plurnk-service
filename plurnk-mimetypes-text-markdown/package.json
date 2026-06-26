@@ -46,7 +46,7 @@
         "marked": "^18.0.5"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.32",
+        "@plurnk/plurnk-mimetypes": "^0.15.34",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
