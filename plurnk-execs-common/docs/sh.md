@@ -13,3 +13,15 @@ The command runs with a **scoped** environment: the host daemon's own secrets �
 ## Channels
 
 Output streams into two channels on the `exec://` entry: `#stdout` (default) and `#stderr` (both `text/stream`); `READ` the entry to see them. A host-effecting command proposes for review before it runs; a read-only one runs inline and returns its output the same turn. A non-zero exit closes the entry with status 500, the message on `stderr`.
+
+## Deadlines & polling — `<timeout, poll>`
+
+For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
+
+```
+<<EXEC<1800>:npm run build:EXEC         hard-kill at 1800s; wake on completion
+<<EXEC<1800,300>:npm run e2e:EXEC       bounded at 1800s + wake every 300s
+<<EXEC<-1,300>:npm run test:EXEC        no deadline (-1) + wake every 300s
+```
+
+The **timeout** (first, required when the slot is used) bounds the run — at the deadline the command is killed. **`-1` declines a deadline** (unlimited); the run is still reaped when the loop ends, and you remain free to `KILL` it. The optional **poll** (second) wakes the loop on that cadence while the stream is open, so you can `READ` partial output and decide to wait or `KILL` — it never interrupts the command. A poll always requires a timeout (it's the second coordinate); bare `EXEC` with no slot runs to completion, bounded only by the loop.
