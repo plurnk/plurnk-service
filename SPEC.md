@@ -1326,26 +1326,22 @@ Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-c
 
 Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with, `[Tt]odo*` char class) lives in framework's `BaseHandler`.
 
-### §matcher-result Matcher result shape (uniform across dialects)
+### §matcher-result Matcher result shape — READ returns matching LINES, uniformly
 
-Body: one match per line as `<line>:\t<value>` — the same `N:\t` form READ emits, so `<L>` can page the result set. Empty → 204. Mimetype = `text/markdown` regardless of source dialect.
+The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND returns rows of results, READ returns lines of content"**, and READ "prefixes every line with line numbers and a hard tab, `N:\t`" (one source-line number, not part of the source). This section documents the service's implementation of that.
 
-- `<line>` — 1-indexed source line, shifted back to source coordinates when matching inside an `<L>` slice.
-- `<value>` — the extracted match, rendered bare when it is a single-line string, else JSON-encoded (preserving the one-match-per-line invariant). Polymorphic per dialect:
-  - **bare regex** → string (full match)
-  - **anon captures** → array `[c1, c2, …]`
-  - **named captures** → object `{name: v, …}`. Mixed anon+named uses positional keys `"1"`, `"2"` alongside names.
-  - **glob** → string (matching source line)
-  - **jsonpath** → JSON value at the path
-  - **xpath text/attr** → string
-  - **xpath node** → serialized XML
+**A matcher selects locations; it never extracts a value.** Every dialect identifies *where* in the source it matches; READ returns the **source line(s)** at those locations, faithfully — one shape for every dialect: `<line>:\t<line-content>`, prefixed with the single source-line number per plurnk.md (shifted back to source coordinates inside an `<L>` slice), never double-numbered. Empty → 204; mimetype `text/markdown` regardless of source. The model reads the line and adapts whatever it needs out of it — READ never pre-chews a match down to a bare value. {§matcher-result-read-returns-lines}
 
-| Dialect | Extracts | Natural use |
+| Dialect | Selects | Natural use |
 |---|---|---|
-| regex `/pat/` | substring (or captures) | extract the value after X: |
-| glob `pat` | whole matching lines | show lines containing TODO |
-| jsonpath `$.path` | JSON values (parsed value for JSON-shaped mimetypes; bare-leaves outline for markdown/HTML/source) | get the host field / jump to Installation |
-| xpath `//sel` | XML nodes/text/attrs (text/html only) | get the h1 contents |
+| regex `/pat/` | the lines the pattern occurs in (it *matches*, never captures-and-extracts) | the lines mentioning X |
+| glob `pat` | the lines the glob matches | the lines containing TODO |
+| jsonpath `$.path` | the line(s) where the structural path resolves | the line defining `host` |
+| xpath `//sel` | the line(s) of the selected node (text/html) | the line(s) of the h1 |
+
+Across a **multi-file target** (a glob over `(target)`), READ returns **one log item per file that contains a match**, each holding that file's matching lines — READ is the content retrieval over the whole matched set, the companion to FIND's survey (§find-result-catalog-rows). *(Engine-level fan-out; tagged + tested when built.)*
+
+> **Implementation requirement (a mimetypes-daughter need, not a contract exception):** structural dialects must report the SOURCE LINE of each hit. regex/glob match over raw content (the line is in hand); jsonpath/xpath run over the parsed `deepJson`/`deepXml` projection and today return the value — the match primitive must instead carry the line span of each hit, so READ can return the line.
 
 ### §slice-semantics `<L>` semantics by source mimetype
 

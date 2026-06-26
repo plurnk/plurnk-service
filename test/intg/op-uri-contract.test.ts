@@ -116,24 +116,25 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
     });
 });
 
-// ── Matcher rendering: a regex match returns the matching LINE, numbered once ──
+// ── §matcher-result: READ returns matching LINES, uniformly. A matcher SELECTS; READ
+// returns the source line(s) at the match. regex matches (never extracts); glob, jsonpath,
+// xpath all select lines. One shape across every dialect. ──
 
-// CONTROL [READ × regex]. Per §matcher-result, a bare regex extracts the matched VALUE
-// (substring) — NOT the line. This is the contract; gemma's demo failure was choosing
-// regex for a "find the lines" task when glob is the line dialect. Passes today.
-test("contract: a regex READ extracts the matched value/substring (control — §matcher-result)", async () => {
+// {§matcher-result-read-returns-lines} — DEFERRED-RED until Stage 2. A regex SELECTS the
+// lines it occurs in; READ returns the LINE, not the matched substring. Today the matcher
+// renders `<line>:\t<matched-value>` (the token `phoenix`); the contract wants the line.
+test("[§matcher-result-read-returns-lines] a regex READ returns the matching LINE, not the substring", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<ReadStatement>("<<READ(notes.md):#phoenix#:READ", "READ");
         const result = await new File().read(stmt, ctx);
-        assert.match(result.content ?? "", /phoenix/, `regex extracts the matched value; got: ${JSON.stringify(result.content)}`);
+        assert.match(result.content ?? "", /the codename is phoenix/, `regex READ returns the whole LINE; got: ${JSON.stringify(result.content)}`);
     });
 });
 
-// CELL [READ × glob, multiple matches]. Per §matcher-result, glob returns the WHOLE matching
-// lines with their original (non-sequential) source line numbers — the "matching lines" the
-// model wants. Pattern hits lines 2 and 5; expect `2:\ttarget one` and `5:\ttarget two`.
+// COVERAGE — glob already meets the contract (proof the uniform line-return is achievable):
+// it returns whole matching lines with their non-sequential source numbers. GREEN today.
 test("contract: a glob READ returns whole matching lines with non-sequential source numbers (§matcher-result)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
@@ -146,15 +147,17 @@ test("contract: a glob READ returns whole matching lines with non-sequential sou
     });
 });
 
-// CONTROL [READ × jsonpath]. For a STRUCTURED matcher the value is what you want —
-// `$.host` → `db.internal`. The `<line>:\t<value>` form is correct here (passes today),
-// which is exactly why it's wrong to reuse it verbatim for regex.
-test("contract: a jsonpath READ returns the extracted value (control — value is correct for structured)", async () => {
+// CELL [READ × jsonpath] — DEFERRED-RED, blocked on the mimetypes-daughter source-line
+// provenance. Per §matcher-result, jsonpath SELECTS the line where the path resolves; READ
+// returns that LINE (`  "host": "db.internal",`), not the bare value. Today it returns the
+// value, and the structural match carries no source line — so this can't go green until the
+// daughter reports the line span of each jsonpath hit (the coordination the owner flagged).
+test("contract: a jsonpath READ returns the LINE where the path resolves (deferred — daughter provenance)", async () => {
     await withSessionWorkspace(async (root, ctx) => {
-        await writeFile(join(root, "config.json"), JSON.stringify({ host: "db.internal", pool: 5 }));
+        await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
         const stmt = parseOp<ReadStatement>("<<READ(config.json):$.host:READ", "READ");
         const result = await new File().read(stmt, ctx);
-        assert.match(result.content ?? "", /db\.internal/, `jsonpath returns the value; got: ${JSON.stringify(result.content)}`);
+        assert.match(result.content ?? "", /"host": "db\.internal"/, `jsonpath READ returns the LINE; got: ${JSON.stringify(result.content)}`);
     });
 });
