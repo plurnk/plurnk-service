@@ -1,8 +1,9 @@
 // xpath / jsonpath matcher coverage — asserts the matcher contract: status
 // mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
-// result shape. Results render as `N:\t<value>` lines (text/markdown) — one
-// match per line, value bare for a single-line string and JSON-encoded
-// otherwise; the resolved-path is internal and not surfaced to the model.
+// result shape. READ returns LINES (plurnk.md:31): each result row is the SOURCE
+// line at a match, prefixed `N:\t` with the match's source line number — one match
+// per line, line numbers NON-SEQUENTIAL when matches scatter through the document.
+// A matcher SELECTS the line; it never extracts or re-encodes the projected value.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,9 +29,12 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
     position: { line: 1, column: 1 },
 });
 
-// Split a `N:\t<value>` result into its values (text after each tab).
-const rxValues = (content: string | null | undefined): string[] =>
+// Each result row is `N:\t<source line>`. rxLines strips the prefix to the line text;
+// rxLineNos surfaces the N's — non-sequential when matches scatter (the contract's point).
+const rxLines = (content: string | null | undefined): string[] =>
     (content ?? "").split("\n").map((line) => line.replace(/^\d+:\t/, ""));
+const rxLineNos = (content: string | null | undefined): number[] =>
+    (content ?? "").split("\n").map((line) => Number(/^(\d+):\t/.exec(line)?.[1] ?? -1));
 
 const setup = async () => {
     const db = await openMigrated();
@@ -55,10 +59,10 @@ const seedJson = async (db: Db, sessionId: number, runId: number, mimetypes: Mim
 
 // --- jsonpath -------------------------------------------------------
 
-test("jsonpath: $.field extracts a scalar value from a JSON entry", async () => {
+test("jsonpath: $.host returns the SOURCE LINE at the match — not the extracted value", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/config.json", '{"host":"db.internal","pool":5}');
+        await seedJson(db, sessionId, runId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/config.json"), { dialect: "jsonpath", raw: "$.host" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
@@ -66,15 +70,17 @@ test("jsonpath: $.field extracts a scalar value from a JSON entry", async () => 
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.match(r.content ?? "", /^\d+:\tdb\.internal$/);
+        // host sits on source line 2 — READ delivers that whole line, not the bare value "db.internal".
+        assert.deepEqual(rxLineNos(r.content), [2]);
+        assert.match(rxLines(r.content)[0], /^\s*"host": "db\.internal",$/);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*].name wildcard extracts multiple values, one per line", async () => {
+test("jsonpath: $.users[*].name returns one SOURCE LINE per match", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
-            '{"users":[{"name":"Alice","role":"admin"},{"name":"Bob","role":"viewer"}]}');
+            '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
@@ -82,43 +88,49 @@ test("jsonpath: $.users[*].name wildcard extracts multiple values, one per line"
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.deepEqual(rxValues(r.content), ["Alice", "Bob"]);
+        // each name sits on its own source line (3, 4) — READ returns those lines, in order.
+        assert.deepEqual(rxLineNos(r.content), [3, 4]);
+        assert.match(rxLines(r.content)[0], /"name": "Alice"/);
+        assert.match(rxLines(r.content)[1], /"name": "Bob"/);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*] returns object values JSON-encoded on one line each", async () => {
+test("jsonpath: $.users[*] returns each matched object's SOURCE LINE (not a JSON re-encode)", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
-            '{"users":[{"name":"Alice","role":"admin"},{"name":"Bob","role":"viewer"}]}');
+            '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(rxValues(r.content), [
-            '{"name":"Alice","role":"admin"}',
-            '{"name":"Bob","role":"viewer"}',
+        // an object match selects the line it sits on — the verbatim source, not a re-serialized value.
+        assert.deepEqual(rxLineNos(r.content), [3, 4]);
+        assert.deepEqual(rxLines(r.content), [
+            '    { "name": "Alice", "role": "admin" },',
+            '    { "name": "Bob", "role": "viewer" }',
         ]);
     } finally { await db.close(); }
 });
 
-test("jsonpath: filter expression `$.users[?(@.role==\"admin\")]` selects matching items", async () => {
+test("jsonpath filter `$.users[?(@.role=='admin')]`: skipped non-matches → NON-SEQUENTIAL line numbers", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
-            '{"users":[{"name":"Alice","role":"admin"},{"name":"Bob","role":"viewer"},{"name":"Carol","role":"admin"}]}');
+            '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" },\n    { "name": "Carol", "role": "admin" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[?(@.role=='admin')]" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
-        const values = rxValues(r.content);
-        assert.equal(values.length, 2);
-        assert.match(values[0], /"name":"Alice"/);
-        assert.match(values[1], /"name":"Carol"/);
+        // Bob (line 4, viewer) is filtered out → the returned source-line numbers jump 3 → 5.
+        assert.deepEqual(rxLineNos(r.content), [3, 5]);
+        const lines = rxLines(r.content);
+        assert.match(lines[0], /"name": "Alice"/);
+        assert.match(lines[1], /"name": "Carol"/);
     } finally { await db.close(); }
 });
 
@@ -171,11 +183,11 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 
 // --- xpath ----------------------------------------------------------
 
-test("xpath: //h1/text() extracts text content from HTML entries", async () => {
+test("xpath //h1/text(): returns each heading's SOURCE LINE, non-sequential across the page", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/page.html",
-            "<html><body><h1>Welcome</h1><p>intro</p><h1>About</h1></body></html>");
+            "<html>\n<body>\n<h1>Welcome</h1>\n<p>intro</p>\n<h1>About</h1>\n</body>\n</html>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//h1/text()" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
@@ -183,63 +195,64 @@ test("xpath: //h1/text() extracts text content from HTML entries", async () => {
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.deepEqual(rxValues(r.content), ["Welcome", "About"]);
+        // the <p> on line 4 is skipped → the h1 source lines are 3 and 5.
+        assert.deepEqual(rxLineNos(r.content), [3, 5]);
+        assert.deepEqual(rxLines(r.content), ["<h1>Welcome</h1>", "<h1>About</h1>"]);
     } finally { await db.close(); }
 });
 
-test("xpath: //element/@attr extracts attribute values", async () => {
+test("xpath //user/@email: an attribute match returns its element's SOURCE LINE", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/users.html",
-            '<users><user email="alice@x.com"/><user email="bob@x.com"/></users>');
+            '<users>\n  <user email="alice@x.com"/>\n  <user email="bob@x.com"/>\n</users>');
         const r = await new Known().read(
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user/@email" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(rxValues(r.content), ["alice@x.com", "bob@x.com"]);
+        // the match is the attribute, but READ delivers the LINE the element sits on (2, 3).
+        assert.deepEqual(rxLineNos(r.content), [2, 3]);
+        assert.match(rxLines(r.content)[0], /email="alice@x\.com"/);
+        assert.match(rxLines(r.content)[1], /email="bob@x\.com"/);
     } finally { await db.close(); }
 });
 
-test("xpath: //element node selection serializes XML into the value", async () => {
+test("xpath //user node selection: returns the element's SOURCE LINE, not a re-serialized node", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/page.html",
-            "<root><user>Alice</user><user>Bob</user></root>");
+            "<root>\n  <user>Alice</user>\n  <user>Bob</user>\n</root>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//user" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
-        // plurnk-mimetypes#12 (CLOSED) resolved the bookkeeping collision by NAMESPACING the
-        // deep-xml source-position attrs (xmlns:pk + pk:line/pk:endLine) rather than stripping
-        // them — so node selection now serializes each element as VALID XML carrying its source
-        // position as intentional metadata, e.g.
-        //   <user xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1">Alice</user>.
-        // The contract this asserts: //element selects the ELEMENT node (tag present, not bare
-        // text()), content intact, attribute-tolerant. The pk: position metadata is the daughter's
-        // by design; we don't string-strip another module's serialization.
-        const values = rxValues(r.content);
-        assert.equal(values.length, 2);
-        assert.match(values[0], /^<user\b[^>]*>Alice<\/user>$/);
-        assert.match(values[1], /^<user\b[^>]*>Bob<\/user>$/);
+        // Selecting the ELEMENT node returns its verbatim source line — the deep-xml pk: position
+        // bookkeeping (plurnk-mimetypes#12) never reaches the model because READ delivers the LINE,
+        // not the daughter's re-serialized node.
+        assert.deepEqual(rxLineNos(r.content), [2, 3]);
+        assert.deepEqual(rxLines(r.content), ["  <user>Alice</user>", "  <user>Bob</user>"]);
     } finally { await db.close(); }
 });
 
-test("xpath with predicate: //user[@role='admin']", async () => {
+test("xpath predicate //user[@role='admin']: matching lines returned, viewer line skipped", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         await seedJson(db, sessionId, runId, mimetypes, "/users.html",
-            "<root><user role='admin'>Alice</user><user role='viewer'>Bob</user><user role='admin'>Carol</user></root>");
+            "<root>\n  <user role='admin'>Alice</user>\n  <user role='viewer'>Bob</user>\n  <user role='admin'>Carol</user>\n</root>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user[@role='admin']/text()" } as MatcherBody),
             makeSchemeCtx({ db, sessionId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(rxValues(r.content), ["Alice", "Carol"]);
+        // Bob (viewer, line 3) fails the predicate → returned lines are 2 and 4.
+        assert.deepEqual(rxLineNos(r.content), [2, 4]);
+        assert.match(rxLines(r.content)[0], /Alice/);
+        assert.match(rxLines(r.content)[1], /Carol/);
     } finally { await db.close(); }
 });
 
@@ -263,7 +276,8 @@ test("xpath on markdown content with no structural match → 204", async () => {
 test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///", async () => {
     // End-to-end the killer composition: dispatch a jsonpath matcher READ
     // through the engine, then <<READ(log:///N/M/K)<2>::READ to pick the 2nd
-    // match line. One match per line is what makes <L> paging work.
+    // match line. One match per source line is what makes <L> paging work — so
+    // the seed is multi-line (single-line JSON would collapse every match to one row).
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, runId, 1, "compose-jsonpath");
@@ -271,7 +285,7 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
         await seedJson(db, sessionId, runId, mimetypes, "/team.json",
-            '{"users":[{"name":"Alice"},{"name":"Bob"},{"name":"Carol"}]}');
+            '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
 
         // Dispatch the matcher READ — lands at log:///1/1/1.
         await engine.dispatch({
