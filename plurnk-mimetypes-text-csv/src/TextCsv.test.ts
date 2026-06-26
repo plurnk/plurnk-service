@@ -130,12 +130,12 @@ describe("TextCsv — query (jsonpath against row objects)", () => {
         assert.deepEqual(out.map((m) => m.matched), ["alice", "carol"]);
     });
 
-    it("returns line numbers (header=1, first data row=2, ...)", async () => {
+    it("returns source-line spans (header=1, first data row=2, ...) (#41)", async () => {
         const out = await h.query(src, "jsonpath", "$[1].name");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "bob");
         // bob is on line 3 (header line 1, alice line 2, bob line 3)
-        assert.equal(out[0].line, 3);
+        assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
     });
 
     it("throws QueryParseFailureError on malformed CSV", async () => {

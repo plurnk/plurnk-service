@@ -87,11 +87,14 @@ export default class TextCsv extends BaseHandler {
             } catch (cause) {
                 throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
             }
-            const lineFor = (path: string): number => {
-                // jsonpath path starts with $[N] where N is the row index.
-                const m = path.match(/^\$\[(\d+)\]/);
-                if (!m) return 1;
-                return Number(m[1]) + 2;
+            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                // The JSON pointer starts with /N where N is the row index;
+                // header is line 1, so data row N is on line N+2 (one line per
+                // row, embedded newlines aside — see the note above).
+                const m = pointer.match(/^\/(\d+)/);
+                if (!m) return undefined;
+                const line = Number(m[1]) + 2;
+                return [{ line, endLine: line }];
             };
             return queryJsonpathObject(rows, pattern, lineFor);
         }
