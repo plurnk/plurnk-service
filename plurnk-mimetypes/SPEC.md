@@ -373,7 +373,13 @@ interface QueryMatch {
 }
 ```
 
-**Source-line footprint (`lines`, issue #41).** Every match carries `matched` (the value); `lines` is its 1-indexed, inclusive **source-line footprint** — an array of spans reported **as they fall**: one span for a contiguous hit, several only when the source is genuinely disjoint (gaps preserved, never coalesced; separate matches stay separate `QueryMatch` entries). `lines` is present and accurate for every **content-backed** match — regex/glob, every jsonpath node (from the deepJson's `line`/`endLine` annotations, the nearest enclosing annotated node for a primitive, or a handler-supplied `lineFor` resolving source offsets for JSON-family content), and every xpath node selection (`pk:line`..`pk:endLine`). It is **absent** only for **node-less computed scalars** — xpath `count()`/`string()`/`sum()`/`boolean()` — which synthesize a value out of many nodes (or none) and so live nowhere in the source; we report the value faithfully and never fake a line. Consumers render the spans for READ and fall back to `matched` when `lines` is absent.
+**Source-line footprint (`lines`, issue #41).** Every match carries `matched` (the value); `lines` is its 1-indexed, inclusive **source-line footprint** — an array of spans reported **as they fall**: one span for a contiguous hit, several only when the source is genuinely disjoint (gaps preserved, never coalesced; separate matches stay separate `QueryMatch` entries). `lines` is present and accurate for every **content-backed** match:
+
+- **regex / glob** — from the match offset(s).
+- **jsonpath** — the matched node's own `line`/`endLine`; for a value that carries none (a bare primitive), **the nearest enclosing annotated ancestor** (walked via the JSON pointer); or a handler-supplied `lineFor` resolving source offsets for JSON-family content.
+- **xpath** — the matched element's `pk:line`..`pk:endLine`; for an element that carries none of its own (a key-projected child like `<name>greet</name>`), **the nearest enclosing `pk:line`-bearing ancestor** (walked up the element tree).
+
+**Dialect symmetry (#41) is a hard invariant.** The jsonpath ancestor-walk and the xpath ancestor-walk are deliberately the same rule expressed in two trees, so for a given source construct **both dialects resolve to the same span**. Neither dialect ever fakes a line: `lines` is **absent** only for **node-less computed scalars** — xpath `count()`/`string()`/`sum()`/`boolean()` — which synthesize a value out of many nodes (or none) and so live nowhere in the source; jsonpath has no equivalent node-less form. Consumers render the spans for READ and fall back to `matched` when `lines` is absent. The invariant is enforced, not assumed — see the conformance harness (§14).
 
 `matched` is polymorphic by extractor:
 
@@ -395,7 +401,7 @@ interface QueryMatch {
 
 - **regex / glob** — apply against `toText(content)`. Default `toText` returns string content as-is; for binary content it throws `UnsupportedDialectError`. Handlers with binary content (PDF) override `toText` to provide a text projection (e.g. extracted page text).
 - **jsonpath** — apply against the **deep-json** channel (`handler.deepJson(content)`) per issue #10. Handlers whose mimetype has a native JSON-shaped representation (`application/json`, `application/yaml`, `application/toml`, `text/csv`) override `query` to dispatch jsonpath with handler-specific line resolution (jsonc-parser tree, yaml Document positions, etc.). The legacy bare-leaves outline path remains as a fallback when `deepJson()` returns null.
-- **xpath** — apply against the **deep-xml** channel (`handler.deepXml(content)`, default = `projectJsonToXml(await this.deepJson(content))`) per issue #10. Every handler that emits a structural tree automatically gets xpath dispatch — xpath-on-JSON, xpath-on-code, xpath-on-markdown all work via the projection. Handlers that want source-position accuracy (`text/html`, `application/xml`) override `query` to dispatch xpath against the real parsed DOM. When `deepXml()` is empty (handler has no structural tree at all), `UnsupportedDialectError` is thrown.
+- **xpath** — apply against the **deep-xml** channel (`handler.deepXml(content)`, default = `projectJsonToXml(await this.deepJson(content))`) per issue #10. Every handler that emits a structural tree automatically gets xpath dispatch — xpath-on-JSON, xpath-on-code, xpath-on-markdown all work via the projection. **Symbols-only handlers** (no `deepJson`) still answer xpath: when `deepJson()` is null, `deepXml` falls back to projecting the **same bare-number symbol outline** the jsonpath default uses (`buildJsonOutline(extractRaw)`), with an outline line-resolver so the projected elements carry the same real lines — so a handler that answers jsonpath answers xpath too, over the same entries, with the same spans (#41 symmetry). Handlers that want source-position accuracy (`text/html`, `application/xml`) override `query` to dispatch xpath against the real parsed DOM. `UnsupportedDialectError` is thrown only when there is **neither a deep tree nor any symbol** to project (`deepXml()` is empty).
 
 This is the symmetric design promised in issue #10: jsonpath dispatches against deep-json on any entry; xpath dispatches against deep-xml on any entry. The cross cases (xpath-on-JSON, jsonpath-on-XML, both on code) all work.
 
@@ -425,7 +431,7 @@ Per plurnk-mimetypes#10 and #17, `ProcessResult` carries up to four channels of 
 |---|---|---|---|
 | `symbols` | `symbols` (`MimeSymbol[]`) | Structured definitions — `symbol_defs` raw material for the graph (`@` dialect), chunk boundaries for semantic embedding, outline source (`format()`). | Handler via `extractRaw()`. |
 | `deep-json` | `deepJson` (unknown) | Query target for the jsonpath body-matcher tool. Full structural tree, idiomatic per the entry's native algebra. | Handler via `deepJson()`. |
-| `deep-xml` | `deepXml` (string) | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
+| `deep-xml` | `deepXml` (string) | Query target for the xpath body-matcher tool. Default: mechanical projection of `deep-json` via the framework's `projectJsonToXml()` — same conceptual tree, different syntax, drift-impossible by construction. When `deep-json` is null but the handler emits symbols, the projection target is instead the **bare-number symbol outline** (the same shape jsonpath falls back to), so symbols-only handlers stay xpath-queryable with real lines (#41). | Framework by default. Handlers whose algebra *is* XML (text-html, application-xml) may override `deepXml()` to serve real source markup; `process()` honors the override so the persisted channel and live `query()` xpath target always agree. |
 | `references` | `references` (`MimeRef[]`) | Classified symbol uses — `symbol_refs` raw material for the graph. §16. | Handler via `references()`; tree-sitter handlers via the framework's query-file engine. |
 
 Different masters, different fidelity. The deep channels serve query dispatch; symbols + references serve the service's graph and semantic machinery.
@@ -446,18 +452,20 @@ Node-shape convention used by the tree-sitter walker (other handlers should foll
 interface DeepTreeNode {
     type: string;          // native node type per algebra
     line: number;          // 1-indexed source line
-    endLine: number;       // 1-indexed inclusive
+    endLine: number;       // 1-indexed inclusive; endLine >= line always
     text?: string;         // present on leaves (no children); source slice
     children?: DeepTreeNode[];
 }
 ```
 
+`endLine >= line` is an invariant, never an inverted span. The ANTLR walker enforces it explicitly: an epsilon/empty-match rule context has its `stop` token set *before* its `start` (so `stop.line < start.line`), and the walker clamps `endLine` to `start.line` rather than emit `endLine < line`. The query line resolvers rely on this (`endLine` defaults to `line` whenever a stored `endLine` is missing or smaller).
+
 ### 12.3 `deep-xml` projection rule
 
 The framework's `projectJsonToXml()` applies these rules (in priority order):
 
-1. A JSON object whose `type` field is a non-empty string becomes an element named after that type. Otherwise, the element name comes from the parent key, falling back to `<root>` at the document root.
-2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** under the **reserved `pk:` namespace** (`xmlns:pk="https://plurnk.dev/deep-xml/1"`, declared on the root element only) when their value is a number or non-empty string. Per issue #12: namespacing is required because content's own attributes can carry the same names (e.g., HTML/XML source with `<foo line="5">`), and unprefixed bookkeeping would emit duplicate-attribute names → invalid XML. The `pk:` prefix makes framework bookkeeping always distinguishable from content attrs, keeps the document valid, and lets consumers strip the bookkeeping cleanly via `removeAttributeNS` or a regex on the prefix.
+1. A JSON object whose `type` field is a non-empty string becomes an element named after that type. Otherwise, the element name comes from the parent key, falling back to `<root>` at the document root. **Every element name — whether from `type` or from a key — is sanitized to a valid XML Name** (first char `[A-Za-z_]`, rest `[A-Za-z0-9_.-]`; anything else → `_`, empty → `node`). Keys are arbitrary text (symbol names, outline labels), so this is load-bearing: a `"Given x"` outline key projects to `<Given_x>`, never the invalid `<Given x>`. Sanitization may make a name diverge from the jsonpath key for that node; the **line** stays identical across dialects regardless (the #41 contract is about lines, not name spelling).
+2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** under the **reserved `pk:` namespace** (`xmlns:pk="https://plurnk.dev/deep-xml/1"`, declared on the root element only) when their value is a number or non-empty string. Per issue #12: namespacing is required because content's own attributes can carry the same names (e.g., HTML/XML source with `<foo line="5">`), and unprefixed bookkeeping would emit duplicate-attribute names → invalid XML. The `pk:` prefix makes framework bookkeeping always distinguishable from content attrs, keeps the document valid, and lets consumers strip the bookkeeping cleanly via `removeAttributeNS` or a regex on the prefix. **Optional `lineFor` resolver (#41):** `projectJsonToXml(json, rootName?, lineFor?)` takes an optional `ProjectLineFor = (pointer) => {line, endLine} | undefined`. For a node that carries no `line` of its own (raw parsed JSON/INI/CSV, or the symbol outline), the resolver supplies `pk:line`/`pk:endLine` by JSON pointer — so the xpath target gets the same real source lines jsonpath resolves through its own `lineFor`. A node's own `line` field always wins over the resolver.
 3. A leaf's `text` field becomes the element's text content.
 4. The optional `attrs` field on an object renders its entries as **content attributes in the default (no-prefix) namespace** — these are source-algebra attributes (HTML's `href`/`class`, XML's anything), and the model writes xpath against them naturally (`//a[@href]`, not `//a[@pk:href]`).
 5. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
@@ -567,6 +575,15 @@ describe("Issue #10 — C3: cross-dispatch matrix", () => {
 ```
 
 If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (issue #10's symmetric half, undelivered until framework v0.12.0) would have failed the test immediately rather than shipping silently for several framework versions.
+
+### 14.1 Query-line conformance harness (#41)
+
+The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not eyeballed per handler. `@plurnk/plurnk-mimetypes/conformance` exports `assertQueryLineConformance(handler, cases)`, where each case is `{ source, dialect, pattern, expectStartLines?, scalar? }`:
+
+- **Coverage mode** (no `expectStartLines`): every match the query returns must carry a well-formed `lines` span (`line >= 1`, `endLine >= line`), and there must be ≥1 match. This is what catches a dialect silently returning line-less or inverted matches.
+- **Scalar mode** (`scalar: true`): asserts the result carries *no* `lines` — the node-less computed-scalar case, so a future change that starts faking a line fails here.
+
+**The gate must exercise every dialect a handler supports** — the single most important rule, and the one whose absence let the jsonpath/xpath asymmetry hide. A handler that supports both jsonpath and xpath gets a case for each (`$..*` and `//*`); testing one dialect proves nothing about the other. Each handler ships `src/queryLines.conformance.test.ts` (binary handlers assert the contract directly against a built fixture, e.g. pdf). The 30 tree-sitter grammar packages route through the one shared handler, so they are gated centrally in the framework's `src/treesitter/queryLines.conformance.test.ts` across a spread of languages on both dialects — one red build for an ecosystem-wide regression.
 
 ## 15. Public API stability
 
