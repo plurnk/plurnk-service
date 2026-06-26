@@ -27,4 +27,15 @@ describe("issue #41 — jsonpath source-line spans (application/json)", () => {
         assert.equal(out[0].matched, "b");
         assert.deepEqual(out[0].lines, [{ line: 4, endLine: 4 }]);
     });
+
+    it("xpath carries the SAME real lines as jsonpath (#41 dual-dialect)", async () => {
+        const src = '{\n  "host": "db.internal",\n  "pool": {\n    "size": 5\n  }\n}';
+        const jh = await h.query(src, "jsonpath", "$.host");
+        const xh = await h.query(src, "xpath", "//host");
+        assert.deepEqual(xh[0].lines, jh[0].lines, "host: jsonpath and xpath agree");
+        const js = await h.query(src, "jsonpath", "$.pool.size");
+        const xs = await h.query(src, "xpath", "//size");
+        assert.deepEqual(xs[0].lines, js[0].lines, "nested size: jsonpath and xpath agree");
+        assert.deepEqual(xs[0].lines, [{ line: 4, endLine: 4 }]);
+    });
 });

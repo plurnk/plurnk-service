@@ -1,5 +1,6 @@
 import {
     BaseHandler,
+    projectJsonToXml,
     queryJsonpathObject,
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
@@ -119,23 +120,42 @@ export default class ApplicationJson extends BaseHandler {
                 });
             }
             const value = getNodeValue(tree) as unknown;
-            // Resolve a match's source-line span from jsonc-parser offsets
-            // (issue #41). The pointer locates the value node; for a property
-            // value we widen to the property (key..value) so the span covers
-            // where the field is *defined*, not just its value text. Absent
-            // (undefined) when the node can't be located — never a faked line.
-            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
-                const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
-                if (valueNode === undefined) return undefined;
-                const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
-                const line = offsetToLineCol(content, node.offset).line;
-                const endLine = offsetToLineCol(content, node.offset + Math.max(node.length - 1, 0)).line;
-                return [{ line, endLine }];
-            };
-            return queryJsonpathObject(value, pattern, lineFor);
+            const span = spanFor(tree, content);
+            return queryJsonpathObject(value, pattern, (p) => {
+                const s = span(p);
+                return s ? [s] : undefined;
+            });
         }
         return super.query(content, dialect, pattern, flags);
     }
+
+    // deep-xml carries the SAME source lines as jsonpath (#41): project the
+    // parsed value, stamping pk:line from the jsonc offsets via the shared
+    // resolver, so xpath-over-deepXml and jsonpath agree. Degrades to the
+    // framework default (positions absent) when the content doesn't parse.
+    override deepXml(content: HandlerContent): Promise<string> {
+        if (typeof content !== "string") return super.deepXml(content);
+        const allowsRelaxation = this.mimetype === "application/jsonc";
+        const tree = parseTree(content, [], { allowTrailingComma: allowsRelaxation, disallowComments: !allowsRelaxation });
+        if (tree === undefined) return super.deepXml(content);
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", spanFor(tree, content)));
+    }
+}
+
+// Source-line span of a match from jsonc-parser offsets. The pointer locates
+// the value node; a property value widens to its property (key..value) so the
+// span is where the field is *defined*. Shared by query() and deepXml() so
+// jsonpath and xpath report identical lines (#41). undefined when unlocatable —
+// never a faked line.
+function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number } | undefined {
+    return (pointer) => {
+        const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
+        if (valueNode === undefined) return undefined;
+        const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+        const line = offsetToLineCol(content, node.offset).line;
+        const endLine = offsetToLineCol(content, node.offset + Math.max(node.length - 1, 0)).line;
+        return { line, endLine };
+    };
 }
 
 // Convert a JSON Pointer (RFC 6901, /users/0/name) — what queryJsonpathObject's
