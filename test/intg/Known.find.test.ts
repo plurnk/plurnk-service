@@ -87,6 +87,25 @@ test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CO
     } finally { db.close(); }
 });
 
+test("[§find-result-catalog-rows] a content match stamps the row with matchLines — the lines where it hit", async () => {
+    const { db, sessionId, runId } = await setup();
+    try {
+        // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
+        await seedEntries(db, sessionId, runId, [
+            ["a", "intro\nbody\nfrance is here\ntail"],
+            ["b", "header\nfrance again\nmore"],
+            ["c", "italy only\nspain too"],
+        ]);
+        const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        assert.equal(r.status, 200);
+        const byPath = new Map(r.results.map((row) => [row.path, row] as const));
+        // FIND returns the matching ROWS with the match lines in the metadata (plurnk.md:31).
+        assert.deepEqual(byPath.get("known:///a")?.matchLines, [3], "the row carries the source line where the matcher hit");
+        assert.deepEqual(byPath.get("known:///b")?.matchLines, [2]);
+        assert.equal(byPath.has("known:///c"), false, "a miss excludes the entry entirely — no row, no matchLines");
+    } finally { db.close(); }
+});
+
 test("[§find-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
     const { db, sessionId, runId } = await setup();
     try {

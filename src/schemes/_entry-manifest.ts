@@ -22,7 +22,10 @@ import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
 type ManifestRow = { entry_id: number; scheme: string | null; pathname: string; channel: string; content: string; mimetype: string; tokens: number; seconds: number | null; deep_hash: string | null };
-export type CatalogEntry = { path: string; seconds?: number; tags?: string[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
+// matchLines: the source line numbers where a FIND content matcher hit within the entry
+// (plurnk.md:31 — FIND returns the matching ROWS with the match lines in the metadata; the
+// line CONTENT is a READ). Absent for a body-less FIND (whole catalog) and for ~semantic/@graph.
+export type CatalogEntry = { path: string; seconds?: number; tags?: string[]; matchLines?: number[]; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
 export default class EntryManifest {
     // Public — the catalog's path-rendering is the single source of truth for the

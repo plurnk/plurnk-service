@@ -1,9 +1,10 @@
 // FIND helper for entry-bearing schemes (SPEC §find; plurnk.md FIND row).
 // FIND resolves to the scheme's CATALOG ROWS — the very rows the manifest catalogs —
 // filtered to the statement's matches. A matcher (glob/regex/jsonpath/xpath/~semantic/
-// @graph) decides WHICH entries appear; it never reshapes a row (there is no per-match
-// extent — match-location is a READ, not a FIND field). The result is a JSON array of
-// catalog rows: the per-scheme slice of the catalog (§find-result-catalog-rows).
+// @graph) decides WHICH entries appear. A CONTENT matcher also stamps each row with
+// `matchLines` — the source line(s) where it hit (plurnk.md:31: FIND returns the matching
+// rows with the match lines in the metadata; the line CONTENT is a READ). The result is a
+// JSON array of catalog rows: the per-scheme slice of the catalog (§find-result-catalog-rows).
 //
 // Slot semantics (plurnk.md §"Body matcher dispatch (FIND, READ, OPEN, FOLD)"):
 //   target  — required scope (path or glob); selects which entries are candidates
@@ -82,13 +83,13 @@ export default class EntryFind {
     // tags) runs in SQL (find_session_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // daughter) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
-    // (malformed matcher) fails the whole op. Path-scoping stays in the (target). The matched
-    // SET is what FIND returns; the match LOCATION (which line/symbol) is a READ concern.
+    // (malformed matcher) fails the whole op. Path-scoping stays in the (target). Returns the
+    // matched pathnames plus `locations` — each content hit's source line(s), keyed by pathname.
     static async #matchPathnames(
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-    ): Promise<{ status: number; pathnames: string[] }> {
+    ): Promise<{ status: number; pathnames: string[]; locations?: Map<string, number[]> }> {
         if (statement.target === null) return { status: 400, pathnames: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File sets storedScheme=null — bare rows.
@@ -136,6 +137,7 @@ export default class EntryFind {
             candidates = candidates.filter((c) => re.test(c.pathname));
         }
 
+        const locations = new Map<string, number[]>();  // pathname → matched source lines, populated by a content matcher
         let pathnames: string[];
         if (statement.body === null) {
             // No body matcher — every in-scope candidate is in the result.
@@ -156,7 +158,10 @@ export default class EntryFind {
                 const match = await Matcher.matchAgainstContent(statement.body, cand.content, cand.mimetype, mimetypes); // matcher runs on content — §find-glob-filter-on-content
                 if (match.status === 400) return { status: 400, pathnames: [] };
                 if (match.status !== 200) continue; // 204 no-match / 415 unsupported / 203 fallback → not a content hit
-                pathnames.push(cand.pathname); // a content hit includes the entry — entry-level, no extent
+                pathnames.push(cand.pathname); // a content hit includes the entry
+                // §find-result-catalog-rows — the row carries WHERE it hit: the matcher already
+                // resolved the source line(s) (plurnk.md:31), so FIND surfaces them as metadata.
+                if (match.lines !== undefined && match.lines.length > 0) locations.set(cand.pathname, match.lines);
             }
         }
 
@@ -165,7 +170,7 @@ export default class EntryFind {
             if (page.status !== 200) return { status: page.status, pathnames: [] };
             pathnames = page.items ?? [];
         }
-        return { status: 200, pathnames };
+        return { status: 200, pathnames, locations };
     }
 
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
@@ -187,7 +192,10 @@ export default class EntryFind {
         const results: CatalogEntry[] = [];
         for (const pathname of match.pathnames) {
             const row = byPath.get(EntryManifest.toPath(scheme, pathname));
-            if (row !== undefined) results.push(row);
+            if (row === undefined) continue;
+            // A content hit carries WHERE it matched (the source lines); a body-less FIND has none.
+            const matchLines = match.locations?.get(pathname);
+            results.push(matchLines !== undefined ? { ...row, matchLines } : row);
         }
         // The matched set's content weight — the sum of every matched entry's live channel
         // tokens. Self-describes the FIND ("N items holding T tokens"): the per-scheme roll-up
