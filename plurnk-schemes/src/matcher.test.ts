@@ -25,21 +25,33 @@ const regexBody: MatcherBody = { dialect: "regex", raw: "/foo/", pattern: "foo",
 // for a single-line hit). Matches the mimetypes #41 QueryMatch.lines shape.
 const at = (n: number) => [{ line: n, endLine: n }];
 
-test("matcher: matches render as lean N:\\t<value> lines, one per match", async () => {
+// Source fixture the matcher reads line text from. The matcher SELECTS a line;
+// READ returns that line's CONTENT, not the matched token (schemes#27).
+const doc = [
+    "# Title",          // 1
+    "alpha foo beta",   // 2 — one hit
+    "gamma",            // 3
+    "delta foo foo",    // 4 — two hits on one line (dedup)
+].join("\n");
+
+test("matcher: returns the SOURCE LINE at each hit (not the value), deduped by line", async () => {
+    // Three regex hits — lines 2, 4, 4. Output is the source LINES, line 4 once.
     const mts = stubMimetypes(async () => [
-        { lines: at(3), matched: "foo" },
-        { lines: at(7), matched: "foo" },
+        { lines: at(2), matched: "foo" },
+        { lines: at(4), matched: "foo" },
+        { lines: at(4), matched: "foo" },
     ]);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
+    const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.equal(r.status, 200);
-    assert.equal(r.matches, 2);
-    assert.equal(r.body, "3:\tfoo\n7:\tfoo");
+    assert.equal(r.matches, 2); // deduped line count, not raw hit count
+    assert.equal(r.body, "2:\talpha foo beta\n4:\tdelta foo foo");
+    assert.equal((r.body ?? "").includes("\tfoo"), false); // the token is never the rendered value
 });
 
-test("matcher: a multi-line span anchors on its start line", async () => {
-    const mts = stubMimetypes(async () => [{ lines: [{ line: 4, endLine: 6 }], matched: "block" }]);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
-    assert.equal(r.body, "4:\tblock");
+test("matcher: a multi-line span anchors on — and renders — its start line", async () => {
+    const mts = stubMimetypes(async () => [{ lines: [{ line: 2, endLine: 4 }], matched: "block" }]);
+    const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
+    assert.equal(r.body, "2:\talpha foo beta");
 });
 
 test("matcher: a footprint-less match (xpath computed scalar) renders bare — no faked line", async () => {
@@ -55,57 +67,58 @@ test("matcher: a footprint-less match (xpath computed scalar) renders bare — n
 
 test("matcher: framework returns empty array → status 204", async () => {
     const mts = stubMimetypes(async () => []);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts);
+    const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.equal(r.status, 204);
     assert.equal(r.matches, 0);
     assert.equal(r.body, undefined);
 });
 
-test("matcher: baseLine offset shifts framework lines into source coordinates", async () => {
+test("matcher: baseLine displays SOURCE line numbers while reading text from the slice", async () => {
+    // The matcher ran against a slice; the framework reports slice lines 1 and 3.
+    const slice = ["foo here", "x", "and foo too"].join("\n");
     const mts = stubMimetypes(async () => [
         { lines: at(1), matched: "foo" },
         { lines: at(3), matched: "foo" },
     ]);
-    // Slice started at source line 10 — framework saw line 1 of the slice,
-    // we report source line 10.
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 10);
+    // Slice began at source line 10 → display 10 and 12, text from the slice.
+    const r = await Matcher.matchAgainstContent(regexBody, slice, "text/markdown", mts, 10);
     assert.equal(r.status, 200);
-    assert.equal(r.body, "10:\tfoo\n12:\tfoo");
+    assert.equal(r.body, "10:\tfoo here\n12:\tand foo too");
 });
 
-test("matcher: baseLine=1 (no slice) leaves lines unmodified", async () => {
-    const mts = stubMimetypes(async () => [{ lines: at(5), matched: "foo" }]);
-    const r = await Matcher.matchAgainstContent(regexBody, "irrelevant", "text/markdown", mts, 1);
-    assert.equal(r.body, "5:\tfoo");
+test("matcher: baseLine=1 (no slice) reports lines verbatim", async () => {
+    const mts = stubMimetypes(async () => [{ lines: at(2), matched: "foo" }]);
+    const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts, 1);
+    assert.equal(r.body, "2:\talpha foo beta");
 });
 
-test("matcher: `matching` (resolved path) is dropped from the rendering (schemes#12)", async () => {
+test("matcher: structural hit renders its source line, `matching` path never surfaced (schemes#12/#27)", async () => {
+    const json = ['{', '  "users": [', '    { "name": "Alice" },', '    { "name": "Bob" }', '  ]', '}'].join("\n");
     const mts = stubMimetypes(async () => [
         { lines: at(3), matched: "Alice", matching: "$.users[0].name" },
-        { lines: at(7), matched: "Bob", matching: "$.users[1].name" },
+        { lines: at(4), matched: "Bob", matching: "$.users[1].name" },
     ]);
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
-        "irrelevant", "application/json", mts,
+        json, "application/json", mts,
     );
-    // The structured {matched, matching} wrapper was the legibility barrier;
-    // output is bare line-numbered values, no resolved-path noise.
-    assert.equal(r.body, "3:\tAlice\n7:\tBob");
+    // The source line is returned (it contains the value, in context); the
+    // resolved path is never rendered.
+    assert.equal(r.body, '3:\t    { "name": "Alice" },\n4:\t    { "name": "Bob" }');
     assert.equal((r.body ?? "").includes("$.users"), false);
 });
 
-test("matcher: object/multi-line values are JSON-encoded to keep one match per line", async () => {
+test("matcher: a footprint-less object/multi-line value is JSON-encoded to one line", async () => {
     const mts = stubMimetypes(async () => [
-        { lines: at(3), matched: { name: "Alice", role: "admin" } },
-        { lines: at(5), matched: "two\nlines" },
+        { matched: { name: "Alice", role: "admin" } },
+        { matched: "two\nlines" },
     ]);
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody,
-        "irrelevant", "application/json", mts,
+        { dialect: "xpath", raw: "(//*)[string()]" } as MatcherBody,
+        "irrelevant", "text/html", mts,
     );
-    assert.equal(r.body, `3:\t{"name":"Alice","role":"admin"}\n5:\t"two\\nlines"`);
-    // one line per match — split count equals match count
-    assert.equal((r.body ?? "").split("\n").length, 2);
+    assert.equal(r.body, `{"name":"Alice","role":"admin"}\n"two\\nlines"`);
+    assert.equal((r.body ?? "").split("\n").length, 2); // one entry per match
 });
 
 test("matcher: UnsupportedDialectError → 415", async () => {
@@ -168,4 +181,9 @@ test("matcher: xpath dialect served by the framework, no local xml engine", asyn
     const r = await Matcher.matchAgainstContent(xpathBody, xml, "text/html", mts);
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
+    // End-to-end proof that structural dialects SELF-PROVIDE source lines
+    // (mimetypes #41) and we render the SOURCE LINE, not the node value (#27):
+    // each hit is `<n>:\t  <item>…</item>`, the whole source line — never bare `a`/`b`.
+    assert.match(r.body ?? "", /^\d+:\t {2}<item>a<\/item>$/m);
+    assert.match(r.body ?? "", /^\d+:\t {2}<item>b<\/item>$/m);
 });
