@@ -29,7 +29,6 @@ import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "
 const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ fetches a real URL into a streamed entry (no model, no mock)",
-    { skip: "blocked at a DEEPER layer: subscriptions.open requires a pre-existing entry, but http's first READ has none (streaming-entry-creation gap). The ctx.subscriptions WIRING is now FIXED (the daemon double-registration bug). Un-skip once open() materializes the streaming target." },
     async () => {
         const parsed = PlurnkParser.parse(`<<READ(${HTTP_URL})::READ`);
         const item = parsed.items.find((i: { kind: string }) => i.kind === "statement") as { statement: PlurnkStatement } | undefined;
