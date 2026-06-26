@@ -29,6 +29,7 @@ describe("#41 — tree-sitter query-line conformance (shared handler, all gramma
             );
             await assertQueryLineConformance(h, [
                 { source, dialect: "jsonpath", pattern: "$..children[*]" },
+                { source, dialect: "xpath", pattern: "//*" },
             ]);
         });
     }
