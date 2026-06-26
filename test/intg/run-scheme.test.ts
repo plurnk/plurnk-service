@@ -275,7 +275,7 @@ test("[§run-scheme-terminate] KILL(run:///name) aborts a sister by address; a m
     } finally { await db.close(); }
 });
 
-test("run-scope scratch: self EDIT writes the run partition; cross-run READ reaches it; cross-run WRITE is 403", async () => {
+test("[§run-scheme-scratch] self EDIT writes the run partition; cross-run READ reaches it; cross-run WRITE is 403", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
