@@ -30,10 +30,10 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND. Othe
 
 FIND returns rows of results, READ returns lines of content.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
-EDIT is only for adding or modifying entries. Do not attempt to edit log items.
+EDIT is only for adding or modifying files and entries. Do not attempt to edit log items.
 OPEN expands (`+`) the log item body and costs tokens. FOLD hides (`-`) the log item body and saves tokens. Not all log items have a body (`*`).
 EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
-KILL deletes entries, erases log items, and kills streams.
+KILL deletes files and entries, erases log items, and kills streams.
 SEND[202] to hibernate on runs with ongoing polled streams. SEND[200] fully ends the run.
 
 ### `<Line> / <Result>`
@@ -49,11 +49,11 @@ Clearing content: `<1,-1>` selects every position; combine with an empty body to
 `<0.7>` selects results scoring at least 0.7 (`~` filters).
 `<0.7,10,20>` selects results scoring at least 0.7, positions 10 through 20 (threshold, then range).
 
-On structured entries and items, `<Result>` addresses result index, not line number.
+On structured files, entries, and items, `<Result>` addresses result index, not line number.
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
 
-Plurnk System enables project-wide pattern matching and filtering, including structural and semantic dialects, of all entries.
+Plurnk System enables project-wide pattern matching and filtering, including structural and semantic dialects, of all files, entries, and items.
 
 | leading prefix | dialect  | form                              |
 |----------------|----------|-----------------------------------|
@@ -143,4 +143,4 @@ YOU MUST SEND[102] to receive the results of operations you submitted.
 * <<FIND(#src/.*\.test\.ts#)::FIND
 * <<FIND(src/**):@<createCoder:FIND
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on entries improve reasoning and recall!" > advice.txt:EDIT
+* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on files, entries, and items improve reasoning and recall!" > advice.txt:EDIT
