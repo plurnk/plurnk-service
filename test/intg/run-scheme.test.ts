@@ -11,6 +11,7 @@ import type { ParsedPath, CopyStatement, KillStatement, ReadStatement, FindState
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Run from "../../src/schemes/Run.ts";
+import Fork from "../../src/core/fork.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt } from "./_dsl.ts";
@@ -49,6 +50,38 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
     target: { kind: "url", raw: `run://${owner}/${glob}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+// A run-scope READ: run://<owner>/<path> ("" owner = self).
+const readEntry = (owner: string, path: string): ReadStatement => ({
+    op: "READ", suffix: "", signal: null,
+    target: { kind: "url", raw: `run://${owner}/${path}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+test("[§run-scheme-fork-scratch] a fork inherits the parent's run-scope scratch (owner-remapped), then diverges", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `fork-scratch-${crypto.randomUUID()}`);
+        const parent = await insertRun(db, sessionId, null, "alpha");
+        const ctxP = makeSchemeCtx({ db, sessionId, runId: parent, loopId: 0, turnId: 0 });
+        const run = new Run();
+        await run.edit(editStmt(runEntry("", "todo.md"), "parent note"), ctxP);
+
+        // Fork the parent — the branch must open with the parent's scratch under its OWN name.
+        const forkId = await Fork.fork(db, parent, "alpha-fork");
+        const ctxF = makeSchemeCtx({ db, sessionId, runId: forkId, loopId: 0, turnId: 0 });
+
+        const inherited = await run.find(findEntry("", "**"), ctxF);
+        assert.deepEqual(inherited.results.map((r) => r.path), ["run://alpha-fork/todo.md"], "the fork's perspective holds the inherited scratch under its own name");
+        const fRead = await run.read(readEntry("", "todo.md"), ctxF);
+        assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
+
+        // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
+        await run.edit(editStmt(runEntry("", "todo.md"), "fork note"), ctxF);
+        assert.equal((await run.read(readEntry("", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
+        assert.equal((await run.read(readEntry("", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+    } finally { await db.close(); }
 });
 
 test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a sister's only by name — the run's perspective", async () => {

@@ -48,3 +48,32 @@ FROM log_entries WHERE run_id = $run_id ORDER BY id;
 -- PREP: fork_insert_log_entry
 INSERT INTO log_entries (run_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, params, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
 VALUES ($run_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $params, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded);
+
+-- §run-scheme — a fork inherits the parent's run-scope SCRATCH (its private workspace), distinct
+-- from the shared session world above: "fork = everything-in-common-but-name, then diverges". The
+-- entries are deep-copied (new ids) with the owner remapped in the pathname (parent → branch), so
+-- the branch's scratch is independent — it edits its own without touching the parent's.
+
+-- PREP: fork_get_run_scope_entries
+-- The parent's run-scope entries (owner = the parent's run name, prefix `/<parent>/*`). deep_hash
+-- and attributes ride along; copying the channels with their tokens keeps the deep_hash valid so
+-- the next-turn pump skips re-derivation (the content is byte-identical).
+SELECT id, scheme, pathname, deep_hash, attributes
+FROM entries WHERE scope = 'run' AND session_id = $session_id AND pathname GLOB $owner_prefix ORDER BY id;
+
+-- PREP: fork_insert_run_scope_entry
+-- A run-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
+-- (scratch is never disk-synced nor a file member); version defaults 0.
+INSERT INTO entries (scope, session_id, scheme, pathname, deep_hash, attributes)
+VALUES ('run', $session_id, $scheme, $pathname, $deep_hash, $attributes)
+RETURNING id;
+
+-- PREP: fork_copy_entry_channels
+-- Copy every channel (body + derived graph/fts/embedding) from the source entry to the copy — one
+-- statement, content/tokens/state preserved, so the deep_hash gate holds and nothing re-derives.
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
+SELECT $new_entry_id, name, content, mimetype, tokens, state FROM entry_channels WHERE entry_id = $old_entry_id;
+
+-- PREP: fork_copy_entry_tags
+INSERT INTO entry_tags (entry_id, tag)
+SELECT $new_entry_id, tag FROM entry_tags WHERE entry_id = $old_entry_id;

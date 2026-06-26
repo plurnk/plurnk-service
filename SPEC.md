@@ -178,7 +178,7 @@ The run:// scheme makes §machine-processes addressable: a `run://` target is a 
 
 - **Spawn** — `EDIT(run:///<name>):prompt` creates a new sister (empty log) and starts it with `prompt` on its first loop; self cannot be spawned (400). {§run-scheme-spawn}
 - **irc** — `SEND(run:///<name>):msg` delivers `msg` to an existing sister, the **voice door** (§actor-boundary-two-doors): an active sister folds it into its next turn, an idle one wakes (§actor-boundary-passive-wake); a name with no run in the session is 404. {§run-scheme-irc}
-- **Fork** — `COPY(run:///<src>):prompt` branches `src` (self when `.`): the source's log is deep-copied into a new sister (§machine-processes-fork-copies-the-log), which continues with `prompt`; the world is shared, never copied (§machine-processes-fork-shares-the-world). {§run-scheme-fork}
+- **Fork** — `COPY(run:///<src>):prompt` branches `src` (self when `.`): the source's log is deep-copied into a new sister (§machine-processes-fork-copies-the-log), which continues with `prompt`; the world is shared, never copied (§machine-processes-fork-shares-the-world). A fork ALSO inherits the source's run-scope **scratch** — its private workspace deep-copied with the owner remapped (source → branch) — so the branch opens with the parent's notes and diverges on its own edits: *fork = everything-in-common-but-name*. {§run-scheme-fork} {§run-scheme-fork-scratch}
 
 All three ride one engine seam — the daemon's inject (active→fold, idle→enqueue+drain) — so the handler creates/branches/resolves the run and hands off; the daemon owns provider + system prompt. COPY's body here is the fork's seed prompt, not a destination path: the engine routes a run:// source away from the entry-copy path before parsing the body.
 
