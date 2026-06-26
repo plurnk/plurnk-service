@@ -119,32 +119,45 @@ export default class Log {
         return this.#setExpanded(statement, ctx, 0);
     }
 
-    async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
-        if (statement.target === null) return { status: 400 };
+    // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
+    // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
+    // KILL share: fold flips `expanded` on the ids, kill deletes them.
+    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[] }> {
         const { db, runId } = ctx;
-        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-
-        // Fast path: a single concrete coordinate with no pagination flips that row.
         const coord = parseCoordinate(pathname);
-        if (coord !== null && statement.lineMarker === null) {
-            const updated = await (db.log_set_expanded as PrepMethod).get<{ id: number }>({
-                run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence, expanded,
-            });
-            return { status: updated === undefined ? 404 : 200 };
+        if (coord !== null && lineMarker === null) {
+            const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
+            return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
-
-        // Glob and/or paginated (e.g. FOLD(log:///**/READ)<1>): resolve the matched
-        // rows, paginate over them, flip each. The model's primary curation move.
         const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob: pathname });
-        if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400 } : { status: 404 };
+        if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400, ids: [] } : { status: 404, ids: [] };
         let selected = matched;
-        if (statement.lineMarker !== null) {
-            const page = paginate(matched, LineMarkerOps.firstLast(statement.lineMarker));
-            if (page.status !== 200) return { status: page.status };
+        if (lineMarker !== null) {
+            const page = paginate(matched, LineMarkerOps.firstLast(lineMarker));
+            if (page.status !== 200) return { status: page.status, ids: [] };
             selected = page.items ?? [];
         }
-        if (selected.length === 0) return { status: 404 };
-        for (const { id } of selected) await (db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
+        if (selected.length === 0) return { status: 404, ids: [] };
+        return { status: 200, ids: selected.map((s) => s.id) };
+    }
+
+    async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
+        if (statement.target === null) return { status: 400 };
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
+        if (r.status !== 200) return { status: r.status };
+        for (const id of r.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
+        return { status: 200 };
+    }
+
+    // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and
+    // the only way to shed accumulated log rows in a long session (FOLD only collapses the
+    // render; the row persists). Same resolution as OPEN/FOLD, DELETE instead of flip. KILL
+    // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
+    async kill(pathname: string, _signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+        const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, ctx);
+        if (r.status !== 200) return { status: r.status };
+        for (const id of r.ids) await (ctx.db.log_delete_by_id as PrepMethod).run({ id });
         return { status: 200 };
     }
 }

@@ -2184,7 +2184,9 @@ export default class Engine {
         if (path === null) return { status: 400, error: "KILL requires a target path" };
         const schemeName = this.#schemeNameOf(path);
         if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
-        if (schemeName === "log") return { status: 405, error: "log:/// is append-only; KILL must bounce" };
+        // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
+        // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
+        // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec

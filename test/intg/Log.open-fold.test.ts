@@ -158,3 +158,33 @@ test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagin
         assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
     } finally { await db.close(); }
 });
+
+test("KILL(log:///1/1/1) erases the log row — the model's DB-storage curation lever (plurnk.md:36)", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        assert.equal(await getExpanded(db, runId), 1, "row exists before KILL");
+        const r = await new Log().kill("/1/1/1", null, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        assert.equal(r.status, 200, "KILL on a log item succeeds — not the old 405 append-only bounce");
+        assert.equal(await getExpanded(db, runId), -1, "the row is gone — storage freed (FOLD only collapses; KILL deletes)");
+    } finally { await db.close(); }
+});
+
+test("KILL erases an op='error' log item exactly like any other — errors ARE normal log items", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
+        await (db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence: 2,
+            origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({ message: "parse error", snippet: "bad" }), mimetype_rx: "application/json",
+            status_rx: 400, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+        });
+        const r = await new Log().kill("/1/1/2", null, makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        assert.equal(r.status, 200, "an error row is KILLable exactly like any log item — no special-casing");
+        const gone = await (db.test_get_log_expanded as PrepMethod).get({ run_id: runId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        assert.equal(gone, undefined, "the error row is gone");
+    } finally { await db.close(); }
+});

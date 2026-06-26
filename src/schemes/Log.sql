@@ -8,17 +8,13 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
--- PREP: log_set_expanded
--- Set expanded flag on the log entry at this coordinate within the run.
-UPDATE log_entries
-SET expanded = $expanded
-WHERE id = (
-    SELECT le.id FROM log_entries le
-    JOIN turns t ON t.id = le.turn_id
-    JOIN loops l ON l.id = t.loop_id
-    WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence
-)
-RETURNING id;
+-- PREP: log_id_by_coordinate
+-- Resolve a concrete log:/// coordinate to its row id within the run (shared by
+-- OPEN/FOLD's flip and KILL's erase — one resolution, two actions).
+SELECT le.id FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_match_coordinates
 -- Resolve a log:/// path-glob to the matching rows within the run, coordinate-ordered.
@@ -35,3 +31,10 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_set_expanded_by_id
 UPDATE log_entries SET expanded = $expanded WHERE id = $id;
+
+-- PREP: log_delete_by_id
+-- KILL erases a log item (plurnk.md:36, :98) — the model's DB-storage curation lever,
+-- the only way to shed accumulated log rows in a long session (FOLD only collapses the
+-- render). A hard delete: the row is gone, freeing storage; the derived errors pointer
+-- for an `op='error'` row vanishes with it.
+DELETE FROM log_entries WHERE id = $id;

@@ -124,14 +124,17 @@ test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against log:/// returns 405 (append-only)", async () => {
+test("Engine.dispatch: KILL against log:/// is allowed (erases the row) — a missing coordinate 404s, not 405", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
         });
-        assert.equal(kill.status, 405);
+        // KILL erases log items (plurnk.md:36, :98) — routed to Log.kill, which 404s a missing
+        // coordinate. The old "append-only" 405 is gone (it forbade what the grammar requires;
+        // the successful-erase path is covered in Log.open-fold).
+        assert.equal(kill.status, 404);
     } finally { await db.close(); }
 });
 
