@@ -150,9 +150,13 @@ export interface QueryLineCase {
     source: string;
     dialect: "jsonpath" | "xpath" | "regex" | "glob";
     pattern: string;
-    // The 1-indexed start line each match must resolve to, in match order. The
-    // harness also checks every span is well-formed (line >= 1, endLine >= line).
-    expectStartLines: readonly number[];
+    // Coverage mode (omit) vs precise mode (provide). When omitted, the harness
+    // asserts only that EVERY content-backed match carries a well-formed span —
+    // the core contract, wireable without predicting exact lines. When provided,
+    // it additionally checks the 1-indexed start line of each match in order.
+    // A case must produce at least one match either way (an empty query is not a
+    // conformance signal).
+    expectStartLines?: readonly number[];
     // Set for a node-less computed scalar (xpath count()/string()/…): the match
     // MUST carry no `lines` (we never fake a location). Default false.
     scalar?: boolean;
@@ -188,6 +192,7 @@ export async function assertQueryLineConformance(
             continue;
         }
 
+        assert.ok(matches.length > 0, `${label}: produced no matches — not a conformance signal`);
         const starts: number[] = [];
         for (const m of matches) {
             assert.ok(
@@ -200,10 +205,12 @@ export async function assertQueryLineConformance(
             }
             starts.push(m.lines![0].line);
         }
-        assert.deepEqual(
-            starts,
-            [...c.expectStartLines],
-            `${label}: match start lines mismatch — expected ${JSON.stringify(c.expectStartLines)}, got ${JSON.stringify(starts)}`,
-        );
+        if (c.expectStartLines !== undefined) {
+            assert.deepEqual(
+                starts,
+                [...c.expectStartLines],
+                `${label}: match start lines mismatch — expected ${JSON.stringify(c.expectStartLines)}, got ${JSON.stringify(starts)}`,
+            );
+        }
     }
 }

@@ -57,6 +57,21 @@ describe("#41 query-line conformance gate", () => {
         );
     });
 
+    it("coverage mode (no expectStartLines) passes when every match has lines", async () => {
+        const h = new CompliantHandler(md);
+        await assertQueryLineConformance(h, [
+            { source: "(unused)", dialect: "jsonpath", pattern: "$..children[*]" },
+        ]);
+    });
+
+    it("coverage mode FAILS a line-less handler", async () => {
+        const h = new NonCompliantHandler(md);
+        await assert.rejects(
+            () => assertQueryLineConformance(h, [{ source: "(unused)", dialect: "jsonpath", pattern: "$.host" }]),
+            /no lines \(#41\)/,
+        );
+    });
+
     it("accepts a node-less computed scalar carrying no lines", async () => {
         const h = new CompliantHandler(md);
         // jsonpath has no aggregate scalars; a $.length-style miss returns []
