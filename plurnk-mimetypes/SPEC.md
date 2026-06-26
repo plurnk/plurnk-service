@@ -363,6 +363,8 @@ Plurnk-service dispatches `FIND`/`READ`/`SHOW`/`HIDE` body matchers through `Mim
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
 
+**Parsed-form entry (#42).** `Mimetypes.query(input, matcher)` accepts `matcher` as **either** a raw string (classified by the table above) **or** an already-parsed `ParsedBodyMatcher { dialect, pattern, flags? }` — the same shape `@plurnk/plurnk-grammar` produces when it parses the model-facing matcher syntax. A caller that already holds the parsed body (plurnk-service receives it from the grammar) passes the object and the framework dispatches it **verbatim** — `parseBodyMatcher` is skipped entirely. This is deliberate: the grammar owns the matcher syntax, so re-deriving the dialect inside mimetypes would be a *second parser for one syntax* and a silent drift surface (a matcher the grammar accepts but mimetypes classifies differently). The parsed form's **declared dialect is authoritative** — a `{ dialect: "regex", pattern: "//foo" }` runs as regex even though the string `"//foo"` would classify as xpath. Both forms converge on the same per-dialect dispatch, so `lines` (§11.2) comes back uniformly regardless of entry form.
+
 ### 11.2 Per-match return shape (from plurnk-grammar #17)
 
 ```ts

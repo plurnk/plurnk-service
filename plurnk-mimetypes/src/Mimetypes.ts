@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { detect } from "./detect.ts";
 import { discover } from "./discover.ts";
-import { parseBodyMatcher } from "./parseBodyMatcher.ts";
+import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
@@ -539,9 +539,20 @@ export default class Mimetypes {
         this.#handlerInstances.clear();
     }
 
-    // Body-matcher query entry point. Plurnk-service passes a raw matcher
-    // expression (e.g. "$.users[0].name", "//user", "/error.*/g", "*.log") and
-    // we dispatch by leading prefix to the resolved handler's query method.
+    // Body-matcher query entry point. Accepts the matcher in EITHER form (#42):
+    //
+    //   * a raw matcher string (e.g. "$.users[0].name", "//user", "/error.*/g",
+    //     "*.log") — we classify the dialect by leading prefix via
+    //     parseBodyMatcher; or
+    //   * an already-parsed `{ dialect, pattern, flags? }` — the shape
+    //     `@plurnk/plurnk-grammar` produces for the model-facing matcher syntax.
+    //
+    // The grammar owns that syntax, so when the caller already holds the parsed
+    // body it passes the object and the framework dispatches it verbatim — no
+    // second parser, no re-derivation, no drift between the grammar's
+    // classification and ours (#42). Both forms converge on the same per-dialect
+    // dispatch, so `m.lines` (#41) comes back uniformly for regex/glob/jsonpath/
+    // xpath either way.
     //
     // Errors:
     //   * detection fails → throws ReferenceError (no handler to query)
@@ -551,7 +562,7 @@ export default class Mimetypes {
     //   * malformed expression → InvalidExpressionError → 400
     //   * content can't be parsed for dialect → QueryParseFailureError → 422
     //   * zero matches → returns [] (consumer maps to 204)
-    async query(input: ProcessInput, expression: string): Promise<QueryMatch[]> {
+    async query(input: ProcessInput, matcher: string | ParsedBodyMatcher): Promise<QueryMatch[]> {
         const mimetype = await this.detect(input);
         if (mimetype === null) {
             throw new ReferenceError("Mimetypes.query: no mimetype could be resolved for input");
@@ -570,7 +581,8 @@ export default class Mimetypes {
             throw new ReferenceError(`Mimetypes.query: no handler discovered for ${mimetype}`);
         }
 
-        const parsed = parseBodyMatcher(expression);
+        // String → classify by leading prefix; parsed body → dispatch verbatim.
+        const parsed = typeof matcher === "string" ? parseBodyMatcher(matcher) : matcher;
         return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
     }
 
