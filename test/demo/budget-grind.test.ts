@@ -23,7 +23,12 @@ import { seedDemoFixture } from "./_fixture.ts";
 // ~1478) — and below the with-reads peak, so the model must read-distill-FOLD to
 // answer rather than the grinder hard-stopping at the floor. Bump when the
 // sysprompt grows again. Absolute mode (>1) holds though gemma reports no window.
-const CEILING = 2000;
+// Pinned above the assembled floor, below the no-curation peak, so the model must read-distill-FOLD
+// to stay under rather than the grinder hard-stopping at the floor. RECALIBRATED 2026-06-25 against
+// grammar 0.74.20 / mimetypes 0.15.27 / schemes 0.30.9: the `definition` (sysprompt) section alone is
+// now 1991t; the first full turn assembles at ~3102t and, with NO curation, the log section grows the
+// packet to ~3785t over four turns. 3500 sits in that window. Bump again when the sysprompt grows.
+const CEILING = 3500;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
@@ -37,11 +42,14 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
 
             // Peak assembled context across the loop. Without curation the log
             // accumulates past the wall; staying under means the model HID as it went.
+            // packet.tokens is the assembled total (the Packet-sections shape, `{ tokens, sections }`);
+            // the old `packet.system.tokens`/`.user.tokens` fields are gone — reading them silently
+            // measured 0, making this assertion vacuous until 2026-06-25.
             let peak = 0;
             for (const tid of turnIds) {
                 const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
-                const p = JSON.parse(row?.packet ?? "{}") as { system?: { tokens?: number }; user?: { tokens?: number } };
-                peak = Math.max(peak, (p.system?.tokens ?? 0) + (p.user?.tokens ?? 0));
+                const p = JSON.parse(row?.packet ?? "{}") as { tokens?: number };
+                peak = Math.max(peak, p.tokens ?? 0);
             }
             console.error(`[budget-grind] turns=${turnIds.length} finalStatus=${finalStatus} ceiling=${CEILING} peakTotal=${peak}`);
 
