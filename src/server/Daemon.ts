@@ -13,7 +13,6 @@ import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import PluginLoader from "../core/PluginLoader.ts";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.ts";
 import ClientConnection from "./ClientConnection.ts";
@@ -186,7 +185,6 @@ export default class Daemon {
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
 
-        await this.#discoverAndLoadPlugins();
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
         await this.#mimetypes.ready();
@@ -952,18 +950,6 @@ export default class Daemon {
         });
     }
 
-    async #discoverAndLoadPlugins(): Promise<void> {
-        // Scheme discovery only. Providers are config-driven (wired via the
-        // bin script). Mimetypes self-discovers — Mimetypes.ready() in start()
-        // scans @plurnk/plurnk-mimetypes-* packages via the framework's own
-        // discover().
-        const plugins = await PluginLoader.discoverPlugins(this.#nodeModulesPath);
-        for (const plugin of plugins) {
-            if (plugin.manifest.kind !== "scheme") continue;
-            const instance = await PluginLoader.loadPlugin(plugin);
-            this.#schemes.register(plugin.manifest.name, instance as object);
-        }
-    }
 
     #broadcast(target: NotifyTarget, from: ClientConnection | null, method: string, params?: unknown): void {
         if (target === "this") {
