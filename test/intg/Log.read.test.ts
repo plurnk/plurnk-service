@@ -147,7 +147,8 @@ test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () =>
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.match(r.content ?? "", /^\d+:\t"status"$/);
+        // READ returns the LINE (plurnk.md:31) — the rx JSON line containing "status", not the token.
+        assert.match(r.content ?? "", /^\d+:\t.*"status"/);
     } finally { db.close(); }
 });
 
@@ -175,7 +176,8 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
         };
         const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /^\d+:\t201$/);
+        // READ returns the LINE of the structural slice containing the match, not the bare 201.
+        assert.match(r.content ?? "", /^\d+:\t.*201/);
     } finally { db.close(); }
 });
 

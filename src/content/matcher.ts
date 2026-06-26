@@ -40,7 +40,30 @@ export default class Matcher {
         return typeof v === "string" && !v.includes("\n") ? v : JSON.stringify(v);
     }
 
-    static #renderMatches(matches: readonly QueryMatch[]): string {
+    // READ returns LINES of content (plurnk.md:31): a matcher SELECTS, READ delivers the
+    // source line at each match — not the extracted value. One source-line prefix `N:\t`
+    // (plurnk.md:32). Dedup by source line so a line matched twice appears once. `adjusted`
+    // carries source-coordinate line numbers; `content` is content-relative, so index by
+    // (line − offset). Out-of-range (a structural hit with no source line yet → daughter
+    // provenance pending) falls back to the matched value.
+    static #renderLines(adjusted: readonly QueryMatch[], content: string, baseLine: number): string {
+        const lines = content.split("\n");
+        const offset = baseLine - 1;
+        const seen = new Set<number>();
+        const rows: string[] = [];
+        for (const m of adjusted) {
+            if (seen.has(m.line)) continue;
+            seen.add(m.line);
+            const lineContent = lines[(m.line - offset) - 1] ?? Matcher.#renderValue(m.matched);
+            rows.push(`${m.line}:\t${lineContent}`);
+        }
+        return rows.join("\n");
+    }
+
+    // Structural dialects (jsonpath/xpath) still render the EXTRACTED value, pending the
+    // mimetypes daughter reporting the source line of each hit (§matcher-result impl note).
+    // Once it does, these route through #renderLines too and READ returns the line uniformly.
+    static #renderValues(matches: readonly QueryMatch[]): string {
         return matches.map((m) => `${m.line}:\t${Matcher.#renderValue(m.matched)}`).join("\n");
     }
 
@@ -118,6 +141,13 @@ export default class Matcher {
         }
         if (matches.length === 0) return { status: 204, matches: 0 };
         const adjusted = Matcher.#shiftLines(matches, baseLine);
-        return { status: 200, body: Matcher.#renderMatches(adjusted), matches: adjusted.length, lines: adjusted.map((m) => m.line) };
+        // READ returns LINES (plurnk.md:31). Line-oriented dialects (regex/glob) have the
+        // source line in hand → return it now. Structural dialects (jsonpath/xpath) still
+        // render the value until the daughter reports each hit's source line (§matcher-result).
+        const lineOriented = body.dialect === "glob" || body.dialect === "regex";
+        const renderBody = lineOriented
+            ? Matcher.#renderLines(adjusted, content, baseLine)
+            : Matcher.#renderValues(adjusted);
+        return { status: 200, body: renderBody, matches: adjusted.length, lines: adjusted.map((m) => m.line) };
     }
 }

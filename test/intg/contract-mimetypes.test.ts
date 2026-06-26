@@ -117,9 +117,10 @@ test("[§slice-semantics-compose-pattern] <<READ(log:///1/1/1)<P>::READ picks th
         );
         assert.equal(picked.status, 200);
         assert.equal((picked.content ?? "").split("\n").length, 1, "<L><2> selects exactly the P-th line");
-        // §matcher-result: a single anonymous capture group extracts as a one-element
-        // array, JSON-encoded as ["gamma"] for the 2nd match.
-        assert.match(picked.content ?? "", /\["gamma"\]/);
+        // §matcher-result / plurnk.md:31 — regex MATCHES, it does not extract: READ returns the
+        // 2nd matching LINE (`error: gamma`), not a capture-group value. The compose-chain still
+        // picks the P-th match; the unit it returns is now the line.
+        assert.match(picked.content ?? "", /error: gamma/);
         assert.doesNotMatch(picked.content ?? "", /alpha/);
     } finally { await db.close(); }
 });

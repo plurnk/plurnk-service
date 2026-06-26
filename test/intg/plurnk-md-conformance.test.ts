@@ -95,7 +95,8 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
         await seed(db, sessionId, runId, [["doc", "alpha timeout beta"]]);
         const r = await new Known().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, sessionId }));
         assert.equal(r.status, 200);
-        assert.equal(r.content, "1:\ttimeout");
+        // READ returns the LINE that matched (plurnk.md:31), not the token `timeout`.
+        assert.equal(r.content, "1:\talpha timeout beta");
     } finally { db.close(); }
 });
 

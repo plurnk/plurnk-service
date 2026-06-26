@@ -207,7 +207,8 @@ test("File.read: regex body matcher returns N:\\t<value> rows", async () => {
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        assert.equal(r.content, "1:\tfoo\n2:\tfoo");
+        // READ returns LINES (plurnk.md:31): the matching source lines, not the value `foo`.
+        assert.equal(r.content, "1:\tfoo\n2:\tbar foo");
     });
 });
 
@@ -223,8 +224,9 @@ test("File.read: <L> + body matcher composes — slice first, match within, sour
             ctx,
         );
         assert.equal(r.status, 200);
-        // Both matches on source line 2 (after slice); baseLine=2 preserved.
-        assert.equal(r.content, "2:\tfoo\n2:\tfoo");
+        // Both matches fall on source line 2 (after the slice, baseLine=2); READ returns
+        // the LINE deduped once — `foo bar foo`, not the value `foo` twice.
+        assert.equal(r.content, "2:\tfoo bar foo");
     });
 });
 
