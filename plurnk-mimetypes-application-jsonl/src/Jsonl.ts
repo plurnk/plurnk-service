@@ -1,5 +1,5 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // application/jsonl (JSON Lines / NDJSON) handler — Tier 4, no parser dep.
 //
@@ -27,6 +27,38 @@ export default class Jsonl extends BaseHandler {
 
     override deepJson(content: HandlerContent): unknown {
         return scan(toText(content)).records;
+    }
+
+    // jsonpath against the record array, with source-line spans (#41). deepJson
+    // is line-less raw records, so we map a match's record index (the first
+    // pointer segment) to its source line — one record per non-empty parseable
+    // line, the JSONL invariant. Absent for non-record pointers; never faked.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            const recordLines: number[] = [];
+            const lines = toText(content).split("\n");
+            for (let i = 0; i < lines.length; i += 1) {
+                const t = lines[i].trim();
+                if (t.length === 0) continue;
+                try {
+                    JSON.parse(t);
+                    recordLines.push(i + 1);
+                } catch { /* unparseable line skipped, mirroring scan() */ }
+            }
+            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                const m = pointer.match(/^\/(\d+)/);
+                if (m === null) return undefined;
+                const ln = recordLines[Number(m[1])];
+                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+            };
+            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+        }
+        return super.query(content, dialect, pattern, flags);
     }
 
     override extent(content: HandlerContent): number {
