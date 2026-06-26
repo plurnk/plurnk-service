@@ -367,11 +367,13 @@ Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` 
 
 ```ts
 interface QueryMatch {
-    readonly line: number;             // 1-indexed source position
-    readonly matched: unknown;         // polymorphic per dialect (see below)
-    readonly matching?: string;        // resolved canonical locator when disambiguating
+    readonly matched: unknown;                          // polymorphic per dialect (see below)
+    readonly matching?: string;                         // resolved canonical locator when disambiguating
+    readonly lines?: ReadonlyArray<{ line: number; endLine: number }>; // source footprint (#41)
 }
 ```
+
+**Source-line footprint (`lines`, issue #41).** Every match carries `matched` (the value); `lines` is its 1-indexed, inclusive **source-line footprint** — an array of spans reported **as they fall**: one span for a contiguous hit, several only when the source is genuinely disjoint (gaps preserved, never coalesced; separate matches stay separate `QueryMatch` entries). `lines` is present and accurate for every **content-backed** match — regex/glob, every jsonpath node (from the deepJson's `line`/`endLine` annotations, the nearest enclosing annotated node for a primitive, or a handler-supplied `lineFor` resolving source offsets for JSON-family content), and every xpath node selection (`pk:line`..`pk:endLine`). It is **absent** only for **node-less computed scalars** — xpath `count()`/`string()`/`sum()`/`boolean()` — which synthesize a value out of many nodes (or none) and so live nowhere in the source; we report the value faithfully and never fake a line. Consumers render the spans for READ and fall back to `matched` when `lines` is absent.
 
 `matched` is polymorphic by extractor:
 

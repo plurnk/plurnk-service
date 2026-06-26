@@ -510,8 +510,8 @@ describe("Mimetypes — query", () => {
         );
         assert.equal(results.length, 2);
         assert.equal(results[0].matched, "beta");
-        assert.equal(results[0].line, 2);
-        assert.equal(results[1].line, 4);
+        assert.equal(results[0].lines![0].line, 2);
+        assert.equal(results[1].lines![0].line, 4);
     });
 
     it("dispatches jsonpath via $ expression to the handler's outline", async () => {
@@ -533,7 +533,7 @@ describe("Mimetypes — query", () => {
         );
         assert.equal(results.length, 1);
         assert.equal(results[0].matched, 5);
-        assert.equal(results[0].line, 5);
+        assert.equal(results[0].lines![0].line, 5);
     });
 
     it("dispatches glob (no prefix) line-anchored against text body", async () => {

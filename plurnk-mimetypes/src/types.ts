@@ -161,8 +161,23 @@ export type QueryDialect = "regex" | "glob" | "xpath" | "jsonpath";
 //   - jsonpath wildcards → `$.users[0].name` per match
 //   - xpath multi-match → `(//user)[1]` per match
 //   - omitted otherwise.
-export interface QueryMatch {
+// A 1-indexed, inclusive source-line span. The hit's footprint is an array of
+// these (issue #41) — one for a contiguous hit, several only when the source is
+// genuinely disjoint (gaps preserved, never coalesced).
+export interface LineSpan {
     readonly line: number;
+    readonly endLine: number;
+}
+
+export interface QueryMatch {
+    // The structured value at the hit — always present (issue #41).
     readonly matched: unknown;
+    // The locus: jsonpath path or xpath expression. Present when meaningful.
     readonly matching?: string;
+    // The hit's source-line footprint. Present and accurate for every
+    // content-backed match (regex/glob, jsonpath nodes, xpath node selections).
+    // ABSENT only for node-less computed scalars (xpath count()/string()/sum()/
+    // boolean()) — those synthesize a value out of many nodes (or none) and so
+    // live nowhere in the source. We never fake a line for them.
+    readonly lines?: ReadonlyArray<LineSpan>;
 }

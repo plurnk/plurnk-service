@@ -50,7 +50,7 @@ describe("BaseHandler.query — jsonpath default (against outline)", () => {
         const out = await h.query("(unused content)", "jsonpath", "$.Top.Section.Sub");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, 5);
-        assert.equal(out[0].line, 5);
+        assert.equal(out[0].lines![0].line, 5);
     });
 
     it("returns [] when extractRaw is empty", async () => {

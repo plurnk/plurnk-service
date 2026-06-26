@@ -11,12 +11,18 @@ describe("queryRegex — bare patterns", () => {
         assert.equal(out[1].matched, "foo");
     });
 
-    it("computes line numbers from the offset of each match", () => {
+    it("computes line spans from the offset of each match", () => {
         const text = "alpha\nbeta\ngamma\nbeta";
         const out = queryRegex(text, "beta");
         assert.equal(out.length, 2);
-        assert.equal(out[0].line, 2);
-        assert.equal(out[1].line, 4);
+        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(out[1].lines, [{ line: 4, endLine: 4 }]);
+    });
+
+    it("spans a multi-line match across its lines", () => {
+        const out = queryRegex("a\nstart x\ny end\nb", "start[\\s\\S]*end");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 3 }]);
     });
 
     it("returns an empty array when nothing matches", () => {
@@ -113,7 +119,7 @@ describe("queryGlob", () => {
         const text = "first\nsecond\nthird";
         const out = queryGlob(text, "second");
         assert.equal(out.length, 1);
-        assert.equal(out[0].line, 2);
+        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
     });
 });
 
@@ -130,15 +136,15 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
         const out = queryJsonpathObject(outline, "$.Top.Section.Sub");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, 5);
-        assert.equal(out[0].line, 5);
+        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
     });
 
     it("returns the nested subtree as `matched` for parent paths", () => {
         const out = queryJsonpathObject(outline, "$.Top.Section");
         assert.equal(out.length, 1);
         assert.deepEqual(out[0].matched, { Sub: 5 });
-        // line falls to deepest leaf min — 5
-        assert.equal(out[0].line, 5);
+        // span derives from the subtree's leaf numbers (a single leaf here, 5)
+        assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
     });
 
     it("emits one match per wildcard result with the resolved matching path", () => {
@@ -164,18 +170,18 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
 });
 
 describe("queryJsonpathObject — custom lineFor (used by JSON/YAML/TOML handlers)", () => {
-    it("delegates line resolution to the provided callback", () => {
+    it("delegates line resolution to the provided callback by pointer", () => {
         const data = { users: [{ name: "alice" }, { name: "bob" }] };
-        const out = queryJsonpathObject(data, "$.users[*].name", (path) => {
-            // Fake position map: alice is on line 3, bob on line 7
-            if (path.includes("[0]")) return 3;
-            if (path.includes("[1]")) return 7;
-            return 1;
+        const out = queryJsonpathObject(data, "$.users[*].name", (pointer) => {
+            // Fake source-position map: alice on line 3, bob on line 7
+            if (pointer === "/users/0/name") return [{ line: 3, endLine: 3 }];
+            if (pointer === "/users/1/name") return [{ line: 7, endLine: 7 }];
+            return undefined;
         });
         assert.equal(out.length, 2);
         assert.equal(out[0].matched, "alice");
-        assert.equal(out[0].line, 3);
+        assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
         assert.equal(out[1].matched, "bob");
-        assert.equal(out[1].line, 7);
+        assert.deepEqual(out[1].lines, [{ line: 7, endLine: 7 }]);
     });
 });

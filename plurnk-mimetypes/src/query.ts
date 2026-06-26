@@ -2,7 +2,7 @@ import { JSONPath } from "jsonpath-plus";
 import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import { InvalidExpressionError, QueryParseFailureError } from "./QueryError.ts";
-import type { QueryMatch } from "./types.ts";
+import type { LineSpan, QueryMatch } from "./types.ts";
 
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
 // `matched` shape per grammar #17:
@@ -26,9 +26,12 @@ export function queryRegex(text: string, pattern: string, flags?: string): Query
     const out: QueryMatch[] = [];
     let m: RegExpExecArray | null;
     while ((m = regex.exec(text)) !== null) {
+        const line = lineAtOffset(text, m.index);
+        // A match containing newlines spans multiple lines.
+        const endLine = line + (m[0].match(/\n/g)?.length ?? 0);
         out.push({
-            line: lineAtOffset(text, m.index),
             matched: shapeMatched(m),
+            lines: [{ line, endLine }],
         });
         // Defend against zero-length matches infinite-looping the global regex.
         if (m[0].length === 0) regex.lastIndex += 1;
@@ -44,7 +47,7 @@ export function queryGlob(text: string, pattern: string): QueryMatch[] {
     const out: QueryMatch[] = [];
     for (let i = 0; i < lines.length; i += 1) {
         if (regex.test(lines[i])) {
-            out.push({ line: i + 1, matched: lines[i] });
+            out.push({ matched: lines[i], lines: [{ line: i + 1, endLine: i + 1 }] });
         }
     }
     return out;
@@ -57,7 +60,7 @@ export function queryGlob(text: string, pattern: string): QueryMatch[] {
 export function queryJsonpathObject(
     obj: unknown,
     pattern: string,
-    lineFor?: (path: string, value: unknown) => number,
+    lineFor?: (pointer: string, value: unknown) => readonly LineSpan[] | undefined,
 ): QueryMatch[] {
     let results: Array<{ value: unknown; path: string; pointer: string }>;
     try {
@@ -75,8 +78,11 @@ export function queryJsonpathObject(
     }
 
     return results.map((r) => {
-        const line = lineFor ? lineFor(r.path, r.value) : deepMinLine(r.value);
-        return { line, matched: r.value, matching: r.path };
+        // A handler with source-position fidelity (JSON/JSONL via jsonc-parser)
+        // supplies lineFor by pointer; otherwise resolve from the deepJson's own
+        // line annotations (synthesized models) or the bare-number outline.
+        const lines = (lineFor && lineFor(r.pointer, r.value)) ?? defaultLines(obj, r.pointer, r.value);
+        return lines ? { matched: r.value, matching: r.path, lines } : { matched: r.value, matching: r.path };
     });
 }
 
@@ -125,13 +131,16 @@ export function queryXpathString(xml: string, pattern: string, mimetype: string)
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => ({
-            line: lineOfMatchedNode(node),
             matched: serializeXpathNode(node),
             matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+            lines: [spanOfMatchedNode(node)],
         }));
     }
     if (result === null || result === undefined) return [];
-    return [{ line: 1, matched: typeof result === "string" ? result : String(result) }];
+    // Computed scalar (string()/count()/sum()/boolean()): a value synthesized
+    // from many nodes (or none) — no source node, so no `lines` (issue #41). We
+    // report the value faithfully and leave the location honestly absent.
+    return [{ matched: typeof result === "string" ? result : String(result) }];
 }
 
 const ATTRIBUTE_NODE = 2;
@@ -145,7 +154,7 @@ const ELEMENT_NODE = 1;
 // writes onto every element. Walks up from non-element matches (attributes,
 // text nodes) to find the containing element. Falls back to 1 if nothing
 // useful turns up.
-function lineOfMatchedNode(node: Node): number {
+function spanOfMatchedNode(node: Node): LineSpan {
     let el: Element | null = null;
     if (node.nodeType === ELEMENT_NODE) {
         el = node as unknown as Element;
@@ -159,15 +168,22 @@ function lineOfMatchedNode(node: Node): number {
         }
         el = cur as unknown as Element | null;
     }
-    if (!el) return 1;
-    // pk:line lives in the framework's reserved namespace (see SPEC §12.3 + #12).
-    const lineStr = el.getAttributeNS
-        ? el.getAttributeNS("https://plurnk.dev/deep-xml/1", "line")
+    // pk:line / pk:endLine — the source span the projection wrote onto every
+    // element (SPEC §12.3 + #12). endLine defaults to line for a single-line node.
+    const line = pkAttr(el, "line") ?? 1;
+    const endLine = pkAttr(el, "endLine") ?? line;
+    return { line, endLine };
+}
+
+function pkAttr(el: Element | null, name: string): number | undefined {
+    if (!el) return undefined;
+    const raw = el.getAttributeNS
+        ? el.getAttributeNS("https://plurnk.dev/deep-xml/1", name)
         : (el as Element & { getAttribute?: (n: string) => string | null })
-            .getAttribute?.("pk:line") ?? null;
-    if (lineStr === null || lineStr === undefined || lineStr === "") return 1;
-    const n = Number(lineStr);
-    return Number.isFinite(n) && n > 0 ? n : 1;
+            .getAttribute?.(`pk:${name}`) ?? null;
+    if (raw === null || raw === undefined || raw === "") return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 function serializeXpathNode(node: Node): string {
@@ -236,32 +252,67 @@ function lineAtOffset(text: string, offset: number): number {
     return line;
 }
 
-// Outline-shape line resolver: leaves are bare numbers (= the line), parents
-// are objects. For a jsonpath that returns a parent, walk inward to find the
-// smallest NUMERIC leaf — that's the section's "start." Used by the default
-// jsonpath path in BaseHandler.
-//
-// Numeric leaves are collected via collectNumbers (separate from the fallback)
-// so non-numeric values (strings, nulls, booleans) don't pollute the min with
-// a stand-in `1`. Pre-fix bug: returning `1` from non-numeric leaves meant any
-// matched object with a string field (e.g. `name: "Alice"`) reported line=1
-// instead of the real line carried by sibling line/endLine fields. Fix
-// surfaced by issue #13 Q1's symmetry test.
-function deepMinLine(value: unknown): number {
+// Default jsonpath source-line resolver (issue #41), for deepJson that carries
+// its own line annotations (synthesized models like PDF) or the bare-number
+// outline. Strategy, in order:
+//   1. The matched value's own span — explicit line/endLine, or for the outline
+//      convention (bare numbers = lines) the min..max of its leaf numbers.
+//   2. Walk up the matched node's ancestors (via the JSON pointer) to the
+//      nearest one carrying explicit line/endLine — covers primitives whose
+//      location lives on an enclosing node (e.g. PDF $.metadata.title → the
+//      document span).
+// Returns undefined when nothing in the chain is line-annotated (raw JSON with
+// no annotations — handled instead by a handler-supplied lineFor).
+function defaultLines(root: unknown, pointer: string, value: unknown): readonly LineSpan[] | undefined {
+    const own = spanOfValue(value);
+    if (own) return [own];
+    const chain = ancestorChain(root, pointer);
+    for (let i = chain.length - 1; i >= 0; i -= 1) {
+        const sp = explicitSpan(chain[i]);
+        if (sp) return [sp];
+    }
+    return undefined;
+}
+
+function explicitSpan(value: unknown): LineSpan | undefined {
+    if (value === null || typeof value !== "object") return undefined;
+    const o = value as Record<string, unknown>;
+    if (typeof o.line !== "number" || !(o.line > 0)) return undefined;
+    const endLine = typeof o.endLine === "number" && o.endLine >= o.line ? o.endLine : o.line;
+    return { line: o.line, endLine };
+}
+
+function spanOfValue(value: unknown): LineSpan | undefined {
+    const explicit = explicitSpan(value);
+    if (explicit) return explicit;
+    // Outline convention: a bare positive number IS a line; an object of them
+    // spans its min..max leaf.
     const numbers = collectLineNumbers(value);
-    return numbers.length > 0 ? Math.min(...numbers) : 1;
+    return numbers.length > 0 ? { line: Math.min(...numbers), endLine: Math.max(...numbers) } : undefined;
 }
 
 function collectLineNumbers(value: unknown): number[] {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-        return [value];
-    }
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return [value];
     if (value !== null && typeof value === "object") {
         const out: number[] = [];
-        for (const v of Object.values(value as Record<string, unknown>)) {
-            for (const n of collectLineNumbers(v)) out.push(n);
-        }
+        for (const v of Object.values(value as Record<string, unknown>)) out.push(...collectLineNumbers(v));
         return out;
     }
     return [];
+}
+
+// Resolve a JSON Pointer (RFC 6901) to the chain of ancestor values from root
+// down to (but excluding) the matched leaf. Used to find the nearest enclosing
+// line-annotated node for a primitive hit.
+function ancestorChain(root: unknown, pointer: string): unknown[] {
+    if (!pointer || pointer === "/") return [];
+    const tokens = pointer.split("/").slice(1).map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+    const chain: unknown[] = [root];
+    let cur: unknown = root;
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+        if (cur === null || typeof cur !== "object") break;
+        cur = (cur as Record<string, unknown>)[tokens[i]];
+        chain.push(cur);
+    }
+    return chain;
 }
