@@ -1,5 +1,6 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import { findNodeAtLocation, getNodeValue, parseTree } from "jsonc-parser";
 
 // application/x-ipynb+json (Jupyter notebook) handler — Tier 4, no parser dep.
 //
@@ -36,6 +37,33 @@ export default class Ipynb extends BaseHandler {
 
     override deepJson(content: HandlerContent): unknown {
         return safeParse(content);
+    }
+
+    // A .ipynb IS json, so a jsonpath match's source line is the line in the
+    // notebook file (#41) — resolved from jsonc-parser offsets, like
+    // application/json. deepJson is the raw notebook (no annotations), so we
+    // supply a lineFor keyed by JSON pointer.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath" && typeof content === "string") {
+            const tree = parseTree(content);
+            if (tree !== undefined) {
+                const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                    const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
+                    if (valueNode === undefined) return undefined;
+                    const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+                    const line = offsetToLine(content, node.offset);
+                    const endLine = offsetToLine(content, node.offset + Math.max(node.length - 1, 0));
+                    return [{ line, endLine }];
+                };
+                return queryJsonpathObject(getNodeValue(tree) as unknown, pattern, lineFor);
+            }
+        }
+        return super.query(content, dialect, pattern, flags);
     }
 
     override extent(content: HandlerContent): number {
@@ -86,6 +114,21 @@ export interface Projection {
 
 // Parse to a notebook object, or null on anything that isn't one — the
 // degrade-not-throw policy every channel but validate() follows.
+function pointerToSegments(pointer: string): Array<string | number> {
+    if (!pointer || pointer === "/") return [];
+    return pointer.split("/").slice(1).map((tok) => {
+        const t = tok.replace(/~1/g, "/").replace(/~0/g, "~");
+        return /^\d+$/.test(t) ? Number(t) : t;
+    });
+}
+
+function offsetToLine(text: string, offset: number): number {
+    let line = 1;
+    const limit = Math.min(offset, text.length);
+    for (let i = 0; i < limit; i += 1) if (text.charCodeAt(i) === 0x0a) line += 1;
+    return line;
+}
+
 function safeParse(content: HandlerContent): Notebook | null {
     let value: unknown;
     try {
