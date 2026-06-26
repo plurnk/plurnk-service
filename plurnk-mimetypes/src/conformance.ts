@@ -135,3 +135,75 @@ export async function assertHandlerConformance(
 
     return { symbols, references };
 }
+
+// ——— Structural-query line-fidelity conformance (issue #41) ———
+//
+// The query channel's contract: a content-backed structural match (jsonpath
+// node, xpath node) MUST carry an accurate source-line footprint, so a READ
+// returns the right line. A handler that produces structural matches without
+// `lines` silently breaks READ — this gate makes that a red build, not a latent
+// bug found months later. Every handler that supports a structural dialect runs
+// it; the gate, not an agent's memory, is what keeps the contract uniform.
+
+export interface QueryLineCase {
+    // Real-world-shaped source for the handler's mimetype.
+    source: string;
+    dialect: "jsonpath" | "xpath" | "regex" | "glob";
+    pattern: string;
+    // The 1-indexed start line each match must resolve to, in match order. The
+    // harness also checks every span is well-formed (line >= 1, endLine >= line).
+    expectStartLines: readonly number[];
+    // Set for a node-less computed scalar (xpath count()/string()/…): the match
+    // MUST carry no `lines` (we never fake a location). Default false.
+    scalar?: boolean;
+}
+
+// Minimal query surface; any handler instance satisfies it structurally.
+export interface QueryConformanceHandler {
+    query(
+        content: string,
+        dialect: string,
+        pattern: string,
+        flags?: string,
+    ): Promise<ReadonlyArray<{ matched: unknown; lines?: ReadonlyArray<{ line: number; endLine: number }> }>>;
+}
+
+// Assert a handler's structural-query matches carry accurate source-line spans
+// (issue #41). Throws AssertionError on the first violation — wire one `it(...)`
+// per case. A content-backed match with no `lines` is a failure; a scalar case
+// asserts the opposite (no `lines`, value still present).
+export async function assertQueryLineConformance(
+    handler: QueryConformanceHandler,
+    cases: readonly QueryLineCase[],
+): Promise<void> {
+    for (const c of cases) {
+        const matches = await handler.query(c.source, c.dialect, c.pattern);
+        const label = `${c.dialect} \`${c.pattern}\``;
+
+        if (c.scalar) {
+            assert.ok(matches.length > 0, `${label}: scalar query produced no match`);
+            for (const m of matches) {
+                assert.equal(m.lines, undefined, `${label}: computed scalar must carry no lines (#41), got ${JSON.stringify(m.lines)}`);
+            }
+            continue;
+        }
+
+        const starts: number[] = [];
+        for (const m of matches) {
+            assert.ok(
+                Array.isArray(m.lines) && m.lines.length > 0,
+                `${label}: content-backed match has no lines (#41) — value ${JSON.stringify(m.matched)}`,
+            );
+            for (const span of m.lines!) {
+                assert.ok(Number.isInteger(span.line) && span.line >= 1, `${label}: span.line 1-indexed, got ${span.line}`);
+                assert.ok(Number.isInteger(span.endLine) && span.endLine >= span.line, `${label}: span.endLine >= line, got ${JSON.stringify(span)}`);
+            }
+            starts.push(m.lines![0].line);
+        }
+        assert.deepEqual(
+            starts,
+            [...c.expectStartLines],
+            `${label}: match start lines mismatch — expected ${JSON.stringify(c.expectStartLines)}, got ${JSON.stringify(starts)}`,
+        );
+    }
+}
