@@ -173,22 +173,27 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-over-budget-floor] over budget, free floors at 0 and percent passes 100 — the overshoot is honest", async () => {
+test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floors at 0, percent passes 100) — never delivered to the model", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-over-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // Tiny window → ceiling 9; the packet's own scaffolding alone blows past it.
+        // Tiny window → ceiling 9; the packet's own scaffolding alone blows past it and CANNOT fold under
+        // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
+        // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the
+        // model saw — the grinder never sends a >100% packet (a delivered budget is always ≤100%).
         const provider = new Mock({ contextSize: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
+        // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
         const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
         assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
         assert.equal(free, 0, "free floors at 0 — never negative");
-        assert.ok(percent > 100, `percent ${percent} honestly passes 100 when over budget`);
+        assert.ok(percent > 100, `percent ${percent} honestly recorded past 100 in the failure record`);
     } finally { await db.close(); }
 });
