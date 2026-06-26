@@ -192,9 +192,13 @@ export default class PacketWire {
     // convention the model orients on can't drift: line-navigable mimetypes (text/*) get the `N:\t`
     // prefix from `startLine`; tree-navigable (JSON/XML/HTML) render verbatim so jsonpath/xpath
     // isn't shifted. Empty content ⇒ "" (the meta line stands alone). §render-rule-line-navigable-prefix
-    static #renderContentBody(fence: string, content: string, mimetype: string, startLine = 1): string {
+    static #renderContentBody(fence: string, content: string, mimetype: string, startLine: number | null = 1): string {
         if (content.length === 0) return "";
-        const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype)
+        // Line-navigable text gets the `N:\t` source-line prefix from startLine. `startLine === null`
+        // means the content is ALREADY source-numbered — a matcher result whose lines carry their own
+        // (non-contiguous) source numbers like `143:\t…`; re-numbering would double it to `1:\t143:\t…`
+        // (plurnk.md:32 — one source-line prefix). Render verbatim. §render-rule-line-navigable-prefix
+        const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype) && startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
         return PacketWire.#wrapHeredocBody(fence, rendered);
@@ -351,7 +355,9 @@ export default class PacketWire {
                 // foisted READ of the channel. #renderContentBody applies the line-number convention
                 // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-                const start = typeof rx.startLine === "number" ? rx.startLine : 1;
+                // startLine === null is the matcher-result signal (already source-numbered → verbatim);
+                // a number numbers from it; absent → 1 (whole-content default).
+                const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
                 body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
             } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
                 // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already

@@ -46,6 +46,22 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
     assert.match(out, /<<:::\/notes\.md\n1:\thello\n2:\tworld\n:::\/notes\.md/);
 });
 
+test("log render: READ@200 matcher result (startLine null) renders VERBATIM — no double line-numbering", () => {
+    // A matcher result is already source-numbered with non-contiguous lines (`143:\t…`,
+    // `617:\t…`) and carries startLine=null. The render must NOT re-number it — that would
+    // double it to `1:\t143:\t…` and lose the true source line (plurnk.md:32: one `N:\t`).
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: null, pathname: "/spec.md" },
+        rx: { content: "143:\tgrinder\n617:\tgrinder", mimetype: "text/markdown", startLine: null },
+    }], tok);
+    assert.match(out, /<<:::\/spec\.md\n143:\tgrinder\n617:\tgrinder\n:::\/spec\.md/);
+    assert.doesNotMatch(out, /1:\t143:\t/);
+});
+
 test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
     const system = {
         system_definition: "SD",
