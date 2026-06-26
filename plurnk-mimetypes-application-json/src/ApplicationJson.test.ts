@@ -297,11 +297,11 @@ describe("ApplicationJson — query (jsonpath against parsed value)", () => {
         assert.ok(out[1].matching?.includes("[1]"));
     });
 
-    it("maps matches back to source lines via jsonc-parser positions", async () => {
+    it("maps matches back to source-line spans via jsonc-parser positions (#41)", async () => {
         const out = await h.query(src, "jsonpath", "$.version");
         assert.equal(out.length, 1);
-        // "version" key is on line 6
-        assert.equal(out[0].line, 6);
+        // "version" property is defined on line 6
+        assert.deepEqual(out[0].lines, [{ line: 6, endLine: 6 }]);
     });
 
     it("throws QueryParseFailureError on malformed JSON", async () => {

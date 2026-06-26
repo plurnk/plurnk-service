@@ -119,11 +119,18 @@ export default class ApplicationJson extends BaseHandler {
                 });
             }
             const value = getNodeValue(tree) as unknown;
-            const lineFor = (path: string): number => {
-                const segments = pathToSegments(path);
-                const node = findNodeAtLocation(tree, segments);
-                if (node === undefined) return 1;
-                return offsetToLineCol(content, node.offset).line;
+            // Resolve a match's source-line span from jsonc-parser offsets
+            // (issue #41). The pointer locates the value node; for a property
+            // value we widen to the property (key..value) so the span covers
+            // where the field is *defined*, not just its value text. Absent
+            // (undefined) when the node can't be located — never a faked line.
+            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
+                if (valueNode === undefined) return undefined;
+                const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+                const line = offsetToLineCol(content, node.offset).line;
+                const endLine = offsetToLineCol(content, node.offset + Math.max(node.length - 1, 0)).line;
+                return [{ line, endLine }];
             };
             return queryJsonpathObject(value, pattern, lineFor);
         }
@@ -131,18 +138,15 @@ export default class ApplicationJson extends BaseHandler {
     }
 }
 
-// Convert a jsonpath-plus "path" string ($['users'][0]['name']) into the
-// segment array shape that jsonc-parser's findNodeAtLocation accepts
-// (['users', 0, 'name']).
-function pathToSegments(path: string): Array<string | number> {
-    const segments: Array<string | number> = [];
-    const re = /\['([^']*)'\]|\[(\d+)\]/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(path)) !== null) {
-        if (m[1] !== undefined) segments.push(m[1]);
-        else segments.push(Number(m[2]));
-    }
-    return segments;
+// Convert a JSON Pointer (RFC 6901, /users/0/name) — what queryJsonpathObject's
+// lineFor now receives — into the segment array findNodeAtLocation accepts
+// (['users', 0, 'name']). All-digit tokens become numeric array indices.
+function pointerToSegments(pointer: string): Array<string | number> {
+    if (!pointer || pointer === "/") return [];
+    return pointer.split("/").slice(1).map((tok) => {
+        const t = tok.replace(/~1/g, "/").replace(/~0/g, "~");
+        return /^\d+$/.test(t) ? Number(t) : t;
+    });
 }
 
 // Walk a jsonc-parser Node tree and emit a field symbol for every property
