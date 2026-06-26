@@ -1,4 +1,4 @@
-import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 import { findNodeAtLocation, getNodeValue, parseTree } from "jsonc-parser";
 
@@ -64,6 +64,23 @@ export default class Ipynb extends BaseHandler {
             }
         }
         return super.query(content, dialect, pattern, flags);
+    }
+
+    // deep-xml carries the SAME notebook-file lines as jsonpath (#41): project
+    // the parsed notebook, stamping pk:line from jsonc offsets. Degrades to the
+    // framework default when the content doesn't parse.
+    override deepXml(content: HandlerContent): Promise<string> {
+        if (typeof content !== "string") return super.deepXml(content);
+        const tree = parseTree(content);
+        if (tree === undefined) return super.deepXml(content);
+        const span = (pointer: string): { line: number; endLine: number } | undefined => {
+            const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
+            if (valueNode === undefined) return undefined;
+            const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+            const line = offsetToLine(content, node.offset);
+            return { line, endLine: offsetToLine(content, node.offset + Math.max(node.length - 1, 0)) };
+        };
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 
     override extent(content: HandlerContent): number {
