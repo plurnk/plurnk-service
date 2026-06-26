@@ -939,12 +939,13 @@ export default class Engine {
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
         }
         const modelMessages = this.#packetToWireMessages(requestPacket);
-        // maxTokens = remaining context window (loop policy, plurnk-providers#10).
-        // The 0.28.0 EOS-forcing root terminates the turn at the status SEND, but a
-        // grammar can't bound degeneration *inside* a statement body — this caps the
-        // decode at the free window so a runaway can't reach the context wall.
-        const genCeiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling); // provider.contextSize, the immutable identity, read by the budget — §provider-surface-identity
-        const maxTokens = genCeiling === null ? undefined : Math.max(1, genCeiling - requestPacket.tokens);
+        // No decode cap. Our budget governs the TRANSMISSION packet (the grinder folds
+        // the input under the ceiling); the model's decode — reasoning + emission — is
+        // out of band, owned by the provider's own context window. Deriving a maxTokens
+        // from our budget conflated the two and guillotined a reasoning model's
+        // out-of-band thinking as the packet filled (`ceiling - packet` → near-zero
+        // decode → finish=length mid-reasoning → no emission → strike spiral). The
+        // provider enforces its physical wall on its own.
         let response: ProviderResponse;
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
@@ -954,7 +955,7 @@ export default class Engine {
         // #249 — session-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
         const { client } = await SessionSettings.read(this.#db, sessionId);
         try {
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), maxTokens, attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
             // grammar_unenforced is the one the MODEL can recover from — the backend didn't
