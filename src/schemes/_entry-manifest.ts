@@ -31,20 +31,36 @@ export default class EntryManifest {
         // Bare (file, scheme===null) entries store the namespace-absolute key (`/notes.md`)
         // but the model types the relative path it reads — render the leading slash off so
         // the catalog matches what the model writes back (READ/EDIT resolve either form).
-        return scheme === null ? pathname.replace(/^\//, "") : renderAddress(scheme, pathname);
+        if (scheme === null) return pathname.replace(/^\//, "");
+        // §run-scheme — run-scope keys store the owner as the first path segment
+        // (`/<owner>/<path>`); render it back as the authority so the model sees the
+        // addressable `run://<owner>/<path>` it types, not a bare `run:///<owner>/<path>`.
+        if (scheme === "run") {
+            const m = pathname.match(/^\/([^/]+)(\/.*)?$/);
+            if (m !== null) return `run://${m[1]}${m[2] ?? "/"}`;
+        }
+        return renderAddress(scheme, pathname);
     }
 
     // Read-only catalog rows for a scheme (or all entries when undefined) — the CatalogEntry[]
     // a per-scheme FIND(scheme:///**) renders as its JSON result, WITHOUT the derivation pump
     // (maintainDerivations runs that once per turn; FIND reads the channels it leaves).
-    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null): Promise<CatalogEntry[]> {
+    // §run-scheme — `runOwnerPrefix` (e.g. `/<owner>/*`) sources the building run's OWN run-scope
+    // scratch instead of the session filesystem: the run's perspective. Omitted → the session path,
+    // byte-identical (Inc-1).
+    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, runOwnerPrefix?: string): Promise<CatalogEntry[]> {
         const { db, sessionId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — depth is re-counted through the live provider, not stored");
-        const all = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
+        const all = runOwnerPrefix === undefined
+            ? await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId })
+            : await (db.engine_list_run_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId, owner_prefix: runOwnerPrefix });
         const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
-        for (const { entry_id, tag } of await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })) {
+        const tagRows = runOwnerPrefix === undefined
+            ? await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })
+            : await (db.engine_list_run_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId, owner_prefix: runOwnerPrefix });
+        for (const { entry_id, tag } of tagRows) {
             const list = tagsById.get(entry_id);
             if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
         }

@@ -7,11 +7,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement, KillStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, CopyStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Run from "../../src/schemes/Run.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt } from "./_dsl.ts";
 
 // §run-scheme — the run is the AUTHORITY: run://<name> (name in hostname), not run:///<name>.
@@ -42,6 +43,42 @@ const recordingInjectRun = () => {
 };
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
+
+// A run-scope FIND: run://<owner>/<glob> ("" owner = self).
+const findEntry = (owner: string, glob: string): FindStatement => ({
+    op: "FIND", suffix: "", signal: null,
+    target: { kind: "url", raw: `run://${owner}/${glob}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, params: {}, fragment: null },
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a sister's only by name — the run's perspective", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `run-find-${crypto.randomUUID()}`);
+        const alpha = await insertRun(db, sessionId, null, "alpha");
+        const beta = await insertRun(db, sessionId, null, "beta");
+        const ctxA = makeSchemeCtx({ db, sessionId, runId: alpha, loopId: 0, turnId: 0 });
+        const ctxB = makeSchemeCtx({ db, sessionId, runId: beta, loopId: 0, turnId: 0 });
+        const run = new Run();
+
+        // Each run writes its OWN scratch (empty authority = self).
+        await run.edit(editStmt(runEntry("", "todo.md"), "alpha note"), ctxA);
+        await run.edit(editStmt(runEntry("", "plan.md"), "beta note"), ctxB);
+
+        // alpha's self FIND sees ONLY alpha's scratch, addressed run://alpha/...
+        const own = await run.find(findEntry("", "**"), ctxA);
+        assert.equal(own.status, 200);
+        assert.deepEqual(own.results.map((r) => r.path), ["run://alpha/todo.md"], "self FIND(run:///**) returns only the building run's own scratch");
+
+        // beta's perspective excludes alpha's — isolation is structural (scope='run' + owner prefix).
+        const betaOwn = await run.find(findEntry("", "**"), ctxB);
+        assert.deepEqual(betaOwn.results.map((r) => r.path), ["run://beta/plan.md"], "a sibling never sees another's scratch in its own perspective");
+
+        // A sister's scratch is reachable ONLY by explicit name (cross-run READ/FIND is allowed).
+        const sister = await run.find(findEntry("beta", "**"), ctxA);
+        assert.deepEqual(sister.results.map((r) => r.path), ["run://beta/plan.md"], "FIND(run://beta/**) reaches the named sister's scratch");
+    } finally { await db.close(); }
+});
 
 test("[§run-scheme-spawn] EDIT(run:///name):prompt spawns a same-session sister, seeded via injectRun", async () => {
     const db = await openMigrated();

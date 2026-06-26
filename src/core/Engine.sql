@@ -77,6 +77,33 @@ JOIN entries e ON e.id = et.entry_id
 WHERE e.session_id = $session_id
 ORDER BY et.entry_id, et.tag;
 
+-- PREP: engine_list_run_entries
+-- §run-scheme — the building run's OWN run-scope entries (catalogRowsFor source for a run-scope
+-- FIND/foist). Byte-for-byte engine_list_session_entries but scope='run' + an owner-prefix glob
+-- (`/<owner>/*`) so it yields exactly one run's scratch — its perspective, not a sibling's. Additive.
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens, e.deep_hash,
+    CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
+WHERE e.scope = 'run' AND e.session_id = $session_id AND e.pathname GLOB $owner_prefix
+ORDER BY e.updated_at ASC, e.id ASC, ec.name;
+
+-- PREP: engine_list_run_entry_tags
+-- §run-scheme — (entry, tag) for the building run's own run-scope entries (the run-scope catalog's tags field).
+SELECT et.entry_id, et.tag
+FROM entry_tags et
+JOIN entries e ON e.id = et.entry_id
+WHERE e.session_id = $session_id AND e.scope = 'run' AND e.pathname GLOB $owner_prefix
+ORDER BY et.entry_id, et.tag;
+
+-- PREP: engine_run_scratch_count
+-- §run-scheme — distinct run-scope entry count owned by the building run, to decide whether the
+-- turn-0 catalog foists a FIND(run:///**) (a run with no scratch foists nothing).
+SELECT COUNT(DISTINCT e.id) AS entries
+FROM entries e
+WHERE e.scope = 'run' AND e.session_id = $session_id AND e.pathname GLOB $owner_prefix;
+
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 

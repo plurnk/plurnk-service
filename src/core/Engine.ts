@@ -859,6 +859,21 @@ export default class Engine {
                     });
                     nextActionIndex++;
                 }
+                // §run-scheme — Manifest(run) = session-scope ∪ THIS run's run-scope. Foist the
+                // building run's OWN scratch (run:///**, uncapped — a run needs the full view to
+                // manage its private workspace) so it's catalogued in ITS perspective alone; other
+                // runs reach it only via explicit FIND(run://<name>/**). A run with no scratch foists nothing.
+                const selfRun = await (this.#db.run_name_by_id as PrepMethod).get<{ name: string }>({ run_id: runId });
+                const scratch = selfRun === undefined ? 0 : (await (this.#db.engine_run_scratch_count as PrepMethod).get<{ entries: number }>({ session_id: sessionId, owner_prefix: `/${selfRun.name}/*` }))?.entries ?? 0;
+                if (scratch > 0) {
+                    const runFind: FindStatement = {
+                        op: "FIND", suffix: "", signal: null,
+                        target: { kind: "url", raw: "run:///**", scheme: "run", username: null, password: null, hostname: "", port: null, pathname: "/**", params: {}, fragment: null },
+                        body: null, lineMarker: null, position: { line: 1, column: 1 },
+                    };
+                    await this.dispatch({ statement: runFind, sessionId, runId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
+                    nextActionIndex++;
+                }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
             // of the model. Daemon owns the workspace → a normal file:/// member READ; a missing or

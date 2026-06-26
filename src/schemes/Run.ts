@@ -3,7 +3,10 @@ import type { PrepMethod } from "../core/Db.ts";
 import RunCap from "../core/run-cap.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult, ReadResult } from "./_entry-ops.ts";
-import type { EditStatement, ReadStatement, SendStatement, ParsedPath } from "@plurnk/plurnk-grammar";
+import EntryFind from "./_entry-find.ts";
+import type { FindResult } from "./_entry-find.ts";
+import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
+import type { EditStatement, ReadStatement, SendStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
 // run:// — the run scheme: inter-run CONTROL (spawn/irc; COPY=fork is Engine.#handleCopy) AND
 // run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
@@ -89,6 +92,20 @@ export default class Run {
         // Cross-run READ is allowed — resolve self, fold the owner into the storage path.
         const owner = authority === "" ? await Run.#selfName(ctx) : authority;
         return EntryOps.readSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
+    }
+
+    // §run-scheme — FIND a run's scratch. `run:///**` is self; `run://<name>/**` a sister
+    // (cross-run READ is allowed, so cross-run FIND is too). Resolve the owner and fold it into
+    // the scope pathname (`/<owner>/<rest>`) so EntryFind draws from that run's partition alone.
+    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+        const authority = Run.#authority(statement.target);
+        if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0 };
+        const owner = authority === "" ? await Run.#selfName(ctx) : authority;
+        const t = statement.target;
+        const folded = t !== null && t.kind === "url"
+            ? { ...statement, target: { ...t, hostname: null, pathname: foldAuthorityIntoPath(owner, t.pathname) } }
+            : statement;
+        return EntryFind.findSessionEntries(folded, ctx, Run.manifest);
     }
 
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {

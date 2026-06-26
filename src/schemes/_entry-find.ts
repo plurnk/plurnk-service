@@ -33,6 +33,15 @@ export interface FindResult {
 }
 
 export default class EntryFind {
+    // §run-scheme — the owner-prefix glob (`/<owner>/*`) for a run-scope FIND, from the target
+    // pathname Run.find already folded (`/<owner>/<rest>`). Bounds the catalog source to one run's
+    // scratch — the building run's own (self) or a named sister's.
+    static #runOwnerPrefix(statement: FindStatement): string {
+        const path = statement.target?.kind === "url" ? statement.target.pathname : "";
+        const owner = path.split("/").filter((s) => s.length > 0)[0];
+        return owner === undefined ? "/*" : `/${owner}/*`;
+    }
+
     static #scopePathnameOf(statement: FindStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
@@ -105,8 +114,11 @@ export default class EntryFind {
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, sessionId } = ctx;
-        // Candidates are session-scoped — a FIND never reaches across sessions. §find-scoped-isolation
-        let candidates = await (db.find_session_entry_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
+        // Candidates are session-scoped — a FIND never reaches across sessions. §find-scoped-isolation.
+        // §run-scheme — a run-scope scheme (manifest.scope==='run', today run://) draws from the run
+        // partition instead; the owner narrowing rides scopeGlob (Run.find folds `/<owner>/*` in).
+        const candidatesQuery = manifest.scope === "run" ? "find_run_entry_candidates" : "find_session_entry_candidates";
+        let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
             session_id: sessionId,
             scheme,
             channel: manifest.defaultChannel,
@@ -168,7 +180,10 @@ export default class EntryFind {
         // its row through the same EntryManifest.toPath the catalog uses (single source of
         // truth). Match order is preserved (rank for ~semantic); a pathname with no row
         // (e.g. the self-excluded manifest) drops out.
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme)).map((r) => [r.path, r] as const));
+        // §run-scheme — a run-scope FIND aligns to the building run's OWN run-scope catalog rows
+        // (the owner prefix the candidate scope already enforced), never the session filesystem.
+        const runOwnerPrefix = manifest.scope === "run" ? EntryFind.#runOwnerPrefix(statement) : undefined;
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, runOwnerPrefix)).map((r) => [r.path, r] as const));
         const results: CatalogEntry[] = [];
         for (const pathname of match.pathnames) {
             const row = byPath.get(EntryManifest.toPath(scheme, pathname));
