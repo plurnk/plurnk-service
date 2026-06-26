@@ -178,17 +178,34 @@ function elementToDeep(el: Element): Record<string, unknown> {
     return node;
 }
 
-// Translate xpath.select result per grammar #17.
+// Translate xpath.select result per grammar #17, with real source-line spans
+// (#41) from @xmldom/xmldom's node lineNumber.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => ({
-            line: 1,
-            matched: serializeNode(node),
-            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-        }));
+        return result.map((node, i): QueryMatch => {
+            const line = nodeLine(node);
+            return {
+                matched: serializeNode(node),
+                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+                ...(line !== undefined && { lines: [{ line, endLine: line }] }),
+            };
+        });
     }
     if (result === null || result === undefined) return [];
-    return [{ line: 1, matched: typeof result === "string" ? result : String(result) }];
+    // Computed scalar (string()/count()/boolean()): no source node → no `lines`
+    // (#41). The value is reported; the location is honestly absent.
+    return [{ matched: typeof result === "string" ? result : String(result) }];
+}
+
+// 1-indexed source line of a matched node from xmldom's lineNumber. Attributes
+// borrow their owner element; other non-element nodes their parent.
+function nodeLine(node: Node): number | undefined {
+    const direct = (node as { lineNumber?: number }).lineNumber;
+    if (typeof direct === "number" && direct > 0) return direct;
+    const owner = (node as Attr).ownerElement
+        ?? (node as { parentNode?: Node | null }).parentNode ?? null;
+    const ln = (owner as { lineNumber?: number } | null)?.lineNumber;
+    return typeof ln === "number" && ln > 0 ? ln : undefined;
 }
 
 function serializeNode(node: Node): string {

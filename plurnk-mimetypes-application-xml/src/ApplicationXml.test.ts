@@ -114,6 +114,22 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
         assert.ok((out[1].matched as string).includes("Two"));
     });
 
+    it("reports the real source-line span of each match (#41)", async () => {
+        const h = new ApplicationXml(metadata);
+        const xml = "<library>\n  <book>One</book>\n  <book>Two</book>\n</library>";
+        const out = await h.query(xml, "xpath", "//book");
+        assert.deepEqual(out[0].lines, [{ line: 2, endLine: 2 }]);
+        assert.deepEqual(out[1].lines, [{ line: 3, endLine: 3 }]);
+    });
+
+    it("a computed scalar (count) carries no lines (#41)", async () => {
+        const h = new ApplicationXml(metadata);
+        const out = await h.query("<a><b/><b/></a>", "xpath", "count(//b)");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "2");
+        assert.equal(out[0].lines, undefined);
+    });
+
     it("xpath with attribute predicate returns attribute-filtered elements", async () => {
         const h = new ApplicationXml(metadata);
         const xml = `<users><user id="a">Alice</user><user id="b">Bob</user></users>`;
