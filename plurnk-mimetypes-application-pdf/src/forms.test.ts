@@ -11,7 +11,7 @@ import { buildPdf } from "./buildPdf.ts";
 const h = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] as const });
 
 interface DocModel {
-    forms: Array<{ name: string; value: string; type: string; page: number }>;
+    forms: Array<{ name: string; value: string; type: string; line: number; endLine: number }>;
 }
 
 describe("ApplicationPdf — AcroForm fields in deepJson", () => {
@@ -21,8 +21,8 @@ describe("ApplicationPdf — AcroForm fields in deepJson", () => {
             { name: "email", value: "ada@example.com" },
         ]))) as DocModel;
         assert.deepEqual(model.forms, [
-            { name: "full_name", value: "Ada Lovelace", type: "text", page: 1 },
-            { name: "email", value: "ada@example.com", type: "text", page: 1 },
+            { name: "full_name", value: "Ada Lovelace", type: "text", line: 1, endLine: 1 },
+            { name: "email", value: "ada@example.com", type: "text", line: 1, endLine: 1 },
         ]);
     });
 

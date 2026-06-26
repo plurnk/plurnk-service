@@ -10,17 +10,17 @@ import { buildPdf } from "./buildPdf.ts";
 const h = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] as const });
 
 interface DocModel {
-    links: Array<{ url: string; page: number }>;
+    links: Array<{ url: string; line: number; endLine: number }>;
 }
 
-async function linksOf(pdf: Uint8Array): Promise<Array<{ url: string; page: number }>> {
+async function linksOf(pdf: Uint8Array): Promise<Array<{ url: string; line: number; endLine: number }>> {
     return ((await h.deepJson(pdf)) as DocModel).links;
 }
 
 describe("ApplicationPdf — hyperlinks in deepJson", () => {
     it("surfaces URI link annotations with their page", async () => {
         const links = await linksOf(buildPdf({ title: "Doc", links: ["https://example.com/a"] }));
-        assert.deepEqual(links, [{ url: "https://example.com/a", page: 1 }]);
+        assert.deepEqual(links, [{ url: "https://example.com/a", line: 1, endLine: 1 }]);
     });
 
     it("surfaces multiple links on a page", async () => {
@@ -28,7 +28,7 @@ describe("ApplicationPdf — hyperlinks in deepJson", () => {
         const urls = links.map((l) => l.url);
         assert.ok(urls.includes("https://a.example/"));
         assert.ok(urls.includes("https://b.example/"));
-        assert.ok(links.every((l) => l.page === 1));
+        assert.ok(links.every((l) => l.line === 1 && l.endLine === 1));
     });
 
     it("a PDF with no links yields an empty list (not null, not missing)", async () => {

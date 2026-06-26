@@ -142,8 +142,8 @@ interface PdfDocModel {
     endLine: number;
     metadata: Record<string, unknown>;
     security: { hasJavaScript: boolean; hasEmbeddedFiles: boolean };
-    links: Array<{ url: string; page: number }>;
-    forms: Array<{ name: string; value: string; type: string; page: number }>;
+    links: Array<{ url: string; line: number; endLine: number }>;
+    forms: Array<{ name: string; value: string; type: string; line: number; endLine: number }>;
     children: Array<{ type: "outline_item"; name: string; level?: number; line: number; endLine: number }>;
 }
 
@@ -435,10 +435,12 @@ async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boole
 
 // External hyperlinks from Link annotations (URI actions), per page. These are
 // document data, not code-nav references (the references channel's RefKind is
-// frozen to code semantics), so they live in the document model. Page-bounded
-// like text; deduped by url+page. Never follows a link — just surfaces it.
-async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; page: number }>> {
-    const out: Array<{ url: string; page: number }> = [];
+// frozen to code semantics), so they live in the document model. PDF's line IS
+// the page (its unit of navigation), so a link's source span is its page —
+// carried as line/endLine so the framework's #41 resolver locates it. Deduped
+// by url+page. Never follows a link — just surfaces it.
+async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; line: number; endLine: number }>> {
+    const out: Array<{ url: string; line: number; endLine: number }> = [];
     const seen = new Set<string>();
     const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
     for (let i = 1; i <= limit; i += 1) {
@@ -452,7 +454,7 @@ async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; page
                 const key = `${i} ${annot.url}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
-                out.push({ url: annot.url, page: i });
+                out.push({ url: annot.url, line: i, endLine: i });
             }
         } finally {
             page.cleanup();
@@ -464,20 +466,24 @@ async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; page
 // AcroForm fields (name / value / type / page) from getFieldObjects. Document
 // data, read-only — surfaces what a form holds without filling or executing it.
 // Non-string values (checkboxes, choices) are stringified; page is 1-indexed.
-async function collectForms(doc: PdfDocument): Promise<Array<{ name: string; value: string; type: string; page: number }>> {
+async function collectForms(doc: PdfDocument): Promise<Array<{ name: string; value: string; type: string; line: number; endLine: number }>> {
     if (typeof doc.getFieldObjects !== "function") return [];
     const fields = await doc.getFieldObjects().catch(() => null);
     if (!fields) return [];
-    const out: Array<{ name: string; value: string; type: string; page: number }> = [];
+    const out: Array<{ name: string; value: string; type: string; line: number; endLine: number }> = [];
     for (const group of Object.values(fields)) {
         for (const raw of group) {
             const f = raw as { name?: unknown; value?: unknown; type?: unknown; page?: unknown };
             if (typeof f.name !== "string" || f.name.length === 0) continue;
+            // page is 0-indexed; PDF line IS the page (1-indexed) so the #41
+            // resolver can locate the field.
+            const pageLine = (typeof f.page === "number" ? f.page : 0) + 1;
             out.push({
                 name: f.name,
                 value: f.value == null ? "" : String(f.value),
                 type: typeof f.type === "string" ? f.type : "unknown",
-                page: (typeof f.page === "number" ? f.page : 0) + 1,
+                line: pageLine,
+                endLine: pageLine,
             });
         }
     }
