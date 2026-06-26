@@ -21,6 +21,8 @@ import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import Http from "@plurnk/plurnk-schemes-http";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "../intg/_helpers.ts";
 
@@ -62,10 +64,42 @@ test("live web: a discovered http:// READ fetches a real URL into a streamed ent
         } finally { await db.close(); }
     });
 
-test("live web: exec[search] queries a real SearXNG instance",
-    { skip: process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ? "blocked: same ctx.subscriptions gap as http (search streams too)" : "set PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint) to run" },
+test("live web: exec[search] queries a real SearXNG instance into a results entry (no model, no mock)",
+    { skip: process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ? false : "set PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint, no API key) to run" },
     async () => {
-        // exec[search] streams its results the same way → same SubscriptionCaps dependency.
-        // Fires through op.exec({ runtime: "search", command }) once the capability + a SearXNG URL exist.
-        assert.fail("enable once ctx.subscriptions lands and PLURNK_EXECS_SEARCH_SEARXNG_URL is set");
+        // search is an EXEC runtime (in-tree exec scheme + ctx.executors), effect="read" → auto-runs,
+        // streaming its SearXNG JSON into the `results` channel of a search:/// output entry. We dispatch
+        // a real EXEC[search] through a real Engine + ExecutorRegistry and read the results back — no mock.
+        const db = await openMigrated();
+        try {
+            const schemes = new SchemeRegistry();
+            const exec = schemes.get("exec") as Exec;
+            const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: process.cwd() });
+            const engine = new Engine({ db, schemes });
+            engine.setExecutors(executors);
+            schemes.registerRuntimeSchemes(executors);   // mint the search:// output scheme
+            const sessionId = await insertSession(db, `web-search-${crypto.randomUUID()}`);
+            const runId = await insertRun(db, sessionId);
+            const loopId = await insertLoop(db, runId, 1, "search");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+
+            const parsed = PlurnkParser.parse("<<EXEC[search]:plurnk agent runtime:EXEC");
+            const item = parsed.items.find((i: { kind: string }) => i.kind === "statement") as { statement: PlurnkStatement } | undefined;
+            if (item === undefined) throw new Error("parse produced no statement");
+
+            let logEntryId = -1;
+            await engine.dispatch({
+                statement: item.statement, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+                onDispatch: (id: number) => { logEntryId = id; },
+            });
+            await exec.idle();   // the backgrounded search spawn settles
+
+            const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "search", pathname });
+            assert.ok(entry, "a search:/// output entry was created");
+            const results = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry.id, name: "results" });
+            const rows = JSON.parse(results?.content ?? "[]") as unknown[];
+            assert.ok(Array.isArray(rows) && rows.length > 0, "the SearXNG query returned a non-empty JSON results array");
+        } finally { await db.close(); }
     });
