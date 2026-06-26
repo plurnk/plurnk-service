@@ -21,7 +21,7 @@
 // retry, fall back, or fix source. Choice ratified by user (#172).
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
-import type { Mimetypes, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
 import {
     UnsupportedDialectError,
     InvalidExpressionError,
@@ -81,6 +81,24 @@ export default class Matcher {
         return out;
     }
 
+    // Hand the framework the ALREADY-PARSED matcher (mimetypes#42), not the raw
+    // string — the grammar owns the matcher syntax, so re-classifying `raw`
+    // inside mimetypes is a second parser for one syntax and a silent drift
+    // surface (a body the grammar parsed as regex that re-classifies as xpath:
+    // `#//foo#`). The declared dialect is authoritative; mimetypes dispatches it
+    // verbatim. Only the four query dialects map; `semantic`/`graph` aren't
+    // QueryDialects in mimetypes, so we pass `raw` and let it surface the same
+    // UnsupportedDialectError (415) it does today.
+    static #parsedMatcher(body: MatcherBody): string | ParsedBodyMatcher {
+        switch (body.dialect) {
+            case "regex": return { dialect: "regex", pattern: body.pattern, flags: body.flags };
+            case "glob":
+            case "xpath":
+            case "jsonpath": return { dialect: body.dialect, pattern: body.raw };
+            default: return body.raw;
+        }
+    }
+
     static async matchAgainstContent(
         body: MatcherBody,
         content: string,
@@ -89,12 +107,12 @@ export default class Matcher {
         baseLine: number = 1,
     ): Promise<MatchResult> {
         try {
-            // Framework dispatches dialect by leading prefix of `body.raw`.
-            // `hint` carries the source mimetype so the framework selects the
-            // right per-mimetype handler without re-detecting from content.
+            // Pass the parsed matcher (declared dialect authoritative) + `hint`
+            // (source mimetype, so the framework picks the right per-mimetype
+            // handler without re-detecting from content). No re-parse, no drift.
             const rawMatches: QueryMatch[] = await mimetypes.query(
                 { content, hint: mimetype },
-                body.raw,
+                Matcher.#parsedMatcher(body),
             );
             if (rawMatches.length === 0) {
                 return { status: 204, matches: 0 };

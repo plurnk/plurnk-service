@@ -5,7 +5,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
-import type { Mimetypes, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
 import {
     UnsupportedDialectError,
     InvalidExpressionError,
@@ -15,7 +15,7 @@ import Matcher from "./matcher.ts";
 
 // Stub factory: returns a Mimetypes-shaped object whose `query` resolves
 // or rejects per the caller's spec. The adapter only touches `query`.
-const stubMimetypes = (impl: (input: object, expression: string) => Promise<QueryMatch[]>): Mimetypes => {
+const stubMimetypes = (impl: (input: object, matcher: string | ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes => {
     return { query: impl } as unknown as Mimetypes;
 };
 
@@ -52,6 +52,26 @@ test("matcher: a multi-line span anchors on — and renders — its start line",
     const mts = stubMimetypes(async () => [{ lines: [{ line: 2, endLine: 4 }], matched: "block" }]);
     const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.equal(r.body, "2:\talpha foo beta");
+});
+
+test("matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative (mimetypes#42)", async () => {
+    let seen: string | ParsedBodyMatcher | undefined;
+    const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
+    // A regex body whose pattern `//foo` would STRING-classify as xpath — the
+    // exact drift #42 kills. We pass {dialect:"regex"} so it runs as regex.
+    const body: MatcherBody = { dialect: "regex", raw: "#//foo#g", pattern: "//foo", flags: "g" };
+    await Matcher.matchAgainstContent(body, "irrelevant", "text/markdown", mts);
+    assert.deepEqual(seen, { dialect: "regex", pattern: "//foo", flags: "g" });
+});
+
+test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", async () => {
+    let seen: string | ParsedBodyMatcher | undefined;
+    const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
+    await Matcher.matchAgainstContent(
+        { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+        "irrelevant", "application/json", mts,
+    );
+    assert.deepEqual(seen, { dialect: "jsonpath", pattern: "$.users[*].name" });
 });
 
 test("matcher: a footprint-less match (xpath computed scalar) renders bare — no faked line", async () => {
