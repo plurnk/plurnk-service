@@ -46,9 +46,9 @@
         "pdfjs-dist": "^6.0.227"
     },
     "devDependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.15.28",
         "@types/node": "^26.0.0",
-        "typescript": "^6.0.3",
-        "@plurnk/plurnk-mimetypes": "0.15.25"
+        "typescript": "^6.0.3"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.0"
