@@ -74,35 +74,46 @@ const RESERVED_FIELDS = new Set([
 const PK_PREFIX = "pk";
 const PK_NS = "https://plurnk.dev/deep-xml/1";
 
-export function projectJsonToXml(json: unknown, rootName = "root"): string {
-    return renderValue(json, rootName, /*isRoot*/ true);
+// Optional source-line resolver (issue #41): for deepJson whose nodes carry no
+// `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a
+// resolver keyed by JSON pointer, so xpath-over-deepXml gets the SAME real lines
+// as jsonpath — both dialects agree. A node's own `line` field still wins.
+export type ProjectLineFor = (pointer: string) => { line: number; endLine: number } | undefined;
+
+export function projectJsonToXml(json: unknown, rootName = "root", lineFor?: ProjectLineFor): string {
+    return renderValue(json, rootName, "", lineFor, /*isRoot*/ true);
 }
 
-function renderValue(value: unknown, elementName: string, isRoot = false): string {
+// JSON Pointer token escape (RFC 6901).
+function ptrKey(k: string): string {
+    return k.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+// pk:line/pk:endLine from a resolver span — only when the node carries none.
+function resolvedLineAttrs(lineFor: ProjectLineFor | undefined, pointer: string): string {
+    const span = lineFor?.(pointer);
+    return span ? ` ${PK_PREFIX}:line="${span.line}" ${PK_PREFIX}:endLine="${span.endLine}"` : "";
+}
+
+function renderValue(value: unknown, elementName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
+    const ns = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
     if (value === null || value === undefined) {
-        return isRoot ? `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}"/>` : `<${elementName}/>`;
+        return `<${elementName}${ns}/>`;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        if (isRoot) {
-            return `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}">${escapeText(String(value))}</${elementName}>`;
-        }
-        return `<${elementName}>${escapeText(String(value))}</${elementName}>`;
+        return `<${elementName}${ns}${resolvedLineAttrs(lineFor, pointer)}>${escapeText(String(value))}</${elementName}>`;
     }
     if (Array.isArray(value)) {
-        // Top-level array (called via projectJsonToXml with array root) wraps
-        // in <rootName> with repeated <item> children. Nested arrays are
-        // handled inside renderObject's per-field path.
-        const inner = value.map((v) => renderValue(v, "item", false)).join("");
-        const nsDecl = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
-        return `<${elementName}${nsDecl}>${inner}</${elementName}>`;
+        const inner = value.map((v, i) => renderValue(v, "item", `${pointer}/${i}`, lineFor, false)).join("");
+        return `<${elementName}${ns}>${inner}</${elementName}>`;
     }
     if (typeof value === "object") {
-        return renderObject(value as Record<string, unknown>, elementName, isRoot);
+        return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, isRoot);
     }
-    return isRoot ? `<${elementName} xmlns:${PK_PREFIX}="${PK_NS}"/>` : `<${elementName}/>`;
+    return `<${elementName}${ns}/>`;
 }
 
-function renderObject(obj: Record<string, unknown>, fallbackName: string, isRoot = false): string {
+function renderObject(obj: Record<string, unknown>, fallbackName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
     const tag = typeof obj.type === "string" && obj.type.length > 0
         ? sanitizeElementName(obj.type)
         : fallbackName;
@@ -112,14 +123,18 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, isRoot
 
     // Framework bookkeeping (line/endLine/column/endColumn/level) → pk:-prefixed
     // to avoid collision with content's own attributes of the same name.
+    let hasOwnLine = false;
     for (const key of ATTRIBUTE_FIELDS) {
         if (!(key in obj)) continue;
         const v = obj[key];
         if (v === null || v === undefined) continue;
         if (typeof v === "number" || (typeof v === "string" && v.length > 0)) {
             attrs += ` ${PK_PREFIX}:${key}="${escapeAttr(String(v))}"`;
+            if (key === "line") hasOwnLine = true;
         }
     }
+    // Node carries no line of its own → take it from the resolver (#41).
+    if (!hasOwnLine) attrs += resolvedLineAttrs(lineFor, pointer);
     // Additional attrs from the optional `attrs` object — HTML/XML
     // convention for source-algebra attributes. Rendered in the default
     // namespace (no prefix), so consumers' xpath like `//a[@href]` keeps
@@ -144,12 +159,13 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, isRoot
     for (const [key, value] of Object.entries(obj)) {
         if (RESERVED_FIELDS.has(key)) continue;
         if (value === null || value === undefined) continue;
+        const childPtr = `${pointer}/${ptrKey(key)}`;
         if (Array.isArray(value)) {
-            for (const item of value) {
-                inner += renderValue(item, key);
-            }
+            value.forEach((item, i) => {
+                inner += renderValue(item, key, `${childPtr}/${i}`, lineFor);
+            });
         } else {
-            inner += renderValue(value, key);
+            inner += renderValue(value, key, childPtr, lineFor);
         }
     }
 

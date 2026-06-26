@@ -130,11 +130,14 @@ export function queryXpathString(xml: string, pattern: string, mimetype: string)
 // to line 1 since they have no node context.
 function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): QueryMatch[] {
     if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => ({
-            matched: serializeXpathNode(node),
-            matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-            lines: [spanOfMatchedNode(node)],
-        }));
+        return result.map((node, i): QueryMatch => {
+            const span = spanOfMatchedNode(node);
+            return {
+                matched: serializeXpathNode(node),
+                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
+                ...(span && { lines: [span] }),
+            };
+        });
     }
     if (result === null || result === undefined) return [];
     // Computed scalar (string()/count()/sum()/boolean()): a value synthesized
@@ -154,7 +157,7 @@ const ELEMENT_NODE = 1;
 // writes onto every element. Walks up from non-element matches (attributes,
 // text nodes) to find the containing element. Falls back to 1 if nothing
 // useful turns up.
-function spanOfMatchedNode(node: Node): LineSpan {
+function spanOfMatchedNode(node: Node): LineSpan | undefined {
     let el: Element | null = null;
     if (node.nodeType === ELEMENT_NODE) {
         el = node as unknown as Element;
@@ -168,11 +171,13 @@ function spanOfMatchedNode(node: Node): LineSpan {
         }
         el = cur as unknown as Element | null;
     }
-    // pk:line / pk:endLine — the source span the projection wrote onto every
-    // element (SPEC §12.3 + #12). endLine defaults to line for a single-line node.
-    const line = pkAttr(el, "line") ?? 1;
-    const endLine = pkAttr(el, "endLine") ?? line;
-    return { line, endLine };
+    // pk:line / pk:endLine — the source span the projection wrote onto the
+    // element (SPEC §12.3 + #12). Absent → no span (we never fake a line, #41);
+    // a projection that carries positions — including via projectJsonToXml's
+    // lineFor — yields a real span, consistent with jsonpath.
+    const line = pkAttr(el, "line");
+    if (line === undefined) return undefined;
+    return { line, endLine: pkAttr(el, "endLine") ?? line };
 }
 
 function pkAttr(el: Element | null, name: string): number | undefined {
