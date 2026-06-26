@@ -1,4 +1,4 @@
-import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-ini (INI / config) handler — Tier 4, no parser dep.
@@ -70,6 +70,23 @@ export default class Ini extends BaseHandler {
             return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
         }
         return super.query(content, dialect, pattern, flags);
+    }
+
+    // deep-xml carries the SAME source lines as jsonpath (#41): stamp pk:line
+    // from the same parseIni positions during projection.
+    override deepXml(content: HandlerContent): Promise<string> {
+        const byPointer = new Map<string, number>();
+        for (const section of parseIni(toText(content))) {
+            const base = section.name === null ? "" : `/${ptr(section.name)}`;
+            if (section.name !== null) byPointer.set(base, section.line);
+            for (const k of section.keys) byPointer.set(`${base}/${ptr(k.key)}`, k.line);
+        }
+        const span = (pointer: string): { line: number; endLine: number } | undefined => {
+            if (pointer === "") return { line: 1, endLine: 1 };
+            const ln = byPointer.get(pointer);
+            return ln === undefined ? undefined : { line: ln, endLine: ln };
+        };
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 }
 
