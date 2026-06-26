@@ -51,7 +51,7 @@ export default class ApplicationXml extends BaseHandler {
         if (root === null) return [];
 
         const symbols: MimeSymbol[] = [
-            { name: root.tagName, kind: "module", line: 1, endLine: 1 },
+            { name: root.tagName, kind: "module", line: lineOf(root as unknown as { lineNumber?: number }) ?? 1, endLine: spanEnd(root as unknown as Element) },
         ];
 
         // Direct children carry the root element's name as container
@@ -65,7 +65,7 @@ export default class ApplicationXml extends BaseHandler {
             const name = (idAttr && idAttr.length > 0)
                 ? idAttr
                 : ((nameAttr && nameAttr.length > 0) ? nameAttr : el.tagName);
-            symbols.push({ name, kind: "field", line: 1, endLine: 1, container: root.tagName });
+            symbols.push({ name, kind: "field", line: lineOf(el as unknown as { lineNumber?: number }) ?? 1, endLine: spanEnd(el), container: root.tagName });
         }
 
         return symbols;
@@ -84,7 +84,7 @@ export default class ApplicationXml extends BaseHandler {
         return {
             type: "document",
             line: 1,
-            endLine: 1,
+            endLine: spanEnd(root as unknown as Element),
             children: [elementToDeep(root as unknown as Element)],
         };
     }
@@ -139,11 +139,27 @@ function parseXmlSilent(text: string): XmlDocument | null {
     }
 }
 
+// 1-indexed source line of an xmldom node (start), or undefined.
+function lineOf(node: { lineNumber?: number }): number | undefined {
+    return typeof node.lineNumber === "number" && node.lineNumber > 0 ? node.lineNumber : undefined;
+}
+
+// An element's source-line span end = start line + newlines in its serialized
+// form (covers the closing tag). xmldom gives per-node start lines but no end;
+// the serialized extent is accurate and parser-agnostic, so jsonpath (deepJson)
+// and xpath agree on the same element. Never a faked 1.
+function spanEnd(el: Element): number {
+    const start = lineOf(el as unknown as { lineNumber?: number }) ?? 1;
+    const serialized = (el as unknown as { toString(): string }).toString();
+    return start + (serialized.match(/\n/g)?.length ?? 0);
+}
+
 function elementToDeep(el: Element): Record<string, unknown> {
+    const line = lineOf(el as unknown as { lineNumber?: number }) ?? 1;
     const node: Record<string, unknown> = {
         type: el.tagName,
-        line: 1,
-        endLine: 1,
+        line,
+        endLine: spanEnd(el),
     };
     if (el.attributes && el.attributes.length > 0) {
         const attrs: Record<string, string> = {};
@@ -184,10 +200,15 @@ function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): Quer
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => {
             const line = nodeLine(node);
+            // Real span (consistent with deepJson): element matches end at their
+            // last descendant's line; non-elements span a single line.
+            const endLine = line !== undefined && node.nodeType === ELEMENT_NODE
+                ? spanEnd(node as unknown as Element)
+                : line;
             return {
                 matched: serializeNode(node),
                 matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-                ...(line !== undefined && { lines: [{ line, endLine: line }] }),
+                ...(line !== undefined && { lines: [{ line, endLine: endLine ?? line }] }),
             };
         });
     }
