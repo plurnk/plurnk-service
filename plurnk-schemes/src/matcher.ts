@@ -53,18 +53,31 @@ export default class Matcher {
     // demo couldn't see `Alice` inside it and re-emitted the READ five times).
     // `matching` (the resolved query path) is dropped from the rendering; the
     // grammar `QueryMatch` keeps it, we just don't surface it.
+    //
+    // The hit's source footprint is `lines[]` (mimetypes #41: a span list, since
+    // a structural hit can cover several source lines). We anchor on the first
+    // span's start line. A footprint-less match — an xpath computed scalar
+    // (count()/string()/sum()/…) that lives nowhere in the source — renders BARE
+    // (no `N:\t`); the framework never fakes a line for it, and neither do we.
     static #renderMatches(matches: readonly QueryMatch[]): string {
-        return matches.map((m) => `${m.line}:\t${Matcher.#renderValue(m.matched)}`).join("\n");
+        return matches.map((m) => {
+            const value = Matcher.#renderValue(m.matched);
+            const anchor = m.lines?.[0]?.line;
+            return anchor === undefined ? value : `${anchor}:\t${value}`;
+        }).join("\n");
     }
 
-    // Apply a `<L>`-slice baseLine offset to per-match line numbers. The
-    // framework returns line numbers relative to the content it received;
-    // when the matcher runs inside an `<L>` slice, those need to be shifted
-    // back to original-source coordinates.
+    // Apply a `<L>`-slice baseLine offset to per-match line footprints. The
+    // framework returns lines relative to the content it received; when the
+    // matcher runs inside an `<L>` slice, every span shifts back to
+    // original-source coordinates. A footprint-less match has nothing to shift.
     static #shiftLines(matches: readonly QueryMatch[], baseLine: number): QueryMatch[] {
         if (baseLine === 1) return [...matches];
         const offset = baseLine - 1;
-        return matches.map((m) => ({ ...m, line: m.line + offset }));
+        return matches.map((m) => m.lines === undefined ? m : {
+            ...m,
+            lines: m.lines.map((s) => ({ line: s.line + offset, endLine: s.endLine + offset })),
+        });
     }
 
     static async matchAgainstContent(
