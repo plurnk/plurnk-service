@@ -1,5 +1,5 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // text/x-dotenv (.env) handler — Tier 4, no parser dep.
 //
@@ -23,12 +23,38 @@ export default class Dotenv extends BaseHandler {
         for (const v of parseDotenv(toText(content))) out[v.key] = v.value;
         return out;
     }
+
+    // jsonpath against the flat {KEY:value} object, with source-line spans (#41)
+    // from parseDotenv positions — deepJson is line-less raw values. A key on
+    // line N → line N. Absent for unrecognized pointers; never faked.
+    override async query(
+        content: HandlerContent,
+        dialect: QueryDialect,
+        pattern: string,
+        flags?: string,
+    ): Promise<QueryMatch[]> {
+        if (dialect === "jsonpath") {
+            const byPointer = new Map<string, number>();
+            for (const v of parseDotenv(toText(content))) byPointer.set(`/${ptr(v.key)}`, v.line);
+            const lineFor = (pointer: string): readonly { line: number; endLine: number }[] | undefined => {
+                const ln = byPointer.get(pointer);
+                return ln === undefined ? undefined : [{ line: ln, endLine: ln }];
+            };
+            return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
+        }
+        return super.query(content, dialect, pattern, flags);
+    }
 }
 
 export interface DotenvVar {
     key: string;
     value: string;
     line: number;
+}
+
+// JSON Pointer token escape (RFC 6901): ~ → ~0, / → ~1.
+function ptr(s: string): string {
+    return s.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
 export function parseDotenv(text: string): DotenvVar[] {
