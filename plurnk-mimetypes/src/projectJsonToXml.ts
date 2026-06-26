@@ -97,27 +97,31 @@ function resolvedLineAttrs(lineFor: ProjectLineFor | undefined, pointer: string)
 
 function renderValue(value: unknown, elementName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
     const ns = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
+    // An element name derived from a key (symbol name, outline label, array
+    // parent key) is arbitrary text — sanitize it so spaces/punctuation can't
+    // emit invalid XML (e.g. a "Given x" outline key → <Given_x>, not <Given x>).
+    const tag = sanitizeElementName(elementName);
     if (value === null || value === undefined) {
-        return `<${elementName}${ns}/>`;
+        return `<${tag}${ns}/>`;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        return `<${elementName}${ns}${resolvedLineAttrs(lineFor, pointer)}>${escapeText(String(value))}</${elementName}>`;
+        return `<${tag}${ns}${resolvedLineAttrs(lineFor, pointer)}>${escapeText(String(value))}</${tag}>`;
     }
     if (Array.isArray(value)) {
         const la = resolvedLineAttrs(lineFor, pointer);
         const inner = value.map((v, i) => renderValue(v, "item", `${pointer}/${i}`, lineFor, false)).join("");
-        return `<${elementName}${ns}${la}>${inner}</${elementName}>`;
+        return `<${tag}${ns}${la}>${inner}</${tag}>`;
     }
     if (typeof value === "object") {
         return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, isRoot);
     }
-    return `<${elementName}${ns}/>`;
+    return `<${tag}${ns}/>`;
 }
 
 function renderObject(obj: Record<string, unknown>, fallbackName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
     const tag = typeof obj.type === "string" && obj.type.length > 0
         ? sanitizeElementName(obj.type)
-        : fallbackName;
+        : sanitizeElementName(fallbackName);
 
     // Root element declares the pk: namespace once; it scopes the document.
     let attrs = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";

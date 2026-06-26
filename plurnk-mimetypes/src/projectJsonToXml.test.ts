@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
+import { queryXpathString } from "./query.ts";
 
 const NS = ' xmlns:pk="https://plurnk.dev/deep-xml/1"';
 
@@ -158,5 +159,19 @@ describe("projectJsonToXml — attrs convention for HTML/XML", () => {
         const xml = projectJsonToXml(json);
         assert.ok(xml.includes('good="ok"'));
         assert.ok(!xml.includes("bad"));
+    });
+});
+
+describe("projectJsonToXml — element names from arbitrary keys are sanitized (valid XML)", () => {
+    it("a key with spaces/punctuation becomes a valid element name", () => {
+        // Outline labels are symbol names — arbitrary text. They must not emit
+        // invalid XML like <Given x> (parsed as element 'Given' + attr 'x').
+        const xml = projectJsonToXml({ "Given a paid invoice": 3 }, "root", () => ({ line: 3, endLine: 3 }));
+        assert.ok(xml.includes("<Given_a_paid_invoice"), xml);
+        assert.ok(!xml.includes("<Given a"), xml);
+        // Round-trips through a strict XML parser without error.
+        const out = queryXpathString(xml, "//Given_a_paid_invoice", "text/test");
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].lines, [{ line: 3, endLine: 3 }]);
     });
 });
