@@ -27,6 +27,7 @@ import type {
     ReadStatement,
     SendStatement,
     UrlPath,
+    EntryData,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
@@ -131,6 +132,13 @@ export default class Http implements SchemeHandler {
         const local = new AbortController();
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
+        // Materialize the streaming target BEFORE subscribing (http#3). open()
+        // binds an EXISTING entry — only the scheme knows its channel shape, so
+        // it seeds them. Mirror exec's create-then-subscribe: write a seed entry
+        // whose channels are the manifest's (body: octet-stream placeholder,
+        // header: text/plain) — the same channels notifyChunk then populates.
+        await ctx.entries.write(pathname, Http.#seedEntry());
+
         // open() returns the run+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts the fetch/render.
         const composed = await ctx.subscriptions.open(pathname, handle);
@@ -188,6 +196,18 @@ export default class Http implements SchemeHandler {
         } finally {
             composed.removeEventListener("abort", onAbort);
         }
+    }
+
+    // Seed entry mirroring the manifest's channels — empty content + the seed
+    // mimetypes (body: octet-stream until the fetch retypes it via notifyChunk,
+    // header: text/plain). This is the channel-shape knowledge open() lacks; the
+    // scheme materializes the target so the subscription binds an existing entry
+    // (http#3). Fresh stream target → no tags.
+    static #seedEntry(): EntryData {
+        const channels = Object.fromEntries(
+            Object.entries(Http.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),
+        );
+        return { channels, tags: [] };
     }
 
     // Record the response status line + headers into the HEADER channel (text/plain).

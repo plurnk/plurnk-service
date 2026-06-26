@@ -15,6 +15,7 @@ import type {
     NotifyCaps,
     SubscriptionCaps,
     CrossSchemeCaps,
+    EntryData,
     ReadStatement,
     SendStatement,
     UrlPath,
@@ -40,11 +41,13 @@ const makeCtx = () => {
     let opened: { pathname: string; handle: SubscriptionHandle } | null = null;
     let closed: { reason: string; outcome?: string } | null = null;
     let deleted: string | null = null;
+    let wrote: { pathname: string; entry: EntryData } | null = null;
+    const seq: string[] = []; // op order — proves create-then-subscribe (http#3)
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
         async read() { return { status: 404, entry: null }; },
-        async write() { return { status: 201, created: true, entryId: 1 }; },
+        async write(pathname, entry) { wrote = { pathname, entry }; seq.push("write"); return { status: 201, created: true, entryId: 1 }; },
         async delete(pathname) { deleted = pathname; return { status: 200 }; },
     };
     const channels: ChannelCaps = {
@@ -59,7 +62,7 @@ const makeCtx = () => {
     };
     const notify: NotifyCaps = { streamEvent() {} };
     const subscriptions: SubscriptionCaps = {
-        async open(pathname, handle) { opened = { pathname, handle }; return localAbort.signal; },
+        async open(pathname, handle) { opened = { pathname, handle }; seq.push("open"); return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
         async close(reason, outcome) { closed = { reason, outcome }; },
     };
@@ -71,7 +74,7 @@ const makeCtx = () => {
     };
     return {
         ctx,
-        inspect: () => ({ chunks, opened, closed, deleted }),
+        inspect: () => ({ chunks, opened, closed, deleted, wrote, seq }),
         forceCancel: () => opened?.handle.cancel(),
     };
 };
@@ -136,6 +139,33 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     const fromFile = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
+});
+
+// ── create-then-subscribe (http#3) ────────────────────────────────────────
+test("READ: materializes the entry (manifest channels) BEFORE subscribing", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
+        await new Http().read(readStmt(urlTarget("http://example.com/robots.txt", "/robots.txt")), ctx);
+    });
+    const { wrote, seq } = inspect();
+    // write must precede open — open() binds an existing entry; it can't seed channels.
+    assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
+    assert.equal(wrote?.pathname, "/robots.txt");
+    // Seeded channels mirror the manifest: empty content + the seed mimetypes.
+    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header"]);
+    assert.deepEqual(wrote!.entry.channels.body, { content: "", mimetype: "application/octet-stream" });
+    assert.deepEqual(wrote!.entry.channels.header, { content: "", mimetype: "text/plain" });
+    assert.deepEqual(wrote!.entry.tags, []);
+});
+
+test("SEND[200]: also materializes the entry before subscribing (shares #fetchStream)", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
+        await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+    });
+    const { wrote, seq } = inspect();
+    assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
+    assert.equal(wrote?.pathname, "/p");
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
