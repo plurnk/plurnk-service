@@ -1,7 +1,7 @@
 import { realpath, stat, writeFile } from "node:fs/promises";
 import { relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
-import type { EditStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -98,7 +98,7 @@ export default class File {
         return normalized === statement ? r : EntryOps.readSessionEntry(normalized, ctx, File.manifest);
     }
 
-    static #normalizeFileTarget(statement: ReadStatement, root: string | null): ReadStatement {
+    static #normalizeFileTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): S {
         const t = statement.target;
         if (root === null || t === null) return statement;
         // A bare member parses as a LocalPath (`notes.md` / `/notes.md` → raw); a scheme'd
@@ -130,7 +130,11 @@ export default class File {
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, File.manifest);
+        // Normalize the model-typed path to the `/rel` member key BEFORE the candidate
+        // glob — the parity READ/EDIT already have (§scheme-address). Without it a bare
+        // `notes.md` globs `notes.md*` and misses the canonical-stored `/notes.md`.
+        const normalized = File.#normalizeFileTarget(statement, await loadSessionRoot(ctx.db, ctx.sessionId));
+        return EntryFind.findSessionEntries(normalized, ctx, File.manifest);
     }
 
     // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
