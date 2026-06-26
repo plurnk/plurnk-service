@@ -1,4 +1,4 @@
-import { BaseHandler, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // application/jsonl (JSON Lines / NDJSON) handler — Tier 4, no parser dep.
@@ -59,6 +59,29 @@ export default class Jsonl extends BaseHandler {
             return queryJsonpathObject(this.deepJson(content), pattern, lineFor);
         }
         return super.query(content, dialect, pattern, flags);
+    }
+
+    // deep-xml carries the SAME source lines as jsonpath (#41): a match's record
+    // index (first pointer segment) → its source line (one record per line).
+    override deepXml(content: HandlerContent): Promise<string> {
+        const recordLines: number[] = [];
+        const lines = toText(content).split("\n");
+        for (let i = 0; i < lines.length; i += 1) {
+            const t = lines[i].trim();
+            if (t.length === 0) continue;
+            try {
+                JSON.parse(t);
+                recordLines.push(i + 1);
+            } catch { /* skip, mirroring scan() */ }
+        }
+        const span = (pointer: string): { line: number; endLine: number } | undefined => {
+            if (pointer === "") return { line: 1, endLine: 1 };
+            const m = pointer.match(/^\/(\d+)/);
+            if (m === null) return undefined;
+            const ln = recordLines[Number(m[1])];
+            return ln === undefined ? undefined : { line: ln, endLine: ln };
+        };
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 
     override extent(content: HandlerContent): number {
