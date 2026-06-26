@@ -1,5 +1,6 @@
 import {
     BaseHandler,
+    projectJsonToXml,
     queryJsonpathObject,
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
@@ -99,6 +100,20 @@ export default class TextCsv extends BaseHandler {
             return queryJsonpathObject(rows, pattern, lineFor);
         }
         return super.query(content, dialect, pattern, flags);
+    }
+
+    // deep-xml carries the SAME source lines as jsonpath (#41): a match's record
+    // index (first pointer segment) → its source line (header line 1, data row N
+    // on line N+2). Same convention as the jsonpath path.
+    override deepXml(content: HandlerContent): Promise<string> {
+        const span = (pointer: string): { line: number; endLine: number } | undefined => {
+            if (pointer === "") return { line: 1, endLine: 1 }; // header row
+            const m = pointer.match(/^\/(\d+)/);
+            if (m === null) return undefined;
+            const line = Number(m[1]) + 2;
+            return { line, endLine: line };
+        };
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
     }
 }
 
