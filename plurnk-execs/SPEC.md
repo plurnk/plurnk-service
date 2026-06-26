@@ -93,6 +93,15 @@ Runtime failures are emitted as a grammar `TelemetryEvent` via the `emit` sink (
 
 The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordinate`) so the framework needs no `@plurnk/plurnk-grammar` dependency; grammar's `dist/schema/TelemetryEvent.json` is the source of truth.
 
+### §2.5 Deadlines & polling — the executor stays oblivious
+
+An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (plurnk-grammar#39, plurnk-service#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` adds a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
+
+- The **timeout** is the consumer's: at the deadline it fires `args.signal` — arriving as an ordinary abort the executor already honors (the §4 process-group SIGHUP→grace→KILL path). No deadline awareness in the executor.
+- The **poll** is purely the consumer's loop: it wakes on a cadence while the channel is `active`, reading the partial output the executor already streams incrementally via `write`. The executor never sees a tick; it's non-destructive.
+
+So the feature is contract-free for executors and applies to all of them uniformly: a long-runner is bounded/watched by the op slot, a fast/logical executor (search) terminates before the first tick and the slot is a no-op.
+
 ## §3 Discovery
 
 `discover(options?) → { registry }`. Scans **every installed package** under `<cwd>/node_modules` — scope-agnostic (scoped and unscoped) — for those declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (For the batteries-included set, an aggregator package — `@plurnk/plurnk-execs-all` — depends on the framework's daughters flat so one install surfaces them all; the framework itself stays contract-only.)
