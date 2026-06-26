@@ -60,6 +60,10 @@ export default class TextDiff extends BaseHandler {
         const { files } = scanDiff(toText(content));
         return {
             type: "diff",
+            // Document span so a match on the root (e.g. $.type) resolves to a
+            // source line via walk-up (#41), not absent.
+            line: 1,
+            endLine: files.reduce((m, f) => Math.max(m, f.endLine), 1),
             files: files.map((f) => ({
                 type: "file",
                 oldPath: f.oldPath,
