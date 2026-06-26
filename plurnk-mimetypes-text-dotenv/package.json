@@ -47,7 +47,7 @@
         "prepare": "npm run build"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "0.15.28",
+        "@plurnk/plurnk-mimetypes": "^0.15.30",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
