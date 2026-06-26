@@ -176,10 +176,11 @@ function shapeXpathResult(pattern: string, result: xpath.SelectReturnType): Quer
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => {
             const line = nodeLine(node);
+            const endLine = line !== undefined ? spanEnd(node, line) : line;
             return {
                 matched: serializeNode(node),
                 matching: result.length > 1 ? `(${pattern})[${i + 1}]` : undefined,
-                ...(line !== undefined && { lines: [{ line, endLine: line }] }),
+                ...(line !== undefined && { lines: [{ line, endLine: endLine ?? line }] }),
             };
         });
     }
@@ -199,6 +200,15 @@ function nodeLine(node: Node): number | undefined {
         ?? (node as { parentNode?: Node | null }).parentNode ?? null;
     const ln = (owner as { lineNumber?: number } | null)?.lineNumber;
     return typeof ln === "number" && ln > 0 ? ln : undefined;
+}
+
+const ELEMENT_NODE_TYPE = 1;
+// An element's source-line span end = start line + newlines in its serialized
+// form (covers the closing tag) — accurate and consistent with the deepJson
+// channel's parse5 spans.
+function spanEnd(node: Node, startLine: number): number {
+    const serialized = serializeNode(node);
+    return startLine + (serialized.match(/\n/g)?.length ?? 0);
 }
 
 // Convert an xpath result node to a string suitable for QueryMatch.matched.
