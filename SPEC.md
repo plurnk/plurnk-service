@@ -1437,7 +1437,7 @@ Carried from the contract walk; durable.
 - **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
 - **Binary entries** → 415 across the board for READ/EDIT/OPEN/FOLD.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
-- **COPY `<L>`** → source range, symmetric with READ `<L>`.
+- **COPY/MOVE `<L>`** → slices the SOURCE range into the destination (every channel), symmetric with READ `<L>` but WITHOUT the `N:\t` prefix (`sliceLinesRaw`); an out-of-range marker → 416. MOVE `<L>` copies the slice, then deletes the whole source (relocation of a fragment). Binary channels can't be sliced (the binary→415 rule above). {§copy-l-source-range}
 - **READ rx** prefixes each line with `N:\t` per §render-rule. `sliceLinesRaw` (used by COPY) returns the lines without prefix.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` (§matcher-dispatch; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries (§open-fold) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
