@@ -99,7 +99,7 @@ export default class Run {
     // the scope pathname (`/<owner>/<rest>`) so EntryFind draws from that run's partition alone.
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
         const authority = Run.#authority(statement.target);
-        if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0 };
+        if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [] };
         const owner = authority === "" ? await Run.#selfName(ctx) : authority;
         const t = statement.target;
         const folded = t !== null && t.kind === "url"

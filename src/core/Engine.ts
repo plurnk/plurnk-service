@@ -1118,13 +1118,18 @@ export default class Engine {
         );
         const droppedCount = opsCount - opsToDispatch.length;
         const statuses: number[] = [];
-        for (const [i, statement] of opsToDispatch.entries()) {
+        // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
+        // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
+        // every op writes one row (the common case).
+        let rowSeq = nextActionIndex;
+        for (const statement of opsToDispatch) {
             const result = await this.dispatch({
                 statement, sessionId, runId, loopId, turnId,
-                sequence: nextActionIndex + i,
+                sequence: rowSeq,
                 origin, onDispatch,
             });
             statuses.push(result.status);
+            rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
         // max_commands_exceeded IS model-facing: dropped ops are things
         // the model emitted that didn't run — it needs to know. Engine
@@ -1143,7 +1148,7 @@ export default class Engine {
         // `error` row (status 400, no target, snippet = the foldable body) at the turn's next free
         // sequence (after the dispatched ops). The model folds/kills/recalls it like any log entry,
         // and the errors section derives a pointer (status + coordinate) from log≥400 — one surface.
-        let errSeq = nextActionIndex + opsToDispatch.length;
+        let errSeq = rowSeq;  // after every dispatched row, including a multi-file READ's fan-out
         for (const { message, line, column, source } of parseErrors ?? []) {
             const snippet = this.#extractSnippet(packetAssistant.content, line, 2);
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
@@ -1708,6 +1713,10 @@ export default class Engine {
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;
+        } else if (statement.op === "READ" && Engine.#isGlobReadTarget(statement.target)) {
+            // Multi-file READ — fan out to one log row per matched file (its own writeLogs),
+            // returning early. A READ never proposes, so it bypasses the single-row path below.
+            return await this.#handleReadFanout(statement, schemeCtx, { runId, loopId, turnId, sequence, origin, onDispatch });
         } else {
             // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
@@ -2213,6 +2222,59 @@ export default class Engine {
         if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
         const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
         return { status: delResult.status };
+    }
+
+    // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
+    // READ target resolves to MANY files; READ returns one log row per file that matches, each
+    // holding that file's matching lines. The matched SET is exactly FIND's survey (which files
+    // + where — matchLines), so we reuse the scheme's own find, then READ each matched file. One
+    // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
+    // on its own. The running sequence counter in runTurn advances by rowsWritten.
+    static #isGlobReadTarget(target: PlurnkStatement["target"]): boolean {
+        if (target === null) return false;
+        const p = target.kind === "url" ? target.pathname : target.raw;
+        return p.includes("*");
+    }
+
+    // Clone a glob READ onto one concrete matched pathname — same body matcher (so the per-file
+    // READ returns the matching LINES), no <L> (a cross-file slice is its own design, deferred).
+    static #retargetRead(statement: PlurnkStatement, pathname: string): PlurnkStatement {
+        const t = statement.target;
+        const target = t !== null && t.kind === "url"
+            ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
+            : { ...(t as { raw: string }), raw: pathname };
+        return { ...statement, target: target as PlurnkStatement["target"], lineMarker: null };
+    }
+
+    async #handleReadFanout(
+        statement: PlurnkStatement,
+        ctx: PlurnkSchemeContext,
+        ids: { runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
+    ): Promise<DispatchResult> {
+        const { runId, loopId, turnId, sequence, origin, onDispatch } = ids;
+        const schemeName = this.#schemeNameOf(statement.target);
+        const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
+        const pathnames = (found.pathnames as string[] | undefined) ?? [];
+        // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
+        // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
+        if (found.status !== 200 || pathnames.length === 0) {
+            const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
+            const id = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+            onDispatch?.(id);
+            return { ...result, rowsWritten: 1 };
+        }
+        // One READ row per matched file — its matching lines (or full content for a body-less glob).
+        const fannedStatuses: number[] = [];
+        let written = 0;
+        for (const pathname of pathnames) {
+            const perFile = Engine.#retargetRead(statement, pathname);
+            const result = await this.#run(schemeName, perFile, ctx);
+            const id = await this.#writeLog({ statement: perFile, result, runId, loopId, turnId, sequence: sequence + written, origin });
+            onDispatch?.(id);
+            fannedStatuses.push(result.status);
+            written++;
+        }
+        return { status: 200, rowsWritten: written, fannedStatuses };
     }
 
     // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any

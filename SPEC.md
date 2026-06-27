@@ -1339,7 +1339,7 @@ The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND ret
 | jsonpath `$.path` | the line(s) where the structural path resolves | the line defining `host` |
 | xpath `//sel` | the line(s) of the selected node (text/html) | the line(s) of the h1 |
 
-Across a **multi-file target** (a glob over `(target)`), READ returns **one log item per file that contains a match**, each holding that file's matching lines — READ is the content retrieval over the whole matched set, the companion to FIND's survey (§find-result-catalog-rows). *(Engine-level fan-out; tagged + tested when built.)*
+Across a **multi-file target** (a glob over `(target)`), READ returns **one log item per file that contains a match**, each holding that file's matching lines — READ is the content retrieval over the whole matched set, the companion to FIND's survey (§find-result-catalog-rows). The matched set *is* that survey: the engine runs the scheme's FIND (which files + where — `matchLines`), then READs each matched file, emitting one log row per hit at the turn's running sequence. It costs **one command** (the model emitted one READ) yet writes N rows, each addressing its concrete file — individually foldable/killable/re-READable. A body-less glob returns each file's full content; zero matches writes a single `204` row (never silence). {§read-multi-file-fanout}
 
 > **Implementation requirement (a mimetypes-daughter need, not a contract exception):** structural dialects must report the SOURCE LINE of each hit. regex/glob match over raw content (the line is in hand); jsonpath/xpath run over the parsed `deepJson`/`deepXml` projection and today return the value — the match primitive must instead carry the line span of each hit, so READ can return the line.
 

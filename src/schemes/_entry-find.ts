@@ -31,6 +31,7 @@ export interface FindResult {
     mimetype: string | null;
     results: CatalogEntry[];
     itemsTokenTotal: number;  // sum of every matched entry's live channel tokens — the set's content weight
+    pathnames: string[];      // the matched entry pathnames, in result order — the set a multi-file READ fans out over
 }
 
 export default class EntryFind {
@@ -179,7 +180,7 @@ export default class EntryFind {
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
     static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest);
-        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0 };
+        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [] };
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
         // The catalog row is keyed by its addressable path; align each matched pathname to
         // its row through the same EntryManifest.toPath the catalog uses (single source of
@@ -205,6 +206,6 @@ export default class EntryFind {
         );
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
         // whitespace of the catalog body, tokens the wire doesn't need.
-        return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results, itemsTokenTotal };
+        return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: match.pathnames };
     }
 }
