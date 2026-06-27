@@ -41,7 +41,8 @@ test("plurnk.md examples block contains the expected statement count", () => {
     const result = PlurnkParser.parseStatements(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
-    assert.equal(statements.length, 35, `expected 35 statements, got ${statements.length}`);
+    // (33 after the two run:// spawn/fork examples were promoted to labeled imperative lines.)
+    assert.equal(statements.length, 33, `expected 33 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {

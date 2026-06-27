@@ -110,6 +110,9 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 
 YOU MUST SEND[102] to receive the results of operations you submitted.
 
+To spawn a separate run: <<EDIT(run://capital-checker):Find the capital of France.:EDIT
+To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
+
 ## Examples
 
 * <<FIND(config/**/*.xml)://user[@role='admin']:FIND
@@ -123,8 +126,8 @@ YOU MUST SEND[102] to receive the results of operations you submitted.
 * <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 * <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 * <<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
-* <<EDIT[plan,france,task](known:///plan.md):- [ ] Decompose prompt into unknowns:EDIT
-* <<EDIT(known:///plan.md)<2>:- [x] Discover capital of France:EDIT
+* <<EDIT[plan,france,task](run://self/plan.md):- [ ] Decompose prompt into unknowns:EDIT
+* <<EDIT(run://self/plan.md)<2>:- [x] Discover capital of France:EDIT
 * <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 * <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
 * <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
@@ -134,8 +137,6 @@ YOU MUST SEND[102] to receive the results of operations you submitted.
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
 * <<KILL[9](sh:///3/1/3)::KILL
-* <<EDIT(run://capital-checker):Find the capital of France.:EDIT
-* <<COPY(run://.):Re-derive the capital from a primary source.:COPY
 * <<OPEN(log:///**/get)<1,10>::OPEN
 * <<FIND(known:///**)<5>:~french revolutionary history:FIND
 * <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
