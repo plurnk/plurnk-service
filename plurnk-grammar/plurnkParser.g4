@@ -2,15 +2,14 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// A Plurnk packet IS a TURN, but the parser is the FORGIVING ingester — the GBNF is the
-// strict rail (`*:PLAN:OPS:SEND[N]`). So a rail-less weak model still parses: PLAN is
-// optional, and prose (TEXT) is tolerated anywhere — interleaved between ops and trailing
-// after the SEND. The one hard requirement is a terminal SEND: it carries the loop status
-// code and marks turn-end, so a packet with no closing SEND does NOT parse. Prose surfaces
-// as text items and is otherwise ignored; ops execute. Relaxing the parser preserves
-// L(GBNF) ⊆ L(ANTLR) — only tightening could break it.
+// A Plurnk packet IS a TURN. PLAN is REQUIRED — the anchor and first op, preceded only by
+// free-text preamble (reasoning) — then ops with prose (comments) tolerated between them,
+// closed by a REQUIRED terminal SEND. A PLAN-less or SEND-less packet does NOT parse. Prose
+// surfaces as text items and is otherwise ignored. Prose tolerance stays (in Plurnk Script
+// it is the comment mechanism); only PLAN was re-tightened from the 0.74.9 ingester, where
+// it had been briefly optional. GBNF (model rail) already requires PLAN, so all tiers agree.
 document
-    : (statement | TEXT)* sendStatement TEXT* EOF
+    : TEXT* planStatement (statement | TEXT)* sendStatement TEXT* EOF
     ;
 
 // A bare sequence of statements — for teaching-example collections and single ops

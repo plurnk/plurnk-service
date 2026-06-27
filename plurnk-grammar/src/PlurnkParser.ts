@@ -16,11 +16,12 @@ const STATEMENT_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    // Parse a model TURN — the FORGIVING ingester (the GBNF is the strict rail). PLAN is
-    // optional and prose is tolerated anywhere (interleaved or trailing), so a rail-less
-    // weak model still parses; prose surfaces as text items, ops as statements. The one
-    // hard requirement is a terminal SEND (it carries the loop status code) — a packet with
-    // no closing SEND does NOT parse and surfaces as error items.
+    // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
+    // preamble may precede it) and a terminal SEND (carries the loop status code). A PLAN-less
+    // or SEND-less packet does NOT parse and surfaces as error items. Prose is tolerated
+    // anywhere else (preamble, between ops, trailing) and surfaces as text items — in Plurnk
+    // Script that prose is the comment mechanism. The GBNF rail already requires PLAN, so the
+    // rail and the parser agree (prose tolerance is the only place the parser stays lenient).
     static parse(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.document());
     }
