@@ -10,7 +10,7 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|CO
 
 <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
-Empty (no body) operations contain two colons: READ(README.md)::READ
+Empty (no body) operations contain two colons: <<READ(README.md)::READ
 
 ### Operations
 
