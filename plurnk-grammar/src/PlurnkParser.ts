@@ -18,8 +18,12 @@ const STATEMENT_RULES = new Set<number>([
 ]);
 
 // Container rules whose children hold the statements — extraction recurses through these.
-// `turnContent` wraps a turn (document = one, log = one-or-more); its children are the ops.
-const CONTAINER_RULES = new Set<number>([plurnkParser.RULE_turnContent]);
+// `turnStatement` is the `<<TURN…:…:TURN` wrapper (log); `turnContent` is the sandwich inside
+// it (and document's single turn). Recursing both flattens a wrapped log to its ops in order.
+const CONTAINER_RULES = new Set<number>([
+    plurnkParser.RULE_turnContent,
+    plurnkParser.RULE_turnStatement,
+]);
 
 export default class PlurnkParser {
     // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text

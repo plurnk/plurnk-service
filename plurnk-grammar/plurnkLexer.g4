@@ -3,7 +3,8 @@ lexer grammar plurnkLexer;
 tokens {
     LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, COMMA,
     INT, IDENT, TAG,
-    TARGET_TEXT, BODY_TEXT, CLOSE_TAG, TEXT
+    TARGET_TEXT, BODY_TEXT, CLOSE_TAG, TEXT,
+    OPEN_TURN, CLOSE_TURN
 }
 
 // ============================================================================
@@ -55,7 +56,7 @@ private consumeRestOfCloseTagAfterColon(): void {
 }
 
 private isOpKeywordAfterLtLt(): boolean {
-    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN"];
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN", "TURN"];
     for (const op of ops) {
         let matches = true;
         for (let i = 0; i < op.length; i++) {
@@ -72,6 +73,27 @@ private isOpKeywordAfterLtLt(): boolean {
 private isSendOp(): boolean { return this.openTag.startsWith("SEND"); }
 private isExecOp(): boolean { return this.openTag.startsWith("EXEC"); }
 private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
+private isTurnOp(): boolean { return this.openTag.startsWith("TURN"); }
+
+// TURN suffix stack — one entry per open `<<TURN…:` body (pushed by the TURN colon below,
+// popped by `:TURN`). Stack depth doubles as nesting depth: a `:TURN` close only fires inside
+// an open TURN, so a stray `:TURN` at top level (or in preamble prose) stays TEXT.
+private turnSuffixStack: string[] = [];
+
+// True when the stream is at the matching `:TURN<suffix>` close for the innermost open TURN.
+// Mirrors atColonCloseTag: exact suffix match AND a non-ident follow char, so `:TURNING` (or
+// a mismatched `:TURN2` for a `<<TURN1`) does NOT false-close inside a turn's prose.
+private atTurnCloseTag(): boolean {
+    if (this.turnSuffixStack.length === 0) return false;
+    if (this.inputStream.LA(1) !== 0x3A /* ':' */) return false;
+    const tag = "TURN" + this.turnSuffixStack[this.turnSuffixStack.length - 1];
+    for (let i = 0; i < tag.length; i++) {
+        if (this.inputStream.LA(i + 2) !== tag.charCodeAt(i)) return false;
+    }
+    const followChar = this.inputStream.LA(tag.length + 2);
+    if (followChar > 0 && this.isIdentChar(followChar)) return false;
+    return true;
+}
 }
 
 // ============================================================================
@@ -97,6 +119,10 @@ OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_KILL : '<<KILL' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_PLAN : '<<PLAN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+// `<<TURN…:` wraps a whole turn (Plurnk Script). Unlike every other op, its body is NOT
+// opaque — it stays in statement-lexing (the TURN colon in SLOTS does NOT enter BODY), so
+// the inner sandwich parses as real Plurnk. `:TURN` (below) closes it.
+OPEN_TURN : '<<TURN' SUFFIX? { this.setOpenTag(); } -> type(OPEN_TURN), mode(SLOTS) ;
 
 // Default-mode whitespace is a hidden token (not folded into TEXT) so the parser can
 // require "nothing but WS" between/after ops in a turn: WS is invisible to rules, while
@@ -111,6 +137,13 @@ WS   : [ \t\r\n]+ -> channel(HIDDEN) ;
 // falls through to TEXT. Mirrors the GBNF optional reasoning block — keeps L(GBNF) ⊆ L(ANTLR).
 THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
+
+// `:TURN<suffix>` closes a TURN body — recognized in statement context (not opaque BODY mode).
+// The pattern matches the FULL literal so maximal munch beats TEXT (which would otherwise eat
+// `:TURN` as 5 chars vs a shorter close). The predicate (atTurnCloseTag) enforces the open
+// TURN + exact suffix + non-ident follow, so a `:TURN`-prefixed word in prose stays TEXT.
+// Must precede TEXT.
+CLOSE_TURN : { this.atTurnCloseTag() }? ':TURN' SUFFIX? { this.turnSuffixStack.pop(); } -> type(CLOSE_TURN) ;
 
 TEXT : ('<<' { !this.isOpKeywordAfterLtLt() }? | '<' ~[<] | ~[< \t\r\n])+ ;
 
@@ -128,6 +161,10 @@ SLOTS_LB_INT   : '[' { this.isSendOp() || this.isKillOp() }?    -> type(LBRACKET
 SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
 SLOTS_LPAREN   : '(' -> type(LPAREN), mode(TARGET) ;
 SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
+// TURN's body is internal Plurnk, not opaque — its colon opens a turn body in statement
+// mode (depth++), where the inner sandwich lexes normally; `:TURN` closes it. Every other
+// op's colon enters opaque BODY mode.
+SLOTS_COLON_TURN : { this.isTurnOp() }? ':' { this.turnSuffixStack.push(this.openTag.substring(4)); } -> type(COLON), mode(DEFAULT_MODE) ;
 SLOTS_COLON    : ':' -> type(COLON), mode(BODY) ;
 
 // ============================================================================

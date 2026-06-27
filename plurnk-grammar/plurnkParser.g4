@@ -11,11 +11,17 @@ document
     : turnContent EOF
     ;
 
-// A multi-turn LOG (PlurnkParser.parseLog): one-or-more turns, each a full sandwich. Shares
-// `turnContent`, so a log is valid iff every turn in it is a valid turn. The v1 Plurnk Script
-// substrate — confirm/parse saved model-run logs. A fresh `<<PLAN` starts the next turn.
+// A multi-turn LOG (PlurnkParser.parseLog) — the Plurnk Script substrate. Each turn is a full
+// sandwich WRAPPED in `<<TURN…: … :TURN`. A log is valid iff every wrapped turn is valid.
+// `parse()` stays the bare unwrapped sandwich; parseLog is the wrapped, multi-turn path.
 log
-    : turnContent+ EOF
+    : turnStatement+ EOF
+    ;
+
+// `<<TURN[label]?(target)?<L>?: <a full turn> :TURN` — wraps one sandwich. Modifiers parse
+// but are semantically undefined in v1. The body is `turnContent` (real, internal Plurnk).
+turnStatement
+    : OPEN_TURN tagOpModifiers? COLON turnContent CLOSE_TURN
     ;
 
 // One turn, shared by `document` and `log`. PLAN required and FIRST (only free-text preamble

@@ -1126,9 +1126,11 @@ test("degenerate: stray bracket in the SIGNAL region errors gracefully (no throw
 });
 
 // -------------------------------------------------------------------------
-// parseLog — multi-turn logs (v1 Plurnk Script substrate); sandwich is law
+// parseLog — multi-turn logs (Plurnk Script): each turn WRAPPED in <<TURN…:…:TURN
 // -------------------------------------------------------------------------
 
+// wrap a bare sandwich in the TURN enclosure
+const turn = (sandwich: string) => `<<TURN:${sandwich}:TURN`;
 const logResult = (input: string) => {
     const r = PlurnkParser.parseLog(input);
     return {
@@ -1142,31 +1144,44 @@ const logInvalid = (input: string) => {
     return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
 };
 
-test("parseLog: a multi-turn log parses clean and flattens turns in order", () => {
-    const twoTurns =
-        "<<PLAN:find it:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND\n" +
-        "<<PLAN:answer:PLAN\n<<SEND[200]:done:SEND";
-    assert.deepEqual(logResult(twoTurns), { stmts: 5, errs: 0, tail: false }); // PLAN READ SEND | PLAN SEND
+test("parseLog: a multi-turn log of <<TURN>-wrapped turns parses clean and flattens in order", () => {
+    const log =
+        turn("<<PLAN:find it:PLAN <<READ(known:///x)::READ <<SEND[102]:reading:SEND") + "\n" +
+        turn("<<PLAN:answer:PLAN <<SEND[200]:done:SEND");
+    assert.deepEqual(logResult(log), { stmts: 5, errs: 0, tail: false }); // PLAN READ SEND | PLAN SEND
 });
 
-test("parseLog: a single valid turn is a valid log", () => {
-    assert.deepEqual(logResult("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), { stmts: 2, errs: 0, tail: false });
+test("parseLog: a single wrapped turn is a valid log", () => {
+    assert.deepEqual(logResult(turn("<<PLAN:p:PLAN <<SEND[200]:done:SEND")), { stmts: 2, errs: 0, tail: false });
 });
 
-test("parseLog: prose between ops is tolerated (comments)", () => {
-    assert.equal(logResult("thinking <<PLAN:p:PLAN consider <<READ(known:///x)::READ <<SEND[200]:done:SEND").errs, 0);
+test("parseLog: prose inside a wrapped turn is tolerated (comments)", () => {
+    assert.equal(logResult(turn("thinking <<PLAN:p:PLAN consider <<READ(known:///x)::READ <<SEND[200]:done:SEND")).errs, 0);
 });
 
-test("parseLog: a log must start with PLAN (sandwich is law)", () => {
-    assert.ok(logInvalid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), "no leading PLAN");
+test("parseLog: a BARE (unwrapped) turn is NOT a valid log — TURN wrapping is required", () => {
+    assert.ok(logInvalid("<<PLAN:p:PLAN <<SEND[200]:done:SEND"), "log requires <<TURN wrapping");
 });
 
-test("parseLog: a turn missing its terminal SEND makes the log invalid", () => {
-    assert.ok(logInvalid("<<PLAN:p:PLAN\n<<SEND[200]:a:SEND\n<<PLAN:q:PLAN\n<<READ(known:///x)::READ"), "2nd turn never SENDs");
+test("parseLog: a wrapped turn missing its inner PLAN is invalid (sandwich is law)", () => {
+    assert.ok(logInvalid(turn("<<READ(known:///x)::READ <<SEND[200]:done:SEND")), "no PLAN inside the TURN");
 });
 
-test("parseLog: empty input is not a valid log (needs at least one turn)", () => {
+test("parseLog: a wrapped turn missing its terminal SEND is invalid", () => {
+    assert.ok(logInvalid(turn("<<PLAN:p:PLAN <<READ(known:///x)::READ")), "no terminal SEND inside the TURN");
+});
+
+test("parseLog: an unclosed <<TURN is invalid", () => {
+    assert.ok(logInvalid("<<TURN:<<PLAN:p:PLAN <<SEND[200]:done:SEND"), "TURN never closed");
+});
+
+test("parseLog: empty input is not a valid log (needs at least one wrapped turn)", () => {
     assert.ok(logInvalid(""), "a log needs >=1 turn");
+});
+
+test("parse: rejects a <<TURN>-wrapped turn (wrapping is parseLog's path, not parse's)", () => {
+    const r = PlurnkParser.parse(turn("<<PLAN:p:PLAN <<SEND[200]:done:SEND"));
+    assert.ok(r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined);
 });
 
 // -------------------------------------------------------------------------
@@ -1190,4 +1205,21 @@ test("parse: the canonical single sandwich is valid", () => {
     const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(r.unparsedTail, undefined);
+});
+
+// -------------------------------------------------------------------------
+// TURN close-tag hardening (caught in self-review): suffix + non-ident follow
+// -------------------------------------------------------------------------
+
+test("parseLog: a :TURN-prefixed word in a turn's prose does not false-close", () => {
+    assert.equal(logResult(turn("<<PLAN:p:PLAN mentioning :TURNING here <<SEND[200]:done:SEND")).errs, 0);
+});
+
+test("parseLog: TURN suffix discipline — only the matching :TURN<suffix> closes", () => {
+    assert.equal(logResult("<<TURN1:<<PLAN:p:PLAN <<SEND[200]:x:SEND:TURN1").errs, 0);   // matched suffix closes
+    assert.ok(logInvalid("<<TURN1:<<PLAN:p:PLAN <<SEND[200]:x:SEND:TURN2"));             // mismatch => unclosed
+});
+
+test("parseLog: :TURN inside an inner op body is opaque content, not a close", () => {
+    assert.equal(logResult(turn("<<PLAN:p:PLAN <<SEND[200]:done :TURN literally:SEND")).errs, 0);
 });
