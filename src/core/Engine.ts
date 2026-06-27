@@ -727,7 +727,13 @@ export default class Engine {
         // from sequence=2 onward on prompt-foisted turns; 1 onward
         // otherwise.
         let nextActionIndex = 1;
+        // §model-entry — the run's first turn opens with the model's own turn-0, mirrored OPEN: a
+        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
+        // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
+        // written at sequence 1, so it reads first as the emission with the foisted results following.
+        const turnZeroMoves: string[] = [];
         if (seq === 1) {
+            if (runFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
             // Operator doc READs (PLURNK_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
             // as plurnk:///<entry> entries by the plurnk run (loop_run, via the
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
@@ -858,6 +864,9 @@ export default class Engine {
                         sequence: nextActionIndex, origin: "plurnk", onDispatch,
                     });
                     nextActionIndex++;
+                    // §model-entry — the same FIND, rendered back to DSL for the turn-0 echo (the model's
+                    // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
+                    turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
                 // §run-scheme — Manifest(run) = session-scope ∪ THIS run's run-scope. Foist the
                 // building run's OWN scratch (run:///**, uncapped — a run needs the full view to
@@ -873,6 +882,7 @@ export default class Engine {
                     };
                     await this.dispatch({ statement: runFind, sessionId, runId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
+                    turnZeroMoves.push("<<FIND(run:///**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
                 }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
@@ -895,6 +905,14 @@ export default class Engine {
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
+            }
+            // §model-entry — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
+            // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
+            // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
+            // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
+            if (runFirstLoop) {
+                const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Initialized:SEND"].join("\n");
+                await this.#writeModelEntry({ verbatim: emission, runId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }
 

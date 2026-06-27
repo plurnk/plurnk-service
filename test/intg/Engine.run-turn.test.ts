@@ -92,13 +92,12 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal(turn.usage_completion, 42);
 
-        // 4 log_entries: 1 client-origin SEND[200] for the prompt at
-        // sequence=0 (written when the turn opens) + 2 model ops
-        // (EDIT at 1, SEND at 2) + 1 actionless `model` echo of the turn's
-        // verbatim emission (§model-entry, folded). Turn-as-container model —
-        // pre-model writes share the turn's sequence counter.
+        // 5 log_entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1,
+        // §model-entry) + 1 client-origin SEND[200] prompt foist + 2 model ops
+        // (EDIT, SEND) + 1 folded `model` echo of THIS turn's verbatim emission.
+        // Turn-as-container model — pre-model writes share the turn's sequence counter.
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 4);
+        assert.equal(logCount, 5);
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
@@ -171,10 +170,10 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
 });
 
 test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
-    // Turn-as-container model, 1-based. Turn 1 opens with sequence=1
-    // reserved for the prompt (system-origin EDIT against
-    // plurnk:///prompt/<loop_id>). The 4 model ops dispatch at 2, 3, 4, 5 —
-    // continuing the turn's running counter.
+    // Turn-as-container model, 1-based. The run's first turn opens with sequence=1
+    // reserved for the turn-0 `model` exemplar (§model-entry), then the prompt
+    // (system-origin EDIT against plurnk:///prompt/<loop_id>) at 2, then the 3 model
+    // ops at 3, 4, 5 and the terminal SEND at 6 — the turn's running counter.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -190,11 +189,12 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "EDIT" }, // the prompt (plurnk:///prompt/<loop_id>)
-                { idx: 2, op: "EDIT" },
+                { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
+                { idx: 2, op: "EDIT" },  // the prompt (plurnk:///prompt/<loop_id>)
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
-                { idx: 5, op: "SEND" },
+                { idx: 5, op: "EDIT" },
+                { idx: 6, op: "SEND" },
             ],
         );
     } finally { await db.close(); }
@@ -747,12 +747,12 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
-        // The prompt foist is the loop's opening EDIT at 1/1/1 (plurnk-origin). Found
-        // by its stable path/identity — robust to a turn-0 manifest-preview READ that
-        // may also be present (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview),
-        // which shifts later coordinates but never the prompt's.
-        const prompt = log.find((e) => e.path === "log:///1/1/1/EDIT");
-        assert.ok(prompt, "prompt entry logged at 1/1/1");
+        // The prompt foist is the loop's opening EDIT (plurnk-origin) against
+        // plurnk:///prompt/<loop_id>. Found by its stable identity (origin + target),
+        // robust to the turn-0 `model` exemplar at 1/1/1 (§model-entry) and any
+        // manifest-preview READ that shift its coordinate.
+        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === `plurnk://prompt/${loopId}/1`);
+        assert.ok(prompt, "prompt entry logged (plurnk-origin EDIT against plurnk:///prompt)");
         assert.equal(prompt.op, "EDIT");
         assert.equal(prompt.origin, "plurnk");
         assert.equal(prompt.target, `plurnk://prompt/${loopId}/1`);
@@ -774,10 +774,10 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt foist + the prior turn's 2 model ops (an
-        // EDIT and a SEND). Found by identity (origin + op + target), robust to a
-        // turn-0 manifest-preview foist (§actor-boundary-manifest-preview) that may
+        // EDIT and a SEND). Found by identity (origin + op + target), robust to the
+        // turn-0 `model` exemplar (§model-entry) and a manifest-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.path === "log:///1/1/1/EDIT" && e.origin === "plurnk"), "prompt foist logged at 1/1/1");
+        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && typeof e.target === "string" && e.target.startsWith("plurnk://prompt/")), "prompt foist logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
@@ -856,8 +856,9 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.telemetryErrors;
         assert.equal(err.kind, "action_failure");
-        // Turn-as-container, 1-based: prompt at 1/1/1; model's EDIT shifts to 1/1/2.
-        assert.equal(err.coordinate, "1/1/2");
+        // Turn-as-container, 1-based: turn-0 `model` exemplar at 1/1/1 (§model-entry),
+        // prompt at 1/1/2; the model's denied EDIT shifts to 1/1/3.
+        assert.equal(err.coordinate, "1/1/3");
         assert.equal(err.op, "EDIT");
         assert.equal(err.target, "log:///illegal");
         assert.equal(err.status, 403);

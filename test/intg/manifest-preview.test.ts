@@ -156,3 +156,30 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
         if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
     }
 });
+
+test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
+    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    try {
+        process.env.PLURNK_MANIFEST_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
+        await withDaemon(mock(), async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "turn0-exemplar" });
+                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
+                const { modelRunId } = resp as { modelRunId: number };
+                // The run's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
+                const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ run_id: modelRunId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                assert.equal(row?.op, "model", "the run's first turn opens with the turn-0 model exemplar");
+                const content = (JSON.parse(row!.rx) as { content: string }).content;
+                // Dynamic — it carries the FIND the foist ACTUALLY dispatched (known:///**), rendered to
+                // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
+                assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with the reasoning move");
+                assert.match(content, /<<FIND\(known:\/\/\/\*\*\)::FIND/, "the real foisted survey, rendered back to DSL");
+                assert.match(content, /<<SEND\[102\]:Initialized:SEND$/, "closes with the progress signal");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+    }
+});
