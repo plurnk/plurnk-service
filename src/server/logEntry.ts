@@ -38,7 +38,9 @@ export interface LogEntryWire {
 
 export default class LogEntry {
     static #parseJsonOrNull(v: unknown): unknown {
-        if (v === null || v === undefined) return null;
+        // "" is the actionless-row sentinel for "no statement" (error/model rows store tx="");
+        // JSON.parse("") throws, so an empty string is no-value → null, like NULL itself.
+        if (v === null || v === undefined || v === "") return null;
         if (typeof v !== "string") return v;
         return JSON.parse(v);
     }

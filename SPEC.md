@@ -536,6 +536,12 @@ AST: `{ op: "OPEN"|"FOLD", target, body: MatcherBody | null, signal: tags | null
 
 OPEN/FOLD operate on the **log** (`log:///`) — the model's context-curation surface (§packet). FOLD collapses a log row to its path; OPEN restores its body. Non-destructive: rows and bodies persist, re-OPENable. Entries carry no visibility (§no-visibility), so OPEN/FOLD against an entry scheme returns 501.
 
+### §model-entry The model's own emission, mirrored back
+
+A `model` log row is the model's **verbatim prior emission**, mirrored back so it can finally SEE its own behavior — and reason through its own syntax errors (the parser reports by line; the row renders line-numbered like all content). Actionless, like an `op='error'` row (§telemetry): no target, no op executed; `tx` is empty and the emission lives in `rx.content`, typed `text/vnd.plurnk`. Born **FOLDED** — budget-neutral until the model OPENs it — and OPEN/FOLD/KILL-able like any log row (the model curates its own history). The engine writes one at the end of each turn that produced output; a struck/empty turn mirrors nothing.
+
+The run's **first** model row is exceptional: a born-OPEN turn-0 **exemplar** — a minimal worked example (`PLAN` → environment `FIND`s → `SEND[102]`) the model always opens on, so the grammar can stay thin (the example teaches the syntax, not a heavy grammar). {§model-entry}
+
 ### §copy COPY (engine-orchestrated)
 
 AST: `{ op: "COPY", target (source), body (destination), signal: tags | null, lineMarker? }`.

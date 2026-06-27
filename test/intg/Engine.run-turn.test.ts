@@ -92,12 +92,13 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal(turn.usage_completion, 42);
 
-        // 3 log_entries: 1 client-origin SEND[200] for the prompt at
+        // 4 log_entries: 1 client-origin SEND[200] for the prompt at
         // sequence=0 (written when the turn opens) + 2 model ops
-        // (EDIT at 1, SEND at 2). Turn-as-container model — pre-model
-        // writes share the turn's sequence counter.
+        // (EDIT at 1, SEND at 2) + 1 actionless `model` echo of the turn's
+        // verbatim emission (§model-entry, folded). Turn-as-container model —
+        // pre-model writes share the turn's sequence counter.
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 3);
+        assert.equal(logCount, 4);
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");

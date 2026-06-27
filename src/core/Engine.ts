@@ -1166,6 +1166,14 @@ export default class Engine {
             });
         }
 
+        // §model-entry — mirror this turn's verbatim emission back as a folded `model` row, so the
+        // NEXT packet shows the model exactly what it last produced (OPEN to inspect, e.g. a syntax
+        // error it can now reason through). Folded → budget-neutral until the model OPENs it. Empty
+        // emissions (a struck/silent turn) write nothing — there's no prior output to mirror.
+        if (packetAssistant.content.trim().length > 0) {
+            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: true });
+        }
+
         // Zero ops is NOT an error to report — the model knows it emitted
         // nothing. Strike accounting (engine-internal) treats it as a
         // struck turn; the model just sees an empty packet next turn.
@@ -2275,6 +2283,28 @@ export default class Engine {
             written++;
         }
         return { status: 200, rowsWritten: written, fannedStatuses };
+    }
+
+    // §model-entry — mirror a verbatim model emission back as an actionless `model` log row, so
+    // the model can finally SEE its own prior output (and reason through its own syntax errors).
+    // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
+    // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
+    async #writeModelEntry({ verbatim, runId, loopId, turnId, sequence, folded, origin = "model" }: {
+        verbatim: string; runId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
+    }): Promise<number> {
+        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+            origin, source: null, op: "model", suffix: "", signal: null,
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/vnd.plurnk",
+            rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
+            mimetype_rx: "application/json",
+            status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null, attrs: "{}",
+        });
+        if (row === undefined) throw new Error("Engine.#writeModelEntry: insert returned no row");
+        if (folded) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: row.id });
+        return row.id;
     }
 
     // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any

@@ -275,7 +275,10 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row (§telemetry — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL', 'PLAN', 'error')),
+    -- 'model' is an ACTIONLESS row too (§model-entry): the model's own verbatim emission, mirrored
+    -- back as a foldable log item so it can finally SEE its prior output (born folded; the turn-0
+    -- exemplar is born open). text/vnd.plurnk-typed; OPEN/FOLD/KILL-able like any row.
+    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL', 'PLAN', 'error', 'model')),
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 

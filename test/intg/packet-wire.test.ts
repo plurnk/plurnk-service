@@ -267,3 +267,22 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
     assert.match(out, /<<:::\/page\.html\n<h1>Hi<\/h1>\n:::\/page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });
+
+test("[§model-entry] a folded model row renders meta-only — the verbatim hides until OPEN", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
+        rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
+    }], tok);
+    assert.match(out, /^- \{"op":"model"/, "folded → '-' marker, meta line only");
+    assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
+});
+
+test("[§model-entry] an open model row mirrors the model's own emission back, line-numbered", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
+        rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
+    }], tok);
+    assert.match(out, /^\+ \{"op":"model"/, "open → '+' marker");
+    assert.match(out, /1:\t<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
+    assert.match(out, /2:\t<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
+});

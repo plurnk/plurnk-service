@@ -390,6 +390,15 @@ export default class PacketWire {
                 if (typeof detail.message === "string" && detail.message.length > 0) parts.push(detail.message);
                 if (typeof detail.snippet === "string" && detail.snippet.length > 0) parts.push(detail.snippet);
                 if (parts.length > 0) body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, parts.join("\n"));
+            } else if (op === "model") {
+                // §model-entry — the model's own verbatim emission, mirrored back so it sees exactly
+                // what it produced. Line-numbered like all content (the parser reports errors by line,
+                // so the model can reason about its own syntax error). Folded by default → just the
+                // meta line until OPENed; the turn-0 exemplar is born open (the worked example).
+                if (rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
+                    const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/vnd.plurnk";
+                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, rx.content, mimetype);
+                }
             }
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
