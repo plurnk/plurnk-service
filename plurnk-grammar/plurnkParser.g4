@@ -2,14 +2,27 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// A Plurnk packet IS a TURN. PLAN is REQUIRED — the anchor and first op, preceded only by
-// free-text preamble (reasoning) — then ops with prose (comments) tolerated between them,
-// closed by a REQUIRED terminal SEND. A PLAN-less or SEND-less packet does NOT parse. Prose
-// surfaces as text items and is otherwise ignored. Prose tolerance stays (in Plurnk Script
-// it is the comment mechanism); only PLAN was re-tightened from the 0.74.9 ingester, where
-// it had been briefly optional. GBNF (model rail) already requires PLAN, so all tiers agree.
+// A Plurnk packet IS a TURN (PlurnkParser.parse). The sandwich is law: exactly one
+// PLAN-anchored turn — PLAN first (only free-text preamble precedes it), mid-ops with prose
+// (comments) between, a REQUIRED terminal SEND, EOF. NO mid-op PLAN (a second PLAN would
+// start a new turn — use parseLog for that). PLAN-less / SEND-less / multi-turn input does
+// NOT parse. Prose surfaces as text items. GBNF already enforces PLAN-first, so all tiers agree.
 document
-    : TEXT* planStatement (statement | TEXT)* sendStatement TEXT* EOF
+    : turnContent EOF
+    ;
+
+// A multi-turn LOG (PlurnkParser.parseLog): one-or-more turns, each a full sandwich. Shares
+// `turnContent`, so a log is valid iff every turn in it is a valid turn. The v1 Plurnk Script
+// substrate — confirm/parse saved model-run logs. A fresh `<<PLAN` starts the next turn.
+log
+    : turnContent+ EOF
+    ;
+
+// One turn, shared by `document` and `log`. PLAN required and FIRST (only free-text preamble
+// precedes); mid-ops are `midStatement` (every op EXCEPT PLAN — that is what makes PLAN the
+// turn boundary) with prose tolerated; terminal SEND required.
+turnContent
+    : TEXT* planStatement (midStatement | TEXT)* sendStatement TEXT*
     ;
 
 // A bare sequence of statements — for teaching-example collections and single ops
@@ -19,6 +32,8 @@ statementSeq
     : statement* EOF
     ;
 
+// Full op set, incl PLAN — used by statementSeq (single ops / teaching corpora). Flat:
+// directly wraps each op-statement (AstBuilder dispatches on the child type).
 statement
     : findStatement
     | readStatement
@@ -31,6 +46,22 @@ statement
     | execStatement
     | killStatement
     | planStatement
+    ;
+
+// Every op EXCEPT PLAN — `statement` minus `planStatement`. PLAN is the turn anchor, never a
+// mid-op, so excluding it here makes a fresh `<<PLAN` begin the next turn rather than sit
+// mid-batch. Parallel flat rule (same op-statement accessors as `statement`, no planStatement).
+midStatement
+    : findStatement
+    | readStatement
+    | editStatement
+    | copyStatement
+    | moveStatement
+    | openStatement
+    | foldStatement
+    | sendStatement
+    | execStatement
+    | killStatement
     ;
 
 // 7 tag-CSV ops share the same modifier permutation: tagSignal, target, lineMarker

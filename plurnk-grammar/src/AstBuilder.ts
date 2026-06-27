@@ -34,6 +34,7 @@ import type {
     ReadStatementContext,
     OpenStatementContext,
     StatementContext,
+    MidStatementContext,
     TagOpModifiersContext,
 } from "./generated/plurnkParser.ts";
 import {
@@ -61,7 +62,7 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker:
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
-    static build(ctx: StatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
+    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
         // The strict turn root attaches the leading PLAN and the terminal SEND as direct
         // children (not wrapped in `statement`), so dispatch those by type first.
         if (ctx instanceof PlanStatementContext) return AstBuilder.#buildPlan(ctx);
@@ -76,7 +77,11 @@ export default class AstBuilder {
         const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
-        const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
+        // `midStatement` has no planStatement alternative (PLAN is never a mid-op); only the
+        // full `statement` rule does.
+        if ("planStatement" in ctx) {
+            const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
+        }
         throw new Error("statement context has no recognized alternative");
     }
 

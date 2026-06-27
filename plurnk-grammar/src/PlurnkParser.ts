@@ -7,13 +7,19 @@ import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import type { ParseItem, ParseResult, Position } from "./types.ts";
 
-// Statement-bearing contexts the extraction builds into items. `statement` wraps every op
-// (PLAN included); the terminal SEND attaches as a direct `sendStatement` child.
+// Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
+// `midStatement` (mid-turn ops) each wrap one op; PLAN and the terminal SEND attach as direct
+// `planStatement`/`sendStatement` children of a turn.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
+    plurnkParser.RULE_midStatement,
     plurnkParser.RULE_planStatement,
     plurnkParser.RULE_sendStatement,
 ]);
+
+// Container rules whose children hold the statements — extraction recurses through these.
+// `turnContent` wraps a turn (document = one, log = one-or-more); its children are the ops.
+const CONTAINER_RULES = new Set<number>([plurnkParser.RULE_turnContent]);
 
 export default class PlurnkParser {
     // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
@@ -33,6 +39,14 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
+    // Parse a multi-turn LOG — a saved sequence of turns, each a full PLAN-anchored sandwich
+    // (the v1 Plurnk Script substrate). Items are flat across turns, in source order; turn
+    // boundaries are recoverable from the terminal SENDs. A log is valid (no error items, no
+    // unparsedTail) iff every turn in it is a valid turn.
+    static parseLog(input: string): ParseResult {
+        return PlurnkParser.#run(input, (parser) => parser.log());
+    }
+
     static #run(input: string, parseFn: (parser: plurnkParser) => ParserRuleContext): ParseResult {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         const errors: PlurnkParseError[] = [];
@@ -49,38 +63,7 @@ export default class PlurnkParser {
 
         const items: ParseItem[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
-
-        for (const child of tree.children ?? []) {
-            const ctx = child as any;
-            const start = ctx.start ?? ctx.symbol;
-            const stop = ctx.stop ?? ctx.symbol;
-            if (!start) continue;
-
-            if (ctx.ruleIndex !== undefined && STATEMENT_RULES.has(ctx.ruleIndex)) {
-                const errForStatement = errors.find(
-                    (e) => !consumedErrors.has(e) && PlurnkParser.#errorInRange(e, start, stop ?? start),
-                );
-                if (errForStatement) {
-                    consumedErrors.add(errForStatement);
-                    items.push({ kind: "error", error: errForStatement });
-                } else {
-                    try {
-                        items.push({ kind: "statement", statement: AstBuilder.build(ctx) });
-                    } catch (e) {
-                        // A malformed context from error recovery (e.g. a phantom PLAN with
-                        // no open token, synthesized when a non-turn is parsed as a turn)
-                        // can't build — surface it as an error item, never crash.
-                        const err = e instanceof PlurnkParseError
-                            ? e
-                            : new PlurnkParseError(start.line, start.column, "parser", e instanceof Error ? e.message : String(e));
-                        items.push({ kind: "error", error: err });
-                    }
-                }
-            } else if (ctx.symbol?.type === plurnkLexer.TEXT) {
-                const position: Position = { line: start.line, column: start.column };
-                items.push({ kind: "text", text: ctx.symbol.text ?? "", position });
-            }
-        }
+        PlurnkParser.#collect(tree, errors, consumedErrors, items);
 
         for (const err of errors) {
             if (!consumedErrors.has(err)) {
@@ -104,6 +87,51 @@ export default class PlurnkParser {
         }
 
         return { items, unparsedTail };
+    }
+
+    // Walk a parse tree, appending statement/error/text items in source order. Statement rules
+    // are leaves (built directly); container rules (turnContent) are recursed into; TEXT tokens
+    // surface as text items. So `document` (one turnContent) and `log` (turnContent+) both
+    // flatten to items in order, while a malformed statement surfaces as an error item.
+    static #collect(
+        ctx: ParserRuleContext,
+        errors: PlurnkParseError[],
+        consumedErrors: Set<PlurnkParseError>,
+        items: ParseItem[],
+    ): void {
+        for (const child of ctx.children ?? []) {
+            const c = child as any;
+            const start = c.start ?? c.symbol;
+            const stop = c.stop ?? c.symbol;
+            if (!start) continue;
+
+            if (c.ruleIndex !== undefined && STATEMENT_RULES.has(c.ruleIndex)) {
+                const errForStatement = errors.find(
+                    (e) => !consumedErrors.has(e) && PlurnkParser.#errorInRange(e, start, stop ?? start),
+                );
+                if (errForStatement) {
+                    consumedErrors.add(errForStatement);
+                    items.push({ kind: "error", error: errForStatement });
+                } else {
+                    try {
+                        items.push({ kind: "statement", statement: AstBuilder.build(c) });
+                    } catch (e) {
+                        // A malformed context from error recovery (e.g. a phantom PLAN with
+                        // no open token, synthesized when a non-turn is parsed as a turn)
+                        // can't build — surface it as an error item, never crash.
+                        const err = e instanceof PlurnkParseError
+                            ? e
+                            : new PlurnkParseError(start.line, start.column, "parser", e instanceof Error ? e.message : String(e));
+                        items.push({ kind: "error", error: err });
+                    }
+                }
+            } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
+                PlurnkParser.#collect(c, errors, consumedErrors, items);
+            } else if (c.symbol?.type === plurnkLexer.TEXT) {
+                const position: Position = { line: start.line, column: start.column };
+                items.push({ kind: "text", text: c.symbol.text ?? "", position });
+            }
+        }
     }
 
     static #errorInRange(

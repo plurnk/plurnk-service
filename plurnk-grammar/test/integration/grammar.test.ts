@@ -1124,3 +1124,70 @@ test("degenerate: stray bracket in the SIGNAL region errors gracefully (no throw
     assert.equal(r.stmts, 0);
     assert.ok(r.errs >= 1, "expected a graceful parse error, not a clean parse");
 });
+
+// -------------------------------------------------------------------------
+// parseLog — multi-turn logs (v1 Plurnk Script substrate); sandwich is law
+// -------------------------------------------------------------------------
+
+const logResult = (input: string) => {
+    const r = PlurnkParser.parseLog(input);
+    return {
+        stmts: r.items.filter((i) => i.kind === "statement").length,
+        errs: r.items.filter((i) => i.kind === "error").length,
+        tail: r.unparsedTail !== undefined,
+    };
+};
+const logInvalid = (input: string) => {
+    const r = PlurnkParser.parseLog(input);
+    return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
+};
+
+test("parseLog: a multi-turn log parses clean and flattens turns in order", () => {
+    const twoTurns =
+        "<<PLAN:find it:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND\n" +
+        "<<PLAN:answer:PLAN\n<<SEND[200]:done:SEND";
+    assert.deepEqual(logResult(twoTurns), { stmts: 5, errs: 0, tail: false }); // PLAN READ SEND | PLAN SEND
+});
+
+test("parseLog: a single valid turn is a valid log", () => {
+    assert.deepEqual(logResult("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), { stmts: 2, errs: 0, tail: false });
+});
+
+test("parseLog: prose between ops is tolerated (comments)", () => {
+    assert.equal(logResult("thinking <<PLAN:p:PLAN consider <<READ(known:///x)::READ <<SEND[200]:done:SEND").errs, 0);
+});
+
+test("parseLog: a log must start with PLAN (sandwich is law)", () => {
+    assert.ok(logInvalid("<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), "no leading PLAN");
+});
+
+test("parseLog: a turn missing its terminal SEND makes the log invalid", () => {
+    assert.ok(logInvalid("<<PLAN:p:PLAN\n<<SEND[200]:a:SEND\n<<PLAN:q:PLAN\n<<READ(known:///x)::READ"), "2nd turn never SENDs");
+});
+
+test("parseLog: empty input is not a valid log (needs at least one turn)", () => {
+    assert.ok(logInvalid(""), "a log needs >=1 turn");
+});
+
+// -------------------------------------------------------------------------
+// parse() is strictly ONE PLAN-anchored turn — no mid-PLAN, no multi-turn
+// -------------------------------------------------------------------------
+
+const parseInvalid = (input: string) => {
+    const r = PlurnkParser.parse(input);
+    return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
+};
+
+test("parse: rejects multi-turn input (that is parseLog's job)", () => {
+    assert.ok(parseInvalid("<<PLAN:a:PLAN\n<<SEND[200]:x:SEND\n<<PLAN:b:PLAN\n<<SEND[200]:y:SEND"));
+});
+
+test("parse: rejects a mid-batch PLAN (PLAN is the anchor, never a mid-op)", () => {
+    assert.ok(parseInvalid("<<PLAN:a:PLAN\n<<PLAN:b:PLAN\n<<SEND[200]:done:SEND"));
+});
+
+test("parse: the canonical single sandwich is valid", () => {
+    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND");
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
+    assert.equal(r.unparsedTail, undefined);
+});
