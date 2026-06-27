@@ -101,10 +101,18 @@ export default class GitMembership {
     // path-prefixed by the repo's location relative to the session root (empty prefix when
     // the repo IS the root). Repos that don't resolve are skipped.
     static async #forestMembers(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
-        const members = new Set<string>();
+        // Resolve every declared entry to its git toplevel, deduped: a glob (`*`) and an
+        // explicit declaration can name the same repo, and resolving one repo twice is
+        // wasted git work. {§membership-forest}
+        const repoRoots = new Set<string>();
         for (const dir of repoDirs) {
-            const repoRoot = await GitMembership.#repoToplevel(resolve(root, dir), signal);
-            if (repoRoot === null) continue;
+            for (const candidate of await GitMembership.#expandRepoDirs(root, dir, signal)) {
+                const repoRoot = await GitMembership.#repoToplevel(resolve(root, candidate), signal);
+                if (repoRoot !== null) repoRoots.add(repoRoot);
+            }
+        }
+        const members = new Set<string>();
+        for (const repoRoot of repoRoots) {
             // project_root is no boundary — only the relative-address base. EVERY member is
             // addressed relative to the root, a repo outside it included (a `..`-prefixed
             // path) — so the universal `join(root, pathname)` disk-resolver works unchanged;
@@ -117,6 +125,32 @@ export default class GitMembership {
             }
         }
         return [...members];
+    }
+
+    // A declared repo entry → the candidate directories it names. A literal path (no glob
+    // magic) passes through untouched — preserving the "declare a repo ANYWHERE, including
+    // OUTSIDE the root via `..` or an absolute path" contract that glob can't address upward.
+    // A glob pattern is directory-expanded under the root via node:fs glob — `*` matches each
+    // immediate child (one level), `**` recurses — dropping file matches, since only a
+    // directory can be a repo; #repoToplevel then filters the non-git matches. {§membership-overlay-repo}
+    static async #expandRepoDirs(root: string, dir: string, signal: AbortSignal | undefined): Promise<string[]> {
+        if (!GitMembership.#isGlobPattern(dir)) return [dir];
+        const dirs: string[] = [];
+        for await (const rel of glob(dir, { cwd: root })) {
+            if (signal?.aborted) return dirs;
+            try {
+                if ((await stat(resolve(root, rel))).isDirectory()) dirs.push(rel);
+            } catch {
+                // raced away between glob and stat — not a candidate
+            }
+        }
+        return dirs;
+    }
+
+    // Does this declared repo entry carry glob magic (directory-expand it), or is it a
+    // literal path (declared as-is)? The metacharacters node:fs glob honors.
+    static #isGlobPattern(s: string): boolean {
+        return /[*?[\]{}]/.test(s);
     }
 
     // Detect a tracked file's mimetype (mirrors File.detectFileMimetype): route
