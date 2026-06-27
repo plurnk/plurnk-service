@@ -94,6 +94,23 @@ private atTurnCloseTag(): boolean {
     if (followChar > 0 && this.isIdentChar(followChar)) return false;
     return true;
 }
+
+// Narrow single-colon empty-body close: at the post-target/modifier `:`, the stream is the
+// op's own close tag `:OP<suffix>` AND it is immediately followed by a STATEMENT BOUNDARY
+// (newline / EOF / next `<<`). So `<<READ(t):READ\n` closes empty, but a bodied op whose body
+// starts with the op keyword (`<<EDIT(t):EDIT this:EDIT` — space follows) is NOT mis-closed.
+// Canon still prescribes `::OP`; this only forgives the HEREDOC-natural single colon.
+private atSlotsEmptyClose(): boolean {
+    if (this.isTurnOp()) return false;            // TURN closes with :TURN, not an empty body
+    if (this.openTag.length === 0) return false;
+    if (this.inputStream.LA(1) !== 0x3A /* ':' */) return false;
+    const tag = this.openTag;
+    for (let i = 0; i < tag.length; i++) {
+        if (this.inputStream.LA(i + 2) !== tag.charCodeAt(i)) return false;
+    }
+    const follow = this.inputStream.LA(tag.length + 2);
+    return follow <= 0 || follow === 0x0A /* \n */ || follow === 0x0D /* \r */ || follow === 0x3C /* < */;
+}
 }
 
 // ============================================================================
@@ -161,6 +178,10 @@ SLOTS_LB_INT   : '[' { this.isSendOp() || this.isKillOp() }?    -> type(LBRACKET
 SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
 SLOTS_LPAREN   : '(' -> type(LPAREN), mode(TARGET) ;
 SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
+// Single-colon empty-body close (narrow toleration): `:OP<suffix>` at a statement boundary
+// closes the op with no body, so `<<READ(t):READ` (HEREDOC-natural) parses instead of running
+// away. Must precede SLOTS_COLON. Canon still prescribes `::OP`.
+SLOTS_EMPTY_CLOSE : { this.atSlotsEmptyClose() }? ':' . { this.consumeRestOfCloseTagAfterColon(); } -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
 // TURN's body is internal Plurnk, not opaque — its colon opens a turn body in statement
 // mode (depth++), where the inner sandwich lexes normally; `:TURN` closes it. Every other
 // op's colon enters opaque BODY mode.

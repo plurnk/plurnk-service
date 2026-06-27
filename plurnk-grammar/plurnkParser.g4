@@ -72,23 +72,23 @@ midStatement
 
 // 7 tag-CSV ops share the same modifier permutation: tagSignal, target, lineMarker
 // in any order, each appearing at most once.
-findStatement : OPEN_FIND tagOpModifiers? COLON body? CLOSE_TAG ;
-readStatement : OPEN_READ tagOpModifiers? COLON body? CLOSE_TAG ;
-editStatement : OPEN_EDIT tagOpModifiers? COLON body? CLOSE_TAG ;
-copyStatement : OPEN_COPY tagOpModifiers? COLON body? CLOSE_TAG ;
-moveStatement : OPEN_MOVE tagOpModifiers? COLON body? CLOSE_TAG ;
-openStatement : OPEN_OPEN tagOpModifiers? COLON body? CLOSE_TAG ;
-foldStatement : OPEN_FOLD tagOpModifiers? COLON body? CLOSE_TAG ;
+findStatement : OPEN_FIND tagOpModifiers? COLON? body? CLOSE_TAG ;
+readStatement : OPEN_READ tagOpModifiers? COLON? body? CLOSE_TAG ;
+editStatement : OPEN_EDIT tagOpModifiers? COLON? body? CLOSE_TAG ;
+copyStatement : OPEN_COPY tagOpModifiers? COLON? body? CLOSE_TAG ;
+moveStatement : OPEN_MOVE tagOpModifiers? COLON? body? CLOSE_TAG ;
+openStatement : OPEN_OPEN tagOpModifiers? COLON? body? CLOSE_TAG ;
+foldStatement : OPEN_FOLD tagOpModifiers? COLON? body? CLOSE_TAG ;
 
 // SEND/EXEC/KILL have no `<L>` slot. Signal and target may appear in either
 // order. SEND and KILL share the int-signal modifier permutation.
-sendStatement : OPEN_SEND intOpModifiers? COLON body? CLOSE_TAG ;
-execStatement : OPEN_EXEC execModifiers? COLON body? CLOSE_TAG ;
-killStatement : OPEN_KILL intOpModifiers? COLON body? CLOSE_TAG ;
+sendStatement : OPEN_SEND intOpModifiers? COLON? body? CLOSE_TAG ;
+execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
+killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 
 // PLAN — reasoning recorded to the log. Canonical form is slotless; tag-op
 // modifiers parse permissively (tags on thoughts are legitimate folksonomy).
-planStatement : OPEN_PLAN tagOpModifiers? COLON body? CLOSE_TAG ;
+planStatement : OPEN_PLAN tagOpModifiers? COLON? body? CLOSE_TAG ;
 
 // Modifier slot permutations. Each leaf rule appears at most once in any
 // path through the alternatives, so duplicate slots fail at parse time.

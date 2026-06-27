@@ -1223,3 +1223,41 @@ test("parseLog: TURN suffix discipline — only the matching :TURN<suffix> close
 test("parseLog: :TURN inside an inner op body is opaque content, not a close", () => {
     assert.equal(logResult(turn("<<PLAN:p:PLAN <<SEND[200]:done :TURN literally:SEND")).errs, 0);
 });
+
+// -------------------------------------------------------------------------
+// #42: narrow single-colon empty-body toleration (close only at a boundary)
+// -------------------------------------------------------------------------
+
+const ssCount = (s: string) => PlurnkParser.parseStatements(s).items.filter((i) => i.kind === "statement").length;
+const ssClean = (s: string) => {
+    const r = PlurnkParser.parseStatements(s);
+    return !r.items.some((i) => i.kind === "error") && !r.unparsedTail;
+};
+
+test("#42: single-colon body-less ops no longer merge — close at newline", () => {
+    const r = PlurnkParser.parseStatements("<<READ(known://x/a):READ\n<<READ(known://x/b):READ");
+    assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("#42: single-colon body-less closes at EOF and at a glued <<", () => {
+    assert.ok(ssClean("<<READ(t):READ"));                     // EOF boundary
+    assert.equal(ssCount("<<READ(t):READ"), 1);
+    assert.equal(ssCount("<<READ(a):READ<<FIND(b):FIND"), 2); // glued, next << boundary
+});
+
+test("#42: canonical ::OP empty body still works", () => {
+    assert.equal(ssCount("<<READ(a)::READ\n<<READ(b)::READ"), 2);
+});
+
+test("#42: a body starting with the op keyword is NOT mis-closed (non-boundary follow)", () => {
+    const r = PlurnkParser.parseStatements("<<EDIT(t):EDIT this line:EDIT");
+    const it = r.items[0];
+    assert.ok(it.kind === "statement" && it.statement.body === "EDIT this line");
+});
+
+test("#42: a body equal to the op keyword is expressible via a suffix", () => {
+    const r = PlurnkParser.parseStatements("<<FIND1(t):FIND:FIND1");
+    const it = r.items[0];
+    assert.ok(it.kind === "statement" && (it.statement.body as any)?.raw === "FIND");
+});

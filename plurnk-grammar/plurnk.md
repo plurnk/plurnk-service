@@ -10,6 +10,8 @@ YOU MUST ONLY use the Extended HEREDOC Plurnk Operations (PLAN|FIND|READ|EDIT|CO
 
 <<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
 
+Empty (no body) operations contain two colons: READ(README.md)::READ
+
 ### Operations
 
 The `(target)` is required for every operation except PLAN, EXEC, and SEND. Other fields are optional unless specified otherwise.
