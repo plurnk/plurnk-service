@@ -31,6 +31,7 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND. Othe
 FIND returns rows of results, READ returns lines of content.
 READ output prefixes every line with line numbers and a hard tab, `N:	`. The prefix is not part of the source.
 EDIT is only for adding or modifying files and entries. Do not attempt to edit log items.
+EDIT replaces the selected line(s) `<N,M>` with literal body content, never with patterns.
 OPEN expands (`+`) the log item body and costs tokens. FOLD hides (`-`) the log item body and saves tokens. Not all log items have a body (`*`).
 EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
 KILL deletes files and entries, erases log items, and kills streams.
