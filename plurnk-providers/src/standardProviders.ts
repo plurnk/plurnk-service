@@ -137,6 +137,81 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrl: "https://api.deepinfra.com/v1/openai", baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
+    // — Chinese cloud hosts (all OpenAI-compat, plain bearer, doc-verified 2026). —
+    // The fixed default base is the INTERNATIONAL endpoint; mainland operators
+    // point the override var at the `.cn` twin noted per entry. Reasoning is left
+    // "none" for the whole cohort: each host's thinking toggle is either
+    // model-selected or a non-standard param that rides in `extra_body` (the
+    // `effort`/`anthropic` styles don't reach it) — same posture as deepseek.
+    // None are in the @plurnk/plurnk-models snapshot, so context comes from
+    // PLURNK_PROVIDER_CONTEXT_SIZE and cost stays unknown until the catalog adds
+    // them (a plurnk-models issue, not this repo's).
+    moonshot: {
+        apiKeyVar: "MOONSHOT_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.moonshot.ai/v1", baseUrlVar: "MOONSHOT_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MOONSHOT_TOKENIZER",
+    },
+    // Alibaba Qwen via DashScope "compatible-mode". Mainland: dashscope.aliyuncs.com.
+    dashscope: {
+        apiKeyVar: "DASHSCOPE_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", baseUrlVar: "DASHSCOPE_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DASHSCOPE_TOKENIZER",
+    },
+    // Zhipu GLM. Base carries /api/paas/v4 (non-/v1). Mainland: open.bigmodel.cn/api/paas/v4.
+    zhipu: {
+        apiKeyVar: ["ZHIPUAI_API_KEY", "ZAI_API_KEY"], apiKeyRequired: true,
+        baseUrl: "https://api.z.ai/api/paas/v4", baseUrlVar: "ZHIPU_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ZHIPU_TOKENIZER",
+    },
+    // ByteDance Doubao via BytePlus ModelArk (base carries /api/v3; `model` is an
+    // inference-endpoint/model id). Mainland (Volcengine): ark.cn-beijing.volces.com/api/v3.
+    volcengine: {
+        apiKeyVar: "ARK_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://ark.ap-southeast.bytepluses.com/api/v3", baseUrlVar: "ARK_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ARK_TOKENIZER",
+    },
+    // Tencent Hunyuan — single global host (no intl/mainland split).
+    hunyuan: {
+        apiKeyVar: "HUNYUAN_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.hunyuan.cloud.tencent.com/v1", baseUrlVar: "HUNYUAN_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "HUNYUAN_TOKENIZER",
+    },
+    // MiniMax. Mainland twin is api.minimaxi.com (note the extra "i").
+    minimax: {
+        apiKeyVar: "MINIMAX_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.minimax.io/v1", baseUrlVar: "MINIMAX_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MINIMAX_TOKENIZER",
+    },
+    // StepFun. Intl twin is api.stepfun.ai (.ai vs the .com mainland host).
+    stepfun: {
+        apiKeyVar: "STEP_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.stepfun.com/v1", baseUrlVar: "STEPFUN_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "STEPFUN_TOKENIZER",
+    },
+    // Baichuan — single host.
+    baichuan: {
+        apiKeyVar: "BAICHUAN_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.baichuan-ai.com/v1", baseUrlVar: "BAICHUAN_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BAICHUAN_TOKENIZER",
+    },
+    // Baidu ERNIE via Qianfan v2 (key is a bce-v3/ALTAK-… bearer; base carries /v2).
+    qianfan: {
+        apiKeyVar: "QIANFAN_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://qianfan.baidubce.com/v2", baseUrlVar: "QIANFAN_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "QIANFAN_TOKENIZER",
+    },
+    // SiliconFlow aggregator. Mainland twin is api.siliconflow.cn.
+    siliconflow: {
+        apiKeyVar: "SILICONFLOW_API_KEY", apiKeyRequired: true,
+        baseUrl: "https://api.siliconflow.com/v1", baseUrlVar: "SILICONFLOW_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "SILICONFLOW_TOKENIZER",
+    },
+    // ModelScope API-Inference aggregator — single host (.cn).
+    modelscope: {
+        apiKeyVar: ["MODELSCOPE_API_KEY", "MODELSCOPE_TOKEN"], apiKeyRequired: true,
+        baseUrl: "https://api-inference.modelscope.cn/v1", baseUrlVar: "MODELSCOPE_BASE_URL", chatPath: "/chat/completions",
+        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MODELSCOPE_TOKENIZER",
+    },
     // First-party Claude via Anthropic's OpenAI-compat endpoint: bearer auth,
     // OpenAI SSE, the `thinking` reasoning param (reasoning_effort is ignored).
     // No probe — context/cost come from the @plurnk/plurnk-models catalog.
