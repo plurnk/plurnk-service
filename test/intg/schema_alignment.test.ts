@@ -59,6 +59,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     SendBody:        { kind: "skip", reason: "AST shape; embedded in log_entries.tx for SEND rows" },
     PlurnkStatement: { kind: "skip", reason: "AST shape; embedded in turn.packet.assistant.ops JSON" },
     TelemetryEvent:  { kind: "skip", reason: "ecosystem error/telemetry envelope; embedded in turn.packet.telemetryErrors[] JSON" },
+    ClientStatement: { kind: "skip", reason: "client-tier AST (PlurnkStatement + the client-only LOOK/BUFF ops, via parseClient); never persisted — the service contract is PlurnkStatement, op.look parses a READ" },
 };
 
 const TABLE_PREP: Record<string, string> = {
