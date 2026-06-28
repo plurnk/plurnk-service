@@ -42,6 +42,28 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
+test("registerRuntimeSchemes: a tag colliding with an already-claimed (non-reserved) scheme fails hard — one name, one owner (#240)", () => {
+    const registry = new SchemeRegistry();
+    registry.register("figma", {}); // an external scheme sibling claims the name first
+    const collides = { availableRuntimes: () => ["figma"] } as unknown as RegistryArg;
+    assert.throws(
+        () => registry.registerRuntimeSchemes(collides),
+        /one name, one owner/,
+        "a runtime tag colliding with an external scheme must fail-hard, not silently first-wins-skip (cross-family namespace)",
+    );
+});
+
+test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision (#240)", () => {
+    const registry = new SchemeRegistry();
+    const real = {
+        availableRuntimes: () => ["sh"],
+        entry: () => ({ executor: { manifest: { name: "sh", channels: {}, defaultChannel: "stdout" } } }),
+    } as unknown as RegistryArg;
+    registry.registerRuntimeSchemes(real);
+    assert.doesNotThrow(() => registry.registerRuntimeSchemes(real), "a second scan of an already-registered runtime tag skips (idempotent re-scan), never throws");
+    assert.ok(registry.has("sh"));
+});
+
 // #240 — PLURNK_DOCS_EXCLUDE drops a name from BOTH the teaching oneliner and the materialized
 // pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
 test("teach()/docs(): PLURNK_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", () => {

@@ -74,7 +74,11 @@ export default class SchemeRegistry {
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
         for (const tag of executors.availableRuntimes()) {
             if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — boot fail-hard (#240)`);
-            if (this.#handlers.has(tag)) continue; // idempotent re-scan
+            if (this.#runtimeSchemes.has(tag)) continue; // idempotent re-scan — already this tag's own runtime scheme
+            // #240 cross-family namespace: a tag already claimed by a DIFFERENT scheme (an external
+            // scheme sibling) is a collision, not a re-scan — one name, one owner across the exec and
+            // scheme families. Fail the boot hard rather than silently first-wins-skipping the tag.
+            if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families (#240)`);
             const entry = executors.entry(tag);
             if (entry === undefined) continue;
             this.register(tag, new ExecOutputScheme(entry.executor, exec));
