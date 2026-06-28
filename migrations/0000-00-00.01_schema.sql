@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
     usage_cost_pico  INTEGER NOT NULL DEFAULT 0 CHECK (usage_cost_pico >= 0),
+    -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the
+    -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
+    -- provider can't report a window (the client omits the gauge).
+    usage_context_size INTEGER                  CHECK (usage_context_size IS NULL OR usage_context_size >= 1),
     packet           TEXT    NOT NULL           CHECK (json_valid(packet)),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),

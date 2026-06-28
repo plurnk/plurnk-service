@@ -10,6 +10,10 @@ INSERT INTO turns (loop_id, sequence, status, packet, version) VALUES ($loop_id,
 -- PREP: test_turns_insert_with_usage_prompt
 INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt) VALUES ($loop_id, $sequence, $status, $packet, $val);
 
+-- PREP: test_turns_insert_with_prompt_and_context_size
+-- #274 — a turn carrying both window occupancy (usage_prompt) and the model's window (usage_context_size).
+INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt, usage_context_size) VALUES ($loop_id, $sequence, $status, $packet, $prompt, $context_size);
+
 -- PREP: test_turns_insert_with_usage_completion
 INSERT INTO turns (loop_id, sequence, status, packet, usage_completion) VALUES ($loop_id, $sequence, $status, $packet, $val);
 

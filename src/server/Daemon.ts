@@ -605,7 +605,7 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
-                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, meta: {} }
+                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, contextSize: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
                         this.#broadcast({ sessionId }, null, "loop/terminated", {
