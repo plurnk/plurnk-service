@@ -120,7 +120,7 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<READ(plurnk://docs/sh.md):$.Environment:READ
 * <<READ(README.md)://h2/text():READ
 * <<READ(known:///users.json):$[?(@.role=="admin")]:READ
-* <<READ(log:///1/2/3):$[*].matched.codename:READ
+* <<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
 * <<READ(node:///3/1/2#stdout)<1,40>::READ
 * <<READ(../../../../etc/hosts)<2>::READ
 * <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
@@ -143,6 +143,7 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<FOLD(log:///**/get)<101,200>::FOLD
 * <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 * <<FIND(known:///**):revolution:FIND
+* <<FIND(known:///**):$[?(@.role=="admin")]:FIND
 * <<FIND(#(draft|final)/.*#i)::FIND
 * <<FIND(#src/.*\.test\.ts#)::FIND
 * <<FIND(src/**):@<createCoder:FIND

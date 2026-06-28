@@ -41,8 +41,9 @@ test("plurnk.md examples block contains the expected statement count", () => {
     const result = PlurnkParser.parseStatements(exampleBlock);
     const statements = result.items.filter((i) => i.kind === "statement");
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
-    // (33 after the two run:// spawn/fork examples were promoted to labeled imperative lines.)
-    assert.equal(statements.length, 33, `expected 33 statements, got ${statements.length}`);
+    // (34 after the #44 dialect rebalance added a jsonpath FIND crossover, so jsonpath and
+    // semantic each appear on both FIND and READ — the op chooses projection, not the dialect.)
+    assert.equal(statements.length, 34, `expected 34 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {
