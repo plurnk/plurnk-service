@@ -13,6 +13,10 @@ import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-grammar";
 
+// A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`
+// are 1-based positions in the CALLER's text (PLAN-prefix de-offset applied). §methods
+export type ParseFailure = { message: string; line: number; column: number };
+
 interface OpWithMatcher {
     target: string;
     matcher?: string;
@@ -101,12 +105,36 @@ export default class Dsl {
         throw new Error(`expected a parsed statement, got none from: ${text}`);
     }
 
-    static parseAllStatements(text: string): PlurnkStatement[] {
+    // Parse raw DSL into its statements AND its parse failures (error items + an unterminated
+    // `unparsedTail`), so a caller surfaces failures instead of silently dropping them. Positions
+    // are in the CALLER's text: when #planPrefixed injects a PLAN lead (one line), the parser's
+    // line numbers are de-offset by 1.
+    static parseAllStatements(text: string): { statements: PlurnkStatement[]; errors: ParseFailure[] } {
+        const prefixed = !text.startsWith("<<PLAN");
         const result = PlurnkParser.parse(Dsl.#planPrefixed(text));
-        return result.items
-            .filter((i) => i.kind === "statement")
-            .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement)
-            .filter((s) => s.op !== "PLAN");
+        const line = (l: number): number => prefixed ? Math.max(1, l - 1) : l;
+        const statements: PlurnkStatement[] = [];
+        const errors: ParseFailure[] = [];
+        for (const item of result.items) {
+            if (item.kind === "statement") {
+                if (item.statement.op !== "PLAN") statements.push(item.statement);
+            } else if (item.kind === "error") {
+                // Drop the parser's "Plurnk <source> error at L:C — " prefix; the de-offset line:col
+                // below is authoritative (the prefix's embedded L:C is in the PLAN-prefixed text).
+                const message = item.error.message.replace(/^Plurnk \w+ error at \d+:\d+ — /, "");
+                // The parser emits a benign "unexpected end of input" item when the text ends without a
+                // terminal — a complete set of statements is valid for parse-and-dispatch; the genuine
+                // unterminated case is the unparsedTail below. Drop the EOF noise; keep real errors.
+                if (message.startsWith("unexpected end of input")) continue;
+                errors.push({ message, line: line(item.error.line), column: item.error.column });
+            }
+        }
+        if (result.unparsedTail !== undefined) {
+            const { from, reason } = result.unparsedTail;
+            const deLined = prefixed ? reason.replace(/opened at line (\d+)/g, (_m, n) => `opened at line ${line(Number(n))}`) : reason;
+            errors.push({ message: deLined, line: line(from.line), column: from.column });
+        }
+        return { statements, errors };
     }
 
     static buildEdit(p: OpEditParams): PlurnkStatement {

@@ -120,6 +120,24 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
     });
 });
 
+test("op.parse surfaces a parse failure as a 400 result with its line:col — not silently dropped (#284)", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "parse-err" });
+            // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
+            const text = `<<EDIT(known:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
+            const response = await rpcCall(ws, 2, "op.parse", { text });
+            const result = response.result as { results: Array<{ status: number; error?: string; position?: { type: string; line: number; column: number } }> };
+            assert.ok(result.results.some((r) => r.status === 201), "the valid EDIT dispatched");
+            const err = result.results.find((r) => r.status === 400);
+            assert.ok(err !== undefined, "the parse failure surfaced as a 400 result, not silently dropped");
+            assert.equal(err!.position?.type, "content-offset");
+            assert.equal(err!.position?.line, 2, "the failure's line is in the caller's submitted text (PLAN-prefix de-offset)");
+        } finally { ws.close(); }
+    });
+});
+
 test("[§notifications-log-entry-notify] op.* fires log/entry notification with the entry shape", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
