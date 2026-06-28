@@ -288,6 +288,36 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
     } finally { await db.close(); }
 });
 
+// §model-entry — the per-turn `model` echo (origin=model, distinct from the born-OPEN turn-0
+// exemplar at origin=plurnk) is born OPEN when the turn had a parse error (so the model sees its
+// malformed emission, line-numbered, to fix it) and FOLDED on a clean turn (budget-neutral).
+test("[§model-entry] the model echo is born OPEN on a parse-error turn, FOLDED on a clean turn", async () => {
+    const { db, engine, sessionId, runId, loopId } = await setup();
+    try {
+        const provider = new Mock({
+            contextSize: 100000,
+            responses: [
+                contentResponse(BROKEN_STMT),                  // turn 1: genuine parse error
+                contentResponse("<<SEND[200]:done:SEND"),      // turn 2: clean emission
+            ],
+        });
+        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        const echo = async (turnId: number) =>
+            (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
+                .find((r) => r.turn_id === turnId && r.op === "model" && r.origin === "model");
+
+        const e1 = await echo(t1.turnId);
+        assert.ok(e1 !== undefined, "the parse-error turn mirrors a model echo");
+        assert.equal(e1!.expanded, 1, "born OPEN — the model sees its malformed emission to reason through the syntax error");
+
+        const e2 = await echo(t2.turnId);
+        assert.ok(e2 !== undefined, "the clean turn mirrors a model echo");
+        assert.equal(e2!.expanded, 0, "born FOLDED — budget-neutral until the model OPENs it");
+    } finally { await db.close(); }
+});
+
 test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live with the same envelope the model later drains", async () => {
     const db = await openMigrated();
     try {

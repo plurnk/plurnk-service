@@ -1188,12 +1188,14 @@ export default class Engine {
             });
         }
 
-        // §model-entry — mirror this turn's verbatim emission back as a folded `model` row, so the
-        // NEXT packet shows the model exactly what it last produced (OPEN to inspect, e.g. a syntax
-        // error it can now reason through). Folded → budget-neutral until the model OPENs it. Empty
-        // emissions (a struck/silent turn) write nothing — there's no prior output to mirror.
+        // §model-entry — mirror this turn's verbatim emission back as a `model` row, so the NEXT
+        // packet shows the model exactly what it last produced. Born OPEN when the turn had a parse
+        // error — the model sees its malformed emission, line-numbered, to reason through the syntax
+        // error the parser reported by line. Folded otherwise (budget-neutral until the model OPENs
+        // it). Empty emissions (a struck/silent turn) write nothing — no prior output to mirror.
         if (packetAssistant.content.trim().length > 0) {
-            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: true });
+            const hadParseError = (parseErrors?.length ?? 0) > 0;
+            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: !hadParseError });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted
