@@ -431,6 +431,8 @@ if (isBody) await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symb
 
 `hint` short-circuits detection. The service consumes `totalLines` (extent), `symbols`/`references` (the `@graph` index), and `deepJson`/`deepXml` (matcher dispatch); never a rendered preview — content reaches the model on READ. Because this pass runs every assembly over every entry, any content change — by any writer — is reflected in the next packet's index. The `@graph` index is NOT engine *ranking* (the anti-pattern): it's a complete, unranked index the model queries via `FIND @<sym`, the manifest paradigm applied to structure, uniform across schemes (`file:///` is the primary case).
 
+The body channel's embedding vectors derive in the same pass (`EntrySemantic.deriveEmbeddings`): content is tiled into token-budgeted chunks, then embedded in **one data-parallel batch** (`mimetypes.embedBatch`) rather than a per-chunk loop — bit-identical vectors (no re-embed), ~6× on a multi-core box. The pump computes the changed-entry worklist up front so the corpus total is known; a multi-entry pass (the initial ingest, which otherwise looks frozen) emits a throttled `embed_progress` NOTICE (below), and a 0-1 entry steady-state turn stays silent.
+
 **Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ---
@@ -1279,6 +1281,7 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 | `grammar_unenforced` | (provider, forwarded) GBNF-filter divergence — the model's bytes diverged from the transported grammar | `source: "provider:*"`, `kind`, `message`, `position` (content-offset) |
 | `max_commands_exceeded` | Single emission exceeded `PLURNK_MAX_COMMANDS` cap; overflow ops dropped without dispatch | `source: "engine:rail"`, `kind`, `emitted`, `dropped` |
 | `budget_overflow` | Assembled packet exceeded the budget ceiling; entries moved out of the window to fit | `source: "engine:rail"`, `kind`, `hidden` (per-scheme `[{scheme, count}]` — entries removed from the window) |
+| `embed_progress` | The derivation pump (§mimetype-surface) is embedding a multi-entry corpus pass; throttled to ~10 milestones, silent for a 0-1 entry turn | `source: "engine:derivation"`, `kind`, `completed`, `total`, `message` |
 
 Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeeping stay engine-internal — they drive abandonment silently per the gamification policy. Both error kinds — a failed action AND an actionless parse failure — are LOG ITEMS (`log:///<coord>`, `op='error'` for the latter, `status_rx ≥ 400`), foldable and re-OPENable, with full detail (message, snippet) on the row. The `errors` section surfaces a derived pointer to each. There is **no bespoke `error://` scheme**: errors live in the log, addressable + curatable like any row — not a separate queryable namespace. {§telemetry-no-error-scheme}
 

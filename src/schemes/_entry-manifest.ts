@@ -107,10 +107,19 @@ export default class EntryManifest {
         // The embedding config signature is identical for every entry this pass — compute it
         // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
+        // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
+        // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
+        // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
+        const pending: Array<{ r: ManifestRow; hash: string }> = [];
         for (const r of rows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
             const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
-            if (hash === r.deep_hash) continue; // unchanged since last derivation → deep rows persist
+            if (hash !== r.deep_hash) pending.push({ r, hash }); // unchanged since last derivation → deep rows persist
+        }
+        const total = pending.length;
+        const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
+        let completed = 0;
+        for (const { r, hash } of pending) {
             try {
                 const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
                 let result: ProcessResult;
@@ -131,7 +140,7 @@ export default class EntryManifest {
                 // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
                 // cleared, not stored. result.embedding is the fallback whole-entry vector.
                 await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel);
+                const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal);
                 await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
             } catch {
@@ -139,6 +148,10 @@ export default class EntryManifest {
                 await EntrySemantic.indexFts(db, r.entry_id, "");
                 await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            }
+            completed++;
+            if (step > 0 && (completed === total || completed % step === 0)) {
+                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total });
             }
         }
     }

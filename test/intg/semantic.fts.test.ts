@@ -151,8 +151,10 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
         const vec = (t: string) => new Uint8Array(new Float32Array(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]).buffer);
         const embedder = {
+            // process embeds the QUERY vector (rankSemantic); embedBatch embeds the chunk corpus (deriveEmbeddings, #272).
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
-            embedderInfo: () => ({ maxTokens: 30, countTokens: wc }),
+            embedBatch: async (texts: readonly string[]) => texts.map(vec),
+            embedderInfo: () => ({ maxTokens: 30, countTokens: wc, model: "stub@e2e" }),
         } as unknown as Mimetypes;
         // Filler, then a distinctive late line → the concept lands in a NON-first chunk.
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
@@ -171,27 +173,28 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
     } finally { db.close(); }
 });
 
-test("[#semantic-json-tile] deriveEmbeddings embeds a tiled entry's chunks as text — a fragment is never re-validated under the entry mimetype", async () => {
-    // A tile of a JSON document is an invalid JSON fragment. The real framework process()
-    // validates application/json and throws on it — which crashed every turn that held a
-    // JSON entry large enough to tile. The default intg harness declines the embedder, so
-    // the chunking path never ran in tests; this stub mimics the handler's validation to
-    // exercise it. deriveEmbeddings must hand each tile over as text, not the entry mimetype.
+test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch (raw text) — a JSON fragment is never re-validated under the entry mimetype (#272)", async () => {
+    // A tile of a JSON document is an invalid JSON fragment. Embedding it under application/json
+    // would re-validate and throw on the partial — which crashed every turn that held a JSON entry
+    // large enough to tile. embedBatch takes RAW TEXT (no mimetype path to validate against), so the
+    // hazard is structurally gone: the chunk corpus goes through embedBatch, never the JSON-validating
+    // process. The process stub here throws on application/json precisely to catch a regression to it.
     const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
-    const hints: string[] = [];
+    const batched: string[][] = [];
     const embedder = {
         process: async (input: { content: string; hint: string }) => {
-            hints.push(input.hint);
-            if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile
+            if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile — must NEVER be hit for chunks
             return { embedding: new Uint8Array(new Float32Array([1, 0]).buffer), embeddingModel: "stub" };
         },
-        embedderInfo: () => ({ maxTokens: 20, countTokens: wc }),
+        embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)); },
+        embedderInfo: () => ({ maxTokens: 20, countTokens: wc, model: "stub" }),
     } as unknown as Mimetypes;
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
     const { chunks } = await EntrySemantic.deriveEmbeddings(embedder, json, [], undefined, undefined);
     assert.ok(chunks.length > 1, `the JSON body tiled into multiple chunks (got ${chunks.length})`);
-    assert.ok(hints.length > 0 && hints.every((h) => h === "text/plain"), `every chunk embeds as text/plain, not the entry mimetype; got ${JSON.stringify([...new Set(hints)])}`);
+    assert.equal(batched.length, 1, "the chunk corpus embeds in ONE embedBatch call — never the per-chunk mimetype process");
+    assert.equal(batched[0].length, chunks.length, "the single batch carried every tile's raw text (no JSON re-validation)");
 });
 
 test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank; <0.x> threshold stays 501", async () => {

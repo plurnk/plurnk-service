@@ -56,6 +56,7 @@ export default class EntrySemantic {
         symbols: readonly { line?: number; endLine?: number }[],
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,
+        signal?: AbortSignal,
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
@@ -71,19 +72,20 @@ export default class EntrySemantic {
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
+        const specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens);
+        if (specs.length === 0) return { chunks: [], model: undefined };
+        // One data-parallel batch over the tiled chunk texts (#272 — embedBatch via the
+        // framework seam, ~6× the per-chunk loop on a multi-core box; vectors bit-identical,
+        // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
+        // standalone document, so embedding under the entry's mimetype (e.g. application/json)
+        // re-validates the partial and throws — embedBatch embeds raw text directly.
+        const vectors = await mimetypes.embedBatch(specs.map((s) => s.text), { signal });
         const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
-        let model: string | undefined;
-        for (const spec of await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens)) {
-            // A chunk is a text fragment, not a standalone document — embedding it under the
-            // entry's mimetype (e.g. application/json) re-validates the partial and throws.
-            // The vector is over tokens; embed every tile as plain text.
-            const e = await mimetypes.process({ content: spec.text, hint: "text/plain" }, { channels: ["embedding"] });
-            if (e.embedding !== undefined && e.embedding.byteLength > 0) {
-                chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector: e.embedding });
-                model = e.embeddingModel;
-            }
+        for (const [i, spec] of specs.entries()) {
+            const vector = vectors[i];
+            if (vector !== undefined && vector.byteLength > 0) chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector });
         }
-        return { chunks, model };
+        return { chunks, model: chunks.length > 0 ? info.model : undefined };
     }
 
     // Chunk budget in tokens — `.env.example` is the law, no code fallback. EMPTY =
