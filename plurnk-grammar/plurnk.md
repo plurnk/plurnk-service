@@ -118,7 +118,7 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<FIND(config/**/*.xml)://user[@role='admin']:FIND
 * <<READ(lang/??.json):$.greeting:READ
 * <<READ(plurnk://docs/sh.md):$.Environment:READ
-* <<READ(README.md)://h2/text():READ
+* <<READ(known:///guides/setup.md)://h2/text():READ
 * <<READ(known:///users.json):$[?(@.role=="admin")]:READ
 * <<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
 * <<READ(node:///3/1/2#stdout)<1,40>::READ
