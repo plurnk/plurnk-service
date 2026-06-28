@@ -1724,19 +1724,7 @@ export default class Engine {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch } = context;
-        const schemeCtx: PlurnkSchemeContext = {
-            db: this.#db,
-            sessionId, runId, loopId, turnId,
-            writer: origin,
-            signal: this.#loopAborts.get(loopId)?.signal,
-            streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
-            injectRun: this.#injectRun,
-            mimetypes: this.#mimetypes,
-            tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
-            executors: this.#executors,
-        };
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
@@ -1842,6 +1830,42 @@ export default class Engine {
             return post;
         }
         return result;
+    }
+
+    // op.look (#283) — resolve a READ and return its content WITHOUT writing a
+    // log_entries row: the client's off-run inspection primitive (LOOK → READ,
+    // invisible to the model). READ never mutates and never proposes, so this is
+    // dispatch's resolve path minus #writeLog. Runs on the client loop, so the
+    // human's inspection is never constrained by a model loop's flags. {§op-look}
+    async look(context: {
+        statement: PlurnkStatement;
+        sessionId: number; runId: number; loopId: number;
+        origin?: WriterTier;
+    }): Promise<DispatchResult> {
+        const { statement, sessionId, runId, loopId, origin = "client" } = context;
+        if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
+        // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId: 0, origin });
+        const denial = await this.#checkFlagsGate(statement, loopId);
+        if (denial !== null) return denial;
+        return this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx);
+    }
+
+    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { sessionId, runId, loopId, turnId, origin } = ids;
+        return {
+            db: this.#db,
+            sessionId, runId, loopId, turnId,
+            writer: origin,
+            signal: this.#loopAborts.get(loopId)?.signal,
+            streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
+            injectRun: this.#injectRun,
+            mimetypes: this.#mimetypes,
+            tokenize: this.#tokenize,
+            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
+            executors: this.#executors,
+        };
     }
 
     // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. §proposal-accept-applies

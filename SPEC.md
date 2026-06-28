@@ -984,8 +984,11 @@ Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` 
 | `op.exec`     | `cwd?: string`, `runtime?: string`, `command?: string`  | Mirrors `<<EXEC>>`. |
 | `op.dispatch` | `statement: PlurnkStatement`                            | Low-level path for clients that have a parsed AST already (e.g. the TUI when the user types raw HEREDOC at the prompt). |
 | `op.parse`    | `text: string`                                          | Convenience: daemon parses raw DSL text via the grammar, dispatches each statement as actions of one turn, returns `{ results: DispatchResult[] }`. |
+| `op.look`     | `text: string`                                          | Non-logging READ: resolves the target via READ's full scheme resolver and returns its content, writing **no** log entry. The client's off-run inspection primitive — forward `<<LOOK>>` with the op token rewritten `LOOK`→`READ`. READ-only. {§op-look} |
 
 All `op.*` return `{ status, ...op-specific }`. All `requiresInit: true`. None `longRunning`.
+
+**`op.look` is the exception** to the "creates a turn, fires `log/entry`" rule above (§methods-op-mirror): it runs READ's full resolver (every scheme, full grammar — the client stays grammar-blind, forwarding its `<<LOOK>>` text with the op token swapped to `READ`) but mints **no turn and writes no `log_entries` row** — the read leaves no trace the model can see, the human-side counterpart to membership-gated model reads (§operator-config, "the boundary is the client's"). It resolves against the connection's client loop so run-relative coordinates (`log:///<L>/<T>/<S>`) resolve correctly. Where `entry.read`/`log.read` leave no row but are scheme-limited, and `op.read` resolves everything but logs, `op.look` resolves everything **and** doesn't log. A non-READ statement is rejected. {§op-look}
 
 Future: `subscription.list`, `subscription.cancel` (the latter is `op.send({status: 499, recipient})` today).
 

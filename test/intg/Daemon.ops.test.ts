@@ -73,6 +73,35 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
+test("[§op-look] op.look (#283) resolves a target like op.read but writes NO log entry", async () => {
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "look-test" });
+            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "secret" });
+            const before = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -1;
+            const response = await rpcCall(ws, 3, "op.look", { text: "<<READ(known:///x)::READ" });
+            const result = response.result as { status: number; content: string };
+            assert.equal(result.status, 200);
+            assert.equal(result.content, "secret");
+            const after = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -2;
+            assert.equal(after, before, "op.look must write no log_entries row — that's the whole contract");
+        } finally { ws.close(); }
+    });
+});
+
+test("op.look rejects a non-READ statement — it is READ-only (#283)", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "look-readonly" });
+            const response = await rpcCall(ws, 2, "op.look", { text: "<<EDIT(known:///x):nope:EDIT" });
+            assert.ok(response.error, "a non-READ LOOK must be rejected");
+            assert.match(response.error!.message, /READ only/);
+        } finally { ws.close(); }
+    });
+});
+
 test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -233,7 +262,7 @@ test("discover catalog includes all op.* methods", async () => {
         try {
             const response = await rpcCall(ws, 1, "discover");
             const cat = response.result as { methods: Record<string, unknown>; notifications: Record<string, unknown> };
-            const expectedOps = ["op.edit", "op.read", "op.find", "op.open", "op.fold", "op.copy", "op.move", "op.send", "op.exec", "op.dispatch", "op.parse"];
+            const expectedOps = ["op.edit", "op.read", "op.find", "op.open", "op.fold", "op.copy", "op.move", "op.send", "op.exec", "op.dispatch", "op.parse", "op.look"];
             for (const m of expectedOps) {
                 assert.ok(cat.methods[m] !== undefined, `missing method: ${m}`);
             }
