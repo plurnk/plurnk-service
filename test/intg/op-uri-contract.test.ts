@@ -161,3 +161,24 @@ test("contract: a jsonpath READ returns the LINE where the path resolves", async
         assert.match(result.content ?? "", /"host": "db\.internal"/, `jsonpath READ returns the LINE; got: ${JSON.stringify(result.content)}`);
     });
 });
+
+// CELL [FIND × file scheme glob] — the tracked-file list. This is what the turn-0 catalog
+// preview foists (FIND(file:///**)); confirm it lists every member, and that the bare FIND(**)
+// (no scheme → file) is the same view. #287
+test("contract: FIND(file:///**) and bare FIND(**) both list every tracked member", async () => {
+    await withSessionWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "a.md"), "alpha");
+        await mkdir(join(root, "docs"), { recursive: true });
+        await writeFile(join(root, "docs/b.md"), "beta");
+        await addMember(ctx, "a.md");
+        await addMember(ctx, "docs/b.md");
+        for (const dsl of ["<<FIND(file:///**)::FIND", "<<FIND(**)::FIND"]) {
+            const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
+            assert.equal(r.status, 200, `${dsl} → 200`);
+            assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
+            const paths = r.results.map((x) => x.path).join(" ");
+            assert.match(paths, /a\.md/, `${dsl} includes a.md`);
+            assert.match(paths, /b\.md/, `${dsl} includes docs/b.md`);
+        }
+    });
+});
