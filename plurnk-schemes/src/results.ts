@@ -92,6 +92,7 @@ export default class Results {
         return {
             source: `scheme:${scheme}`,
             kind,
+            level: "error",
             ...(message === undefined ? {} : { message }),
             ...(position === undefined ? {} : { position }),
         };

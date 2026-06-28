@@ -46,6 +46,7 @@ test("schemeError namespaces source as scheme:<name>", () => {
     const ev = Results.error("known", "dispatch_failure", "entry not found");
     assert.equal(ev.source, "scheme:known");
     assert.equal(ev.kind, "dispatch_failure");
+    assert.equal(ev.level, "error");
     assert.equal(ev.message, "entry not found");
 });
 
