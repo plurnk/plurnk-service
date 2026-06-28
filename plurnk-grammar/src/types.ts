@@ -21,12 +21,18 @@ export type PlurnkOp =
     | "KILL"
     | "PLAN";
 
-export type ParseItem =
-    | { kind: "statement"; statement: PlurnkStatement }
+// Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
+// stays closed and client ops never widen the model-facing type.
+export type ClientOp = "LOOK" | "BUFF";
+
+// Parameterized over the statement type so the protocol entry points keep the closed
+// PlurnkStatement (the default), while parseClient returns ParseResult<ClientStatement>.
+export type ParseItem<S = PlurnkStatement> =
+    | { kind: "statement"; statement: S }
     | { kind: "error"; error: PlurnkParseError }
     | { kind: "text"; text: string; position: Position };
 
-export type ParseResult = {
-    items: ParseItem[];
+export type ParseResult<S = PlurnkStatement> = {
+    items: ParseItem<S>[];
     unparsedTail?: { from: Position; reason: string };
 };

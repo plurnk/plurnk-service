@@ -56,7 +56,11 @@ private consumeRestOfCloseTagAfterColon(): void {
 }
 
 private isOpKeywordAfterLtLt(): boolean {
-    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN", "TURN"];
+    // The full minted op keyword set across all tiers — protocol (FIND…PLAN), script (TURN),
+    // and client (LOOK/BUFF). Membership here means `<<KW` lexes as an opener, NOT prose, so a
+    // client op in a protocol/script position becomes an OPEN_* token the parser then rejects
+    // (territorial integrity: a minted op fails hard out of tier, it never masquerades as text).
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN", "TURN", "LOOK", "BUFF"];
     for (const op of ops) {
         let matches = true;
         for (let i = 0; i < op.length; i++) {
@@ -140,6 +144,12 @@ OPEN_PLAN : '<<PLAN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 // opaque — it stays in statement-lexing (the TURN colon in SLOTS does NOT enter BODY), so
 // the inner sandwich parses as real Plurnk. `:TURN` (below) closes it.
 OPEN_TURN : '<<TURN' SUFFIX? { this.setOpenTag(); } -> type(OPEN_TURN), mode(SLOTS) ;
+// Client-tier utility ops (PlurnkParser.parseClient only). Read-shaped: same SLOTS/SIGNAL_TAGS
+// machinery as READ, same `:OPsuffix` close. The model rail never emits them (absent from the
+// GBNF `OPS` set), and the protocol/script parser rules reject them — they are admitted only by
+// `clientStatement`. LOOK = READ minus logging; BUFF pulls an editable entry into a buffer.
+OPEN_LOOK : '<<LOOK' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_BUFF : '<<BUFF' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 
 // Default-mode whitespace is a hidden token (not folded into TEXT) so the parser can
 // require "nothing but WS" between/after ops in a turn: WS is invisible to rules, while

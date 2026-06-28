@@ -23,6 +23,9 @@ export type { ValidationResult } from "./Validator.ts";
 
 export type { ErrorSource } from "./PlurnkParseError.ts";
 export type {
+    BuffStatement,
+    ClientOp,
+    ClientStatement,
     ContentOffset,
     CopyStatement,
     EditStatement,
@@ -33,6 +36,7 @@ export type {
     LineMarker,
     LocalPath,
     LogCoordinate,
+    LookStatement,
     MatcherBody,
     MoveStatement,
     ParseItem,

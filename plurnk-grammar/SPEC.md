@@ -477,7 +477,7 @@ not source-shaped. To leave a self-documenting breadcrumb, use
 
 ## 12. Public API
 
-The entry points are `PlurnkParser.parse` (a model turn) and `PlurnkParser.parseStatements` (a bare statement sequence), alongside the AST type union and a top-level `parsePath` helper. The full surface area:
+The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseStatements` (a bare statement sequence), `PlurnkParser.parseLog` (a multi-turn log), and `PlurnkParser.parseClient` (the client tier — protocol ops plus the client-only utility ops LOOK and BUFF), alongside the AST type union and a top-level `parsePath` helper. The full surface area:
 
 ```typescript
 // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
@@ -490,6 +490,13 @@ PlurnkParser.parse(input: string): ParseResult
 // documentation snippets. Strict: statements only (whitespace is hidden), no prose, no
 // turn shape. Not for model output; use `parse` for that.
 PlurnkParser.parseStatements(input: string): ParseResult
+
+// Parse the CLIENT tier — a bare sequence of protocol statements plus the two client-only
+// utility ops, LOOK (READ minus the log side effect) and BUFF (pull an editable entry into a
+// buffer; the write-back is a later plain EDIT). The topmost subset, one above the model/script
+// tiers; never used for model output. The other entry points reject LOOK/BUFF, so a client op
+// only parses here. Returns ParseResult<ClientStatement>.
+PlurnkParser.parseClient(input: string): ParseResult<ClientStatement>
 
 // Parse a path/URI string into a ParsedPath — the exact decomposition the parser
 // applies to every (target) slot. The top-level helper to reach for (no need to
@@ -520,6 +527,12 @@ type PlurnkStatement =
     | OpenStatement | FoldStatement
     | SendStatement | ExecStatement
     | KillStatement | PlanStatement;
+
+// Client tier only (parseClient). LOOK/BUFF are read-shaped — identical fields to
+// ReadStatement, differing only in `op`. Kept out of PlurnkOp/PlurnkStatement so the protocol
+// AST stays a closed set; client ops never widen the model-facing type.
+type ClientOp = "LOOK" | "BUFF";
+type ClientStatement = PlurnkStatement | LookStatement | BuffStatement;
 
 interface StatementBase<S> {
     suffix: string;          // empty string if no suffix

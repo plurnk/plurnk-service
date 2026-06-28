@@ -2,6 +2,9 @@ import { ParserRuleContext } from "antlr4ng";
 import * as xpath from "xpath";
 import { JSONPath } from "jsonpath-plus";
 import type {
+    BuffStatement,
+    ClientOp,
+    ClientStatement,
     CopyStatement,
     EditStatement,
     ExecStatement,
@@ -9,6 +12,7 @@ import type {
     FoldStatement,
     KillStatement,
     LineMarker,
+    LookStatement,
     MatcherBody,
     MoveStatement,
     ParsedPath,
@@ -22,6 +26,8 @@ import type {
     OpenStatement,
 } from "./types.ts";
 import type {
+    BuffStatementContext,
+    ClientStatementContext,
     CopyStatementContext,
     EditStatementContext,
     ExecModifiersContext,
@@ -30,6 +36,7 @@ import type {
     FoldStatementContext,
     IntOpModifiersContext,
     KillStatementContext,
+    LookStatementContext,
     MoveStatementContext,
     ReadStatementContext,
     OpenStatementContext,
@@ -92,6 +99,46 @@ export default class AstBuilder {
         return {
             op: "FIND",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FIND().getText(), "FIND"),
+            ...slots,
+            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
+            position,
+        };
+    }
+
+    // Client-tier dispatch (parseClient). A `clientStatement` is either a protocol `statement`
+    // (delegated to build, returning a PlurnkStatement — which IS a ClientStatement) or one of
+    // the two client-only ops. Kept separate from build() so the protocol return type stays the
+    // closed PlurnkStatement and client ops never leak into it.
+    static buildClient(ctx: ClientStatementContext): ClientStatement {
+        const statement = ctx.statement(); if (statement) return AstBuilder.build(statement);
+        const look = ctx.lookStatement(); if (look) return AstBuilder.#buildLook(look);
+        const buff = ctx.buffStatement(); if (buff) return AstBuilder.#buildBuff(buff);
+        throw new Error("clientStatement context has no recognized alternative");
+    }
+
+    // LOOK / BUFF are read-shaped — identical extraction to READ (tag slots + matcher body). The
+    // op discriminant is the only difference; the buffer/round-trip/write-back lifecycle is the
+    // client runtime's, not the grammar's.
+    static #buildLook(ctx: LookStatementContext): LookStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const raw = AstBuilder.#bodyTextOf(ctx);
+        return {
+            op: "LOOK",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_LOOK().getText(), "LOOK"),
+            ...slots,
+            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
+            position,
+        };
+    }
+
+    static #buildBuff(ctx: BuffStatementContext): BuffStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const raw = AstBuilder.#bodyTextOf(ctx);
+        return {
+            op: "BUFF",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_BUFF().getText(), "BUFF"),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -300,7 +347,7 @@ export default class AstBuilder {
         return bodyCtx ? bodyCtx.getText() : null;
     }
 
-    static #splitSuffix(openTagText: string, op: PlurnkOp): string {
+    static #splitSuffix(openTagText: string, op: PlurnkOp | ClientOp): string {
         return openTagText.slice(2 + op.length);
     }
 

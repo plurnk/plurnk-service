@@ -1,20 +1,22 @@
 import { CharStream, CommonTokenStream, type ParserRuleContext } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
-import { plurnkParser } from "./generated/plurnkParser.ts";
+import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
-import type { ParseItem, ParseResult, Position } from "./types.ts";
+import type { ClientStatement, ParseItem, ParseResult, PlurnkStatement, Position } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; PLAN and the terminal SEND attach as direct
-// `planStatement`/`sendStatement` children of a turn.
+// `planStatement`/`sendStatement` children of a turn; `clientStatement` wraps one op in the
+// client tier.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
     plurnkParser.RULE_midStatement,
     plurnkParser.RULE_planStatement,
     plurnkParser.RULE_sendStatement,
+    plurnkParser.RULE_clientStatement,
 ]);
 
 // Container rules whose children hold the statements — extraction recurses through these.
@@ -51,7 +53,22 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.log());
     }
 
-    static #run(input: string, parseFn: (parser: plurnkParser) => ParserRuleContext): ParseResult {
+    // Parse the CLIENT tier — a bare sequence of protocol statements plus the client-only utility
+    // ops LOOK and BUFF. The topmost subset (one above Script); never used for model output. The
+    // protocol entry points reject LOOK/BUFF, so a client op only parses here.
+    static parseClient(input: string): ParseResult<ClientStatement> {
+        return PlurnkParser.#run<ClientStatement>(
+            input,
+            (parser) => parser.clientStatementSeq(),
+            (ctx) => AstBuilder.buildClient(ctx as ClientStatementContext),
+        );
+    }
+
+    static #run<S extends ClientStatement = PlurnkStatement>(
+        input: string,
+        parseFn: (parser: plurnkParser) => ParserRuleContext,
+        buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
+    ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
@@ -65,9 +82,9 @@ export default class PlurnkParser {
 
         const tree = parseFn(parser);
 
-        const items: ParseItem[] = [];
+        const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
-        PlurnkParser.#collect(tree, errors, consumedErrors, items);
+        PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn);
 
         for (const err of errors) {
             if (!consumedErrors.has(err)) {
@@ -97,11 +114,12 @@ export default class PlurnkParser {
     // are leaves (built directly); container rules (turnContent) are recursed into; TEXT tokens
     // surface as text items. So `document` (one turnContent) and `log` (turnContent+) both
     // flatten to items in order, while a malformed statement surfaces as an error item.
-    static #collect(
+    static #collect<S extends ClientStatement>(
         ctx: ParserRuleContext,
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
-        items: ParseItem[],
+        items: ParseItem<S>[],
+        buildFn: (ctx: any) => S,
     ): void {
         for (const child of ctx.children ?? []) {
             const c = child as any;
@@ -118,7 +136,7 @@ export default class PlurnkParser {
                     items.push({ kind: "error", error: errForStatement });
                 } else {
                     try {
-                        items.push({ kind: "statement", statement: AstBuilder.build(c) });
+                        items.push({ kind: "statement", statement: buildFn(c) });
                     } catch (e) {
                         // A malformed context from error recovery (e.g. a phantom PLAN with
                         // no open token, synthesized when a non-turn is parsed as a turn)
@@ -130,7 +148,7 @@ export default class PlurnkParser {
                     }
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
-                PlurnkParser.#collect(c, errors, consumedErrors, items);
+                PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn);
             } else if (c.symbol?.type === plurnkLexer.TEXT) {
                 const position: Position = { line: start.line, column: start.column };
                 items.push({ kind: "text", text: c.symbol.text ?? "", position });

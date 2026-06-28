@@ -9,6 +9,7 @@ import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import schemeRegistrationSchema from "../schema/SchemeRegistration.json" with { type: "json" };
 import providerDeclarationSchema from "../schema/ProviderDeclaration.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
+import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
 import telemetryEventSchema from "../schema/TelemetryEvent.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -26,6 +27,10 @@ export default class Validator {
     static #plurnkStatement = Validator.#buildWithRefs(
         plurnkStatementSchema,
         [positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
+    );
+    static #clientStatement = Validator.#buildWithRefs(
+        clientStatementSchema,
+        [plurnkStatementSchema, positionSchema, lineMarkerSchema, paramsSchema, parsedPathSchema, matcherBodySchema, sendBodySchema],
     );
     static #telemetryEvent = new CfValidator(telemetryEventSchema as Schema, "2020-12");
 
@@ -50,6 +55,7 @@ export default class Validator {
     static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#schemeRegistration, obj); }
     static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#providerDeclaration, obj); }
     static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#plurnkStatement, obj); }
+    static validateClientStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#clientStatement, obj); }
     static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#telemetryEvent, obj); }
 
     static #run_(validator: CfValidator, obj: unknown): ValidationResult {
