@@ -134,17 +134,22 @@ export default class PlurnkParser {
                 if (errForStatement) {
                     consumedErrors.add(errForStatement);
                     items.push({ kind: "error", error: errForStatement });
+                } else if ((c.getChildCount?.() ?? 0) === 0) {
+                    // A phantom statement context synthesized during error recovery (e.g. a
+                    // PLAN slot the parser opened then failed to fill on bare text): zero tokens
+                    // matched, so its OPEN terminal is null and building it would null-deref.
+                    // The real failure is already a recorded grammar error; skip the phantom so
+                    // an internal crash never leaks as a spurious parse-error item (#45).
                 } else {
                     try {
                         items.push({ kind: "statement", statement: buildFn(c) });
                     } catch (e) {
-                        // A malformed context from error recovery (e.g. a phantom PLAN with
-                        // no open token, synthesized when a non-turn is parsed as a turn)
-                        // can't build — surface it as an error item, never crash.
-                        const err = e instanceof PlurnkParseError
-                            ? e
-                            : new PlurnkParseError(start.line, start.column, "parser", e instanceof Error ? e.message : String(e));
-                        items.push({ kind: "error", error: err });
+                        // A genuine visitor contract violation (e.g. a malformed URI) is a
+                        // PlurnkParseError — surface it as an error item. Anything else is an
+                        // internal bug, not a parse error: let it crash rather than masquerade
+                        // as a model-facing parse-error item (#45).
+                        if (!(e instanceof PlurnkParseError)) throw e;
+                        items.push({ kind: "error", error: e });
                     }
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {

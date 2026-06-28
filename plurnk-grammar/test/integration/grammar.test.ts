@@ -122,6 +122,25 @@ test("clean parse has no unparsedTail", () => {
     assert.equal(result.unparsedTail, undefined);
 });
 
+test("#45: bare text in parse() yields only the grammar error, no internal null-deref leak", () => {
+    const result = PlurnkParser.parse("phoenix");
+    const errors = result.items.filter((i) => i.kind === "error").map((i) => (i.kind === "error" ? i.error : null));
+    // No internal JS crash (the phantom PLAN context's null OPEN terminal) escapes as an error item.
+    for (const e of errors) {
+        assert.doesNotMatch(e!.message, /getText|Cannot read properties/, `internal crash leaked: ${e!.message}`);
+    }
+    // Exactly the one legitimate grammar error, pointing the model at the fix.
+    assert.equal(errors.length, 1, `expected 1 grammar error, got ${errors.length}`);
+    assert.match(errors[0]!.message, /<<OPsuffix/);
+});
+
+test("#45: a valid turn still parses clean (the phantom-skip guard does not eat real statements)", () => {
+    const result = PlurnkParser.parse("<<PLAN:think:PLAN <<SEND[200]:done:SEND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const ops = result.items.filter((i) => i.kind === "statement").map((i) => (i.kind === "statement" ? i.statement.op : ""));
+    assert.deepEqual(ops, ["PLAN", "SEND"]);
+});
+
 // -------------------------------------------------------------------------
 // Domain AST shape
 // -------------------------------------------------------------------------
