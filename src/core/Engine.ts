@@ -871,7 +871,7 @@ export default class Engine {
                     turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
                 // §run-scheme — Manifest(run) = session-scope ∪ THIS run's run-scope. Foist the
-                // building run's OWN scratch (run:///**, uncapped — a run needs the full view to
+                // building run's OWN scratch (run://self/**, uncapped — a run needs the full view to
                 // manage its private workspace) so it's catalogued in ITS perspective alone; other
                 // runs reach it only via explicit FIND(run://<name>/**). A run with no scratch foists nothing.
                 const selfRun = await (this.#db.run_name_by_id as PrepMethod).get<{ name: string }>({ run_id: runId });
@@ -879,12 +879,12 @@ export default class Engine {
                 if (scratch > 0) {
                     const runFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
-                        target: { kind: "url", raw: "run:///**", scheme: "run", username: null, password: null, hostname: "", port: null, pathname: "/**", params: {}, fragment: null },
+                        target: { kind: "url", raw: "run://self/**", scheme: "run", username: null, password: null, hostname: "self", port: null, pathname: "/**", params: {}, fragment: null },
                         body: null, lineMarker: null, position: { line: 1, column: 1 },
                     };
                     await this.dispatch({ statement: runFind, sessionId, runId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    turnZeroMoves.push("<<FIND(run:///**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
+                    turnZeroMoves.push("<<FIND(run://self/**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
                 }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
@@ -2142,16 +2142,17 @@ export default class Engine {
         return statement.op === "COPY" && this.#schemeNameOf(statement.target) === "run";
     }
 
-    // COPY(run:///<src>):prompt — fork: deep-copy the source run's log into a new
-    // run (Fork), then start it with the prompt (ctx.injectRun). Source "."/"" =
-    // self (ctx.runId); a name resolves within the session (404 if absent).
+    // COPY(run://<src>):prompt — fork: deep-copy the source run's log into a new
+    // run (Fork), then start it with the prompt (ctx.injectRun). Source `run://self` =
+    // self (ctx.runId); a name resolves within the session (404 if absent). §run-scheme,
     // §machine-processes-fork-copies-the-log
     async #handleRunFork(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
         if (target === null) return { status: 400, error: "run:// fork requires a source run" };
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
+        if (name === "") return { status: 400, error: "run:// fork requires a source run name or 'self' (run://self)" };
         let srcRunId = ctx.runId;
-        if (name !== "" && name !== ".") {
+        if (name !== "self") {
             const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
             if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
             srcRunId = row.id;
@@ -2243,11 +2244,12 @@ export default class Engine {
                 return await runHandler.deleteEntry(statement, ctx);
             }
             // terminate — abort any run by address; whoever holds it may end it.
-            // `.`/"" = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
+            // `run://self` = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
+            if (name === "") return { status: 400, error: "run:// kill requires a run name or 'self' (run://<name>)" };
             let runId = ctx.runId;
-            if (name !== "" && name !== ".") {
+            if (name !== "self") {
                 const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
                 if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
                 runId = row.id;
@@ -2584,7 +2586,7 @@ export default class Engine {
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
         // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
         // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
-        // run selector (§run-scheme), and run:/// (self) must stay distinct from run://name, so Run.ts
+        // run selector (§run-scheme), and run://self must stay distinct from run://name, so Run.ts
         // folds the owner into the storage path itself, never here.
         const foldNs = scheme !== null && scheme !== "run" && this.#schemes.has(scheme);
         return {

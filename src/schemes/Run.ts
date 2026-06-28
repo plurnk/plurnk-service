@@ -10,8 +10,9 @@ import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillSt
 
 // run:// — the run scheme: inter-run CONTROL (spawn/irc; COPY=fork is Engine.#handleCopy) AND
 // run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
-// entry <path> owned by run <name>; run:/// (empty authority) is self. Run is excluded from
-// #extractTarget's authority-fold (Engine) so the empty-authority=self signal survives.
+// entry <path> owned by run <name>; `run://self` is the current run, empty authority is invalid.
+// Run is excluded from #extractTarget's authority-fold (Engine) so the authority stays the run
+// name, never folded.
 //   - path present → storage: READ any run's entry by address (cross-run read ok); EDIT self
 //     only (cross-run write → 403 — a run reads a sister's notes, never writes them).
 //   - path absent  → control on the run-as-actor: EDIT spawns a sister, SEND ircs one.
@@ -25,11 +26,11 @@ export default class Run {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
-        example: "<<EDIT(run:///todo.md):- [ ] investigate the timeout:EDIT",
+        example: "<<EDIT(run://self/todo.md):- [ ] investigate the timeout:EDIT",
     };
 
-    // The run name from a run:// target's authority (hostname). "" = self (empty authority);
-    // null when the target isn't a run:// url.
+    // The run name from a run:// target's authority (hostname). "self" = the current run;
+    // "" (empty authority) is invalid; null when the target isn't a run:// url.
     static #authority(target: ParsedPath | null): string | null {
         if (target === null || target.kind !== "url" || target.scheme !== "run") return null;
         return target.hostname ?? "";
@@ -65,7 +66,7 @@ export default class Run {
 
         if (entryPath === "") {
             // Control: spawn the sister named by the authority. Self cannot be spawned.
-            if (authority === "" || authority === ".") return { status: 400, error: "run:// spawn cannot target self (run://<name>)" };
+            if (authority === "" || authority === "self") return { status: 400, error: "run:// spawn cannot target self (run://<name>)" };
             if (ctx.injectRun === undefined) throw new Error("run.edit: injectRun capability absent");
             const denied = await RunCap.deny(ctx.db, ctx.sessionId);
             if (denied !== null) return denied;
@@ -78,8 +79,9 @@ export default class Run {
         }
 
         // Storage: write a run-scope entry. Self only — cross-run write is denied (§run-scheme).
+        if (authority === "") return { status: 400, error: "run:// requires a run name or 'self' (run://self/<path>)" };
         const self = await Run.#selfName(ctx);
-        const owner = authority === "" ? self : authority;
+        const owner = authority === "self" ? self : authority;
         if (owner !== self) return { status: 403, error: "run:// write is self-only — read a sister's notes, never write them" };
         return EntryOps.editSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
     }
@@ -90,8 +92,9 @@ export default class Run {
     async deleteEntry(statement: KillStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         const authority = Run.#authority(statement.target);
         if (authority === null) return { status: 400, error: "run:// requires a run target" };
+        if (authority === "") return { status: 400, error: "run:// requires a run name or 'self' (run://self/<path>)" };
         const self = await Run.#selfName(ctx);
-        const owner = authority === "" ? self : authority;
+        const owner = authority === "self" ? self : authority;
         if (owner !== self) return { status: 403, error: "run:// kill is self-only — read a sister's notes, never delete them" };
         return EntryOps.deleteSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
     }
@@ -101,18 +104,20 @@ export default class Run {
         if (authority === null) return { status: 400, content: null, mimetype: null, channel: null };
         const entryPath = Run.#entryPath(statement.target);
         if (entryPath === "") return { status: 400, content: null, mimetype: null, channel: null };  // a run is not READable, only its entries
+        if (authority === "") return { status: 400, content: null, mimetype: null, channel: null };  // retired empty-authority form
         // Cross-run READ is allowed — resolve self, fold the owner into the storage path.
-        const owner = authority === "" ? await Run.#selfName(ctx) : authority;
+        const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
         return EntryOps.readSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
     }
 
-    // §run-scheme — FIND a run's scratch. `run:///**` is self; `run://<name>/**` a sister
+    // §run-scheme — FIND a run's scratch. `run://self/**` is self; `run://<name>/**` a sister
     // (cross-run READ is allowed, so cross-run FIND is too). Resolve the owner and fold it into
     // the scope pathname (`/<owner>/<rest>`) so EntryFind draws from that run's partition alone.
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
         const authority = Run.#authority(statement.target);
         if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [] };
-        const owner = authority === "" ? await Run.#selfName(ctx) : authority;
+        if (authority === "") return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [] };
+        const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
         const t = statement.target;
         const folded = t !== null && t.kind === "url"
             ? { ...statement, target: { ...t, hostname: null, pathname: foldAuthorityIntoPath(owner, t.pathname) } }
@@ -123,9 +128,10 @@ export default class Run {
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         const authority = Run.#authority(statement.target);
         if (authority === null) return { status: 400, error: "run:// irc requires a run (run://<name>)" };
+        if (authority === "") return { status: 400, error: "run:// irc requires a run name or 'self' (run://<name>)" };
         if (ctx.injectRun === undefined) throw new Error("run.send: injectRun capability absent");
         let runId = ctx.runId;
-        if (authority !== "" && authority !== ".") {
+        if (authority !== "self") {
             const row = await (ctx.db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: authority });
             if (row === undefined) return { status: 404, error: `run://${authority} not found in this session` };
             runId = row.id;

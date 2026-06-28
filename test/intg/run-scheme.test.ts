@@ -16,15 +16,15 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt } from "./_dsl.ts";
 
-// §run-scheme — the run is the AUTHORITY: run://<name> (name in hostname), not run:///<name>.
-// "." stays the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
+// §run-scheme — the run is the AUTHORITY: run://<name> (name in hostname), run://self for the current run.
+// run://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
 const runPath = (name: string): ParsedPath => ({
     kind: "url", raw: `run://${name}`, scheme: "run",
     username: null, password: null, hostname: name, port: null,
     pathname: "", params: {}, fragment: null,
 });
 
-// A run-scope STORAGE address: run://<owner>/<path> ("" owner = self), entry path present.
+// A run-scope STORAGE address: run://<owner>/<path> (owner "self" = the current run), entry path present.
 const runEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `run://${owner}/${path}`, scheme: "run",
     username: null, password: null, hostname: owner, port: null,
@@ -45,14 +45,14 @@ const recordingInjectRun = () => {
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
-// A run-scope FIND: run://<owner>/<glob> ("" owner = self).
+// A run-scope FIND: run://<owner>/<glob> (owner "self" = the current run).
 const findEntry = (owner: string, glob: string): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
     target: { kind: "url", raw: `run://${owner}/${glob}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-// A run-scope READ: run://<owner>/<path> ("" owner = self).
+// A run-scope READ: run://<owner>/<path> (owner "self" = the current run).
 const readEntry = (owner: string, path: string): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
     target: { kind: "url", raw: `run://${owner}/${path}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
@@ -73,21 +73,21 @@ test("[§run-scheme-fork-scratch] a fork inherits the parent's run-scope scratch
         const parent = await insertRun(db, sessionId, null, "alpha");
         const ctxP = makeSchemeCtx({ db, sessionId, runId: parent, loopId: 0, turnId: 0 });
         const run = new Run();
-        await run.edit(editStmt(runEntry("", "todo.md"), "parent note"), ctxP);
+        await run.edit(editStmt(runEntry("self", "todo.md"), "parent note"), ctxP);
 
         // Fork the parent — the branch must open with the parent's scratch under its OWN name.
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const ctxF = makeSchemeCtx({ db, sessionId, runId: forkId, loopId: 0, turnId: 0 });
 
-        const inherited = await run.find(findEntry("", "**"), ctxF);
+        const inherited = await run.find(findEntry("self", "**"), ctxF);
         assert.deepEqual(inherited.results.map((r) => r.path), ["run://alpha-fork/todo.md"], "the fork's perspective holds the inherited scratch under its own name");
-        const fRead = await run.read(readEntry("", "todo.md"), ctxF);
+        const fRead = await run.read(readEntry("self", "todo.md"), ctxF);
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await run.edit(editStmt(runEntry("", "todo.md"), "fork note"), ctxF);
-        assert.equal((await run.read(readEntry("", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
-        assert.equal((await run.read(readEntry("", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+        await run.edit(editStmt(runEntry("self", "todo.md"), "fork note"), ctxF);
+        assert.equal((await run.read(readEntry("self", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
+        assert.equal((await run.read(readEntry("self", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }
 });
 
@@ -101,17 +101,17 @@ test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a s
         const ctxB = makeSchemeCtx({ db, sessionId, runId: beta, loopId: 0, turnId: 0 });
         const run = new Run();
 
-        // Each run writes its OWN scratch (empty authority = self).
-        await run.edit(editStmt(runEntry("", "todo.md"), "alpha note"), ctxA);
-        await run.edit(editStmt(runEntry("", "plan.md"), "beta note"), ctxB);
+        // Each run writes its OWN scratch (run://self).
+        await run.edit(editStmt(runEntry("self", "todo.md"), "alpha note"), ctxA);
+        await run.edit(editStmt(runEntry("self", "plan.md"), "beta note"), ctxB);
 
         // alpha's self FIND sees ONLY alpha's scratch, addressed run://alpha/...
-        const own = await run.find(findEntry("", "**"), ctxA);
+        const own = await run.find(findEntry("self", "**"), ctxA);
         assert.equal(own.status, 200);
-        assert.deepEqual(own.results.map((r) => r.path), ["run://alpha/todo.md"], "self FIND(run:///**) returns only the building run's own scratch");
+        assert.deepEqual(own.results.map((r) => r.path), ["run://alpha/todo.md"], "self FIND(run://self/**) returns only the building run's own scratch");
 
         // beta's perspective excludes alpha's — isolation is structural (scope='run' + owner prefix).
-        const betaOwn = await run.find(findEntry("", "**"), ctxB);
+        const betaOwn = await run.find(findEntry("self", "**"), ctxB);
         assert.deepEqual(betaOwn.results.map((r) => r.path), ["run://beta/plan.md"], "a sibling never sees another's scratch in its own perspective");
 
         // A sister's scratch is reachable ONLY by explicit name (cross-run READ/FIND is allowed).
@@ -120,7 +120,7 @@ test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a s
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] EDIT(run:///name):prompt spawns a same-session sister, seeded via injectRun", async () => {
+test("[§run-scheme-spawn] EDIT(run://name):prompt spawns a same-session sister, seeded via injectRun", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -147,7 +147,7 @@ test("[§run-scheme-spawn] EDIT(run:///name):prompt spawns a same-session sister
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] EDIT(run:///.) cannot spawn self — 400, no inject", async () => {
+test("[§run-scheme-spawn] EDIT(run://self) cannot spawn self — 400, no inject", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -158,7 +158,7 @@ test("[§run-scheme-spawn] EDIT(run:///.) cannot spawn self — 400, no inject",
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: editStmt(runPath("."), "loop forever"),
+            statement: editStmt(runPath("self"), "loop forever"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "spawning self is rejected");
@@ -166,7 +166,7 @@ test("[§run-scheme-spawn] EDIT(run:///.) cannot spawn self — 400, no inject",
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-irc] SEND(run:///name):msg delivers to a sister; a missing sister is 404", async () => {
+test("[§run-scheme-irc] SEND(run://name):msg delivers to a sister; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -226,7 +226,7 @@ test("[§run-scheme-scratch-kill] KILL(run://owner/entry) deletes the scratch en
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-fork] COPY(run:///.):prompt forks — a branch run started via injectRun", async () => {
+test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started via injectRun", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -237,7 +237,7 @@ test("[§run-scheme-fork] COPY(run:///.):prompt forks — a branch run started v
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const forkStmt: CopyStatement = {
-            op: "COPY", suffix: "", signal: null, target: runPath("."),
+            op: "COPY", suffix: "", signal: null, target: runPath("self"),
             lineMarker: null, body: "take the other branch", position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -273,7 +273,7 @@ test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail
         assert.equal(spawn.status, 508, "spawn at the ceiling is refused, hard");
 
         const forkStmt: CopyStatement = {
-            op: "COPY", suffix: "", signal: null, target: runPath("."),
+            op: "COPY", suffix: "", signal: null, target: runPath("self"),
             lineMarker: null, body: "branch", position: { line: 1, column: 1 },
         };
         const fork = await engine.dispatch({
@@ -291,7 +291,7 @@ test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail
     }
 });
 
-test("[§run-scheme-terminate] KILL(run:///name) aborts a sister by address; a missing sister is 404", async () => {
+test("[§run-scheme-terminate] KILL(run://name) aborts a sister by address; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];
@@ -326,11 +326,11 @@ test("[§run-scheme-scratch] self EDIT writes the run partition; cross-run READ 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const readOf = (target: ParsedPath): ReadStatement => ({ op: "READ", suffix: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
-        // self EDIT(run:///note.md) — a self-owned run-scope entry; the empty authority folds to "me".
-        const write = await engine.dispatch({ statement: editStmt(runEntry("", "note.md"), "scratch"), sessionId, runId: meId, loopId, turnId, sequence: 1, origin: "model" });
+        // self EDIT(run://self/note.md) — a self-owned run-scope entry; self folds to "me".
+        const write = await engine.dispatch({ statement: editStmt(runEntry("self", "note.md"), "scratch"), sessionId, runId: meId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(write.status, 201, "self scratch write creates the entry");
         const stored = await (db.crud_find_run_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "run", pathname: "/me/note.md" });
-        if (stored === undefined) throw new Error("entry must be keyed (scope='run', /me/note.md) — owner folded from the empty authority");
+        if (stored === undefined) throw new Error("entry must be keyed (scope='run', /me/note.md) — owner folded from self");
 
         // cross-run READ(run://me/note.md) from 'other' — reaches the sister's scratch (perspective-private, not ACL).
         const otherLoop = await insertLoop(db, otherId, 1, "go");
