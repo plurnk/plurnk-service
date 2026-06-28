@@ -6,7 +6,7 @@ import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
-import type { EditStatement, ReadStatement, SendStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
 // run:// — the run scheme: inter-run CONTROL (spawn/irc; COPY=fork is Engine.#handleCopy) AND
 // run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
@@ -82,6 +82,18 @@ export default class Run {
         const owner = authority === "" ? self : authority;
         if (owner !== self) return { status: 403, error: "run:// write is self-only — read a sister's notes, never write them" };
         return EntryOps.editSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
+    }
+
+    // KILL a run-scope scratch ENTRY (path present). Self-only — deleting a sister's notes
+    // is a cross-run write, denied like EDIT (§run-scheme). The path-ABSENT KILL form is run
+    // cancellation, handled in Engine.#handleKill (it routes only entry-path KILLs here).
+    async deleteEntry(statement: KillStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+        const authority = Run.#authority(statement.target);
+        if (authority === null) return { status: 400, error: "run:// requires a run target" };
+        const self = await Run.#selfName(ctx);
+        const owner = authority === "" ? self : authority;
+        if (owner !== self) return { status: 403, error: "run:// kill is self-only — read a sister's notes, never delete them" };
+        return EntryOps.deleteSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {

@@ -175,6 +175,19 @@ export default class EntryOps {
         return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };  // §edit-status-201-200
     }
 
+    // Scope-aware entry delete — the KILL counterpart of editSessionEntry. Resolves the
+    // entry via the scope's crud_find variant (so a run-scope row is found, not just
+    // session), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
+    static async deleteSessionEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<{ status: number }> {
+        if (statement.target === null) return { status: 400 };
+        const { db, sessionId } = ctx;
+        const pathname = EntryOps.#pathnameOf(statement);
+        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ session_id: sessionId, scheme: manifest.name, pathname });
+        if (existing === undefined) return { status: 404 };
+        await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
+        return { status: 200 };
+    }
+
     static async readSessionEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
 

@@ -59,6 +59,13 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
+// A run-scope ENTRY KILL: run://<owner>/<path> — deletes the scratch entry (path present).
+const killEntry = (owner: string, path: string): KillStatement => ({
+    op: "KILL", suffix: "", signal: null,
+    target: { kind: "url", raw: `run://${owner}/${path}`, scheme: "run", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, params: {}, fragment: null },
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
 test("[§run-scheme-fork-scratch] a fork inherits the parent's run-scope scratch (owner-remapped), then diverges", async () => {
     const db = await openMigrated();
     try {
@@ -183,6 +190,39 @@ test("[§run-scheme-irc] SEND(run:///name):msg delivers to a sister; a missing s
         });
         assert.equal(missing.status, 404, "irc to a non-existent sister is 404");
         assert.equal(calls.length, 1, "no inject for a missing sister");
+    } finally { await db.close(); }
+});
+
+// Dispatch-path coverage (#282): KILL of a run-scope ENTRY must DELETE the entry, NOT
+// cancel the run — and stay self-only. Driven through engine.dispatch (the real routing),
+// not a bare Run instance, because the bug lived in Engine.#handleKill's run branch.
+test("[§run-scheme-scratch-kill] KILL(run://owner/entry) deletes the scratch entry (self-only); the run survives — #282", async () => {
+    const db = await openMigrated();
+    try {
+        const { injectRun } = recordingInjectRun();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
+        const sessionId = await insertSession(db, `run-kill-entry-${crypto.randomUUID()}`);
+        const alpha = await insertRun(db, sessionId, null, "alpha");
+        const beta = await insertRun(db, sessionId, null, "beta");
+        const loopA = await insertLoop(db, alpha, 1, "go");
+        const turnA = await insertTurn(db, loopA, 1, 102);
+        const loopB = await insertLoop(db, beta, 1, "go");
+        const turnB = await insertTurn(db, loopB, 1, 102);
+
+        await engine.dispatch({ statement: editStmt(runEntry("alpha", "note.md"), "scratch"), sessionId, runId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
+
+        // A sister cannot delete alpha's scratch — cross-run write is denied (403); the entry survives.
+        const cross = await engine.dispatch({ statement: killEntry("alpha", "note.md"), sessionId, runId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        assert.equal(cross.status, 403, "cross-run KILL of a sister's scratch is denied (self-only)");
+        assert.equal((await engine.dispatch({ statement: readEntry("alpha", "note.md"), sessionId, runId: alpha, loopId: loopA, turnId: turnA, sequence: 2, origin: "model" })).status, 200, "the denied cross-run KILL left the entry intact");
+
+        // alpha kills its OWN scratch entry → 200; it's gone; the run alpha still exists.
+        const killed = await engine.dispatch({ statement: killEntry("alpha", "note.md"), sessionId, runId: alpha, loopId: loopA, turnId: turnA, sequence: 3, origin: "model" });
+        assert.equal(killed.status, 200, "KILL(run://alpha/note.md) deletes the scratch entry");
+        const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), sessionId, runId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
+        assert.equal(gone.status, 404, "the killed scratch entry is gone");
+        const runStill = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "alpha" });
+        assert.notEqual(runStill, undefined, "the run alpha survives — KILL of an entry PATH is entry-delete, not run cancellation");
     } finally { await db.close(); }
 });
 

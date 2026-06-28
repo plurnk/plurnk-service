@@ -2230,6 +2230,14 @@ export default class Engine {
             return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
         }
         if (schemeName === "run") {
+            // Entry-path present → KILL a run-scope scratch ENTRY (delete it), self-only —
+            // NOT run cancellation. The authority (hostname) names the owner, the pathname the
+            // entry; only the path-ABSENT form (run://<name>) terminates the run-as-actor. §run-scheme
+            const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
+            if (entryPath !== "" && entryPath !== "/") {
+                const runHandler = this.#schemes.get("run") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
+                return await runHandler.deleteEntry(statement, ctx);
+            }
             // terminate — abort any run by address; whoever holds it may end it.
             // `.`/"" = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
