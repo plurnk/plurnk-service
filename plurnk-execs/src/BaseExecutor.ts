@@ -20,15 +20,16 @@ export default abstract class BaseExecutor implements SchemeHandler {
         this.glyph = glyph;
     }
 
-    // --- executor-is-a-scheme face (schemes#20 / service#240) ---------------
-    // The executor's output is addressed at `<tag>://<coord>` and READ back. Its
-    // scheme manifest is DERIVED from the runtime declaration — no separate
-    // authoring — via schemes' `manifestFromRuntime`. READ over that output is
-    // uniform and model-pulled: `DefaultRead` (the consumer's — a pure resolver
-    // needing a Mimetypes instance + the output store the executor isn't handed)
-    // serves the slice/match for every tag alike, MCP no exception. `read`/`find`
-    // are optional SchemeHandler hooks no shipped executor overrides; a custom
-    // read is a need a future executor would raise, never a per-runtime carve-out.
+    // --- output addressing: the executor produces, the consumer reads --------
+    // The executor is a PRODUCER. Its output streams (via run()'s write/setState)
+    // into a consumer-held log entry addressed at `<tag>://<coord>`; every READ /
+    // FIND over that entry is the consumer's uniform machinery, identical across
+    // every tag (MCP no exception). The executor's only scheme-facing job is to
+    // DECLARE the output scheme's manifest — derived from the runtime decl via
+    // schemes' `manifestFromRuntime`, which is the sole reason it conforms to
+    // SchemeHandler. It serves no read: BaseExecutor implements no read/find and
+    // none is wired downstream — no sibling overrides them, and orientation is
+    // model-pulled (the model queries the entry), never an executor-built digest.
     get manifest(): SchemeManifest {
         return OutputScheme.manifestFromRuntime({
             name: this.runtime,
