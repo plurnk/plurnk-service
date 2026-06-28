@@ -19,19 +19,21 @@ INSERT INTO symbol_refs (session_id, entry_id, name, kind, container, line, col)
 VALUES ($session_id, $entry_id, $name, $kind, $container, $line, $col);
 
 -- PREP: graph_referrers
--- @<sym — entries (scheme-scoped) that reference sym.
-SELECT DISTINCT e.pathname
+-- @<sym — entries (scheme-scoped) that reference sym, with each reference's line
+-- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
+SELECT DISTINCT e.pathname, r.line AS line, r.line AS end_line
 FROM symbol_refs r JOIN entries e ON e.id = r.entry_id
 WHERE r.session_id = $session_id AND e.scheme IS $scheme AND r.name = $name
-ORDER BY e.pathname;
+ORDER BY e.pathname, r.line;
 
 -- PREP: graph_def_pathnames_by_name
--- Resolve a name → the defining entries' pathnames (scheme-scoped). Serves @>'s
--- target resolution and @'s neighborhood def lookup.
-SELECT DISTINCT e.pathname
+-- Resolve a name → the defining entries' pathnames + def span (scheme-scoped). Serves
+-- @>'s target resolution and @'s neighborhood def lookup. end_line falls back to line
+-- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
+SELECT DISTINCT e.pathname, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
 FROM symbol_defs d JOIN entries e ON e.id = d.entry_id
 WHERE d.session_id = $session_id AND e.scheme IS $scheme AND d.name = $name
-ORDER BY e.pathname;
+ORDER BY e.pathname, d.line;
 
 -- PREP: graph_resolve_def
 -- sym → its def(s): (entry_id, container) to compose the qualified path for @>.

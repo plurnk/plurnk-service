@@ -181,10 +181,9 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
     } finally { db.close(); }
 });
 
-test("Log.read: matcher-then-<L> composition — pick Nth match from a prior READ", async () => {
-    // The killer compose-chain: prior READ used a matcher, log entry's rx
-    // is `application/json` array of {line,matched} rows. Reading the log
-    // entry with <L><N> uses structural <L> to pick the N-th row.
+test("Log.read: a matcher READ fans out per match — the Nth match is its own row (#286)", async () => {
+    // The compose-chain under per-match: a matcher READ writes one row per match, so the N-th
+    // match IS log:///<l>/<t>/N — addressed directly, not sliced out of a combined result.
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         const Known = (await import("../../src/schemes/Known.ts")).default;
@@ -203,14 +202,11 @@ test("Log.read: matcher-then-<L> composition — pick Nth match from a prior REA
             },
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        // Now <<READ(log:///1/1/1)<2>::READ — structural <L> on the JSON array,
-        // picking the 2nd match row.
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [2] } };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        // The 2nd match IS its own row — log:///1/1/2 — read it directly (#286), no <L>-slice of a blob.
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
-        // Result is the 2nd match line (beta).
-        assert.match(r.content ?? "", /:\tbeta/);
+        assert.match(r.content ?? "", /beta/, "the 2nd row holds the 2nd match");
         assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
     } finally { db.close(); }
 });

@@ -14,7 +14,8 @@ import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 // face never executes (the run stays on EXEC); process-KILL by coordinate and the
 // COPY/MOVE source-read are the only cross-cutting bits — KILL delegates to the one
 // Exec handler that owns the spawn-abort state, the source-read is tag-scoped here.
-// Rich executors (MCP, sqlite) ship their own read/find and override the default.
+// Every tag — sh, search, sqlite, MCP — reads through this one uniform path; an executor
+// is a pure PRODUCER (run() writes channels), never a read/find face (execs#13).
 export default class ExecOutputScheme {
     #executor: Executor;
     #exec: Exec;

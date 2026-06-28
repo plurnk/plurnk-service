@@ -116,15 +116,11 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
     assert.ok((r.error ?? "").length > 0);
 });
 
-test("semantic dialect → 501 (semantic similarity is parked)", async () => {
-    const r = await Matcher.matchAgainstContent({ dialect: "semantic", raw: "~query" } as MatcherBody, "x", "text/markdown",
-        stubQuery(async () => { throw new Error("query must not be called for semantic"); }));
-    assert.equal(r.status, 501);
-});
-
-test("graph dialect → 400 (@graph is a FIND relation, not a READ content matcher)", async () => {
-    const r = await Matcher.matchAgainstContent({ dialect: "graph", raw: "@graph" } as MatcherBody, "x", "text/markdown",
-        stubQuery(async () => { throw new Error("query must not be called for graph"); }));
-    assert.equal(r.status, 400);
-    assert.ok((r.error ?? "").includes("FIND"));
+test("relation dialects (~semantic / @graph) never reach the content matcher — they resolve through FIND (#286)", async () => {
+    // Invariant: ~semantic ranks via rankSemantic and @graph resolves via EntryGraph, each to
+    // (file, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
+    // routing bug → fail hard, not a silent 501/400.
+    const stub = stubQuery(async () => { throw new Error("query must not be called for a relation dialect"); });
+    await assert.rejects(Matcher.matchAgainstContent({ dialect: "semantic", raw: "~query" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
+    await assert.rejects(Matcher.matchAgainstContent({ dialect: "graph", raw: "@graph" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
 });

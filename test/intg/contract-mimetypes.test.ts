@@ -83,7 +83,7 @@ test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry re
 // an application/json result), then structural <L><P> over that log entry
 // picks the P-th match — matcher rx is application/json, <L> selects the item.
 
-test("[§slice-semantics-compose-pattern] <<READ(log:///1/1/1)<P>::READ picks the P-th match from a prior matcher result", async () => {
+test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, addressed directly (#286)", async () => {
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, runId, 1, "compose");
@@ -95,33 +95,24 @@ test("[§slice-semantics-compose-pattern] <<READ(log:///1/1/1)<P>::READ picks th
             makeSchemeCtx({ db, sessionId, runId, mimetypes }),
         );
 
-        // Matcher READ through the engine → result lands at log:///1/1/1.
-        await engine.dispatch({
+        // Matcher READ through the engine → fans out one row per match (#286).
+        const r = await engine.dispatch({
             statement: {
                 ...readStmt(urlPath("known", "/log.txt")),
                 body: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
             },
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
+        assert.equal(r.rowsWritten, 2, "two error matches → two log rows, not one combined blob");
 
-        // Sanity: the full matcher result has both error matches as JSON.
-        const whole = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
-        assert.equal(whole.status, 200);
-        assert.equal(whole.mimetype, "text/markdown");
-        assert.equal((whole.content ?? "").split("\n").length, 2, "two error lines matched");
-
-        // Compose: structural <L><2> over the matcher result → 2nd match line only.
-        const picked = await new Log().read(
-            { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [2] } },
-            makeSchemeCtx({ db, runId, mimetypes }),
-        );
-        assert.equal(picked.status, 200);
-        assert.equal((picked.content ?? "").split("\n").length, 1, "<L><2> selects exactly the P-th line");
-        // §matcher-result / plurnk.md:31 — regex MATCHES, it does not extract: READ returns the
-        // 2nd matching LINE (`error: gamma`), not a capture-group value. The compose-chain still
-        // picks the P-th match; the unit it returns is now the line.
-        assert.match(picked.content ?? "", /error: gamma/);
-        assert.doesNotMatch(picked.content ?? "", /alpha/);
+        // The compose pattern under per-match: the Nth match IS log:///<l>/<t>/N — its own
+        // addressable row. No <P>-slice of a combined result (there is no combined result). Each
+        // row carries its matching LINE (regex SELECTS, never extracts — plurnk.md:31).
+        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
+        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
+        assert.match(m1.content ?? "", /error: alpha/, "the 1st match is its own row");
+        assert.match(m2.content ?? "", /error: gamma/, "the 2nd match is the 2nd row");
+        assert.doesNotMatch(m2.content ?? "", /alpha/, "each row holds exactly its own match");
     } finally { await db.close(); }
 });
 

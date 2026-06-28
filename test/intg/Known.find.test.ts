@@ -87,7 +87,7 @@ test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CO
     } finally { db.close(); }
 });
 
-test("[§find-result-catalog-rows] a content match stamps the row with matchLines — the lines where it hit", async () => {
+test("[§find-result-catalog-rows] a content match emits one item per match, each carrying its (file, span) (#286)", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
@@ -99,10 +99,10 @@ test("[§find-result-catalog-rows] a content match stamps the row with matchLine
         const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
-        // FIND returns the matching ROWS with the match lines in the metadata (plurnk.md:31).
-        assert.deepEqual(byPath.get("known:///a")?.matchLines, [3], "the row carries the source line where the matcher hit");
-        assert.deepEqual(byPath.get("known:///b")?.matchLines, [2]);
-        assert.equal(byPath.has("known:///c"), false, "a miss excludes the entry entirely — no row, no matchLines");
+        // Each match is a (file, span) item — the span is where the matcher hit (plurnk.md:31).
+        assert.deepEqual(byPath.get("known:///a")?.matchSpan, { lineStart: 3, lineEnd: 3 }, "the item carries the span where the matcher hit");
+        assert.deepEqual(byPath.get("known:///b")?.matchSpan, { lineStart: 2, lineEnd: 2 });
+        assert.equal(byPath.has("known:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });
 

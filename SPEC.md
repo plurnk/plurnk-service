@@ -572,11 +572,11 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
-- Filters entries within scope (scheme + pathname prefix). {§find-scope-prefix-filter}
+- Filters entries within scope. The target's GLOB-ness sets it: a **bare** path is the exact entry, a **trailing-slash folder** (incl. the scheme root `/`) or an explicit **glob** expands to a scope (the `*` is folderhood, not a blanket prefix), `#regex#` filters by pathname. Same target contract as READ — bare = the entry, folder/glob = a scope to fan out (#286). {§find-scope-prefix-filter}
 - `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per grammar plurnk.md §"Body matcher dispatch"; the path-glob lives in the (target), not the body. {§find-glob-filter-on-content}
 - `signal` is a tag filter; entries match if they have ALL listed tags. {§find-tag-filter-and-semantics}
 - Session + scheme scoped — no cross-session/cross-scheme leakage. {§find-scoped-isolation}
-- Returns `FindResult { status, content, mimetype, results: CatalogEntry[] }`. FIND resolves to the scheme's **catalog rows** — the very rows the manifest catalogs — filtered to the statement's matches and kept in match order. A **catalog row** is `{ path, seconds?, tags?, matchLines?, channels: { <uri>: { mimetype, tokens, lines } } }`: the addressable entry path, its per-channel `{mimetype, tokens, lines}` keyed by addressable URI (default channel → the bare path, non-default → `path#channel`), plus the entry's `tags` and a live `seconds` stream age. The matcher (glob/regex/jsonpath/xpath, `~`semantic, `@`graph) decides WHICH entries appear and in what order — a content hit **includes** the entry, a miss **excludes** it. A **content** matcher (glob/regex/jsonpath/xpath) additionally stamps the row with `matchLines` — the source line numbers where it hit within the entry (plurnk.md:31: FIND returns the matching rows **with the match lines in the metadata**; the line CONTENT stays a `READ`). `matchLines` is absent for a body-less FIND (the whole catalog) and for `~`semantic / `@`graph (whose extent — the winning chunk's span, the graph edge — is not a content line). `content` is the rows as a JSON array (`application/json`); a body-less `FIND(scheme:///**)` yields the scheme's whole catalog — the manifest's per-scheme slice. {§find-result-catalog-rows}
+- Returns `FindResult { status, content, mimetype, results: MatchItem[], matches, pathnames }`. The matcher sets the unit (#286). A **body-less** FIND is the **catalog**: one item per *entry* — `{ path, seconds?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }` (the addressable path, per-channel `{mimetype, tokens, lines}` keyed by URI — default channel → the bare path, non-default → `path#channel` — plus `tags` and a live `seconds` stream age), the manifest's per-scheme slice. A **matcher** FIND resolves to one item per *match*: the entry's catalog row plus the `matchSpan` `{lineStart, lineEnd}` it hit. **A file with N matches yields N items** — the same row repeated, one span each; there is no `matchLines` array. The unit is uniform across every dialect — glob/regex/jsonpath/xpath select line spans, `~`semantic the ranked chunk's span, `@`graph the matched symbol's span — all `(file, span)`, all real content lines (the old "the extent of ~semantic/@graph is not a content line" carve-out was false: a chunk span and a symbol span are line ranges). Order is match order (rank for `~`semantic, source order otherwise); a miss contributes nothing; identical spans dedup. `content` is the items as a JSON array (`application/json`). {§find-result-catalog-rows}
 
 ### §send SEND
 
@@ -1327,7 +1327,7 @@ Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-c
 
 ### §matcher-dispatch Matcher dispatch (service-owned, over daughter primitives)
 
-`Matcher.matchAgainstContent` (in-tree, `src/content/matcher.ts`) is the **service's own** dialect dispatch — `Mimetypes.query` is NOT consumed (§mimetype-methods). It switches on the matcher's dialect and calls the daughter's individual primitives: `glob → queryGlob` and `regex → queryRegex` over the raw content; `jsonpath → queryJsonpathObject` over the `deepJson` projection and `xpath → queryXpathString` over `deepXml` (both pulled from `mimetypes.process({channels})`, so a structural dialect works over any source type). `~semantic` is service-side and parked; `@graph` resolves over the service's own symbol indexes (§mimetype-methods). Each returns `QueryMatch[]`, rendered as `<source-line>:\t<value>`. Status mapping:
+`Matcher.matchAgainstContent` (in-tree, `src/content/matcher.ts`) is the **service's own** dialect dispatch — `Mimetypes.query` is NOT consumed (§mimetype-methods). It handles the **content dialects** and switches on each, calling the daughter's individual primitives: `glob → queryGlob` and `regex → queryRegex` over the raw content; `jsonpath → queryJsonpathObject` over the `deepJson` projection and `xpath → queryXpathString` over `deepXml` (both pulled from `mimetypes.process({channels})`, so a structural dialect works over any source type), returning `QueryMatch[]` rendered as `<source-line>:\t<line>`. `~semantic` and `@graph` are **relation dialects, not content matchers** — FIND resolves them upstream to `(file, span)` items (`~`semantic via `rankSemantic`, `@`graph via `EntryGraph`), so they never reach `matchAgainstContent` (a fail-hard invariant guards the impossible routing). Status mapping (content dialects):
 
 | Result | HTTP status |
 |---|---|
@@ -1335,7 +1335,6 @@ Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-c
 | Empty match array | 204 |
 | Malformed matcher expression | 400 |
 | Source unparseable for its mimetype | 203 (soft fallback: raw content as text with `reason`) |
-| `~semantic` (parked, needs vector design) | 501 |
 
 203 is HTTP-creative ("Non-Authoritative Information"). On parse failure, returns raw bytes as text primitive with `reason` so the model can fall back to regex/visual parsing or fix source. {§matcher-dispatch-203-soft-fallback}
 
@@ -1353,10 +1352,12 @@ The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND ret
 | glob `pat` | the lines the glob matches | the lines containing TODO |
 | jsonpath `$.path` | the line(s) where the structural path resolves | the line defining `host` |
 | xpath `//sel` | the line(s) of the selected node (text/html) | the line(s) of the h1 |
+| `~`semantic `~q` | the line span of each ranked chunk (a relation, resolved by FIND) | the section about X |
+| `@`graph `@<sym` | the line span of each matched symbol occurrence (a relation, resolved by FIND) | where X is referenced |
 
-Across a **multi-file target** (a glob over `(target)`), READ returns **one log item per file that contains a match**, each holding that file's matching lines — READ is the content retrieval over the whole matched set, the companion to FIND's survey (§find-result-catalog-rows). The matched set *is* that survey: the engine runs the scheme's FIND (which files + where — `matchLines`), then READs each matched file, emitting one log row per hit at the turn's running sequence. It costs **one command** (the model emitted one READ) yet writes N rows, each addressing its concrete file — individually foldable/killable/re-READable. A body-less glob returns each file's full content; zero matches writes a single `204` row (never silence). {§read-multi-file-fanout}
+**READ honors FIND.** A READ that resolves to more than the single exact entry — a glob/folder scope, OR any matcher — fans out: the engine runs the scheme's FIND, then writes **one log row per MATCH** (not per file), each delivering that match's content — READ is the content retrieval over FIND's survey (§find-result-catalog-rows). A file with N matches → N rows. It costs **one command** (the model emitted one READ) yet writes N rows, each its own concrete `(file, span)` — individually foldable/killable/re-READable. A matcher row carries the source LINES at the match's span, delivered via a **raw line-slice** so a structural mimetype's item-index `<L>` never mis-slices a span that is, by construction, source lines; a body-less folder/glob row carries the whole entry. A **bare entry, body-less** is the single direct read. Zero matches writes a single `204` row (never silence). {§read-multi-file-fanout}
 
-> **Implementation requirement (a mimetypes-daughter need, not a contract exception):** structural dialects must report the SOURCE LINE of each hit. regex/glob match over raw content (the line is in hand); jsonpath/xpath run over the parsed `deepJson`/`deepXml` projection and today return the value — the match primitive must instead carry the line span of each hit, so READ can return the line.
+> **Source-line provenance (shipped, every dialect).** Each hit carries a source-line span: regex/glob over raw content; jsonpath/xpath over the parsed `deepJson`/`deepXml` projection (the mimetypes daughter reports each hit's line span); `~`semantic the ranked chunk's span; `@`graph the symbol occurrence's span. So the per-match `(file, span)` item is well-defined for every dialect, and READ returns the line uniformly.
 
 ### §slice-semantics `<L>` semantics by source mimetype
 
@@ -1380,7 +1381,7 @@ Across a **multi-file target** (a glob over `(target)`), READ returns **one log 
 - `<0>` / `<-1>` → `[]` for READ
 - Out-of-range → 416; malformed JSON → 400
 
-**Killer composition.** `<<READ(log:///N/M/K)<P>::READ` picks the P-th match from a prior matcher result — matcher rx is `application/json`, structural `<L>` selects the P-th element. {§slice-semantics-compose-pattern}
+**Compose by addressing the match.** Under per-match fan-out a matcher READ writes one row per match, so the **N-th match IS `log:///<l>/<t>/N`** — its own addressable row, read directly. There is no `<P>`-slice of a combined blob (no blob exists). To process a match further, READ its row and apply a matcher/`<L>` to that content (the body-less compose-chain). {§slice-semantics-compose-pattern}
 
 ### §json-edit Structural EDIT on JSON
 

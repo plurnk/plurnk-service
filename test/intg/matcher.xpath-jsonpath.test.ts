@@ -300,14 +300,11 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
             sequence: 1, origin: "model",
         });
 
-        // Structural <L><2> on the log entry — picks the 2nd match line (Bob).
-        const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "/1/1/1")),
-            lineMarker: { marks: [2] },
-        };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId, mimetypes }));
+        // Per-match fan-out: the 2nd jsonpath match IS its own row — log:///1/1/2 (Bob) — read it
+        // directly (#286), no <L>-slice of a combined result.
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /Bob/);
+        assert.match(r.content ?? "", /Bob/, "the 2nd row holds the 2nd match");
         assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
     } finally { await db.close(); }
 });

@@ -36,39 +36,54 @@ export default class EntryGraph {
         }
     }
 
-    // Resolve a FIND graph-dialect body (`@<sym` / `@>sym` / `@sym`) to matching
-    // pathnames within (session, scheme). Malformed → 400.
-    static async match(db: Db, sessionId: number, scheme: string | null, raw: string): Promise<{ status: number; pathnames: string[] }> {
+    // Resolve a FIND graph-dialect body (`@<sym` / `@>sym` / `@sym`) to matches within
+    // (session, scheme). Each match is a (pathname, span) — the reference's line (@<) or
+    // the symbol's def span (@> / def side of @) — so a matcher resolves to (file, span)
+    // uniformly with every other dialect (#286). Malformed → 400.
+    static async match(db: Db, sessionId: number, scheme: string | null, raw: string): Promise<{ status: number; matches: GraphMatch[] }> {
         const m = /^@([<>]?)(.+)$/.exec(raw.trim());
-        if (m === null) return { status: 400, pathnames: [] };
+        if (m === null) return { status: 400, matches: [] };
         const direction = m[1];
         const name = m[2].trim();
-        if (name.length === 0) return { status: 400, pathnames: [] };
+        if (name.length === 0) return { status: 400, matches: [] };
 
-        if (direction === "<") return { status: 200, pathnames: await EntryGraph.#referrers(db, sessionId, scheme, name) };
-        if (direction === ">") return { status: 200, pathnames: await EntryGraph.#referents(db, sessionId, scheme, name) };
+        if (direction === "<") return { status: 200, matches: await EntryGraph.#referrers(db, sessionId, scheme, name) };
+        if (direction === ">") return { status: 200, matches: await EntryGraph.#referents(db, sessionId, scheme, name) };
 
-        // @sym neighborhood: the def ∪ referrers ∪ referents, deduped.
-        const set = new Set<string>();
-        for (const p of await EntryGraph.#defs(db, sessionId, scheme, name)) set.add(p);
-        for (const p of await EntryGraph.#referrers(db, sessionId, scheme, name)) set.add(p);
-        for (const p of await EntryGraph.#referents(db, sessionId, scheme, name)) set.add(p);
-        return { status: 200, pathnames: [...set].sort() };
+        // @sym neighborhood: the def ∪ referrers ∪ referents, deduped by (pathname, span).
+        return {
+            status: 200,
+            matches: EntryGraph.#dedupe([
+                ...await EntryGraph.#defs(db, sessionId, scheme, name),
+                ...await EntryGraph.#referrers(db, sessionId, scheme, name),
+                ...await EntryGraph.#referents(db, sessionId, scheme, name),
+            ]),
+        };
     }
 
-    static async #referrers(db: Db, sessionId: number, scheme: string | null, name: string): Promise<string[]> {
-        const rows = await (db.graph_referrers as PrepMethod).all<{ pathname: string }>({ session_id: sessionId, scheme, name });
-        return rows.map((r) => r.pathname);
+    static #dedupe(matches: GraphMatch[]): GraphMatch[] {
+        const seen = new Set<string>();
+        const out: GraphMatch[] = [];
+        for (const m of matches) {
+            const key = `${m.pathname}\0${m.lineStart}\0${m.lineEnd}`;
+            if (!seen.has(key)) { seen.add(key); out.push(m); }
+        }
+        return out.sort((a, b) => a.pathname.localeCompare(b.pathname) || a.lineStart - b.lineStart);
     }
 
-    static async #defs(db: Db, sessionId: number, scheme: string | null, name: string): Promise<string[]> {
-        const rows = await (db.graph_def_pathnames_by_name as PrepMethod).all<{ pathname: string }>({ session_id: sessionId, scheme, name });
-        return rows.map((r) => r.pathname);
+    static async #referrers(db: Db, sessionId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
+        const rows = await (db.graph_referrers as PrepMethod).all<{ pathname: string; line: number; end_line: number }>({ session_id: sessionId, scheme, name });
+        return rows.map((r) => ({ pathname: r.pathname, lineStart: r.line, lineEnd: r.end_line }));
+    }
+
+    static async #defs(db: Db, sessionId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
+        const rows = await (db.graph_def_pathnames_by_name as PrepMethod).all<{ pathname: string; line: number; end_line: number }>({ session_id: sessionId, scheme, name });
+        return rows.map((r) => ({ pathname: r.pathname, lineStart: r.line, lineEnd: r.end_line }));
     }
 
     // @>sym: sym's def(s) → the target names those defs reference → those targets'
-    // defining entries. The def's full qualified path is the @> join key (#186).
-    static async #referents(db: Db, sessionId: number, scheme: string | null, name: string): Promise<string[]> {
+    // defining entries (with their def spans). The def's full qualified path is the @> join key (#186).
+    static async #referents(db: Db, sessionId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
         const defs = await (db.graph_resolve_def as PrepMethod).all<{ entry_id: number; container: string | null }>({ session_id: sessionId, name });
         const targets = new Set<string>();
         for (const d of defs) {
@@ -76,8 +91,12 @@ export default class EntryGraph {
             const refs = await (db.graph_refs_from_source as PrepMethod).all<{ name: string }>({ session_id: sessionId, entry_id: d.entry_id, container: qualified });
             for (const r of refs) targets.add(r.name);
         }
-        const out = new Set<string>();
-        for (const t of targets) for (const p of await EntryGraph.#defs(db, sessionId, scheme, t)) out.add(p);
-        return [...out].sort();
+        const out: GraphMatch[] = [];
+        for (const t of targets) out.push(...await EntryGraph.#defs(db, sessionId, scheme, t));
+        return EntryGraph.#dedupe(out);
     }
 }
+
+// A @graph match: an entry and the (file, span) where the relation lands — a reference's
+// line (@<) or a symbol's def span (@> / def side of @). #286.
+export interface GraphMatch { pathname: string; lineStart: number; lineEnd: number; }

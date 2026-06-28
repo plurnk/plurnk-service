@@ -19,6 +19,7 @@ export interface MatchResult {
     body?: string;          // N:\t<line> rows (200) or raw fallback content (203)
     matches?: number;       // hit count (status 200 / 204)
     lines?: number[];       // matched source line numbers (status 200) — Project Findings extent substrate
+    spans?: { lineStart: number; lineEnd: number }[]; // one per match — the (file, span) unit FIND emits + READ delivers (#286)
     error?: string;         // status 400 — malformed matcher expression
     mimetype?: string;      // 203 fallback mimetype
     reason?: string;        // 203 fallback: the parse-failure reason for the model
@@ -35,17 +36,23 @@ export default class Matcher {
     // prefix `N:\t` (plurnk.md:32), deduped by source line; baseLine shifts slice-relative
     // spans back to source coordinates. A hit with no span (e.g. an xpath computed scalar —
     // count()/sum(), which has no source node) falls back to the matched value.
-    static #renderRows(matches: readonly QueryMatch[], content: string, baseLine: number): { body: string; lines: number[] } {
+    static #renderRows(matches: readonly QueryMatch[], content: string, baseLine: number): { body: string; lines: number[]; spans: { lineStart: number; lineEnd: number }[] } {
         const lines = content.split("\n");
         const offset = baseLine - 1;
         const seen = new Set<number>();
+        const seenSpan = new Set<string>();
         const rows: string[] = [];
         const sourceLines: number[] = [];
+        const spans: { lineStart: number; lineEnd: number }[] = [];  // one (deduped) range per match — the (file, span) unit (#286)
         for (const m of matches) {
-            const spans = m.lines ?? [];
-            if (spans.length === 0) { rows.push(Matcher.#renderValue(m.matched)); continue; }
-            for (const span of spans) {
-                for (let ln = span.line; ln <= span.endLine; ln++) {
+            const ranges = m.lines ?? [];
+            if (ranges.length === 0) { rows.push(Matcher.#renderValue(m.matched)); continue; }
+            for (const range of ranges) {
+                const lineStart = range.line + offset;
+                const lineEnd = range.endLine + offset;
+                const spanKey = `${lineStart}\0${lineEnd}`;
+                if (!seenSpan.has(spanKey)) { seenSpan.add(spanKey); spans.push({ lineStart, lineEnd }); }
+                for (let ln = range.line; ln <= range.endLine; ln++) {
                     const src = ln + offset;
                     sourceLines.push(src);
                     if (seen.has(src)) continue;
@@ -54,7 +61,7 @@ export default class Matcher {
                 }
             }
         }
-        return { body: rows.join("\n"), lines: sourceLines };
+        return { body: rows.join("\n"), lines: sourceLines, spans };
     }
 
     static async matchAgainstContent(
@@ -64,14 +71,12 @@ export default class Matcher {
         mimetypes: Mimetypes,
         baseLine: number = 1,
     ): Promise<MatchResult> {
-        if (body.dialect === "semantic") {
-            // Semantic similarity (grammar `~query`, top-K via <L>). Service-side, parked.
-            return { status: 501, error: "semantic matcher not yet implemented (similarity — parked, needs its own embedding/vector design)" };
-        }
-        if (body.dialect === "graph") {
-            // @graph is a FIND-only symbol relation (EntryGraph), not a READ content matcher.
-            return { status: 400, error: "@graph is a FIND relation, not a READ content matcher" };
-        }
+        // Invariant (#286): ~semantic and @graph resolve to (file, span) items via FIND
+        // (rankSemantic / EntryGraph) — never the content matcher. A matcher READ fans out through
+        // FIND, and the per-match read carries the span with no body. So matchAgainstContent only
+        // ever sees content dialects; reaching here with a relation dialect is a routing bug, not a
+        // user error — fail hard rather than silently mis-handle.
+        if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
         // Hand the daughter the matcher the GRAMMAR parsed — no second parser (mimetypes#42).
         const parsedMatcher: ParsedBodyMatcher = body.dialect === "regex"
             ? { dialect: "regex", pattern: body.pattern, flags: body.flags }
@@ -92,6 +97,6 @@ export default class Matcher {
         }
         if (matches.length === 0) return { status: 204, matches: 0 };
         const rendered = Matcher.#renderRows(matches, content, baseLine);
-        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines };
+        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans };
     }
 }

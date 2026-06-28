@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import Log from "../../src/schemes/Log.ts";
-import type { Db } from "../../src/core/Db.ts";
+import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -45,12 +45,12 @@ const setup = async () => {
 };
 
 // Read a fanned log row's body by its turn coordinate (log:///1/1/<seq>).
-const rowBody = async (db: Db, runId: number, mimetypes: Mimetypes, seq: number): Promise<{ status: number; content: string | null }> => {
+const rowBody = async (db: Db, runId: number, mimetypes: Mimetypes, seq: number): Promise<{ status: number; content: string | null; startLine?: number | null }> => {
     const r = await new Log().read(readStmt(urlPath("log", `/1/1/${seq}`)), makeSchemeCtx({ db, runId, mimetypes }));
-    return { status: r.status, content: r.content };
+    return { status: r.status, content: r.content, startLine: r.startLine };
 };
 
-test("[§read-multi-file-fanout] a glob READ with a matcher fans out to one row per matching file", async () => {
+test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, each at its (file, span) (#286)", async () => {
     const { db, sessionId, runId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         // france sits on a line of a (line 2) and b (line 1); c never matches.
@@ -64,13 +64,19 @@ test("[§read-multi-file-fanout] a glob READ with a matcher fans out to one row 
         });
 
         assert.equal(r.status, 200);
-        assert.equal(r.rowsWritten, 2, "two files matched → two log rows (c excluded)");
+        assert.equal(r.rowsWritten, 2, "two matches (one per file) → two log rows (c excluded)");
         assert.deepEqual(r.fannedStatuses, [200, 200]);
 
-        // Each fanned row is a real, separately-addressable log item holding that file's lines.
-        const bodies = [await rowBody(db, runId, mimetypes, 1), await rowBody(db, runId, mimetypes, 2)];
-        const contents = bodies.map((b) => b.content).toSorted();
-        assert.deepEqual(contents, ["1:\tfrance beta", "2:\tfrance alpha"], "each row carries its own file's matching line, source-numbered");
+        // Each row stores its match's line RAW at its source startLine (in the rx); packet-wire
+        // numbers it N:\t at render (#286 — no pre-numbering baked into the body). Read the stored
+        // rx directly: Log.read re-resolves the body fresh and wouldn't surface the stored span.
+        const rxOf = async (seq: number): Promise<{ content?: string; startLine?: number | null }> => {
+            const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ run_id: runId, loop_seq: 1, turn_seq: 1, sequence: seq });
+            return JSON.parse(row!.rx) as { content?: string; startLine?: number | null };
+        };
+        const stored = [await rxOf(1), await rxOf(2)];
+        const numbered = stored.map((x) => `${x.startLine}:\t${x.content}`).toSorted();
+        assert.deepEqual(numbered, ["1:\tfrance beta", "2:\tfrance alpha"], "each fanned row stores its match line at its source span — render numbers it");
     } finally { await db.close(); }
 });
 

@@ -1736,9 +1736,10 @@ export default class Engine {
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;
-        } else if (statement.op === "READ" && Engine.#isGlobReadTarget(statement.target)) {
-            // Multi-file READ — fan out to one log row per matched file (its own writeLogs),
-            // returning early. A READ never proposes, so it bypasses the single-row path below.
+        } else if (Engine.#readFansOut(statement)) {
+            // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
+            // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
+            // single-row path below. A bare entry, body-less, falls through to the direct read. #286
             return await this.#handleReadFanout(statement, schemeCtx, { runId, loopId, turnId, sequence, origin, onDispatch });
         } else {
             // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
@@ -2299,20 +2300,27 @@ export default class Engine {
     // + where — matchLines), so we reuse the scheme's own find, then READ each matched file. One
     // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
     // on its own. The running sequence counter in runTurn advances by rowsWritten.
-    static #isGlobReadTarget(target: PlurnkStatement["target"]): boolean {
-        if (target === null) return false;
-        const p = target.kind === "url" ? target.pathname : target.raw;
-        return p.includes("*");
+    // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob
+    // or folder scope, OR a matcher (which selects per-match within whatever the target resolved).
+    // A bare entry, body-less, is the one direct read. #286
+    static #readFansOut(statement: PlurnkStatement): boolean {
+        if (statement.op !== "READ") return false;
+        if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
+        const t = statement.target;
+        const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
+        return p.includes("*") || p.endsWith("/");  // glob/folder scope → fan out its contents
     }
 
-    // Clone a glob READ onto one concrete matched pathname — same body matcher (so the per-file
-    // READ returns the matching LINES), no <L> (a cross-file slice is its own design, deferred).
-    static #retargetRead(statement: PlurnkStatement, pathname: string): PlurnkStatement {
+    // Clone the READ onto one concrete match — the FIND already matched, so the per-match READ
+    // delivers content at the span: strip the body (no re-match) and set <L> to the span. A null
+    // span (body-less folder/glob fan-out) reads the whole entry. #286
+    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null): PlurnkStatement {
         const t = statement.target;
         const target = t !== null && t.kind === "url"
             ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
             : { ...(t as { raw: string }), raw: pathname };
-        return { ...statement, target: target as PlurnkStatement["target"], lineMarker: null };
+        const lineMarker = span !== null ? { marks: [span.lineStart, span.lineEnd] } : null;
+        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
     }
 
     async #handleReadFanout(
@@ -2323,27 +2331,45 @@ export default class Engine {
         const { runId, loopId, turnId, sequence, origin, onDispatch } = ids;
         const schemeName = this.#schemeNameOf(statement.target);
         const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
-        const pathnames = (found.pathnames as string[] | undefined) ?? [];
+        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
         // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
-        if (found.status !== 200 || pathnames.length === 0) {
+        if (found.status !== 200 || matches.length === 0) {
             const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
             const id = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
         }
-        // One READ row per matched file — its matching lines (or full content for a body-less glob).
+        // One READ row per MATCH — the span's source lines (or the whole entry for a body-less
+        // folder/glob). The match span is SOURCE LINES, so deliver via a raw line-slice — NOT the
+        // scheme's <L> (which is item-index for application/json, structural for xml). Read each
+        // distinct entry's content once, then line-slice per match. #286
+        const wholeByPath = new Map<string, DispatchResult>();
         const fannedStatuses: number[] = [];
         let written = 0;
-        for (const pathname of pathnames) {
-            const perFile = Engine.#retargetRead(statement, pathname);
-            const result = await this.#run(schemeName, perFile, ctx);
-            const id = await this.#writeLog({ statement: perFile, result, runId, loopId, turnId, sequence: sequence + written, origin });
+        for (const m of matches) {
+            let whole = wholeByPath.get(m.pathname);
+            if (whole === undefined) {
+                whole = await this.#run(schemeName, Engine.#retargetRead(statement, m.pathname, null), ctx);
+                wholeByPath.set(m.pathname, whole);
+            }
+            const result = Engine.#sliceMatch(whole, m.span);
+            const id = await this.#writeLog({ statement: Engine.#retargetRead(statement, m.pathname, m.span), result, runId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
             written++;
         }
         return { status: 200, rowsWritten: written, fannedStatuses };
+    }
+
+    // Deliver one match: the whole entry (body-less, span null) or the source lines at the span —
+    // a RAW line-slice, so a structural mimetype (json item-index / xml) doesn't mis-slice a span
+    // that is, by construction, source line numbers (#286).
+    static #sliceMatch(whole: DispatchResult, span: { lineStart: number; lineEnd: number } | null): DispatchResult {
+        if (whole.status !== 200 || span === null) return whole;
+        const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
+        if (sliced.status !== 200) return { status: sliced.status, error: sliced.error };
+        return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
     }
 
     // §model-entry — mirror a verbatim model emission back as an actionless `model` log row, so
