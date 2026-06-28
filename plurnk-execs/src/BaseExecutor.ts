@@ -23,11 +23,12 @@ export default abstract class BaseExecutor implements SchemeHandler {
     // --- executor-is-a-scheme face (schemes#20 / service#240) ---------------
     // The executor's output is addressed at `<tag>://<coord>` and READ back. Its
     // scheme manifest is DERIVED from the runtime declaration — no separate
-    // authoring — via schemes' `manifestFromRuntime`. The default READ over that
-    // output (slice/match) is the consumer's: `DefaultRead` is a pure resolver
-    // needing a Mimetypes instance the executor isn't handed, and the consumer
-    // holds the output store. Rich executors (MCP, sqlite) override `read`/`find`
-    // on the SchemeHandler face for custom semantics over their own output.
+    // authoring — via schemes' `manifestFromRuntime`. READ over that output is
+    // uniform and model-pulled: `DefaultRead` (the consumer's — a pure resolver
+    // needing a Mimetypes instance + the output store the executor isn't handed)
+    // serves the slice/match for every tag alike, MCP no exception. `read`/`find`
+    // are optional SchemeHandler hooks no shipped executor overrides; a custom
+    // read is a need a future executor would raise, never a per-runtime carve-out.
     get manifest(): SchemeManifest {
         return OutputScheme.manifestFromRuntime({
             name: this.runtime,
