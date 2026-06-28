@@ -120,6 +120,42 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
     } finally { await db.close(); }
 });
 
+test("[§telemetry-event-level] a drained TelemetryEvent carries level — defaulted when the producer omits it, forwarded verbatim when present (#276)", async () => {
+    // Case A — a provider event WITHOUT level is defaulted (never dropped; grammar 0.74.29 requires it).
+    {
+        const { db, engine, sessionId, runId, loopId } = await setup();
+        try {
+            const provider = noticeProvider(1); // grammar_unenforced, no level
+            await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const notice = (await getPacket(db, t2.turnId)).telemetryErrors.find((e) => e.kind === "grammar_unenforced");
+            assert.equal(notice?.level, "warn", "a level-less producer event is defaulted to warn, never dropped");
+        } finally { await db.close(); }
+    }
+    // Case B — a provider event WITH a level has it forwarded verbatim, not overwritten by the default.
+    {
+        const { db, engine, sessionId, runId, loopId } = await setup();
+        try {
+            const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
+            const real = provider.generate.bind(provider);
+            let did = false;
+            provider.generate = async (req) => {
+                if (did) return real(req);
+                did = true;
+                return {
+                    assistant: { content: NOTICE_CONTENT, reasoning: null, usage: { prompt: 5, completion: 10, reasoning: 0, cached: 0, total: 15 }, finishReason: "stop", model: "mock" },
+                    assistantRaw: { id: "x", filtered: true },
+                    telemetry: [{ source: "provider:mock", kind: "grammar_unenforced", message: "diverged", position: NOTICE_POS, level: "error" }],
+                };
+            };
+            await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const notice = (await getPacket(db, t2.turnId)).telemetryErrors.find((e) => e.kind === "grammar_unenforced");
+            assert.equal(notice?.level, "error", "an explicit producer level is forwarded verbatim");
+        } finally { await db.close(); }
+    }
+});
+
 test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notice appears on exactly one packet, then is gone", async () => {
     // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
     const { db, engine, sessionId, runId, loopId } = await setup();

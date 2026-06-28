@@ -151,7 +151,7 @@ export default class EntryManifest {
             }
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
-                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total });
+                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });
             }
         }
     }

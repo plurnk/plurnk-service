@@ -1,4 +1,4 @@
-import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import EffectPolicy from "./EffectPolicy.ts";
@@ -349,7 +349,10 @@ export default class Exec {
                     entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                 })),
                 emit: (event) => {
-                    ctx.pushTelemetry?.(event);
+                    // The executor daughter's TelemetryEvent predates grammar's required `level`;
+                    // inject a default (forwarding the producer's own severity when it supplies one). #276
+                    const level = (event as { level?: TelemetryEvent["level"] }).level ?? "info";
+                    ctx.pushTelemetry?.({ ...event, level } as TelemetryEvent);
                 },
             });
             // Drain the queue so the subscription doesn't close before

@@ -1,5 +1,5 @@
 import { PlurnkParser, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, FindStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
@@ -465,7 +465,7 @@ export default class Engine {
         };
     }
 
-    #pushTelemetry(sessionId: number, loopId: number, event: object): void {
+    #pushTelemetry(sessionId: number, loopId: number, event: TelemetryEvent): void {
         const existing = this.#telemetryBuffer.get(loopId);
         if (existing === undefined) this.#telemetryBuffer.set(loopId, [event]);
         else existing.push(event);
@@ -971,7 +971,7 @@ export default class Engine {
             // In GBNF-filter mode the provider returns the bytes with a grammar_unenforced telemetry
             // event instead — recovered on the success path below (response.telemetry), no empty turn.
             if (err instanceof ProviderError) {
-                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message });
+                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
                 if (err.kind !== "grammar_unenforced") throw err;
                 response = {
                     assistant: { content: "", reasoning: null, usage: { prompt: requestPacket.tokens, completion: 0, reasoning: 0, cached: 0, total: requestPacket.tokens }, finishReason: null, model: provider.model },
@@ -1020,6 +1020,7 @@ export default class Engine {
                 source: event.source,
                 kind: event.kind,
                 message: event.message ?? "",
+                level: (event as { level?: TelemetryEvent["level"] }).level ?? "warn", // forward the producer's severity; default for a producer predating the field
                 ...(located !== null
                     ? { position: { type: "content-offset", line: located.line, column: located.column } }
                     : {}),
@@ -1058,6 +1059,7 @@ export default class Engine {
                     source: "engine:rail",
                     kind: "premature_terminate",
                     message: "Attempted termination with active streams or child runs. Terminate with 202 to hibernate until they complete, KILL(path) with 200 again to clean up, or 499 to fail.",
+                    level: "warn",
                 });
             }
         }
@@ -1077,6 +1079,7 @@ export default class Engine {
                 source: "engine:rail",
                 kind: "idle_turn",
                 message: "If the turn's work is complete, terminate with 200. If awaiting a stream or run trigger, terminate with 202 to hibernate.",
+                level: "warn",
             });
         }
 
@@ -1147,6 +1150,7 @@ export default class Engine {
                 kind: "max_commands_exceeded",
                 emitted: opsCount,
                 dropped: droppedCount,
+                level: "error",
             });
         }
 
@@ -1491,6 +1495,7 @@ export default class Engine {
             source: "engine:rail",
             kind: "budget_overflow",
             folded: [...folded.entries()].map(([scheme, count]) => ({ scheme, count })),
+            level: "warn",
         });
     }
 
@@ -1539,6 +1544,7 @@ export default class Engine {
             const parsedRx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
             return {
                 kind: "action_failure",
+                level: "error", // the derived error pointer is always an error — clients color off level (#276)
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 op: r.op,
                 target,
