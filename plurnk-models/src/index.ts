@@ -22,13 +22,20 @@ export type ModelInfo = {
     readonly cost?: ModelCost;          // absent when models.dev had no pricing
 };
 
-// plurnk provider name → models.dev provider id. Identity for most; these four
+// plurnk provider name → models.dev provider id. Identity for most; these
 // diverge (verified against api.json). Keep in sync with KEEP in generate.mjs.
+// The Chinese hosts map to the INTERNATIONAL id (USD pricing), matching the
+// standard provider's default intl base; minimax/stepfun/siliconflow/modelscope
+// are identity. volcengine/baichuan/qianfan have no models.dev entry at all.
 const PROVIDER_IDS: Readonly<Record<string, string>> = Object.freeze({
     together: "togetherai",
     fireworks: "fireworks-ai",
     cloudflare: "cloudflare-workers-ai",
     ollama: "ollama-cloud",
+    moonshot: "moonshotai",
+    dashscope: "alibaba",
+    zhipu: "zai",
+    hunyuan: "tencent-tokenhub",
 });
 
 const data = catalog as Record<string, Record<string, ModelInfo>>;

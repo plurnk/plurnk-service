@@ -10,14 +10,24 @@ test("lookup: a known cloud model resolves to context window + pricing", () => {
     assert.equal(typeof info.cost?.outputPer1M, "number");
 });
 
-test("lookup: the four diverging provider names map to their models.dev ids", () => {
-    // together → togetherai, fireworks → fireworks-ai, cloudflare → cloudflare-workers-ai.
-    // Each maps onto a real provider with at least one model; an identity lookup would miss.
+test("lookup: the diverging provider names map to their models.dev ids", () => {
+    // together → togetherai, fireworks → fireworks-ai, cloudflare → cloudflare-workers-ai,
+    // and the Chinese hosts that diverge: moonshot → moonshotai, dashscope → alibaba,
+    // zhipu → zai, hunyuan → tencent-tokenhub. Each maps onto a real provider with at
+    // least one model; an identity lookup would miss.
     const snap = catalogSnapshot();
-    assert.ok("togetherai" in snap && "fireworks-ai" in snap && "cloudflare-workers-ai" in snap);
     const first = (id: string) => Object.keys(snap[id])[0];
-    assert.equal(lookup("together", first("togetherai"))?.contextWindow, snap["togetherai"][first("togetherai")].contextWindow);
-    assert.equal(lookup("fireworks", first("fireworks-ai"))?.contextWindow, snap["fireworks-ai"][first("fireworks-ai")].contextWindow);
+    const mapsThrough = (name: string, id: string) => {
+        assert.ok(id in snap, `${id} missing from snapshot`);
+        assert.equal(lookup(name, first(id))?.contextWindow, snap[id][first(id)].contextWindow, `${name} → ${id}`);
+    };
+    mapsThrough("together", "togetherai");
+    mapsThrough("fireworks", "fireworks-ai");
+    mapsThrough("cloudflare", "cloudflare-workers-ai");
+    mapsThrough("moonshot", "moonshotai");
+    mapsThrough("dashscope", "alibaba");
+    mapsThrough("zhipu", "zai");
+    mapsThrough("hunyuan", "tencent-tokenhub");
 });
 
 test("lookup: an unknown/local model is a miss (null) — the probe owns that case", () => {
@@ -26,8 +36,20 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
 });
 
 test("catalogSnapshot: only plurnk-supported providers are vendored, each non-empty", () => {
+    // The vendored set = the KEEP list in generate.mjs (those models.dev actually
+    // has). Asserted as a subset so a models.dev-side rename surfaces, not a bare count.
+    const ALLOWED = new Set([
+        "openai", "groq", "deepseek", "mistral", "togetherai", "fireworks-ai",
+        "deepinfra", "openrouter", "ollama-cloud", "google", "cloudflare-workers-ai",
+        "xai", "anthropic",
+        "moonshotai", "alibaba", "zai", "tencent-tokenhub", "minimax", "stepfun",
+        "siliconflow", "modelscope",
+    ]);
     const snap = catalogSnapshot();
     const ids = Object.keys(snap);
-    assert.ok(ids.length > 0 && ids.length <= 13);             // pruned to our supported set
-    for (const id of ids) assert.ok(Object.keys(snap[id]).length > 0);
+    assert.ok(ids.length > 0);
+    for (const id of ids) {
+        assert.ok(ALLOWED.has(id), `unexpected vendored provider "${id}"`);
+        assert.ok(Object.keys(snap[id]).length > 0, `"${id}" vendored empty`);
+    }
 });

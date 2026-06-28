@@ -20,6 +20,11 @@ const KEEP = [
     "openai", "groq", "deepseek", "mistral", "togetherai", "fireworks-ai",
     "deepinfra", "openrouter", "ollama-cloud", "google", "cloudflare-workers-ai",
     "xai", "anthropic",
+    // Chinese cloud hosts (international ids → USD pricing). The standard-provider
+    // names that diverge from these ids are mapped in PROVIDER_IDS. volcengine /
+    // baichuan / qianfan have NO models.dev provider, so they carry no fallback.
+    "moonshotai", "alibaba", "zai", "tencent-tokenhub", "minimax", "stepfun",
+    "siliconflow", "modelscope",
 ];
 
 // One models.dev model entry → our pruned ModelInfo, or null if it has no usable
