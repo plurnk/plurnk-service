@@ -902,6 +902,10 @@ export default class Engine {
         // past them so model ops continue after. Two instances of one machine: env-delta (sibling
         // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
         // terminal delta opens). §env-delta §exec-stream
+        // §exec-poll — EXEC `<0>` is turn-scoped: reap the run's open turn-scoped streams (necessarily
+        // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
+        // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
+        await this.#reapTurnScopedStreams(runId);
         nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += await this.#materializeStreamDeltas({ runId, loopId, turnId, fromSequence: nextActionIndex });
 
@@ -1636,6 +1640,19 @@ export default class Engine {
             written++;
         }
         return written;
+    }
+
+    // §exec-poll — EXEC `<0>` is turn-scoped: abort the run's open turn-scoped streams via their
+    // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
+    // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
+    // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
+    // terminal output surfaces born-OPEN through the stream-delta path (§exec-stream).
+    async #reapTurnScopedStreams(runId: number): Promise<void> {
+        const open = await (this.#db.find_open_turn_scoped_subscriptions_for_run as PrepMethod).all<{ id: number; scheme: string }>({ run_id: runId });
+        for (const { id, scheme } of open) {
+            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number) => void } | undefined;
+            handler?.abortSubscription?.(id);
+        }
     }
 
     // §environment-observation — exec streams as an instance of the ambient-observe machine:

@@ -156,9 +156,9 @@ export default class ChannelWrite {
     // (SEND[499] / KILL) routes to the right live subscription. §subscriptions-subscription-registry-routes-cancellation
     static async openSubscription(
         db: Db,
-        { runId, entryId, scheme, handle, pollSeconds }: { runId: number; entryId: number; scheme: string; handle: string; pollSeconds?: number | null },
+        { runId, entryId, scheme, handle, pollSeconds, turnScoped }: { runId: number; entryId: number; scheme: string; handle: string; pollSeconds?: number | null; turnScoped?: boolean },
     ): Promise<number> {
-        const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle, poll_seconds: pollSeconds ?? null });
+        const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme, handle, poll_seconds: pollSeconds ?? null, turn_scoped: turnScoped ? 1 : 0 });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
         return row.id;
     }
@@ -199,5 +199,15 @@ export default class ChannelWrite {
         runId: number,
     ): Promise<Array<{ id: number; scheme: string }>> {
         return ChannelWrite.#openSubsForRunStmt(db).all<{ id: number; scheme: string }>({ run_id: runId });
+    }
+
+    // The run's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the run's next pre-turn so a
+    // `<0>` stream never survives into the subsequent turn (§exec-poll). Any open turn-scoped sub at
+    // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
+    static async findOpenTurnScopedSubscriptionsForRun(
+        db: Db,
+        runId: number,
+    ): Promise<Array<{ id: number; scheme: string }>> {
+        return (db.find_open_turn_scoped_subscriptions_for_run as PrepMethod).all<{ id: number; scheme: string }>({ run_id: runId });
     }
 }

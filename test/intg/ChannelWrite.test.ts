@@ -134,6 +134,26 @@ test("closeSubscription: idempotent — already-closed subscription is a no-op",
     } finally { await db.close(); }
 });
 
+test("[§exec-poll] findOpenTurnScopedSubscriptionsForRun selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
+    const { db, sessionId, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    try {
+        // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
+        // there's one active sub per (run, entry). Only the turn-scoped one is reaped at pre-turn.
+        const scoped = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
+        const e2 = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: "/y" });
+        if (e2 === undefined) throw new Error("seed entry 2 failed");
+        const ordinary = await ChannelWrite.openSubscription(db, { runId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
+
+        const open = await ChannelWrite.findOpenTurnScopedSubscriptionsForRun(db, runId);
+        assert.deepEqual(open.map((s) => s.id), [scoped], "only the <0> sub is turn-scoped — the unbounded one is not reaped at pre-turn");
+        assert.ok(!open.some((s) => s.id === ordinary), "the unbounded sub is excluded");
+
+        // Once closed (reaped), it drops out — the pre-turn reap is one-shot, never a double-abort.
+        await ChannelWrite.closeSubscription(db, { subscriptionId: scoped, status: 499 });
+        assert.equal((await ChannelWrite.findOpenTurnScopedSubscriptionsForRun(db, runId)).length, 0, "a closed turn-scoped sub is no longer selected");
+    } finally { await db.close(); }
+});
+
 test("findActiveSubscription: returns active sub for (run, entry)", async () => {
     const { db, runId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {

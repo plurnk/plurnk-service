@@ -878,10 +878,13 @@ export default class Daemon {
         const row = await (this.#db.drain_run_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ run_id: runId });
         const pollSec = row?.poll_seconds ?? null;
         if (pollSec === null || pollSec <= 0) return; // no polled stream → the 202 just sleeps (woken only by conclusion)
+        // Floored by the post-EXEC breath (PLURNK_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
+        // faster than a turn settles — §exec-poll.
+        const execWaitMs = Number(process.env.PLURNK_EXEC_WAIT_MS ?? "0");
         const timer = setTimeout(() => {
             this.#pollTimers.delete(runId);
             void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt);
-        }, pollSec * 1000);
+        }, Math.max(pollSec * 1000, execWaitMs));
         timer.unref();
         this.#pollTimers.set(runId, timer);
     }

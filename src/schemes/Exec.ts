@@ -27,8 +27,9 @@ interface ExecAttrs {
     pathname: string;       // stamped by Engine.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
-    timeoutSec?: number;    // grammar 0.74.20 — `<T,P>` mark[0]: kill the spawn after T seconds (504). Absent/≤0 = unbounded.
-    pollSec?: number;       // grammar 0.74.20 — `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
+    timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
+    turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the run's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
+    pollSec?: number;       // `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -180,15 +181,19 @@ export default class Exec {
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.
-        // grammar 0.74.20 — EXEC repurposes the `<L>` slot as `<timeout, poll>` (seconds): mark[0]
-        // caps the spawn's lifetime, mark[1] sets the hibernation poll-wake cadence (§exec-poll).
+        // EXEC repurposes the `<L>` slot as `<timeout, poll>` (seconds): mark[0] caps the spawn's
+        // lifetime, mark[1] sets the hibernation poll-wake cadence (§exec-poll). N>0 → deadline (504);
+        // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
+        // never surviving into the subsequent turn).
         const marks = statement.lineMarker?.marks;
         const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) : undefined;
+        const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
         const pollSec = typeof marks?.[1] === "number" && marks[1] > 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
             runtime, cwd, command, pathname: "", inline: policy === "auto",
             ...(schemeTarget !== null ? { schemeTarget } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
+            ...(turnScoped ? { turnScoped: true } : {}),
             ...(pollSec !== undefined ? { pollSec } : {}),
         };
         // Body shown to client during proposal review — `$ command` is the
@@ -260,6 +265,7 @@ export default class Exec {
             runId: ctx.runId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // §exec-poll — hibernation wake cadence
+            turnScoped: attrs.turnScoped === true, // §exec-poll — `<0>` reaped at the next pre-turn
         });
 
         const controller = new AbortController();

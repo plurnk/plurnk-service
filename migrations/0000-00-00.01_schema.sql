@@ -430,6 +430,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
     -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream (§exec-poll).
     poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds > 0),
+    -- EXEC `<0>` — turn-scoped: the stream is reaped at the run's next pre-turn so it never survives
+    -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. §exec-poll
+    turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
     CHECK ((closed_at IS NULL AND close_status IS NULL)

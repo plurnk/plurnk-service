@@ -32,8 +32,10 @@ SET content = $content, tokens = $tokens
 WHERE entry_id = $entry_id AND name = $channel;
 
 -- PREP: open_subscription
-INSERT INTO subscriptions (run_id, entry_id, scheme, handle, poll_seconds)
-VALUES ($run_id, $entry_id, $scheme, $handle, $poll_seconds)
+-- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
+-- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
+INSERT INTO subscriptions (run_id, entry_id, scheme, handle, poll_seconds, turn_scoped)
+VALUES ($run_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0))
 RETURNING id;
 
 -- PREP: close_subscription
@@ -54,6 +56,14 @@ WHERE run_id = $run_id AND entry_id = $entry_id AND closed_at IS NULL;
 SELECT id, scheme
 FROM subscriptions
 WHERE run_id = $run_id AND closed_at IS NULL;
+
+-- PREP: find_open_turn_scoped_subscriptions_for_run
+-- The run's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the run's next pre-turn so a
+-- `<0>` stream never survives into the subsequent turn; its terminal output surfaces born-OPEN
+-- through the same conclusion-delta path as any close (§exec-poll, §exec-stream).
+SELECT id, scheme
+FROM subscriptions
+WHERE run_id = $run_id AND closed_at IS NULL AND turn_scoped = 1;
 
 -- PREP: find_exec_close_status
 -- Terminal outcome of a finished exec stream, addressed by its coordinate
