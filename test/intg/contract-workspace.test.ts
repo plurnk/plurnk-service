@@ -451,6 +451,28 @@ test("a `repo` declared OUTSIDE the project root manifests at a relative (..) ad
     } finally { await rm(external, { recursive: true, force: true }); await db.close(); }
 });
 
+test("[§membership-overlay-repo] a `repo *` glob declares every immediate child repo, skipping non-git dirs", async () => {
+    const db = await openMigrated();
+    try {
+        const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
+        try {
+            // A plain (non-git) sibling the `*` glob also matches — #repoToplevel must drop it.
+            await mkdir(join(parent, "notrepo"), { recursive: true });
+            await writeFile(join(parent, "notrepo", "loose.md"), "# not a repo\n");
+
+            await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: "*" });
+            await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
+
+            const a = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/alpha/a.md" });
+            const b = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/beta/b.md" });
+            const loose = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: "/notrepo/loose.md" });
+            assert.notEqual(a, undefined, "`repo *` expands to the first immediate child repo");
+            assert.notEqual(b, undefined, "`repo *` expands to the second immediate child repo — every child unioned from one glob");
+            assert.equal(loose, undefined, "a non-git child the glob matched is skipped — #repoToplevel drops it");
+        } finally { await rm(parent, { recursive: true, force: true }); }
+    } finally { await db.close(); }
+});
+
 test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;
