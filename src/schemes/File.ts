@@ -63,11 +63,10 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // and edit()/applyResolution()'s proposal-gated write-OUT (§membership), where the
 // containment/traversal checks live.
 //
-// writeEntry() is deliberately ABSENT: a COPY/MOVE *into* file:/// is a disk write
-// and MUST flow through the §membership proposal gate (like EDIT), not an ungated
-// overwrite — the `.env`-wipe this guard prevents. So COPY/MOVE *from* file:///
-// works (readEntry); *into* file:/// stays 501 until the proposal-gated write-back
-// lands. The 501 is duck-typed on writeEntry's absence (Engine.#copyOrchestration).
+// writeEntry() is the proposal-gated write-back: a COPY/MOVE *into* file:/// is a disk
+// write, so it flows through the SAME §membership gate as EDIT (#resolveWriteTarget) — a
+// 202 proposal, then applyResolution() writes on accept — never an ungated overwrite (the
+// `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// is readEntry (read-only).
 export default class File {
     static manifest: SchemeManifest = {
         name: "file",
