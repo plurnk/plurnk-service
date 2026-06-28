@@ -56,14 +56,14 @@
     "dependencies": {
         "@plurnk/plurnk-execs": "0.4.19",
         "@plurnk/plurnk-execs-all": "0.1.10",
-        "@plurnk/plurnk-grammar": "0.74.21",
+        "@plurnk/plurnk-grammar": "0.74.28",
         "@plurnk/plurnk-mimetypes": "0.15.36",
         "@plurnk/plurnk-mimetypes-all": "0.5.4",
         "@plurnk/plurnk-mimetypes-text-html": "0.6.6",
         "@plurnk/plurnk-providers": "0.19.0",
         "@plurnk/plurnk-providers-all": "0.10.0",
-        "@plurnk/plurnk-schemes": "0.31.2",
-        "@plurnk/plurnk-schemes-all": "0.2.17",
+        "@plurnk/plurnk-schemes": "0.31.4",
+        "@plurnk/plurnk-schemes-all": "0.2.19",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
