@@ -1,8 +1,8 @@
 // #231 — a session's client-chosen open-context: the per-session overrides a client
 // user legitimately sets at session.create, read at turn-0 with precedence over env.
 // Two knobs with deliberately different compose semantics:
-//   - manifestItems: REPLACE — a single scalar; the client value wins outright over
-//     PLURNK_MANIFEST_ITEMS (normalization — 0=off / -1=full / N=first-N — stays in Engine).
+//   - filesItems: REPLACE — a single scalar; the client value wins outright over
+//     PLURNK_FILES_ITEMS (normalization — 0=off / -1=full / N=first-N — stays in Engine).
 //   - mdDocs: UNION — the server env docs (PLURNK_MD_*) and the client's docs ride
 //     together; the systemwide policy doc survives unless the client shadows its alias.
 // Storage is a JSON bag on sessions.settings (the env mdDocs live in process.env, never
@@ -14,7 +14,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 
 export type ClientMdDoc = { alias: string; content: string };
 export type SessionOpenContext = {
-    manifestItems: number | null; // default-semantics — REPLACE env; null = unset (#231)
+    filesItems: number | null; // default-semantics — REPLACE env; null = unset (#231)
     mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_MD_* (#231)
     maxCommands: number | null;   // ceiling — min() with env PLURNK_MAX_COMMANDS; null = unset (#232)
     git: boolean | null;          // ceiling — env AND session; false denies git; null = unset (#232)
@@ -26,15 +26,15 @@ export default class SessionSettings {
     // bag never reaches here — session.create validates before persisting.
     static async read(db: Db, sessionId: number): Promise<SessionOpenContext> {
         const row = await (db.session_get_settings as PrepMethod).get<{ settings: string }>({ session_id: sessionId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown }) : {};
-        const manifestItems = typeof bag.manifestItems === "number" ? bag.manifestItems : null;
+        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown }) : {};
+        const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
         const client = typeof bag.client === "string" ? bag.client : null;
         const mdDocs = Array.isArray(bag.mdDocs)
             ? bag.mdDocs.filter((d): d is ClientMdDoc => typeof (d as ClientMdDoc)?.alias === "string" && typeof (d as ClientMdDoc)?.content === "string")
             : [];
-        return { manifestItems, mdDocs, maxCommands, git, client };
+        return { filesItems, mdDocs, maxCommands, git, client };
     }
 
     // The turn-0 reference-doc set: server env docs (PLURNK_MD_*, read from disk) UNION the

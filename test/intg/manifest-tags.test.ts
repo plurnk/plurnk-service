@@ -19,7 +19,7 @@ const taggedEdit = (target: UrlPath, body: string, tags: string[]): EditStatemen
     op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-test("[§packet-manifest-catalog] the manifest catalog surfaces each entry's tags (note 13)", async () => {
+test("[§packet-catalog] the manifest catalog surfaces each entry's tags (note 13)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `mtags-${crypto.randomUUID()}`);

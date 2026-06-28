@@ -21,8 +21,8 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
 
 test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
-    process.env.PLURNK_MANIFEST_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
+    const prev = process.env.PLURNK_FILES_ITEMS;
+    process.env.PLURNK_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `pkt-backbone-${crypto.randomUUID()}`);
@@ -53,13 +53,13 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally {
         await db.close();
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 
 test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces materialized docs into the log", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
-    process.env.PLURNK_MANIFEST_ITEMS = "-1";
+    const prev = process.env.PLURNK_FILES_ITEMS;
+    process.env.PLURNK_FILES_ITEMS = "-1";
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `pkt-docs-${crypto.randomUUID()}`);
@@ -78,7 +78,7 @@ test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces mater
         assert.match(log, /plurnk:\/\/docs\/known\.md/, "the materialized doc surfaces in the foist's rendered result");
     } finally {
         await db.close();
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 

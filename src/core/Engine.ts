@@ -76,13 +76,13 @@ const readMaxCommands = (): number => {
     return n;
 };
 
-// PLURNK_MANIFEST_ITEMS — the turn-0 manifest preview. null = off (no foist);
+// PLURNK_FILES_ITEMS — the turn-0 manifest preview. null = off (no foist);
 // -1 = the full manifest; positive N = the first N items. 0 / unset = off.
-const normalizeManifestItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
-const readManifestItems = (): number | null => {
-    const raw = process.env.PLURNK_MANIFEST_ITEMS;
+const normalizeFilesItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
+const readFilesItems = (): number | null => {
+    const raw = process.env.PLURNK_FILES_ITEMS;
     if (raw === undefined || raw.length === 0) return null;
-    return normalizeManifestItems(Number.parseInt(raw, 10));
+    return normalizeFilesItems(Number.parseInt(raw, 10));
 };
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -795,16 +795,16 @@ export default class Engine {
 
         await EntryManifest.maintainDerivations(systemCtx);
 
-        // Turn-0 catalog preview (PLURNK_MANIFEST_ITEMS, §actor-boundary-manifest-preview):
+        // Turn-0 catalog preview (PLURNK_FILES_ITEMS, §actor-boundary-manifest-preview):
         // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
         // model turn so it opens with its catalog (the per-scheme arrays that replaced the
         // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
         // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
         if (seq === 1) {
-            // #231 — a session's client-chosen manifestItems REPLACES the env default outright.
-            const { manifestItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
-            const manifestItems = sessionMI !== null ? normalizeManifestItems(sessionMI) : readManifestItems();
-            if (manifestItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
+            // #231 — a session's client-chosen filesItems REPLACES the env default outright.
+            const { filesItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
+            const filesItems = sessionMI !== null ? normalizeFilesItems(sessionMI) : readFilesItems();
+            if (filesItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
                 // engine_scheme_catalog_summary is the scheme source: session-scoped, ordered,
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
@@ -823,9 +823,12 @@ export default class Engine {
                     // documenting surface. The prompt is shown in # Prompt, so the plurnk catalog
                     // the model orients on IS the docs; doc links are no longer rendered inline (#270).
                     const isPlurnk = schemeName === "plurnk";
-                    // entries===0 (an always-foisted empty known/unknown) → uncapped: nothing to
-                    // clamp, and Math.min(items, 0)=0 would emit a degenerate <1,0> marker.
-                    const cap = isPlurnk || manifestItems < 0 || entries === 0 ? null : Math.min(manifestItems, entries);
+                    // Only the FILE list is cappable (PLURNK_FILES_ITEMS first-N): the tracked-file
+                    // tree is external and arbitrarily large. Every other scheme — known/unknown
+                    // (memory), run (scratch), plurnk (docs) — foists FULL, never truncated: a partial
+                    // view of the model's own memory reads as withheld. file at -1, or any non-file
+                    // scheme → no cap. (file in this loop always has entries>0, so no degenerate <1,0>.)
+                    const cap = schemeName === "file" && filesItems > 0 ? Math.min(filesItems, entries) : null;
                     const catalogFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
                         target: {

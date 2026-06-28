@@ -57,17 +57,17 @@ test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by
     }
 });
 
-// Note 293 (b): PLURNK_MD inclusions are NOT gated by the manifest-preview switch.
-// With PLURNK_MANIFEST_ITEMS=0 (preview off) the operator doc is STILL foisted into
+// Note 293 (b): PLURNK_MD inclusions are NOT gated by the catalog-preview (PLURNK_FILES_ITEMS) switch.
+// With PLURNK_FILES_ITEMS=0 (preview off) the operator doc is STILL foisted into
 // turn 0 — it overrides/bypasses the cap rather than riding it.
-test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
+test("PLURNK_MD docs foist at turn 0 even when PLURNK_FILES_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-0-"));
     const docPath = join(dir, "policy.md");
     await writeFile(docPath, "# Policy\nObey.\n", "utf8");
     const prevMd = process.env.PLURNK_MD_POLICY;
-    const prevItems = process.env.PLURNK_MANIFEST_ITEMS;
+    const prevItems = process.env.PLURNK_FILES_ITEMS;
     process.env.PLURNK_MD_POLICY = docPath;
-    process.env.PLURNK_MANIFEST_ITEMS = "0"; // manifest preview OFF
+    process.env.PLURNK_FILES_ITEMS = "0"; // catalog preview OFF
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -84,7 +84,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_MANIFEST_ITEMS=0 — the p
         });
     } finally {
         if (prevMd === undefined) delete process.env.PLURNK_MD_POLICY; else process.env.PLURNK_MD_POLICY = prevMd;
-        if (prevItems === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prevItems;
+        if (prevItems === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prevItems;
         await rm(dir, { recursive: true, force: true });
     }
 });

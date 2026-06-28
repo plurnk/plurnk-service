@@ -1,7 +1,7 @@
-// PLURNK_MANIFEST_ITEMS — turn-0 catalog preview foist (§actor-boundary). When set, a
-// plurnk-origin FIND(scheme:///**) is foisted into the model's turn 0 for each scheme that
-// holds entries (capped to the first N rows per scheme for positive N, full for -1); off by
-// default. The catalog is FIND-served — there is no manifest.json entry to READ.
+// PLURNK_FILES_ITEMS — turn-0 catalog preview foist (§actor-boundary). A plurnk-origin
+// FIND(scheme:///**) is foisted into the model's turn 0 per scheme: memory/scratch/docs always
+// FULL, the first-N cap applies ONLY to the file list (-1 = all full, N = file list first-N with
+// memory full, 0/unset = off). The catalog is FIND-served (no manifest.json entry).
 //
 // NOTE: sets a process-global env var. node --test isolates each file in its own
 // process, so this doesn't leak across files; the on/off cases run sequentially.
@@ -12,14 +12,15 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string; status_rx: number };
+type LogRow = { op: string; pathname: string; scheme: string; status_rx: number; rx: string };
 const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
-test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N manifest READ at turn 0 (none when unset)", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+test("[§actor-boundary-catalog-preview] PLURNK_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
+    const prev = process.env.PLURNK_FILES_ITEMS;
     try {
-        // ON: =2 → a manifest READ is foisted into turn 0, hitting the just-built catalog (200).
-        process.env.PLURNK_MANIFEST_ITEMS = "2";
+        // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
+        // model's memory (known) foists FULL — all 3 entries, never truncated to the first 2 (#286).
+        process.env.PLURNK_FILES_ITEMS = "2";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -33,11 +34,14 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
                 const cf = rows.find((r) => r.op === "FIND" && r.scheme === "known");
                 assert.ok(cf !== undefined, "turn 0 foists a FIND(known:///**) catalog preview when set");
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
+                const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
+                const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
+                assert.equal(items.length, 3, "memory (known) foists FULL even at PLURNK_FILES_ITEMS=2 — the files cap never truncates the model's own memory");
             } finally { ws.close(); }
         });
 
         // OFF: unset → no manifest READ at turn 0.
-        delete process.env.PLURNK_MANIFEST_ITEMS;
+        delete process.env.PLURNK_FILES_ITEMS;
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -49,7 +53,7 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 
@@ -57,8 +61,8 @@ test("[§actor-boundary-manifest-preview] PLURNK_MANIFEST_ITEMS foists a first-N
 // off, the run opens with no foisted catalog; the model FINDs each scheme on demand (the
 // "always a single directory to READ" invariant retired with the manifest.json entry).
 test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
-    process.env.PLURNK_MANIFEST_ITEMS = "0"; // preview OFF
+    const prev = process.env.PLURNK_FILES_ITEMS;
+    process.env.PLURNK_FILES_ITEMS = "0"; // preview OFF
     try {
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -74,42 +78,42 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 
-// #231 — a session's client-chosen manifestItems REPLACES the env default outright,
+// #231 — a session's client-chosen filesItems REPLACES the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("[§operator-config-session-manifest-items] session.create settings.manifestItems replaces the env default at turn 0", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+test("[§operator-config-session-files-items] session.create settings.filesItems replaces the env default at turn 0", async () => {
+    const prev = process.env.PLURNK_FILES_ITEMS;
     try {
         // env ON (full) but the client's session asks for OFF (0) → no preview foisted.
-        process.env.PLURNK_MANIFEST_ITEMS = "-1";
+        process.env.PLURNK_FILES_ITEMS = "-1";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mi-off", settings: { manifestItems: 0 } });
+                await rpcCall(ws, 1, "session.create", { name: "mi-off", settings: { filesItems: 0 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "session manifestItems:0 replaces env -1 — no catalog FIND foisted");
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "session filesItems:0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
         // env OFF (0) but the client's session asks for ON (-1) → preview appears.
-        process.env.PLURNK_MANIFEST_ITEMS = "0";
+        process.env.PLURNK_FILES_ITEMS = "0";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mi-on", settings: { manifestItems: -1 } });
+                await rpcCall(ws, 1, "session.create", { name: "mi-on", settings: { filesItems: -1 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "FIND");
-                assert.ok(cf !== undefined && cf.status_rx === 200, "session manifestItems:-1 replaces env 0 — catalog FIND foisted");
+                assert.ok(cf !== undefined && cf.status_rx === 200, "session filesItems:-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 
@@ -118,9 +122,9 @@ test("session.create rejects malformed settings — fail hard, no silent accept 
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMI = await rpcCall(ws, 1, "session.create", { name: "bad-mi", settings: { manifestItems: 1.5 } });
-            assert.ok(badMI.error, "a non-integer manifestItems is a JSON-RPC error, not a silent accept");
-            assert.match(badMI.error!.message, /manifestItems must be an integer/);
+            const badMI = await rpcCall(ws, 1, "session.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
+            assert.ok(badMI.error, "a non-integer filesItems is a JSON-RPC error, not a silent accept");
+            assert.match(badMI.error!.message, /filesItems must be an integer/);
             const badAlias = await rpcCall(ws, 2, "session.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "has/slash", content: "x" }] } });
             assert.ok(badAlias.error, "a malformed mdDocs alias is a JSON-RPC error");
             assert.match(badAlias.error!.message, /alias must be/);
@@ -133,8 +137,8 @@ test("session.create rejects malformed settings — fail hard, no silent accept 
 // each loop spammed the log + burned tokens. Two loops in one run: the manifest READ is in loop 1's
 // log, absent from loop 2's.
 test("[#269] turn-0 run-once foists fire on the run's first loop only, not every loop", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
-    process.env.PLURNK_MANIFEST_ITEMS = "-1"; // preview ON
+    const prev = process.env.PLURNK_FILES_ITEMS;
+    process.env.PLURNK_FILES_ITEMS = "-1"; // preview ON
     try {
         const twoLoops = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50), makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
@@ -153,14 +157,14 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });
 
 test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
-    const prev = process.env.PLURNK_MANIFEST_ITEMS;
+    const prev = process.env.PLURNK_FILES_ITEMS;
     try {
-        process.env.PLURNK_MANIFEST_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
+        process.env.PLURNK_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -180,6 +184,6 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MANIFEST_ITEMS; else process.env.PLURNK_MANIFEST_ITEMS = prev;
+        if (prev === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prev;
     }
 });

@@ -30,7 +30,7 @@ export default class SessionCreateMethod {
                 // RPC race). Same effects/semantics as session.constrain.
                 const constraints = SessionCreateMethod.#parseConstraints(p.constraints);
                 // #231 — client-chosen open-context, persisted on the session and read at
-                // turn-0 with precedence over env (manifestItems replaces, mdDocs unions).
+                // turn-0 with precedence over env (filesItems replaces, mdDocs unions).
                 const settings = SessionCreateMethod.#parseSettings(p.settings);
                 const envelope = await Envelope.createClientEnvelope(ctx.db, { name: p.name, projectRoot, settings });
                 if (constraints.length > 0) {
@@ -56,7 +56,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, addressed relative to the project root: clean under it, `..`-prefixed outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
-                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { manifestItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_MANIFEST_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers) }",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers) }",
             },
         });
 
@@ -85,20 +85,20 @@ export default class SessionCreateMethod {
         });
     }
 
-    // #231 — validate + serialize the client open-context bag. manifestItems is a scalar
+    // #231 — validate + serialize the client open-context bag. filesItems is a scalar
     // (replace); mdDocs is [{alias, content}] (union'd with env at turn-0). Alias is a clean
     // entry-name fragment ([\w.-]) since it becomes plurnk:///<alias>.md. Returns JSON ('{}'
     // when absent). Operator-arcane knobs stay env-only by omission — this is the client surface.
     static #parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
         if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
-        const r = raw as { manifestItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown };
-        const out: { manifestItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string } = {};
-        if (r.manifestItems !== undefined) {
-            if (typeof r.manifestItems !== "number" || !Number.isInteger(r.manifestItems)) {
-                throw new Error("session.create: settings.manifestItems must be an integer (-1 full | 0 off | N first-N)");
+        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown };
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string } = {};
+        if (r.filesItems !== undefined) {
+            if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems)) {
+                throw new Error("session.create: settings.filesItems must be an integer (-1 full | 0 off | N first-N)");
             }
-            out.manifestItems = r.manifestItems;
+            out.filesItems = r.filesItems;
         }
         // #232 — tighten-only ceilings: a client may narrow, never widen (composed
         // most-restrictive-wins at each read-site). maxCommands min()s the env ceiling;
