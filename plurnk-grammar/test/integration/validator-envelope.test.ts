@@ -176,6 +176,7 @@ test("Validator: TelemetryEvent accepts grammar parse_error with content-offset 
     const ev = {
         source: "grammar",
         kind: "parse_error:lexer",
+        level: "error",
         message: "unexpected `<<` in target",
         position: { type: "content-offset", line: 3, column: 12 },
     };
@@ -187,6 +188,7 @@ test("Validator: TelemetryEvent accepts engine:rail strike with kind-specific fi
     const ev = {
         source: "engine:rail",
         kind: "strike",
+        level: "warn",
         streak: 2,
         maxStrikes: 3,
         reason: "no_ops",
@@ -199,6 +201,7 @@ test("Validator: TelemetryEvent accepts scheme:wiki dispatch_failure with log-co
     const ev = {
         source: "scheme:wiki",
         kind: "dispatch_failure",
+        level: "error",
         message: "no such entry",
         position: { type: "log-coordinate", coordinate: "log://1/2/3", op: "READ" },
     };
@@ -207,25 +210,37 @@ test("Validator: TelemetryEvent accepts scheme:wiki dispatch_failure with log-co
 });
 
 test("Validator: TelemetryEvent accepts engine:rail sudden_death with no message", () => {
-    const ev = { source: "engine:rail", kind: "sudden_death" };
+    const ev = { source: "engine:rail", kind: "sudden_death", level: "error" };
     const { valid, errors } = Validator.validateTelemetryEvent(ev);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
 test("Validator: TelemetryEvent rejects missing source", () => {
-    const ev: any = { kind: "parse_error" };
+    const ev: any = { kind: "parse_error", level: "error" };
     const { valid } = Validator.validateTelemetryEvent(ev);
     assert.equal(valid, false);
 });
 
 test("Validator: TelemetryEvent rejects missing kind", () => {
-    const ev: any = { source: "grammar" };
+    const ev: any = { source: "grammar", level: "error" };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: TelemetryEvent rejects missing level", () => {
+    const ev: any = { source: "grammar", kind: "parse_error" };
+    const { valid } = Validator.validateTelemetryEvent(ev);
+    assert.equal(valid, false);
+});
+
+test("Validator: TelemetryEvent rejects level outside the error|warn|info enum", () => {
+    const ev = { source: "grammar", kind: "parse_error", level: "debug" };
     const { valid } = Validator.validateTelemetryEvent(ev);
     assert.equal(valid, false);
 });
 
 test("Validator: TelemetryEvent rejects malformed source pattern", () => {
-    const ev = { source: "Grammar:Bad", kind: "x" };
+    const ev = { source: "Grammar:Bad", kind: "x", level: "error" };
     const { valid } = Validator.validateTelemetryEvent(ev);
     assert.equal(valid, false);
 });
@@ -234,6 +249,7 @@ test("Validator: TelemetryEvent rejects unknown position type", () => {
     const ev = {
         source: "grammar",
         kind: "parse_error",
+        level: "error",
         position: { type: "byte-offset", offset: 42 },
     };
     const { valid } = Validator.validateTelemetryEvent(ev);

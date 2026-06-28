@@ -28,6 +28,7 @@ export default class PlurnkParseError extends Error {
         return {
             source: "grammar",
             kind: `parse_error:${this.source}`,
+            level: "error",
             message: this.message,
             position: {
                 type: "content-offset",

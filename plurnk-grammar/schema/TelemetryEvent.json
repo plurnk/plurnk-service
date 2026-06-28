@@ -2,9 +2,9 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/TelemetryEvent.json",
     "title": "TelemetryEvent",
-    "description": "Cross-ecosystem error/telemetry event envelope. Producers (grammar, schemes, engine rails, providers) emit events into `packet.user.telemetry.events[]`; consumers route on `source` + `kind`. Open at the kind-specific field layer — additionalProperties:true lets producers extend without coordinating schema changes. Strict-kind validation lives producer-side; the discriminator (`source` + `kind`) is what consumers actually dispatch on.",
+    "description": "Cross-ecosystem error/telemetry event envelope. Producers (grammar, schemes, engine rails, providers) emit events into `packet.user.telemetry.events[]`; consumers route on `source` + `kind` and color on `level`. Open at the kind-specific field layer — additionalProperties:true lets producers extend without coordinating schema changes. Strict-kind validation lives producer-side; the discriminator (`source` + `kind`) is what consumers actually dispatch on.",
     "type": "object",
-    "required": ["source", "kind"],
+    "required": ["source", "kind", "level"],
     "additionalProperties": true,
     "properties": {
         "source": {
@@ -16,6 +16,10 @@
             "type": "string",
             "minLength": 1,
             "description": "Discriminator within a source. Open vocabulary — each producer mints kinds as needed. Examples: `parse_error` (grammar), `strike`/`cycle`/`sudden_death`/`no_ops`/`max_commands_exceeded` (engine:rail), `dispatch_failure` (scheme:*), `rate_limit` (provider:*)."
+        },
+        "level": {
+            "enum": ["error", "warn", "info"],
+            "description": "Severity, set by the producer at the emit site — it knows whether it is raising an error, a warning, or a note. Required: severity is meaning the producer owns, not something consumers re-derive by pattern-matching the open `kind` vocabulary. Consumers color and route straight off `level`."
         },
         "message": {
             "type": ["string", "null"],
