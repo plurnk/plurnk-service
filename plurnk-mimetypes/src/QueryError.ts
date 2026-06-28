@@ -1,17 +1,5 @@
-import type { TelemetryEvent } from "./TelemetryEvent.ts";
+import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type { QueryDialect } from "./types.ts";
-
-// Build a `mimetype:<type>` source token for TelemetryEvent envelopes.
-// Plurnk-grammar's TelemetryEvent.source uses colon-namespaced producers for
-// parameterized subsystems (`scheme:wiki`, `provider:openai`); mimetype
-// errors slot into the same convention. plurnk-grammar's pattern is
-// `^[a-z]+(:[a-z][a-z0-9-]*)?$` which doesn't admit the `/` in real
-// mimetype identifiers — we substitute `_` so e.g. `application/json` →
-// `mimetype:application_json`. The original mimetype stays available on
-// the error instance for richer rendering when consumers want it.
-function mimetypeSource(mimetype: string): string {
-    return `mimetype:${mimetype.replace(/[^a-z0-9-]/gi, "_").toLowerCase()}`;
-}
 
 // Thrown when a handler doesn't support a dialect for its mimetype. Consumer
 // (plurnk-service) maps to HTTP 415 (Unsupported Media Type).
@@ -36,6 +24,7 @@ export class UnsupportedDialectError extends Error {
         return {
             source: mimetypeSource(this.mimetype),
             kind: "unsupported_dialect",
+            level: "error",
             message: this.message,
             position: null,
             dialect: this.dialect,
@@ -73,6 +62,7 @@ export class InvalidExpressionError extends Error {
         return {
             source: this.mimetype ? mimetypeSource(this.mimetype) : "mimetype",
             kind: "invalid_expression",
+            level: "error",
             message: this.message,
             position: null,
             dialect: this.dialect,
@@ -98,6 +88,7 @@ export class QueryParseFailureError extends Error {
         return {
             source: mimetypeSource(this.mimetype),
             kind: "query_parse_failure",
+            level: "error",
             message: this.message,
             position: null,
             mimetype: this.mimetype,

@@ -599,3 +599,32 @@ describe("Mimetypes — query", () => {
         );
     });
 });
+
+describe("Mimetypes — degradation telemetry (plurnk-service#276)", () => {
+    it("embeddingMissing surfaces a warn-level event on an ok:true result", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async (pkg: string) => {
+                if (pkg === "@plurnk/plurnk-mimetypes-embeddings") throw new Error("MODULE_NOT_FOUND");
+                return { default: FakePlainHandler };
+            },
+        });
+        const r = await m.process({ path: "foo.txt", content: "hello" }, { channels: ["embedding"] });
+        assert.equal(r.ok, true);
+        assert.equal(r.embeddingMissing, "@plurnk/plurnk-mimetypes-embeddings");
+        const ev = (r.telemetry ?? []).find((e) => e.kind === "embedding_degraded");
+        assert.ok(ev, "expected an embedding_degraded event");
+        assert.equal(ev?.level, "warn");
+        assert.equal(ev?.source, "mimetype:text_plain");
+        assert.equal(ev?.plurnkPackage, "@plurnk/plurnk-mimetypes-embeddings");
+    });
+
+    it("a fully-satisfied result carries no telemetry field", async () => {
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: FakePlainHandler }),
+        });
+        const r = await m.process({ path: "foo.txt", content: "hello" });
+        assert.equal(r.telemetry, undefined);
+    });
+});

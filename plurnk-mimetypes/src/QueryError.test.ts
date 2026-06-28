@@ -5,6 +5,8 @@ import {
     QueryParseFailureError,
     UnsupportedDialectError,
 } from "./QueryError.ts";
+import { GrammarNotInstalledError } from "./treesitter/handler.ts";
+import type { TreeSitterLanguageEntry } from "./treesitter/registry.ts";
 
 describe("UnsupportedDialectError", () => {
     it("carries mimetype, dialect, and reason on the instance", () => {
@@ -29,6 +31,7 @@ describe("UnsupportedDialectError", () => {
         const ev = err.toTelemetryEvent();
         assert.equal(ev.source, "mimetype:application_json");
         assert.equal(ev.kind, "unsupported_dialect");
+        assert.equal(ev.level, "error");
         assert.equal(ev.dialect, "xpath");
         assert.equal(ev.mimetype, "application/json");
         assert.equal(ev.reason, "no DOM projection for this mimetype");
@@ -78,6 +81,7 @@ describe("InvalidExpressionError", () => {
         const ev = err.toTelemetryEvent();
         assert.equal(ev.source, "mimetype:application_json");
         assert.equal(ev.kind, "invalid_expression");
+        assert.equal(ev.level, "error");
         assert.equal(ev.dialect, "jsonpath");
         assert.equal(ev.expression, "$[?(");
         assert.equal(ev.position, null);
@@ -116,15 +120,35 @@ describe("QueryParseFailureError", () => {
         const ev = err.toTelemetryEvent();
         assert.equal(ev.source, "mimetype:application_yaml");
         assert.equal(ev.kind, "query_parse_failure");
+        assert.equal(ev.level, "error");
         assert.equal(ev.mimetype, "application/yaml");
         assert.equal(ev.position, null);
     });
 });
 
+describe("GrammarNotInstalledError", () => {
+    it("toTelemetryEvent emits a level=error grammar_not_installed envelope", () => {
+        const entry = {
+            mimetype: "text/x-go",
+            slug: "go",
+            wasmPackage: "tree-sitter-go",
+        } as unknown as TreeSitterLanguageEntry;
+        const err = new GrammarNotInstalledError(entry, "@plurnk/plurnk-mimetypes-grammar-go");
+        const ev = err.toTelemetryEvent();
+        assert.equal(ev.source, "mimetype:text_x-go");
+        assert.equal(ev.kind, "grammar_not_installed");
+        assert.equal(ev.level, "error");
+        assert.equal(ev.plurnkPackage, "@plurnk/plurnk-mimetypes-grammar-go");
+        assert.equal(ev.position, null);
+    });
+});
+
 describe("TelemetryEvent schema conformance", () => {
-    it("required fields (source, kind) are present and source matches grammar pattern", () => {
-        // plurnk-grammar TelemetryEvent.json: source matches /^[a-z]+(:[a-z][a-z0-9-]*)?$/
+    it("required fields (source, kind, level) are present; source matches grammar pattern, level is in the enum", () => {
+        // plurnk-grammar TelemetryEvent.json: source matches /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
+        // level is REQUIRED, enum ["error","warn","info"] (grammar #43).
         const sourcePattern = /^[a-z]+(:[a-z][a-z0-9_-]*)?$/;
+        const levels = new Set(["error", "warn", "info"]);
         // Note: schema is stricter (no underscore), but our normalization
         // intentionally uses underscores for `/`-bearing mimetypes. If
         // grammar tightens, we'll revisit.
@@ -136,6 +160,7 @@ describe("TelemetryEvent schema conformance", () => {
         for (const ev of cases) {
             assert.ok(typeof ev.source === "string" && ev.source.length > 0);
             assert.ok(typeof ev.kind === "string" && ev.kind.length > 0);
+            assert.ok(levels.has(ev.level), `level ${ev.level} should be in the enum`);
             assert.ok(sourcePattern.test(ev.source), `source ${ev.source} should match pattern`);
         }
     });

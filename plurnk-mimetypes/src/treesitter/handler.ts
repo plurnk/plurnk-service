@@ -1,6 +1,7 @@
 import TreeSitterExtractor, { walkDeepNode } from "../TreeSitterExtractor.ts";
 import type { QueryConstructor, TreeSitterParser, TreeSitterTree } from "../TreeSitterExtractor.ts";
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
+import { mimetypeSource, type TelemetryEvent } from "../TelemetryEvent.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 
 // Bridges a registry entry to a runtime handler. The framework instantiates
@@ -208,5 +209,22 @@ export class GrammarNotInstalledError extends Error {
         this.mimetype = entry.mimetype;
         this.slug = entry.slug;
         this.plurnkPackage = plurnkPackage;
+    }
+
+    // TelemetryEvent envelope. Only thrown under process({strict:true}); the
+    // default path degrades instead (a `warn`, surfaced on ProcessResult.
+    // telemetry). When a consumer opts into strict, a missing grammar IS the
+    // failure — level=`error`. Carries the package name so the consumer can
+    // render the same install hint without re-parsing the message.
+    toTelemetryEvent(): TelemetryEvent {
+        return {
+            source: mimetypeSource(this.mimetype),
+            kind: "grammar_not_installed",
+            level: "error",
+            message: this.message,
+            position: null,
+            mimetype: this.mimetype,
+            plurnkPackage: this.plurnkPackage,
+        };
     }
 }

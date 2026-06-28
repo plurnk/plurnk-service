@@ -5,6 +5,7 @@ import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts"
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
+import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type {
     DetectInput,
     DiscoverOptions,
@@ -188,6 +189,13 @@ export interface ProcessResult {
     // Store it next to the BLOB: vectors from different models are silently
     // incomparable, and this is the staleness detector.
     embeddingModel?: string;
+    // The framework's contribution to plurnk-service's telemetry stream for
+    // this call (plurnk-service#276). Carries non-fatal conditions whose
+    // severity is HIDDEN by ok:true — a degraded result still reports success,
+    // so grammarMissing/embeddingMissing surface here as `warn` events the host
+    // forwards into `packet.user.telemetry.events[]`. Absent on the happy path.
+    // Hard failures (ok:false) need no entry: the status is the severity.
+    telemetry?: readonly TelemetryEvent[];
 }
 
 // Top-level orchestrator. Plurnk-service constructs one of these at boot,
@@ -386,7 +394,7 @@ export default class Mimetypes {
             ? await this.#embedFor(content, handler, options.strict === true)
             : {};
 
-        return {
+        return attachTelemetry({
             mimetype,
             ok: true,
             totalLines,
@@ -397,7 +405,7 @@ export default class Mimetypes {
             ...(channels.has("references") && { references }),
             ...(channels.has("content") && contentValue !== undefined && { content: contentValue }),
             ...embeddingPart,
-        };
+        });
     }
 
     // Embedding channel (issue #24). Embeds the entry's READABLE projection,
@@ -604,7 +612,7 @@ export default class Mimetypes {
         const embeddingPart = channels.has("embedding")
             ? await this.#embedFor(content, null, false)
             : {};
-        return {
+        return attachTelemetry({
             mimetype,
             ok: true,
             totalLines,
@@ -615,7 +623,7 @@ export default class Mimetypes {
             ...(channels.has("deepXml") && { deepXml: "" }),
             ...(channels.has("references") && { references: [] }),
             ...embeddingPart,
-        };
+        });
     }
 
     async #resolveContent(input: ProcessInput, binary: boolean): Promise<string | Uint8Array | null> {
@@ -641,6 +649,41 @@ function errorResult(mimetype: string | null): ProcessResult {
         totalLines: 0,
         extent: 0,
     };
+}
+
+// Project a successful result's degradation fields into `warn` telemetry
+// (plurnk-service#276). A degraded result reports ok:true, so its severity is
+// invisible unless the producer puts it on the wire — we know it's a warning,
+// the host shouldn't have to infer it from a bare package string. Derived from
+// the result's own fields so the event can never drift from grammarMissing/
+// embeddingMissing. Only reached for ok:true results that carry a mimetype.
+function attachTelemetry(result: ProcessResult): ProcessResult {
+    const events: TelemetryEvent[] = [];
+    if (typeof result.grammarMissing === "string") {
+        events.push({
+            source: mimetypeSource(result.mimetype!),
+            kind: "grammar_degraded",
+            level: "warn",
+            message: `No grammar installed for ${result.mimetype}; degraded to text-plain `
+                + `metadata with empty structural channels. Install ${result.grammarMissing} to enable them.`,
+            position: null,
+            mimetype: result.mimetype,
+            plurnkPackage: result.grammarMissing,
+        });
+    }
+    if (typeof result.embeddingMissing === "string") {
+        events.push({
+            source: mimetypeSource(result.mimetype!),
+            kind: "embedding_degraded",
+            level: "warn",
+            message: `Embedding channel requested but ${result.embeddingMissing} is not installed; `
+                + `returned an empty vector. Install it to enable embeddings.`,
+            position: null,
+            mimetype: result.mimetype,
+            plurnkPackage: result.embeddingMissing,
+        });
+    }
+    return events.length === 0 ? result : { ...result, telemetry: events };
 }
 
 // Editor-convention line count: `abc\ndef` → 2, `abc\ndef\n` → 2 (trailing

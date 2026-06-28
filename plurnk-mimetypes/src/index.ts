@@ -65,6 +65,7 @@ export type {
     ContentOffset,
     LogCoordinate,
     TelemetryEvent,
+    TelemetrySeverity,
 } from "./TelemetryEvent.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)

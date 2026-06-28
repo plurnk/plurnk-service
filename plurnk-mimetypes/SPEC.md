@@ -243,6 +243,7 @@ interface ProcessResult {
     totalLines: number;
     extent: number;            // §12.5
     grammarMissing?: string;   // §13.5
+    telemetry?: readonly TelemetryEvent[]; // warn events for hidden degradations — §11.5
     // channels — present iff requested (§5)
     symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
     deepJson?: unknown;
@@ -421,7 +422,11 @@ This is the symmetric design promised in issue #10: jsonpath dispatches against 
 
 ### 11.5 TelemetryEvent envelope
 
-All three error classes expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar 0.17.0. Consumers can route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`) surface as additional properties so consumers don't need to re-parse the message.
+All four error classes — `UnsupportedDialectError`, `InvalidExpressionError`, `QueryParseFailureError`, `GrammarNotInstalledError` — expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar. Consumers route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`, `grammar_not_installed`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`, `plurnkPackage`) surface as additional properties so consumers don't need to re-parse the message.
+
+**`level` is required** (plurnk-grammar #43, enum `error | warn | info`). Severity is meaning, and the producer is the only party that knows it — so it's set at the emit site, never inferred client-side from `kind` strings (plurnk-service#276). All four error envelopes are `level: "error"`.
+
+**Degradation telemetry (`ProcessResult.telemetry`).** A degraded result reports `ok: true`, so its severity is invisible in the status — the producer surfaces it as a `warn` event instead. When the default (non-strict) path degrades, `process()` attaches one `TelemetryEvent` per degradation to `ProcessResult.telemetry[]`: `kind: "grammar_degraded"` when `grammarMissing` is set, `kind: "embedding_degraded"` when `embeddingMissing` is set, each `level: "warn"` and carrying `plurnkPackage`. The host forwards these into `packet.user.telemetry.events[]`. The array is absent on the happy path. Hard failures (`ok: false`) carry no entry — the status *is* the severity.
 
 ## 12. Channel architecture (v0.9.0; channels selectable since v0.15.0)
 
