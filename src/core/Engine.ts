@@ -483,27 +483,6 @@ export default class Engine {
         return buf;
     }
 
-    // Pull a ±windowLines context block around `targetLine` (1-based) from
-    // `content`, formatted with N:\t prefixes — same shape the model
-    // already knows from READ output and numbered Index entries. Used to
-    // give parse_error telemetry concrete locality: the model sees what
-    // it wrote on the offending line, not just an abstract error message.
-    //
-    // Lenient: targetLine ≤ 0 clamps to 1; targetLine beyond content
-    // returns whatever overlap exists; empty content returns "".
-    #extractSnippet(content: string, targetLine: number, windowLines: number): string {
-        if (content.length === 0) return "";
-        const lines = content.split("\n");
-        const target = Math.max(1, targetLine);
-        const start = Math.max(1, target - windowLines);
-        const end = Math.min(lines.length, target + windowLines);
-        const slice = [];
-        for (let i = start; i <= end; i++) {
-            slice.push(`${i}:\t${lines[i - 1] ?? ""}`);
-        }
-        return slice.join("\n");
-    }
-
     // A @plurnk/gbnf divergence position (providers#24) is a CODE-POINT offset into the
     // model's content; the snippet/telemetry surface speaks 1-based line + 0-based column.
     // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
@@ -1024,20 +1003,21 @@ export default class Engine {
         // providers#24 / #275: non-fatal provider telemetry on a SUCCESSFUL turn. In GBNF-filter
         // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
         // (here, packetAssistant.content) and attaches the conflict as a telemetry event carrying
-        // the divergence code-point position. Mirror the parse_error path: forward each event, and
-        // when it locates a position, render the model its own emission around that line so it can
-        // self-correct — the exact recovery affordance parse errors already get, instead of the
-        // empty-turn cascade the old throw produced.
+        // the divergence code-point position. Forward each event with a content-offset `line:col`;
+        // the model resolves it against its own emission — the born-OPEN `model` row (§model-entry),
+        // not an embedded snippet that would duplicate the emission.
+        let hadContentOffsetNotice = false;
         for (const event of response.telemetry ?? []) {
             const located = typeof event.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, event.position)
                 : null;
+            if (located !== null) hadContentOffsetNotice = true;
             this.#pushTelemetry(sessionId, loopId, {
                 source: event.source,
                 kind: event.kind,
                 message: event.message ?? "",
                 ...(located !== null
-                    ? { position: { type: "content-offset", line: located.line, column: located.column }, snippet: this.#extractSnippet(packetAssistant.content, located.line, 2) }
+                    ? { position: { type: "content-offset", line: located.line, column: located.column } }
                     : {}),
             });
         }
@@ -1172,30 +1152,30 @@ export default class Engine {
         // and the errors section derives a pointer (status + coordinate) from log≥400 — one surface.
         let errSeq = rowSeq;  // after every dispatched row, including a multi-file READ's fan-out
         for (const { message, line, column, source } of parseErrors ?? []) {
-            const snippet = this.#extractSnippet(packetAssistant.content, line, 2);
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
                 origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, params: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
-                // `message`/`snippet` render as the foldable body (not a pointer `error` field), so the
-                // derived errors-section pointer stays minimal (status + coordinate), the bloated parser
-                // message lives in the log row, reclaimable on FOLD.
-                rx: JSON.stringify({ message, position: { type: "content-offset", line, column }, snippet, parserSource: source }),
+                // The error carries the parser message + a content-offset `line:col`; the model resolves
+                // it against its own born-OPEN emission (the `model` row, §model-entry), so no snippet is
+                // embedded. The derived errors-section pointer stays minimal (status + coordinate).
+                rx: JSON.stringify({ message, position: { type: "content-offset", line, column }, parserSource: source }),
                 mimetype_rx: "application/json",
                 status_rx: 400, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
         }
 
         // §model-entry — mirror this turn's verbatim emission back as a `model` row, so the NEXT
-        // packet shows the model exactly what it last produced. Born OPEN when the turn had a parse
-        // error — the model sees its malformed emission, line-numbered, to reason through the syntax
-        // error the parser reported by line. Folded otherwise (budget-neutral until the model OPENs
-        // it). Empty emissions (a struck/silent turn) write nothing — no prior output to mirror.
+        // packet shows the model exactly what it last produced. Born OPEN when the turn carried an
+        // emission-level error the model must resolve against its own bytes — a parse error or a
+        // content-offset NOTICE (grammar_unenforced) — both report a line the model reads off this
+        // row. Folded otherwise (budget-neutral until the model OPENs it). Empty emissions (a
+        // struck/silent turn) write nothing — no prior output to mirror.
         if (packetAssistant.content.trim().length > 0) {
-            const hadParseError = (parseErrors?.length ?? 0) > 0;
-            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: !hadParseError });
+            const hadEmissionError = (parseErrors?.length ?? 0) > 0 || hadContentOffsetNotice;
+            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: !hadEmissionError });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted

@@ -41,7 +41,7 @@ interface LogEntryView {
     source?: unknown;
     attrs?: unknown;
 }
-interface TelemetryError { snippet?: unknown; position?: { line?: unknown }; [key: string]: unknown }
+interface TelemetryError { position?: { line?: unknown }; [key: string]: unknown }
 // One packet section: a named, slotted, ordered unit of rendered content. The
 // stored section holds RENDERED markdown + a measured `tokens` weight — exactly
 // what the digest re-parses and what the model saw. `slot` is the prompt-cache
@@ -381,15 +381,14 @@ export default class PacketWire {
                     : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
                 if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
             } else if (op === "error") {
-                // §telemetry — a parse-error row is a LOG ITEM; its body is the failure detail the model
-                // needs to self-correct: the parser message + its own offending line(s) (snippet, already
-                // N:\t-prefixed by #extractSnippet). Foldable like any body, so a stale error reclaims its
-                // bytes on FOLD; the errors section keeps only a pointer (status + coordinate).
-                const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown; snippet?: unknown };
-                const parts: string[] = [];
-                if (typeof detail.message === "string" && detail.message.length > 0) parts.push(detail.message);
-                if (typeof detail.snippet === "string" && detail.snippet.length > 0) parts.push(detail.snippet);
-                if (parts.length > 0) body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, parts.join("\n"));
+                // §telemetry — a parse-error row is a LOG ITEM; its body is the parser message, which
+                // carries the content-offset `line:col`. The model resolves that line against its own
+                // emission — the born-OPEN `model` row (§model-entry) — so no snippet is embedded.
+                // Foldable like any body; the errors section keeps only a pointer (status + coordinate).
+                const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown };
+                if (typeof detail.message === "string" && detail.message.length > 0) {
+                    body = PacketWire.#wrapHeredocBody(path ?? `log:///${coordinate}`, detail.message);
+                }
             } else if (op === "model") {
                 // §model-entry — the model's own verbatim emission, mirrored back so it sees exactly
                 // what it produced. Line-numbered like all content (the parser reports errors by line,
@@ -427,35 +426,15 @@ export default class PacketWire {
         return rendered + fragment;
     }
 
-    // Render TelemetryEvent[] → meta line per event, optionally followed by
-    // an N:\t-prefixed snippet block when the event carries `snippet` (the
-    // convention plurnk-service uses for content-offset positions (§telemetry-content-offset-snippet) — model
-    // sees its own offending bytes alongside the error, not an abstract
-    // message it can't trace).
-    //
-    // Snippet renders verbatim — already N:\t-prefixed at production time
-    // (Engine.#extractSnippet). The fence is `error://<line>` to give the
-    // model a stable URI shape it can ignore or reference; the `error://`
-    // scheme isn't writable, it just identifies "this block is locator
-    // context, not addressable content."
-    //
-    // `snippet` is stripped from the meta JSON so the snippet appears once,
-    // in the body block, not also as a quoted string in the meta.
     static #renderGitState(git: GitStatus): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
         return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
     }
 
     static #renderTelemetryErrors(errors: TelemetryError[]): string {
-        return errors.map((e) => {
-            const snippet = typeof e.snippet === "string" ? e.snippet : null;
-            const meta: Record<string, unknown> = { ...e };
-            if (snippet !== null) delete meta.snippet;
-            const metaLine = `* ${PacketWire.#canonicalJson(meta)}`;
-            if (snippet === null || snippet.length === 0) return metaLine;
-            const line = typeof e.position?.line === "number" ? e.position.line : 0;
-            const fence = `error://${line}`;
-            return `${metaLine}\n${PacketWire.#wrapHeredocBody(fence, snippet)}`;
-        }).join("\n");
+        // One meta line per event. A content-offset NOTICE (e.g. grammar_unenforced) carries a
+        // `position: {line, column}`; the model resolves that line against its own born-OPEN emission
+        // (the `model` row, §model-entry) — no snippet block.
+        return errors.map((e) => `* ${PacketWire.#canonicalJson(e)}`).join("\n");
     }
 }

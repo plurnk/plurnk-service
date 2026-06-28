@@ -4,10 +4,8 @@
 //
 // Parse errors are driven END-TO-END: the Mock response supplies `content`
 // WITHOUT pre-parsed `ops`, forcing Engine.#splitResponse to run the real
-// PlurnkParser. The canonical edit-todo emission (a READ whose matcher body
-// starts with `//`, which the grammar xpath-dispatches and rejects) yields a
-// genuine `parse_error` TelemetryEvent with a real content-offset position
-// and a real `#extractSnippet` slice of the model's own bytes.
+// PlurnkParser, which yields a genuine parse failure with a real content-offset
+// position the model resolves against its own emission (the born-OPEN model row).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -60,7 +58,6 @@ const BROKEN_STMT = "<<SEND[x]:y:SEND";
 // `extraDrains` clean turns follow so the buffer can be observed draining.
 const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
 const NOTICE_POS = 26; // → content-offset line 2, column 4
-const NOTICE_SNIPPET = `1:\t<<PLAN:reasoning:PLAN\n2:\t<<SEND[103]:noted:SEND`;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -94,30 +91,32 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     };
 };
 
-test("[§telemetry-content-offset-snippet] a content-offset NOTICE (grammar_unenforced) renders its N:\\t snippet under error://<line>; snippet stripped from meta JSON", async () => {
-    // Errors are log items now; the content-offset snippet render belongs to the remaining engine
-    // NOTICES (telemetry) — here grammar_unenforced, which carries a code-point divergence position.
+test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
+    // A NOTICE points the model at a line in its own emission; the erroring turn's model echo is born
+    // OPEN (§model-entry) so the model resolves the line there — no snippet duplicating the bytes.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const p2 = await getPacket(db, t2.turnId);
         const notice = p2.telemetryErrors.find((e) => e.kind === "grammar_unenforced");
         assert.ok(notice !== undefined, "the notice surfaced on the next packet");
-        assert.deepEqual(notice.position, { type: "content-offset", line: 2, column: 4 });
-        assert.equal(notice.snippet, NOTICE_SNIPPET);
+        assert.deepEqual(notice.position, { type: "content-offset", line: 2, column: 4 }, "carries a content-offset line:col");
+        assert.equal(notice.snippet, undefined, "no embedded snippet — the model resolves the line against its own emission");
 
-        // The wire: meta line (no snippet key) immediately followed by the error://<line> fence.
+        // The wire: a meta line carrying the position, no snippet / error:// fence.
         const wire = PacketWire.renderSlot(p2.sections, "user");
         assert.match(wire, /## Plurnk System Errors/);
-        assert.doesNotMatch(wire, /"snippet":/, "snippet stripped from meta JSON");
-        const fenced = `<<:::error://2\n${NOTICE_SNIPPET}\n:::error://2`;
-        assert.ok(wire.includes(fenced), "snippet rendered under error://<line> fence with N:\\t prefix");
-        const metaIdx = wire.indexOf('"kind":"grammar_unenforced"');
-        const fenceIdx = wire.indexOf("<<:::error://2");
-        assert.ok(metaIdx !== -1 && fenceIdx !== -1 && metaIdx < fenceIdx, "meta line precedes the snippet fence");
+        assert.doesNotMatch(wire, /"snippet":/, "no snippet in the meta JSON");
+        assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
+        assert.ok(wire.includes('"kind":"grammar_unenforced"'), "the notice meta line carries the event");
+
+        // The content-offset NOTICE turn's model echo is born OPEN — the model reads line 2 off it.
+        const echo = (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
+            .find((r) => r.turn_id === t1.turnId && r.op === "model" && r.origin === "model");
+        assert.ok(echo !== undefined && echo.expanded === 1, "the NOTICE turn's model echo is born OPEN");
     } finally { await db.close(); }
 });
 
@@ -183,14 +182,14 @@ test("#256 — grammar_unenforced provider error surfaces as telemetry on the ne
     } finally { await db.close(); }
 });
 
-test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a telemetry event with the divergence snippet drains onto the next packet", async () => {
+test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a telemetry event with the divergence position drains onto the next packet", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // GBNF-filter mode (providers 0.19.0): generate() returns the model's UNCONSTRAINED bytes
         // and attaches a non-fatal grammar_unenforced TelemetryEvent carrying the code-point
         // divergence position — it does NOT throw. The engine must persist the bytes (no empty
-        // turn, the old cascade root cause) AND drain the event with a content-offset snippet so
-        // the model sees its own emission and self-corrects.
+        // turn, the old cascade root cause) AND drain the event with a content-offset line:col the
+        // model resolves against its own (born-OPEN) emission.
         const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
         const provider = new Mock({ contextSize: 100000, responses: [drainTurn] }); // turn 2 drains
         const realGenerate = provider.generate.bind(provider);
@@ -213,14 +212,14 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
         assert.equal(p1.assistant?.content, FREE, "the unconstrained emission is persisted, not discarded");
         assert.notEqual(p1.assistantRaw, null, "assistantRaw populated — no empty-turn write");
 
-        // The conflict drains onto turn 2's packet exactly once, with the provider's own source,
-        // a real content-offset position, and a snippet of the model's bytes around the divergence.
+        // The conflict drains onto turn 2's packet exactly once, with the provider's own source and
+        // a real content-offset position (no embedded snippet — the model resolves it against its emission).
         const p2 = await getPacket(db, t2.turnId);
         const ge = p2.telemetryErrors.filter((e) => e.kind === "grammar_unenforced");
         assert.equal(ge.length, 1, "grammar_unenforced telemetry drained exactly once");
         assert.equal(ge[0].source, "provider:mock", "attributed to the minting provider");
         assert.deepEqual(ge[0].position, { type: "content-offset", line: 2, column: 4 }, "code-point offset → content-offset line/column");
-        assert.equal(ge[0].snippet, `1:\t<<PLAN:reasoning:PLAN\n2:\t<<SEND[103]:noted:SEND`, "the model's own bytes around the divergence line");
+        assert.equal(ge[0].snippet, undefined, "no embedded snippet — the divergence line is resolved against the model's own emission");
         assert.match(String(ge[0].message), /not enforced/i, "carries the provider's verdict");
     } finally { await db.close(); }
 });

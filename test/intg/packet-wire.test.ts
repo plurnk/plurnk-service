@@ -165,7 +165,7 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(one.largest[0].path, "log:///1/1/1/EDIT");
 });
 
-test("telemetry render: parse_error with snippet → meta line followed by N:\\t-prefixed snippet body", () => {
+test("telemetry render: a content-offset error → a single meta line carrying line:col, no snippet fence", () => {
     const user = {
         prompt: "P",
         telemetry: {
@@ -175,19 +175,16 @@ test("telemetry render: parse_error with snippet → meta line followed by N:\\t
                 kind: "parse_error",
                 message: "invalid xpath: Unexpected character :",
                 position: { type: "content-offset", line: 1, column: 0 },
-                snippet: "1:\t<<READ(src/app.js):// TODO: add error handling:READ",
                 parserSource: "visitor",
             }],
         },
     };
     const out = PacketWire.renderErrors(user.telemetry.errors);
-    // Meta line lists structured fields but NOT `snippet` (it's broken
-    // out into the body block instead). canonicalJson sorts top-level
-    // keys; nested objects keep insertion order.
+    // One meta line carrying the content-offset position (canonicalJson sorts top-level keys;
+    // nested objects keep insertion order). No snippet fence — the model resolves the line
+    // against its own emission (the born-OPEN model row, §model-entry).
     assert.match(out, /\* \{"kind":"parse_error","message":"invalid xpath: Unexpected character :","parserSource":"visitor","position":\{"type":"content-offset","line":1,"column":0\},"source":"grammar"\}/);
-    assert.doesNotMatch(out, /"snippet":/);
-    // Snippet rendered under `error://<line>` fence.
-    assert.match(out, /<<:::error:\/\/1\n1:\t<<READ\(src\/app\.js\):\/\/ TODO: add error handling:READ\n:::error:\/\/1/);
+    assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });
 
 test("telemetry render: telemetry without snippet → meta-only (no fence)", () => {

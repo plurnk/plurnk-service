@@ -539,7 +539,7 @@ OPEN/FOLD operate on the **log** (`log:///`) — the model's context-curation su
 
 ### §model-entry The model's own emission, mirrored back
 
-A `model` log row is the model's **verbatim prior emission**, mirrored back so it can finally SEE its own behavior — and reason through its own syntax errors (the parser reports by line; the row renders line-numbered like all content). Actionless, like an `op='error'` row (§telemetry): no target, no op executed; `tx` is empty and the emission lives in `rx.content`, typed `text/vnd.plurnk`. Born **FOLDED** — budget-neutral until the model OPENs it — and OPEN/FOLD/KILL-able like any log row (the model curates its own history). The engine writes one at the end of each turn that produced output; a struck/empty turn mirrors nothing.
+A `model` log row is the model's **verbatim prior emission**, mirrored back so it can finally SEE its own behavior — and reason through its own syntax errors (the parser reports by line; the row renders line-numbered like all content). Actionless, like an `op='error'` row (§telemetry): no target, no op executed; `tx` is empty and the emission lives in `rx.content`, typed `text/vnd.plurnk`. **Born OPEN on a turn that erred** — a parse error or a content-offset NOTICE (`grammar_unenforced`) — so the model resolves the reported line against its own emission, no embedded snippet; **born FOLDED otherwise** (budget-neutral until the model OPENs it). OPEN/FOLD/KILL-able like any log row (the model curates its own history). The engine writes one at the end of each turn that produced output; a struck/empty turn mirrors nothing.
 
 The run's **first** model row is exceptional: a born-OPEN turn-0 **exemplar** — a minimal worked example (`PLAN` → environment `FIND`s → `SEND[102]`) the model always opens on, so the grammar can stay thin (the example teaches the syntax, not a heavy grammar). {§model-entry}
 
@@ -1273,7 +1273,7 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 | `kind` | Source | Required fields |
 |---|---|---|
 | `action_failure` | The DERIVED error pointer — any `log_entries` row with `status_rx ≥ 400` from the previous turn: a parse failure's actionless `op='error'` row, or a failed action | `kind`, `coordinate` (`<L>/<T>/<S>`), `op`, `status`, `target` (URI or null). May carry a terse `error` fact. The full message/snippet lives on the foldable log row. |
-| `grammar_unenforced` | (provider, forwarded) GBNF-filter divergence — the model's bytes diverged from the transported grammar | `source: "provider:*"`, `kind`, `message`, `position` (content-offset), `snippet` |
+| `grammar_unenforced` | (provider, forwarded) GBNF-filter divergence — the model's bytes diverged from the transported grammar | `source: "provider:*"`, `kind`, `message`, `position` (content-offset) |
 | `max_commands_exceeded` | Single emission exceeded `PLURNK_MAX_COMMANDS` cap; overflow ops dropped without dispatch | `source: "engine:rail"`, `kind`, `emitted`, `dropped` |
 | `budget_overflow` | Assembled packet exceeded the budget ceiling; entries moved out of the window to fit | `source: "engine:rail"`, `kind`, `hidden` (per-scheme `[{scheme, count}]` — entries removed from the window) |
 
@@ -1281,7 +1281,7 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 **Client surface.** Engine NOTICES broadcast live via the `telemetry/event` WS notification — same envelope as the model's drained copy (`{ source, kind, message?, position?, …kind-specific }` per the grammar's `TelemetryEvent` schema), the moment they land, scoped to the loop's session (a `grammar_unenforced` snippet in a debug panel, a session timeline). ERRORS do not broadcast on this surface: they are log rows, and the client reads them the same way the model curates them — `log.read` / the `log/entry` notification, the durable log. {§telemetry-telemetry-event-notify}
 
-**Content-offset snippet rendering.** When a NOTICE carries `position: { type: "content-offset", line, column }` (e.g. a provider's `grammar_unenforced`), plurnk-service extracts a ±N-line slice from the model's own prior `assistant.content` and renders it as an `N:\t`-prefixed heredoc under an `error://<line>` fence, immediately following the event meta line. Without the snippet, the model gets "invalid xpath at 1:0" with no way to trace what it wrote at 1:0 — and tends to regenerate the same broken emission. With it, recovery is direct. The snippet field is stripped from the meta JSON so it appears once, in the body block. (A parse-error LOG ROW carries the equivalent snippet in its own foldable body — the same locator, durable in the log.) {§telemetry-content-offset-snippet}
+**Content-offset position.** An emission-level error carries a `position: { type: "content-offset", line, column }` into the model's own emission — a parse-error LOG ROW (op='error', §model-entry) and a content-offset NOTICE (e.g. a provider's `grammar_unenforced`) both report the line, not the bytes. The model resolves it against its own emission: the turn that erred has its `model` row born OPEN (§model-entry), so the line-numbered emission sits in the log and the model reads the cited line directly. No snippet is embedded — that would duplicate the emission the model already holds. {§telemetry-content-offset-pointer}
 
 ### §tools user.tools — the capability sheet
 
