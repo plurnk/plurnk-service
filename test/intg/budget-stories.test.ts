@@ -70,8 +70,8 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     assert.ok(m, `budget headline present; got: ${budget}`);
     return { ceiling: Number(m![1]), usage: Number(m![2]), percent: Number(m![3]), free: Number(m![4]) };
 };
-const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number }>> =>
-    (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number }>({ run_id: runId });
+const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string }>> =>
+    (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string }>({ run_id: runId });
 
 // Two reference measurements on throwaway runs (deterministic FAT body), so the
 // fold-to-fit ceilings track the real assembly and never magic numbers:
@@ -233,17 +233,43 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.ok((await logRows(db, runId)).filter((r) => r.turn_seq === 1).every((r) => r.expanded === 0), "turn 2 folded turn 1");
+        // op='error' rows (the grinder's own overflow row) are exempt from folding (§grinder-errors-exempt),
+        // so the "all folded" invariant is over the non-error rows.
+        const folded = (rows: Array<{ turn_seq: number; expanded: number; op: string }>, t: number): boolean =>
+            rows.filter((r) => r.turn_seq === t && r.op !== "error").every((r) => r.expanded === 0);
+        assert.ok(folded(await logRows(db, runId), 1), "turn 2 folded turn 1");
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
         const afterT3 = await logRows(db, runId);
-        assert.ok(afterT3.filter((r) => r.turn_seq === 2).every((r) => r.expanded === 0), "turn 3 folded turn 2 — the immediately-prior turn");
-        assert.ok(afterT3.filter((r) => r.turn_seq === 1).every((r) => r.expanded === 0), "turn 1 stays folded — the grinder never reached back to re-touch it");
+        assert.ok(folded(afterT3, 2), "turn 3 folded turn 2 — the immediately-prior turn");
+        assert.ok(folded(afterT3, 1), "turn 1 stays folded — the grinder never reached back to re-touch it");
     } finally { await db.close(); }
 });
 
-// 9 — the budget_overflow event surfaces on a fold-to-FIT recovery, not only on the
-// hard-413 path. The model learns the window was reclaimed even when the turn delivers.
-test("budget: the overflow event surfaces on a fold-to-fit recovery turn", async () => {
+// 8b — error rows are grinder-exempt: turn 3's grinder folds turn 2's content but NEVER turn 2's
+// own op='error' overflow row, so the overflow trail stays OPEN and accumulates across turns.
+test("[§grinder-errors-exempt] the grinder folds turn-2's content but never its op='error' overflow row", async () => {
+    const db = await openMigrated();
+    try {
+        const { floor, expanded } = await measure(db);
+        const { sessionId, runId, loopId } = await envelope(db);
+        const wide = engineAt(db, WIDE);
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT, 3), ...okSends(2)] });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const tight = engineAt(db, Math.floor((floor + expanded) / 2));
+        await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // overflows → mints a turn-2 op='error' overflow row
+        await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 }); // folds turn 2 — but not its error row
+        const t2 = (await logRows(db, runId)).filter((r) => r.turn_seq === 2);
+        const errs = t2.filter((r) => r.op === "error");
+        assert.ok(errs.length >= 1, "turn 2 minted an op='error' overflow row");
+        assert.ok(errs.every((r) => r.expanded === 1), "the error row stays OPEN after turn 3's grinder folds turn 2 — exempt");
+        assert.ok(t2.filter((r) => r.op !== "error").every((r) => r.expanded === 0), "every non-error row on turn 2 was folded");
+    } finally { await db.close(); }
+});
+
+// 9 — the overflow error (op='error', 413) surfaces as a terse LogCoordinate pointer on a
+// fold-to-FIT recovery, not only on the hard-413 path. Same-turn (§grinder-overflow-error-row):
+// it lands on turn 2's OWN packet — the turn whose assembly overflowed — not a turn late.
+test("budget: the overflow error surfaces on the fold-to-fit recovery turn (same-turn)", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -252,11 +278,12 @@ test("budget: the overflow event surfaces on a fold-to-fit recovery turn", async
         const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(2)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
-        await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // folds → emits budget_overflow
-        const t3 = await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 }); // drains it into the packet
-        const evt = (await packetOf(db, t3.turnId)).telemetryErrors.find((e) => e.kind === "budget_overflow");
-        assert.ok(evt, "budget_overflow surfaced after a fold-to-fit turn");
-        assert.ok(Array.isArray(evt!.folded), "carries folded-by-scheme facts");
+        const t2 = await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // folds → mints + surfaces the overflow error
+        const evt = (await packetOf(db, t2.turnId)).telemetryErrors.find(
+            (e) => (e.position as { type?: string } | undefined)?.type === "log-coordinate" && e.status === 413,
+        );
+        assert.ok(evt, "the overflow surfaced THIS turn as a 413 log-coordinate pointer");
+        assert.equal(evt!.folded, undefined, "terse — no by-scheme JSON facts");
     } finally { await db.close(); }
 });
 

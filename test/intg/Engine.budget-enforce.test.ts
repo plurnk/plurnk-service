@@ -109,25 +109,23 @@ test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists
     } finally { await db.close(); }
 });
 
-test("[§grinder-event-model-terms] the overflow event names hidden entries by scheme, no mechanism vocabulary", async () => {
+test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCoordinate — not a by-scheme JSON event", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
         const tiny = engineAt(db, TINY);
         const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
-        // Turn 1 runs under WIDE so the model leaves an open SEND (the foisted
-        // prompt is folded by default — §prompt-fold); turn 2 overflows under TINY
-        // and the prior-turn rollback folds that SEND (pass 1), emitting
-        // budget_overflow into the buffer; turn 3 drains the event into its packet.
+        // Turn 1 under WIDE leaves an open SEND (the foisted prompt is folded by default — §prompt-fold);
+        // turn 2 overflows under TINY → the grinder folds that SEND AND mints a terse 'Budget Overflow'
+        // op='error' row, re-derived into turn 2's OWN packet (same-turn, not a turn late).
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
-        await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const t3 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
+        const t2 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<Record<string, unknown>> };
-        const evt = packet.telemetryErrors.find((e) => e.kind === "budget_overflow");
-        assert.ok(evt, "budget_overflow event surfaced to the model");
-        assert.ok(Array.isArray(evt!.folded), "carries folded-by-scheme facts");
+        const evt = packet.telemetryErrors.find((e) => (e.position as { type?: string } | undefined)?.type === "log-coordinate" && e.status === 413);
+        assert.ok(evt, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
+        assert.equal(evt!.folded, undefined, "no by-scheme 'folded' JSON — terseness");
         assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");
     } finally { await db.close(); }
 });

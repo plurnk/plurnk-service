@@ -180,24 +180,39 @@ test("telemetry render: a content-offset error → a single meta line carrying l
         },
     };
     const out = PacketWire.renderErrors(user.telemetry.errors);
-    // One meta line carrying the content-offset position (canonicalJson sorts top-level keys;
-    // nested objects keep insertion order). No snippet fence — the model resolves the line
-    // against its own emission (the born-OPEN model row, §model-entry).
-    assert.match(out, /\* \{"kind":"parse_error","message":"invalid xpath: Unexpected character :","parserSource":"visitor","position":\{"type":"content-offset","line":1,"column":0\},"source":"grammar"\}/);
+    // A content-offset error renders one terse `<kind> <line>:<col>` line — no JSON dump, no snippet
+    // fence. The model resolves the line against its own emission (the born-OPEN model row, §model-entry).
+    assert.match(out, /^\* parse_error 1:0$/m);
+    assert.doesNotMatch(out, /\{"/, "no JSON dump");
     assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });
 
-test("telemetry render: telemetry without snippet → meta-only (no fence)", () => {
+test("telemetry render: a log-coordinate error → a terse <status> log:/// link, no JSON", () => {
     const user = {
         prompt: "P",
         telemetry: {
             budget: "",
-            errors: [{ kind: "action_failure", coordinate: "1/1/2", op: "EDIT", status: 403, target: "log:///x", error: "writer 'model' denied on scheme 'log'" }],
+            // The uniform-channel shape: a 4xx/5xx log row surfaced as a LogCoordinate-positioned event.
+            errors: [{ source: "engine:rail", kind: "log_error", level: "error", status: 403, position: { type: "log-coordinate", coordinate: "1/1/2/EDIT" } }],
         },
     };
     const out = PacketWire.renderErrors(user.telemetry.errors);
-    assert.match(out, /\* \{"coordinate":"1\/1\/2","error":"writer 'model' denied on scheme 'log'","kind":"action_failure","op":"EDIT","status":403,"target":"log:\/\/\/x"\}/);
-    assert.doesNotMatch(out, /<<error:\/\//);
+    assert.match(out, /^\* 403 log:\/\/\/1\/1\/2\/EDIT$/m);
+    assert.doesNotMatch(out, /\{"/, "no JSON dump — the row holds the detail, the section a link");
+});
+
+test("[§telemetry-uniform-error-channel] heterogeneous failures render through ONE channel — uniform <status> log:/// links, no per-kind shape", () => {
+    // A parse failure (400), an action failure (403), a budget overflow (413): three categories, one
+    // channel. Each is a LogCoordinate-positioned event rendered as the same terse link — the section
+    // never restates the term or carries per-kind JSON. The detail lives on each row, READ via the link.
+    const errors = [
+        { source: "engine:rail", kind: "log_error", level: "error", status: 400, position: { type: "log-coordinate", coordinate: "1/2/3/error" } },
+        { source: "engine:rail", kind: "log_error", level: "error", status: 403, position: { type: "log-coordinate", coordinate: "1/2/5/EDIT" } },
+        { source: "engine:rail", kind: "log_error", level: "error", status: 413, position: { type: "log-coordinate", coordinate: "1/3/1/error" } },
+    ];
+    const out = PacketWire.renderErrors(errors);
+    assert.equal(out, "* 400 log:///1/2/3/error\n* 403 log:///1/2/5/EDIT\n* 413 log:///1/3/1/error");
+    assert.doesNotMatch(out, /\{"/, "no JSON — every category is the same terse link");
 });
 
 test("[§requirements-requirements-render-last] requirements renders LAST in the user slot, under its own header", () => {

@@ -133,8 +133,8 @@ export default class PacketWire {
 
     // Measure the curatable log section's budget subtotals from the STRUCTURED
     // log (the foldable unit), using the provider's tokenizer — meta lines and
-    // fences included, matching what ships. Feeds the grinder's rollback unit
-    // (per-turn rollup, oldest-first) and the FOLD unit (heaviest entries) — the
+    // fences included, matching what ships. Feeds the per-turn rollup (chronological;
+    // the grinder folds the newest turn) and the FOLD unit (heaviest entries) — the
     // two budget levers the model can pull (§tokenomics {§tokenomics-turn-totals},
     // {§tokenomics-largest-entries}). Build-time only; the stored log section is
     // the rendered result. §tokenomics-render-weight-budget
@@ -439,9 +439,17 @@ export default class PacketWire {
     }
 
     static #renderTelemetryErrors(errors: TelemetryError[]): string {
-        // One meta line per event. A content-offset NOTICE (e.g. grammar_unenforced) carries a
-        // `position: {line, column}`; the model resolves that line against its own born-OPEN emission
-        // (the `model` row, §model-entry) — no snippet block.
-        return errors.map((e) => `* ${PacketWire.#canonicalJson(e)}`).join("\n");
+        // Uniform projection off the formal TelemetryEvent envelope (grammar TelemetryEvent.json):
+        // render each error by its typed `position`, never by sniffing `kind`. A LogCoordinate is a
+        // terse `<status> log:///<coord>` link to the row (the row holds the term + detail); a
+        // ContentOffset points the model at the line in its own born-OPEN emission (§model-entry).
+        // No JSON dump — the packet teaches, the row carries the body.
+        return errors.map((e) => {
+            const ev = e as { kind?: string; status?: number; position?: { type?: string; coordinate?: string; line?: number; column?: number } };
+            const pos = ev.position;
+            if (pos?.type === "log-coordinate") return `* ${ev.status ?? ""} log:///${pos.coordinate}`.replace(/ +/g, " ");
+            if (pos?.type === "content-offset") return `* ${ev.kind ?? "error"} ${pos.line}:${pos.column}`;
+            return `* ${ev.kind ?? "error"}`;
+        }).join("\n");
     }
 }

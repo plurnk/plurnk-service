@@ -110,9 +110,9 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
         // section is framework status (uri+status pointers) — it rides the SYSTEM slot (§packet-assembly).
         const wire = PacketWire.renderSlot(p2.sections, "system");
         assert.match(wire, /## Plurnk System Errors/);
-        assert.doesNotMatch(wire, /"snippet":/, "no snippet in the meta JSON");
+        assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.ok(wire.includes('"kind":"grammar_unenforced"'), "the notice meta line carries the event");
+        assert.match(wire, /^\* grammar_unenforced 2:4$/m, "the notice renders as a terse kind + content-offset line:col");
 
         // The content-offset NOTICE turn's model echo is born OPEN — the model reads line 2 off it.
         const echo = (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
@@ -317,10 +317,14 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
         });
         assert.equal(errorScheme?.n ?? 0, 0, "no error:// scheme entries — errors are log items, queried via log:///");
 
-        // The errors section derives a POINTER (status + coordinate) to the log item.
+        // The errors section derives a LogCoordinate POINTER (status + coordinate) to the log item.
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        assert.ok(p2.telemetryErrors.some((e) => e.op === "error" && e.status === 400), "errors section surfaces a derived pointer to the error log item");
+        assert.ok(
+            p2.telemetryErrors.some((e) => e.status === 400 && (e.position as { type?: string; coordinate?: string } | undefined)?.type === "log-coordinate"
+                && String((e.position as { coordinate?: string }).coordinate).endsWith("/error")),
+            "errors section surfaces a derived LogCoordinate pointer to the error log item",
+        );
     } finally { await db.close(); }
 });
 

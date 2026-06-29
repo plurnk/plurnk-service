@@ -127,15 +127,15 @@ test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and 
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.finalStatus, 500, "idle spin-out is the engine ruling failure, not the model's 499");
         assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");
-        let idleMsg: string | undefined;
+        // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
+        // pointer reaches the model; the guidance lives in the packet, not the row.
+        let steered = false;
         for (const id of result.turnIds) {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
-            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ kind: string; message: string }> };
-            const idle = packet.telemetryErrors?.find((e) => e.kind === "idle_turn");
-            if (idle) idleMsg = idle.message;
+            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ status?: number; position?: { type?: string } }> };
+            if (packet.telemetryErrors?.some((e) => e.status === 409 && e.position?.type === "log-coordinate")) steered = true;
         }
-        assert.ok(idleMsg, "idle_turn steering reached the model's packet");
-        assert.ok(idleMsg.includes("terminate with 200") && idleMsg.includes("202 to hibernate"), "steering names both exits");
+        assert.ok(steered, "the idle steer surfaced as a terse 409 log-coordinate error pointer");
     } finally { await db.close(); }
 });
 
@@ -152,11 +152,11 @@ test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 2, "the premature 200 was downgraded, not honored — the loop ran on");
         assert.equal(result.finalStatus, 499, "the loop ended on the model's 499, never the premature 200");
+        // The premature steer is a terse op='error' log row (409 Premature Termination); its derived
+        // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
-        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ kind: string; message: string }> };
-        const prem = packet.telemetryErrors?.find((e) => e.kind === "premature_terminate");
-        assert.ok(prem, "premature_terminate steering reached the model's packet");
-        assert.ok(prem.message.includes("active streams") && prem.message.includes("202 to hibernate"), "steering names the exits");
+        const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors?: Array<{ status?: number; position?: { type?: string } }> };
+        assert.ok(packet.telemetryErrors?.some((e) => e.status === 409 && e.position?.type === "log-coordinate"), "the premature steer surfaced as a terse 409 log-coordinate error pointer");
     } finally { await db.close(); }
 });
 
