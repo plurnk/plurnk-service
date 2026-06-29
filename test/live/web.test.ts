@@ -7,12 +7,10 @@
 // http scheme and real network, then polls the REAL db channel for the fetched bytes. Nothing is
 // mocked — no provider, no db mock, no model turn. The search test fires through the daemon.
 //
-// BOTH SKIPPED pending a real BLOCKER, documented per test:
-//  - http: the service does NOT yet implement `ctx.subscriptions` (SubscriptionCaps), the streaming
-//    capability the scheme contract @plurnk/plurnk-schemes 0.30.8 defines (ctx.d.ts) and the http
-//    daughter calls (`ctx.subscriptions.open/.notifyChunk/.close`). Our in-tree exec scheme bypasses
-//    it via ChannelWrite directly, so http 500s ("reading 'open'"). Un-skip once the capability lands.
-//  - search: needs PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint; no API key).
+//  - http: RUNS. The `ctx.subscriptions` (SubscriptionCaps) streaming capability is wired in
+//    SchemeCtxImpl (#180) — the http daughter's `ctx.subscriptions.open/.notifyChunk/.close` drives
+//    the real fetch into a streamed entry, validated end-to-end here against real network.
+//  - search: env-gated — needs PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint; no API key).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,7 +30,7 @@ const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ fetches a real URL into a streamed entry (no model, no mock)",
     async () => {
-        // grammar 0.74.34 requires a PLAN lead; PLAN-prefix then take the READ (the service parses ops this way too).
+        // grammar requires a PLAN lead; PLAN-prefix then take the READ (the service parses ops this way too).
         const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n<<READ(${HTTP_URL})::READ`);
         const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;
         if (item === undefined) throw new Error("parse produced no statement");
