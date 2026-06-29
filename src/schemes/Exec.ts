@@ -166,7 +166,7 @@ export default class Exec {
         const cwdFromOp = cwdFromTarget(statement.target);
         // Effect on the RAW target (pre-cwd-default) decides the lifecycle:
         // host → propose, read/pure → auto-run inline (plurnk-service#182).
-        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp));  // pure/read auto-run ungated — §exec-readpure-ungated
+        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp, command));  // command-aware (#289): a per-tool readOnlyHint can auto-run a read-only call — pure/read ungated — §exec-readpure-ungated
         // Default cwd to the session's project_root so EXEC runs in the
         // same directory File scheme writes to. Without this default, the
         // model creates a file via EDIT (lands in project_root) and then

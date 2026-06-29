@@ -15,7 +15,10 @@ export interface Executor {
     get channels(): Readonly<Record<string, ChannelDecl>>;
     run(args: ExecArgs): Promise<ExecResult>;
     probe(): Promise<RuntimeAvailability>;
-    effect(target: string | null): Effect;
+    // command-aware (#289): the effect may be resolved per-command, not just per-target — an MCP
+    // executor reads a per-tool readOnlyHint off the command to auto-run a read-only call. Target-only
+    // executors ignore the second arg (a narrower signature still satisfies this interface).
+    effect(target: string | null, command?: string): Effect;
 }
 
 export interface RegistryEntry {

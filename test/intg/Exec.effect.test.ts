@@ -16,6 +16,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Envelope from "../../src/server/envelope.ts";
+import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { SchemeManifest } from "../../src/core/types.ts";
+import type { Effect } from "@plurnk/plurnk-execs";
 
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -98,6 +101,43 @@ test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at
         engine.resolveProposal(logEntryId, { decision: "accept" });
         await dispatchPromise;
         await exec.idle();
+    } finally { await db.close(); }
+});
+
+test("effect is command-aware (#289): the EXEC command body is passed to effect(), not just the target", async () => {
+    // execs-mcp resolves a per-tool readOnlyHint OFF THE COMMAND, so the service must hand the command
+    // to effect(), not only the target. A custom executor captures what it receives; it returns `host`
+    // (propose) so run() is never reached — we reject after asserting.
+    let seen: string | undefined = "UNSET";
+    const exe: Executor = {
+        runtime: "tool", glyph: "🔧",
+        get manifest(): SchemeManifest { return { name: "tool" } as unknown as SchemeManifest; },
+        get defaultChannel(): string { return "results"; },
+        get channels() { return { results: { mimetype: "application/json" } }; },
+        run: async () => { throw new Error("run must not be reached — effect proposes (host), then the test rejects"); },
+        probe: async () => ({ available: true }),
+        effect: (_target: string | null, command?: string): Effect => { seen = command; return "host"; },
+    };
+    const registry = new ExecutorRegistry(new Map([["tool", { executor: exe, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }]]));
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const engine = new Engine({ db, schemes });
+    engine.setExecutors(registry);
+    const sessionId = await insertSession(db, `cmd-effect-${crypto.randomUUID()}`);
+    const runId = await insertRun(db, sessionId);
+    const loopId = await insertLoop(db, runId, 1, "cmd-effect");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    try {
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: execStmt("tool", null, "tools/call name=list_files readOnly=true"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        assert.equal(seen, "tools/call name=list_files readOnly=true", "the EXEC command body reaches effect() — command-aware (#289)");
+        engine.resolveProposal(logEntryId, { decision: "reject" });
+        await dispatchPromise;
     } finally { await db.close(); }
 });
 
