@@ -1,24 +1,14 @@
-// Body-matcher adapter — delegates to @plurnk/plurnk-mimetypes for the
-// actual dialect dispatch. The framework parses the matcher's leading
-// prefix internally (xpath `//`, jsonpath `$`, regex `/.../`, glob
-// otherwise) and routes to per-mimetype handlers. plurnk-service catches
-// the framework's typed errors and maps them to HTTP-shaped status codes
-// the model can act on.
+// Body-matcher adapter — delegates to @plurnk/plurnk-mimetypes for the actual
+// dialect dispatch. The framework parses the matcher's leading prefix internally
+// (xpath `//`, jsonpath `$`, regex `/.../`, glob otherwise) and routes to
+// per-mimetype handlers; this maps its typed errors to the HTTP-shaped status
+// codes the model acts on.
 //
-// Status mapping (per plurnk-service#172 + plurnk-grammar#19):
-//   UnsupportedDialectError  → 415  (dialect not supported for mimetype, or binary content)
-//   InvalidExpressionError   → 400  (model authored a malformed matcher body)
-//   QueryParseFailureError   → 203  (source can't be parsed for the dialect;
-//                                    returns raw content as text/markdown with
-//                                    `reason` so the model can fall back to
-//                                    regex/visual parsing on the bytes)
-//   Empty match array        → 204  (matcher applied, zero results)
-//   Match array              → 200  (matcher applied, results in body)
-//
-// 203 is HTTP-creative ("Non-Authoritative Information") — the runtime
-// produced content but not in the structured form the matcher requested.
-// Model sees the raw text plus a reason field and decides whether to
-// retry, fall back, or fix source. Choice ratified by user (#172).
+// The full status mapping is the contract: SPEC.md §3 (Matcher dispatch). One
+// rationale that doesn't live there: 203 is HTTP-creative ("Non-Authoritative
+// Information") — content was produced, but not in the structured form the
+// matcher requested; the model sees raw text + a `reason` and chooses
+// retry/fallback/fix-source. Choice ratified by user (#172).
 
 import type { MatcherBody } from "@plurnk/plurnk-grammar";
 import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
@@ -27,7 +17,7 @@ import {
     InvalidExpressionError,
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
-import { TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
+import { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 
 export interface MatchResult {
     status: number;

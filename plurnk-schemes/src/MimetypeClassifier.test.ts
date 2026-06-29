@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import MimetypeClassifier, { TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
+import MimetypeClassifier, { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 
 test("text/* is text", () => {
     assert.equal(MimetypeClassifier.isBinary("text/plain"), false);

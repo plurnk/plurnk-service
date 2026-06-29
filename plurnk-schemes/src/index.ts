@@ -15,13 +15,13 @@ export type {
 export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
 // ── Behavior classes ─────────────────────────────────────────────────────
-export { default as SchemeResolver } from "./resolveForLoop.ts";
-export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./mimetype-binary.ts";
-export { default as Slicer } from "./line-marker.ts";
-export type { EditResult as LineEditResult, JsonSliceResult, SliceResult } from "./line-marker.ts";
-export { default as PathMimetype } from "./path-mimetype.ts";
-export { default as Matcher } from "./matcher.ts";
-export type { MatchResult } from "./matcher.ts";
+export { default as SchemeResolver } from "./SchemeResolver.ts";
+export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
+export { default as Slicer } from "./Slicer.ts";
+export type { EditResult as LineEditResult, JsonSliceResult, SliceResult } from "./Slicer.ts";
+export { default as PathMimetype } from "./PathMimetype.ts";
+export { default as Matcher } from "./Matcher.ts";
+export type { MatchResult } from "./Matcher.ts";
 export { default as SchemeDiscovery } from "./SchemeDiscovery.ts";
 export type { SchemeInfo, SchemeDiscoveryResult, DiscoverOptions } from "./SchemeDiscovery.ts";
 export { default as Summarize } from "./Summarize.ts";
@@ -30,7 +30,7 @@ export { default as OutputScheme } from "./OutputScheme.ts";
 export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as DefaultRead } from "./DefaultRead.ts";
 export type { ReadResolution } from "./DefaultRead.ts";
-export { default as Results } from "./results.ts";
+export { default as Results } from "./Results.ts";
 export type {
     EntryResult,
     PassthroughResult,
@@ -38,7 +38,7 @@ export type {
     SchemeResult,
     SchemeResultBase,
     TelemetryEvent,
-} from "./results.ts";
+} from "./Results.ts";
 
 // ── Capability ctx — DB-free authoring surface for siblings (keystone PR-2,
 // plurnk-service#180). Interfaces only; plurnk-service injects the impl.

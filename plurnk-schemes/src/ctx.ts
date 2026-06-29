@@ -1,40 +1,21 @@
 // Capability context — the DB-free authoring surface for
 // `@plurnk/plurnk-schemes-*` siblings (keystone PR-2; design converged on
-// plurnk-service#180).
+// plurnk-service#180). The full contract — the five live namespaces, why
+// `visibility` is absent, why `proposals` / `crossScheme` are NOT namespaces —
+// is SPEC.md §3.bis. This module is its typed mirror.
 //
-// PROBLEM this replaces: today a sibling receives plurnk-service's raw `Db`
-// handle on `ctx.db` and reaches straight through it. SPEC §5 forbids a
-// third-party scheme from importing `@plurnk/plurnk-service/*` or touching
-// the database — so `ctx.db` is the contract, and it's an illegal one. A
-// real sibling is therefore unbuildable.
-//
-// SHAPE: this module exports INTERFACES only. plurnk-service injects a
-// db-backed implementation behind them (the existing `scheme-types.ts` seam,
-// widened — not new machinery). In-tree schemes keep using `db` directly
-// during transition; the cap impl is a thin adapter over the same
-// `_entry-*.ts` / `ChannelWrite` helpers, cut over scheme-by-scheme.
-//
-// FIVE live namespaces decompose what `ctx.db` is used for today:
-//   entries / channels / tags / notify  — map 1:1 onto the `_entry-*.ts` +
-//     `ChannelWrite` helpers; wrap cleanly.
-//   subscriptions                       — the streaming lifecycle
-//     (open/notifyChunk/close); design against Exec, the proven
-//     two-channel cancel-tested case.
-// (No `visibility`: entry-level SHOW/HIDE was removed in plurnk-service's
-//  index/visibility teardown — SHOW/HIDE now act on `log://` rows. #180.)
-//
-// NOT a namespace:
-//   proposals   — collapses to "return a ProposalResult (202) + implement
-//     applyResolution"; the lifecycle (await/accept/reject, YOLO/noProposals
-//     auto-resolvers, timeout) is engine-owned and invisible to the sibling.
-//     Lives in the result family ([[results]]) + the optional handler hook
-//     below, not as an injected capability.
-//   crossScheme — deferred hard. Zero working cross-scheme COPY/MOVE exist
-//     to derive the FROM-vs-TO shape from; the first real `known://x` →
-//     `file://x.json` forces it. Stubbed as a named placeholder.
+// WHY it exists: today a sibling receives plurnk-service's raw `Db` handle on
+// `ctx.db` and reaches straight through it — but SPEC §5 forbids a third-party
+// scheme from importing `@plurnk/plurnk-service/*` or touching the database, so
+// `ctx.db` is an illegal contract and a real sibling is unbuildable. This module
+// exports INTERFACES only; plurnk-service injects a db-backed implementation
+// behind them (the existing `scheme-types.ts` seam, widened — not new
+// machinery). In-tree schemes keep using `db` directly during transition; the
+// cap impl is a thin adapter over the same `_entry-*.ts` / `ChannelWrite`
+// helpers, cut over scheme-by-scheme.
 
 import type { WriterTier } from "./types.ts";
-import type { ProposalResult, SchemeResult } from "./results.ts";
+import type { ProposalResult, SchemeResult } from "./Results.ts";
 
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (SPEC §5.6).

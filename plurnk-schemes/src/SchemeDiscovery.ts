@@ -43,15 +43,18 @@ export interface SchemeDiscoveryResult {
 export interface DiscoverOptions {
     readonly cwd?: string;
     readonly packageDirs?: ReadonlyArray<string>; // tests / unusual layouts skip the scan
+    readonly signal?: AbortSignal;
 }
 
 export default class SchemeDiscovery {
     static async discover(options: DiscoverOptions = {}): Promise<SchemeDiscoveryResult> {
-        const dirs = options.packageDirs ?? await SchemeDiscovery.#defaultPackageDirs(options.cwd ?? process.cwd());
+        const { signal } = options;
+        const dirs = options.packageDirs ?? await SchemeDiscovery.#defaultPackageDirs(options.cwd ?? process.cwd(), signal);
         const byName = new Map<string, SchemeInfo>();
         const skipped = new Set<string>();
         for (const dir of dirs) {
-            const info = await SchemeDiscovery.#readSchemeInfo(dir);
+            signal?.throwIfAborted();
+            const info = await SchemeDiscovery.#readSchemeInfo(dir, signal);
             if (info === null) continue;
             // Host plugin-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never crashed on.
@@ -89,14 +92,18 @@ export default class SchemeDiscovery {
     // unscoped (`name`) — under `<cwd>/node_modules`. Unreadable dirs are the
     // legitimate scan boundary (not-a-package, missing manifest), skipped — not
     // a masked contract violation (cf. the matcher's sanctioned node_modules tolerance).
-    static async #defaultPackageDirs(cwd: string): Promise<string[]> {
+    static async #defaultPackageDirs(cwd: string, signal?: AbortSignal): Promise<string[]> {
+        signal?.throwIfAborted();
         const nm = path.join(cwd, "node_modules");
         let entries: Array<{ name: string; isDirectory(): boolean }>;
+        // fs.readdir takes no AbortSignal — cancellation is checked at the loop
+        // boundaries instead (signal-on-fs is reserved for readFile, below).
         try { entries = await fs.readdir(nm, { withFileTypes: true }); } catch { return []; }
         const dirs: string[] = [];
         for (const entry of entries) {
             if (!entry.isDirectory() || entry.name === ".bin" || entry.name === ".cache") continue;
             if (entry.name.startsWith("@")) {
+                signal?.throwIfAborted();
                 const scopeDir = path.join(nm, entry.name);
                 try {
                     const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
@@ -109,11 +116,18 @@ export default class SchemeDiscovery {
         return dirs;
     }
 
+    // An aborted readFile surfaces, never masked as an unreadable dir —
+    // cancellation is a caller contract, not a scan boundary (locality of error).
+    static #isAbort(err: unknown): boolean {
+        return err instanceof Error && err.name === "AbortError";
+    }
+
     // One SchemeInfo for a package declaring plurnk.kind:"scheme" + plurnk.name;
     // null for anything else (non-package dir, non-scheme, invalid declaration).
-    static async #readSchemeInfo(dir: string): Promise<SchemeInfo | null> {
+    static async #readSchemeInfo(dir: string, signal?: AbortSignal): Promise<SchemeInfo | null> {
         let raw: string;
-        try { raw = await fs.readFile(path.join(dir, "package.json"), "utf-8"); } catch { return null; }
+        try { raw = await fs.readFile(path.join(dir, "package.json"), { encoding: "utf-8", signal }); }
+        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return null; }
         let pkg: unknown;
         try { pkg = JSON.parse(raw); } catch { return null; }
         if (typeof pkg !== "object" || pkg === null) return null;

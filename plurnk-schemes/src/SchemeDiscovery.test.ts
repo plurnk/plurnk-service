@@ -85,6 +85,26 @@ test("discover: two external packages claiming one prefix fail-hard (unresolvabl
     await assert.rejects(SchemeDiscovery.discover({ cwd }), /scheme name collision: 'foo'/);
 });
 
+test("discover: an already-aborted signal rejects with AbortError before scanning", async () => {
+    const cwd = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
+    await assert.rejects(
+        SchemeDiscovery.discover({ cwd, signal: AbortSignal.abort() }),
+        (err: Error) => err.name === "AbortError",
+    );
+});
+
+test("discover: a signal aborted mid-scan surfaces, not masked as an empty result", async () => {
+    const root = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
+    const dir = path.join(root, "node_modules", "@plurnk", "plurnk-schemes-http");
+    const controller = new AbortController();
+    controller.abort();
+    // packageDirs path: the per-dir throwIfAborted in the discover loop fires.
+    await assert.rejects(
+        SchemeDiscovery.discover({ packageDirs: [dir], signal: controller.signal }),
+        (err: Error) => err.name === "AbortError",
+    );
+});
+
 test("discover: packageDirs bypasses the node_modules scan", async () => {
     const root = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
     const dir = path.join(root, "node_modules", "@plurnk", "plurnk-schemes-http");

@@ -20,7 +20,7 @@
 //   - known://users          → scheme default (text/markdown for Known)
 
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import MimetypeClassifier from "./mimetype-binary.ts";
+import MimetypeClassifier from "./MimetypeClassifier.ts";
 
 export default class PathMimetype {
     // Extract the suffix (everything after the last dot in the last segment)

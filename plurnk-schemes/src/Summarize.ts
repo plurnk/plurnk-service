@@ -5,7 +5,7 @@
 // the handle. Receipt = `address + OrientIndex`; reaching the body is always an
 // explicit READ. (No preview, no inline — universal-receipt is locked.)
 
-import MimetypeClassifier from "./mimetype-binary.ts";
+import MimetypeClassifier from "./MimetypeClassifier.ts";
 
 export type OrientIndex =
     | { readonly kind: "json-object"; readonly keys: ReadonlyArray<string>; readonly size: number }

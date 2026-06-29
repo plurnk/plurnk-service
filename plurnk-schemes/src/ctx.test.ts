@@ -21,7 +21,7 @@ import type {
     EntryData,
     ChannelState,
 } from "./ctx.ts";
-import type { ProposalResult, SchemeResult } from "./results.ts";
+import type { ProposalResult, SchemeResult } from "./Results.ts";
 
 // ── a minimal in-memory conformant implementation ─────────────────────────
 // Backs `entries`/`channels` with a Map so the assertions are real, not

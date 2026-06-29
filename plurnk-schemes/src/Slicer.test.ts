@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import Slicer from "./line-marker.ts";
+import Slicer from "./Slicer.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 

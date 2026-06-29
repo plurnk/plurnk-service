@@ -8,8 +8,8 @@
 
 import type { ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import Slicer from "./line-marker.ts";
-import Matcher from "./matcher.ts";
+import Slicer from "./Slicer.ts";
+import Matcher from "./Matcher.ts";
 
 export interface ReadResolution {
     readonly status: number;

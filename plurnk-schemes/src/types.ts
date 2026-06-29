@@ -31,38 +31,23 @@ export interface SchemeManifest {
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
-    // Entries land FOLDED, off the ranked manifest surface, by default —
-    // discoverable and READable via their address, but not poured into the
-    // ranked view the model pays tokens to see. The containment invariant one
-    // level up: executor-output streams (`<tag>://…`) declare this so a long run
-    // of tool calls doesn't rebuild the flood the receipt exists to kill
-    // (service#240). Absent/false → first-class ranked (every existing scheme).
+    // Entries land FOLDED, off the ranked manifest surface (READable by address,
+    // not poured into the ranked view). Absent/false → first-class ranked.
+    // Full contract + containment rationale: SPEC.md §1 (foldedByDefault).
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
     // Self-doc, mirroring the exec contract: terse pushes, depth pulls (#25).
-    //   example — the scheme's terse, HOT-PATH one-liner: it renders in the live
-    //     scheme catalogue every turn, so keep it to one canonical line of usage
-    //     (e.g. "READ(https://example.com/page)"). Omit → not advertised with a
-    //     usage line. Mirrors an execs runtime's `example`.
-    //   documentation — the DEEP doc (semantics, channels, edge cases). The
-    //     consumer materializes it as a pull-able `plurnk://docs/<name>.md`
-    //     entry the model READs on demand; it never hits the hot path. Keep the
-    //     hot path terse (example) and let the depth pull (documentation).
-    //     Mirrors `ExecInfo.documentation`.
-    //   glyph — a display icon (emoji / nerdfont). Omit it and the consumer
-    //     renders the scheme `name` in its place (glyph ?? name).
+    // example = terse hot-path usage line (rendered every turn); documentation =
+    // deep doc the consumer materializes as a pull-able plurnk://docs/<name>.md;
+    // glyph = display icon (consumer renders `glyph ?? name`). Field-by-field
+    // contract: SPEC.md §1 + "Self-doc split".
     readonly example?: string;
     readonly documentation?: string;
     readonly glyph?: string;
-    // The value persisted to `entries.scheme` for this scheme's rows, which can
-    // legitimately differ from the addressing `name`. Resolution:
-    //   storedScheme === undefined ? name : storedScheme
-    // Absent → defaults to `name` (every existing manifest unchanged). An
-    // explicit `null` is honored: the scheme persists BARE (e.g. File renders
-    // bare paths like `src/foo.ts`; its `entries.scheme` stays NULL while its
-    // routing name is `"file"`). Lets the shared entry helpers scope queries by
-    // the persisted scheme. A bare-persisting sibling declares this once here
-    // instead of threading `null` through every helper call site.
+    // Value persisted to `entries.scheme`, which may legitimately differ from the
+    // addressing `name`. Resolution: `storedScheme === undefined ? name :
+    // storedScheme`; explicit `null` persists BARE (File: bare paths, scheme
+    // NULL, routing name "file"). Full contract: SPEC.md §1 (storedScheme).
     readonly storedScheme?: string | null;
 }
 

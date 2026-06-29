@@ -32,7 +32,7 @@ import type {
     PlanStatement,
 } from "@plurnk/plurnk-grammar";
 import type { SchemeCtx } from "./ctx.ts";
-import type { SchemeResult } from "./results.ts";
+import type { SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
 
 export interface SchemeHandler {

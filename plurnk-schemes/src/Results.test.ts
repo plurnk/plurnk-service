@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SchemeResult } from "./results.ts";
-import Results from "./results.ts";
+import type { SchemeResult } from "./Results.ts";
+import Results from "./Results.ts";
 
 test("shape discriminator narrows each family", () => {
     const entry: SchemeResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };

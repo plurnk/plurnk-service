@@ -1,4 +1,4 @@
-// Unit tests for matcher.ts adapter. The actual dialect dispatch lives
+// Unit tests for Matcher.ts adapter. The actual dialect dispatch lives
 // in @plurnk/plurnk-mimetypes; what we test here is the error→status
 // mapping, the baseLine offset, and the 204/200/203 result construction.
 
@@ -11,7 +11,7 @@ import {
     InvalidExpressionError,
     QueryParseFailureError,
 } from "@plurnk/plurnk-mimetypes";
-import Matcher from "./matcher.ts";
+import Matcher from "./Matcher.ts";
 
 // Stub factory: returns a Mimetypes-shaped object whose `query` resolves
 // or rejects per the caller's spec. The adapter only touches `query`.

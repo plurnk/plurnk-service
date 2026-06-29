@@ -1,11 +1,11 @@
-// Unit tests for path-mimetype. Cases requiring discovered handler
+// Unit tests for PathMimetype. Cases requiring discovered handler
 // packages (`.json` → `application/json`, etc.) live in plurnk-service's
 // intg suite where the production handler set is installed.
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import PathMimetype from "./path-mimetype.ts";
+import PathMimetype from "./PathMimetype.ts";
 
 const mimetypes = new Mimetypes();
 await mimetypes.ready();

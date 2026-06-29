@@ -8,15 +8,11 @@ interface SchemeWithManifest {
 }
 
 export default class SchemeResolver {
-    /**
-     * Given a map of scheme name → handler instance and the active loop's
-     * flags, return the set of scheme names eligible to dispatch.
-     *
-     * - Schemes without `manifest.flags` are always active.
-     * - `excludedInAsk` filters out under `mode === "ask"`.
-     * - `requiresWeb` / `requiresInteraction` / `proposes` filter out under
-     *   the corresponding `no*` flag.
-     */
+    // Given a map of scheme name → handler instance and the active loop's flags,
+    // return the set of scheme names eligible to dispatch. Schemes without
+    // `manifest.flags` are always active; `excludedInAsk` filters under
+    // `mode === "ask"`, and `requiresWeb` / `requiresInteraction` / `proposes`
+    // filter under the corresponding `no*` flag.
     static forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string> {
         const active = new Set<string>();
         for (const [name, handler] of handlers.entries()) {
