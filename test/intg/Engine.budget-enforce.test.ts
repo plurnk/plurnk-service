@@ -98,14 +98,14 @@ test("[§grinder-strike-coupling] a grinder fire past the first turn counts towa
     } finally { await db.close(); }
 });
 
-test("[§grinder-soft-turn-0-1] the first turn's overflow is soft — no strike (the environment, not the model)", async () => {
+test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists and STRIKES — no soft exemption", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
         const t1 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
-        assert.equal(t1.budgetStruck, false, "turn-1 overflow does not strike");
-        assert.equal(t1.budgetHardStop, true, "but it still hard-stops (env wall too low)");
+        assert.equal(t1.budgetStruck, true, "every compaction strikes — turn 0/1 is NOT exempt (#4): a fold happened, so it counts");
+        assert.equal(t1.budgetHardStop, true, "the TINY env wall is below even the folded scaffolding, so it still hard-stops");
     } finally { await db.close(); }
 });
 

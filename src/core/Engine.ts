@@ -1475,23 +1475,30 @@ export default class Engine {
         const folded = new Map<string, number>();
         const note = (scheme: string): void => { folded.set(scheme, (folded.get(scheme) ?? 0) + 1); };
 
-        // Pass 1 — prior-turn rollback: fold the latest emissions (the ones that
-        // pushed it over). No prior turn (turn 1, env overflow) → no-op → pass 2.
-        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId }); // prior-turn rollback folds the latest emissions — §grinder-layer1-rollback
-        for (const le of priorLogs) note(le.scheme ?? "log");
-        if (priorLogs.length > 0) await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
-        const errors = packet.telemetryErrors;
-        let current = priorLogs.length > 0 ? await rebuild(errors) : packet;
-        if (measure(current) <= ceiling) {
-            this.#emitBudgetOverflow(sessionId, loopId, folded);
-            return { packet: current, fit: true, struck: turnNumber > 1 }; // turn 0/1 overflow is the environment, never a strike — §grinder-soft-turn-0-1
+        // The grinder may compact ONLY the newest turn — the immediately-prior turn's emissions
+        // (turn N>1), or, when there is no prior turn (turn 1), THIS turn's own foists. It NEVER
+        // reaches older history; the model alone curates history via FOLD/KILL, and the engine never
+        // janitors stale context. §grinder-newest-turn-only
+        let foldedAny = false;
+        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+        if (priorLogs.length > 0) {
+            for (const le of priorLogs) note(le.scheme ?? "log");
+            await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
+            foldedAny = true;
+        } else {
+            // Turn 1 — no prior turn: fold THIS turn's own foists (the catalog/prompt that overflowed). §grinder-turn-1-self-fold (#2)
+            const curLogs = await (this.#db.engine_grinder_current_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+            if (curLogs.length > 0) {
+                for (const le of curLogs) note(le.scheme ?? "log");
+                await (this.#db.engine_grinder_fold_current_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
+                foldedAny = true;
+            }
         }
-
-        // Prior-turn rollback is the only budget lever now: entries don't render
-        // (no index), so there is no catalog to collapse. If pass 1 didn't fit,
-        // the packet is over and the caller hard-413s. §grinder-hard-413-abort
+        const current = foldedAny ? await rebuild(packet.telemetryErrors) : packet;
         this.#emitBudgetOverflow(sessionId, loopId, folded);
-        return { packet: current, fit: measure(current) <= ceiling, struck: turnNumber > 1 };
+        // Every compaction is a strike — including turn 0/1 (no soft exemption, #4). struck iff the
+        // grinder actually folded something (a real compaction), never on a clean fit. §grinder-compaction-strikes
+        return { packet: current, fit: measure(current) <= ceiling, struck: foldedAny };
     }
 
     // The model-facing budget event (SPEC §grinder, §telemetry): which entries left the

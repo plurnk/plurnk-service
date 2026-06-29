@@ -327,6 +327,19 @@ UPDATE log_entries SET expanded = 0
 WHERE loop_id = $loop_id AND expanded = 1
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
+-- PREP: engine_grinder_current_turn_logs
+-- §grinder turn-1 self-fold (#2): when there is NO prior turn, the items over the wall are
+-- THIS turn's own foists (the catalog FINDs / prompt). The grinder still touches exactly one
+-- turn — here the current one. Rows + bodies stay, re-OPENable.
+SELECT le.id, le.scheme
+FROM log_entries le
+WHERE le.loop_id = $loop_id AND le.expanded = 1 AND le.turn_id = $turn_id;
+
+-- PREP: engine_grinder_fold_current_turn_logs
+-- §grinder turn-1 self-fold (#2): fold this turn's own still-open foists in one set-op.
+UPDATE log_entries SET expanded = 0
+WHERE loop_id = $loop_id AND expanded = 1 AND turn_id = $turn_id;
+
 -- PREP: engine_fold_log_entry
 -- §prompt-fold (User Note 6): fold a single log row by id — collapse to its
 -- coordinate, body elided in the render, re-OPENable. Used for the foisted prompt
