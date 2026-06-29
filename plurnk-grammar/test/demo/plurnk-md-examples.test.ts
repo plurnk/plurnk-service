@@ -43,7 +43,8 @@ test("plurnk.md examples block contains the expected statement count", () => {
     // Snapshot of current example count. Update when plurnk.md gains/loses examples.
     // (34 after the #44 dialect rebalance added a jsonpath FIND crossover, so jsonpath and
     // semantic each appear on both FIND and READ — the op chooses projection, not the dialect.)
-    assert.equal(statements.length, 34, `expected 34 statements, got ${statements.length}`);
+    // (35 after adding the KILL × log:// crossover: erase all FOLD ops in the loop.)
+    assert.equal(statements.length, 35, `expected 35 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {

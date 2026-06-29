@@ -137,6 +137,7 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
 * <<KILL[9](sh:///3/1/3)::KILL
+* <<KILL(log:///1/*/*/FOLD)::KILL
 * <<OPEN(log:///**/get)<1,10>::OPEN
 * <<FIND(known:///**)<5>:~french revolutionary history:FIND
 * <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
