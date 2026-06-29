@@ -9,8 +9,15 @@
 //      when a child publishes, those pins silently fall behind (the re-pin
 //      treadmill — it stranded the text-html floor a content-channel release
 //      behind). Caret/range floors (^x, ~x, >=x) are MINIMUMS, intentionally
-//      below latest — never flagged.
-//   2. AUDIT — `npm audit` per family package that carries third-party deps.
+//      below latest — never flagged here (see EXTERNAL for the range half).
+//   2. EXTERNAL — third-party SIMPLE caret/tilde ranges (^x.y.z / ~x.y.z) whose
+//      ceiling now trails npm-latest: a new major/minor shipped PAST the range,
+//      so the range itself is stale and needs a conscious bump. This is the half
+//      PINS skips on purpose — the gap that let web-tree-sitter drift unseen.
+//      Lockfile-lag WITHIN a still-valid range is the per-repo `npm outdated`
+//      prepublishOnly gate's job (needs an install); this no-install sweep only
+//      sees package.json. Union/compound ranges (`||`, `>=`, `*`) are skipped.
+//   3. AUDIT — `npm audit` per family package that carries third-party deps.
 //      Catches a transitive advisory rooted in a handler at the source (e.g. the
 //      text-gherkin → @cucumber/gherkin → @cucumber/messages → uuid chain) that
 //      a version-pin scan structurally cannot see. The COMBINED-tree audit is
@@ -64,6 +71,23 @@ for (const name of readdirSync(root)) {
 const triplet = (v) => v.replace(/^[\^~>=<\s]+/, "").split("-")[0].split(".").map(Number);
 const cmp = (a, b) => { const [A, B] = [triplet(a), triplet(b)]; for (let i = 0; i < 3; i += 1) { if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0); } return 0; };
 const isExact = (range) => /^\d/.test(range); // exact pin, not ^ ~ >= * workspace: file:
+
+// Exclusive upper bound of a SIMPLE caret/tilde range (^x.y.z / ~x.y.z), per
+// npm semver semantics (^0.y caps at 0.(y+1), ^0.0.z at 0.0.(z+1)). null for
+// any compound/complex range (unions `||`, `>=`, `*`, `x`) — deliberately
+// skipped, not guessed: better to under-flag a weird range than false-positive.
+const SIMPLE_RANGE = /^([\^~])(\d+)\.(\d+)\.(\d+)$/;
+function rangeCeiling(range) {
+    const m = range.match(SIMPLE_RANGE);
+    if (!m) return null;
+    const [op, A, B, C] = [m[1], +m[2], +m[3], +m[4]];
+    if (op === "~") return [A, B + 1, 0];
+    if (A > 0) return [A + 1, 0, 0];
+    if (B > 0) return [0, B + 1, 0];
+    return [0, 0, C + 1];
+}
+// latest (string) >= ceiling (triplet array) → range can't reach latest → stale.
+const reachesPast = (latest, ceil) => { const L = triplet(latest); for (let i = 0; i < 3; i += 1) { if ((L[i] || 0) !== ceil[i]) return (L[i] || 0) > ceil[i]; } return true; };
 
 const npmCache = new Map();
 function npmLatest(name) {
@@ -121,6 +145,30 @@ if (runPins) {
     if (!stale.length) console.log("  none — every first-party exact pin matches npm-latest.");
     for (const s of stale) console.log(`  STALE  ${s.slug}  [${s.field}]  ${s.name.replace("@plurnk/plurnk-mimetypes-", "")}  pins ${s.range} → npm ${s.latest}`);
     issues += stale.length;
+    console.log("");
+
+    // EXTERNAL — third-party simple caret/tilde ranges whose ceiling now trails
+    // npm-latest (a new major/minor shipped past the range). The PINS check
+    // above ignores ranges by design (range floors are minimums); this catches
+    // the other half — a *range* gone stale, needing a conscious bump (the gap
+    // that let web-tree-sitter drift). Lockfile-lag WITHIN a range is the
+    // per-repo `npm outdated` gate's job, not this no-install family sweep.
+    console.log("EXTERNAL — third-party caret/tilde ranges trailing npm-latest\n");
+    const extStale = [];
+    for (const { slug, pj } of pkgs) {
+        for (const field of FIELDS) {
+            for (const [name, range] of Object.entries(pj[field] || {})) {
+                if (name.startsWith("@plurnk/")) continue;
+                const ceil = rangeCeiling(range);
+                if (!ceil) continue; // exact pins / unions / complex ranges — skip
+                const latest = npmLatest(name);
+                if (latest && reachesPast(latest, ceil)) extStale.push({ slug, field, name, range, latest });
+            }
+        }
+    }
+    if (!extStale.length) console.log("  none — every simple caret/tilde range still reaches npm-latest.");
+    for (const s of extStale) console.log(`  STALE  ${s.slug}  [${s.field}]  ${s.name}  range ${s.range} → npm ${s.latest}`);
+    issues += extStale.length;
     console.log("");
 }
 
