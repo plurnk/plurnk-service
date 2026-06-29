@@ -31,6 +31,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, packetSection } fro
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
+const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (computeCeiling gates on the narrowest of ceiling/window)
 const WIDE = 1_000_000; // absolute wall capped to the window → never overflows
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
@@ -79,7 +80,7 @@ const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number;
 const measure = async (db: Db): Promise<{ floor: number; expanded: number }> => {
     const { sessionId, runId, loopId } = await envelope(db);
     const wide = engineAt(db, WIDE);
-    const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+    const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
     const t1 = await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
     const t2 = await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
     return { floor: (await packetOf(db, t1.turnId)).tokens, expanded: (await packetOf(db, t2.turnId)).tokens };
@@ -101,7 +102,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, WIDE);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: fatReads(FAT) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: fatReads(FAT) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 200, "delivered");
         assert.equal(t.budgetHardStop, false, "no hard-stop under a wide ceiling");
         const { percent } = budgetHeadline((await packetOf(db, t.turnId)).packet);
@@ -118,7 +119,7 @@ test("budget: overflow is judged on the current assembled packet, not a prior-tu
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 }); // fat READ log, expanded
         // Ceiling sits ABOVE the floor but BELOW floor+fat: the only thing over the
         // wall is the fat prior-turn log, which the grinder must measure NOW and fold.
@@ -138,7 +139,7 @@ test("budget: folding the prior turn reclaims room and the turn delivers (200, n
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         const t2 = await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -156,7 +157,7 @@ test("budget: a delivered packet after fold-to-fit reads at or below 100%", asyn
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         const t2 = await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -175,7 +176,7 @@ test("budget: folding a fat log strictly reduces the measured packet", async () 
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         const t2 = await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -191,7 +192,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413, "un-foldable → hard-413");
         assert.equal(t.budgetHardStop, true, "the hard-stop fired before generate()");
         const packet = await packetOf(db, t.turnId);
@@ -207,7 +208,7 @@ test("budget: folding changes the render, not the stored token cost of the entry
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(1)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = (await logRows(db, runId)).filter((r) => r.turn_seq === 1).reduce((s, r) => s + r.tokens, 0);
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
@@ -228,7 +229,7 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT, 3), ...okSends(2)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT, 3), ...okSends(2)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -248,7 +249,7 @@ test("budget: the overflow event surfaces on a fold-to-fit recovery turn", async
         const { floor, expanded } = await measure(db);
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: [...fatReads(FAT), ...okSends(2)] });
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT), ...okSends(2)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 }); // folds → emits budget_overflow
@@ -266,7 +267,7 @@ test("budget: the un-foldable hard-413 record reports a positive overshoot hones
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
         const { ceiling, usage, percent, free } = budgetHeadline((await packetOf(db, t.turnId)).packet);
         assert.ok(usage > ceiling, `usage ${usage} exceeds ceiling ${ceiling} — a real overshoot`);
