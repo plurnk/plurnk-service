@@ -53,7 +53,7 @@ test("topo: fan-out three workers and join their results", { timeout: TIMEOUT },
     // Fan-out + join: three parallel workers, hibernate, wake as each concludes, aggregate.
     const story = await runStory({
         label: "fanout",
-        prompt: "src/config.json has three settings: db, pool, and host. Use a separate worker to look up each one, then give me all three values together.",
+        prompt: "src/config.json has three settings: db, pool, and host. Have a separate worker look up each one, then give me all three values together.",
         maxTurns: 12,
     });
     try {
@@ -68,7 +68,7 @@ test("topo: a two-stage pipeline of dependent workers", { timeout: TIMEOUT }, as
     // Sequential dependency: worker A's result feeds worker B. The parent waits between stages.
     const story = await runStory({
         label: "pipeline",
-        prompt: "First have a worker count how many users are in data/users.json. Then, once you have that count, have a second worker check whether it's more than 2. Give me the final yes-or-no answer.",
+        prompt: "First have a worker count how many users are in data/users.json. Then have a second worker check whether that count is more than 2. Give me the final yes-or-no answer.",
         maxTurns: 14,
     });
     try {

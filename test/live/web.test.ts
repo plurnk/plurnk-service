@@ -32,8 +32,9 @@ const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ fetches a real URL into a streamed entry (no model, no mock)",
     async () => {
-        const parsed = PlurnkParser.parse(`<<READ(${HTTP_URL})::READ`);
-        const item = parsed.items.find((i: { kind: string }) => i.kind === "statement") as { statement: PlurnkStatement } | undefined;
+        // grammar 0.74.34 requires a PLAN lead; PLAN-prefix then take the READ (the service parses ops this way too).
+        const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n<<READ(${HTTP_URL})::READ`);
+        const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;
         if (item === undefined) throw new Error("parse produced no statement");
         const statement = item.statement;
         const db = await openMigrated();
@@ -83,8 +84,8 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const loopId = await insertLoop(db, runId, 1, "search");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
-            const parsed = PlurnkParser.parse("<<EXEC[search]:plurnk agent runtime:EXEC");
-            const item = parsed.items.find((i: { kind: string }) => i.kind === "statement") as { statement: PlurnkStatement } | undefined;
+            const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:plurnk agent runtime:EXEC");
+            const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "EXEC") as { statement: PlurnkStatement } | undefined;
             if (item === undefined) throw new Error("parse produced no statement");
 
             let logEntryId = -1;
