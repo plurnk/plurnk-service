@@ -5,6 +5,7 @@ import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts"
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
+import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
 import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type {
     DetectInput,
@@ -26,62 +27,9 @@ export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "conte
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
 
-// The embedder package (issue #24). Opt-in artifact dependency, resolved
-// lazily through the same loader handler packages use — per-grammar-package
-// precedent: the framework ships no model weights.
-const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
-
-// Progress + cancellation for bulk embedding (plurnk-service#272).
-export interface EmbedProgress {
-    completed: number;
-    total: number;
-}
-export interface EmbedBatchOptions {
-    // Fires as each text finishes (out of input order — completion order).
-    onProgress?(progress: EmbedProgress): void;
-    // Cancels in-flight work; rejects the batch.
-    signal?: AbortSignal;
-}
-
-// Surface the embeddings package must export.
-interface Embedder {
-    // text → native-endian raw Float32 bytes (4 × dimension).
-    embed(text: string): Promise<Uint8Array>;
-    // Bulk embedding (embeddings 0.5.0): same bytes as embed() per text,
-    // data-parallel across a worker pool, returned in INPUT order. Optional —
-    // an embedder predating it omits it and Mimetypes.embedBatch() falls back
-    // to a sequential embed() loop (still honoring onProgress/signal).
-    embedBatch?(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
-    readonly dimension: number;
-    // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37+q8"). Surfaced on
-    // ProcessResult.embeddingModel so consumers can store it alongside
-    // vectors and detect incomparable BLOBs after a model swap.
-    readonly model?: string;
-    // Pure model facts for the host's lossless chunker (embeddings#1).
-    // Optional — an embedder predating the chunking surface omits them and
-    // embedderInfo() reports null, so the host stays on whole-entry behavior.
-    readonly maxTokens?: number;
-    countTokens?(text: string): Promise<number>;
-    // Release the embedder's native runtime (onnxruntime worker pool). Optional;
-    // an embedder without it just can't be torn down. Surfaced via
-    // Mimetypes.dispose() (issue #36).
-    dispose?(): Promise<void> | void;
-}
-
-// What embedderInfo() hands the host: the token window plus the model's own
-// counter, the two facts its chunker needs to tile losslessly. null when no
-// embedder is installed OR the installed one predates this surface.
-export interface EmbedderInfo {
-    maxTokens: number;
-    countTokens(text: string): Promise<number>;
-    // The embedder's model identity (#31) — the same string surfaced on
-    // ProcessResult.embeddingModel. The host folds it into each entry's
-    // deep_hash so a model-id change (a re-quantization like +q8, or a swap
-    // keeping the same window) re-derives existing embeddings instead of
-    // silently excluding them from ~query. Omitted if the embedder predates
-    // exporting it (host treats absence as "no re-derivation signal").
-    model?: string;
-}
+// The embedder seam (issues #24/#31/#36) lives in Embeddings.ts; its public
+// types are re-exported here so the module's API surface is unchanged.
+export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
 
 // Loader hook: how to resolve a handler package to its default-exported class.
 // Production uses dynamic import(); tests inject a custom loader to avoid
@@ -207,17 +155,15 @@ export default class Mimetypes {
     readonly #loader: HandlerLoader;
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, BaseHandler>();
+    readonly #embeddings: Embeddings;
     #discovery: Discovery | null = null;
     #readyPromise: Promise<void> | null = null;
-    // Primed-promise cache for the opt-in embedder (issue #24). null result
-    // = package not installed/loadable; the promise itself is cached so the
-    // model loads once per orchestrator lifetime.
-    #embedderPromise: Promise<Embedder | null> | null = null;
 
     constructor(options: MimetypesOptions = {}) {
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader;
         this.#defaultMimetype = options.defaultMimetype ?? null;
+        this.#embeddings = new Embeddings(this.#loader);
         if (options.discovery !== undefined) this.#discovery = options.discovery;
     }
 
@@ -391,7 +337,7 @@ export default class Mimetypes {
         }
         const totalLines = typeof content === "string" ? countLines(content) : 0;
         const embeddingPart = channels.has("embedding")
-            ? await this.#embedFor(content, handler, options.strict === true)
+            ? await this.#embeddings.embedFor(content, handler, options.strict === true)
             : {};
 
         return attachTelemetry({
@@ -408,142 +354,26 @@ export default class Mimetypes {
         });
     }
 
-    // Embedding channel (issue #24). Embeds the entry's READABLE projection,
-    // not its raw bytes — the content channel where present (HTML → markdown),
-    // else toText (binary → page text; text → passthrough body). So HTML
-    // embeddings carry the article, not `<div class>` noise. Empty bytes when
-    // no projection exists; missing embedder package degrades with an install
-    // hint (#14 precedent) or throws under strict.
-    async #embedFor(
-        content: string | Uint8Array,
-        handler: BaseHandler | null,
-        strict: boolean,
-    ): Promise<{ embedding: Uint8Array; embeddingMissing?: string }> {
-        const embedder = await this.#getEmbedder();
-        if (embedder === null) {
-            if (strict) {
-                throw new Error(
-                    `Embedding channel requested but ${EMBEDDINGS_PACKAGE} is not `
-                    + `installed. npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
-                );
-            }
-            return { embedding: new Uint8Array(0), embeddingMissing: EMBEDDINGS_PACKAGE };
-        }
-        let text: string | undefined;
-        try {
-            if (handler !== null) {
-                // content() is the model-readable projection (HTML markdown);
-                // undefined for handlers whose body is already readable, where
-                // toText supplies the passthrough/page-text body.
-                const readable = await handler.content(content);
-                text = typeof readable === "string"
-                    ? readable
-                    : await (handler as unknown as { toText(c: string | Uint8Array): string | Promise<string> }).toText(content);
-            } else if (typeof content === "string") {
-                text = content;
-            }
-        } catch {
-            // No text projection (binary without toText override) — nothing to
-            // embed; empty bytes are the honest channel.
-            return { embedding: new Uint8Array(0) };
-        }
-        if (text === undefined || text.length === 0) return { embedding: new Uint8Array(0) };
-        return {
-            embedding: await embedder.embed(text),
-            ...(typeof embedder.model === "string" && { embeddingModel: embedder.model }),
-        };
-    }
-
-    #getEmbedder(): Promise<Embedder | null> {
-        this.#embedderPromise ??= (async () => {
-            let mod: unknown;
-            try {
-                mod = await this.#loader(EMBEDDINGS_PACKAGE);
-            } catch {
-                return null;
-            }
-            const m = mod as { embed?: unknown; dimension?: unknown; default?: { embed?: unknown; dimension?: unknown } };
-            const surface = typeof m.embed === "function" ? m : m.default;
-            if (typeof surface?.embed !== "function" || typeof surface?.dimension !== "number") {
-                return null;
-            }
-            return surface as unknown as Embedder;
-        })();
-        return this.#embedderPromise;
-    }
-
-    // Pure model facts for plurnk-service's lossless chunker (embeddings#1):
-    // the token window and the model's own tokenizer counter. The host calls
-    // this once per derivation — null → one whole-entry chunk (today's
-    // behavior); non-null → tile the body into <= maxTokens chunks measured by
-    // countTokens. null when no embedder is installed OR the installed
-    // embedder predates this surface (no maxTokens/countTokens).
+    // Pure model facts for plurnk-service's lossless chunker (embeddings#1).
+    // Delegates to the embedder seam (Embeddings.ts).
     async embedderInfo(): Promise<EmbedderInfo | null> {
-        const embedder = await this.#getEmbedder();
-        if (!embedder || typeof embedder.maxTokens !== "number" || typeof embedder.countTokens !== "function") {
-            return null;
-        }
-        const { maxTokens, countTokens, model } = embedder;
-        return {
-            maxTokens,
-            countTokens: (text) => countTokens.call(embedder, text),
-            ...(typeof model === "string" && { model }),
-        };
+        return this.#embeddings.info();
     }
 
     // Bulk embedding entry for the host's corpus ingest (plurnk-service#272).
-    // Returns one vector per input text, in INPUT order — bit-identical to
-    // calling the embedding channel per text, so nothing already stored needs
-    // re-embedding. Delegates to the embedder's data-parallel embedBatch() when
-    // present (embeddings 0.5.0+, ~6x at 8 workers); falls back to a sequential
-    // embed() loop for older embedders, still firing onProgress and honoring
-    // signal. Single embedder seam: resolution + model identity stay framework-
-    // owned (pair with embedderInfo() for chunk budgeting), so the host never
-    // reaches into the embeddings package directly.
-    //
-    // Unlike the per-entry channel (which degrades to empty bytes when the
-    // package is absent), this is an explicit bulk call — a missing embedder is
-    // a misconfiguration, so it throws rather than silently storing empties.
+    // Delegates to the embedder seam (Embeddings.ts).
     async embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
-        const embedder = await this.#getEmbedder();
-        if (embedder === null) {
-            throw new Error(
-                `embedBatch() requested but ${EMBEDDINGS_PACKAGE} is not installed. `
-                + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
-            );
-        }
-        if (typeof embedder.embedBatch === "function") {
-            return embedder.embedBatch(texts, options);
-        }
-        // Fallback: embedder predates embedBatch. Sequential, but the host's
-        // progress and cancellation contract is honored regardless.
-        const out: Uint8Array[] = [];
-        for (let i = 0; i < texts.length; i += 1) {
-            options?.signal?.throwIfAborted();
-            out.push(await embedder.embed(texts[i]));
-            options?.onProgress?.({ completed: i + 1, total: texts.length });
-        }
-        return out;
+        return this.#embeddings.batch(texts, options);
     }
 
     // Release native resources so a consumer can drain its event loop and exit
-    // (issue #36). The embedder's onnxruntime worker pool holds active+referenced
-    // libuv handles that otherwise keep the process alive after all work
-    // finishes. Awaits the embedder's own dispose() if one was loaded, then
-    // drops the cached embedder + handler instances. Idempotent — channels
+    // (issue #36). Tears down the embedder seam's onnxruntime worker pool (which
+    // holds active+referenced libuv handles that otherwise keep the process
+    // alive), then drops the cached handler instances. Idempotent — channels
     // re-lazy-init if the instance is used again. A consumer creating Mimetypes
     // instances per unit of work should `await m.dispose()` when done.
     async dispose(): Promise<void> {
-        if (this.#embedderPromise !== null) {
-            const pending = this.#embedderPromise;
-            this.#embedderPromise = null;
-            try {
-                const embedder = await pending;
-                if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
-            } catch {
-                // embedder never loaded (package absent / load failed) — nothing to release.
-            }
-        }
+        await this.#embeddings.dispose();
         this.#handlerInstances.clear();
     }
 
@@ -610,7 +440,7 @@ export default class Mimetypes {
         // is still semantically searchable text (non-strict: a missing
         // embedder stacks its own hint alongside grammarMissing).
         const embeddingPart = channels.has("embedding")
-            ? await this.#embedFor(content, null, false)
+            ? await this.#embeddings.embedFor(content, null, false)
             : {};
         return attachTelemetry({
             mimetype,
