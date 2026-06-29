@@ -110,3 +110,26 @@ test("syntax error → sqlite_error, 500", async () => {
     assert.equal(result.status, 500);
     assert.equal(events[0].kind, "sqlite_error");
 });
+
+// SPEC §6 — must honor args.signal. sqlite is synchronous, so a pre-aborted
+// signal is honored at entry: the file-backed mutation never runs (the db file
+// is never created), and the channel closes errored with 499.
+test("pre-aborted signal → 499 errored, file mutation skipped", async () => {
+    const path = tempDb();
+    const ac = new AbortController();
+    ac.abort();
+    const states: string[] = [];
+    let wrote = false;
+    const args: ExecArgs = {
+        runtime: "sqlite", command: "CREATE TABLE t (x)", cwd: path,
+        signal: ac.signal,
+        write: () => { wrote = true; },
+        setState: (_channel, state) => states.push(state),
+        emit: () => {},
+    };
+    const result = await new Sqlite({ runtime: "sqlite", glyph: "🗃" }).run(args);
+    assert.equal(result.status, 499);
+    assert.equal(wrote, false);
+    assert.deepEqual(states, ["errored"]);
+    await assert.rejects(readFile(path), { code: "ENOENT" });
+});

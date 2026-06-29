@@ -51,7 +51,12 @@ export default class Sqlite extends BaseExecutor {
         return target === null || target === MEMORY ? "pure" : "host";
     }
 
-    async run({ command, cwd, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+        // node:sqlite is fully synchronous — no await point to interrupt mid-query —
+        // so the only place to honor an abort is before the work starts (SPEC §6).
+        // Matters for a file-backed (host) statement: a cancel/KILL that lands first
+        // must not still mutate the db.
+        if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
         const path = dbTarget(cwd);
         const sql = command.trim();
         const fail = (kind: string, message: string): ExecResult => {
