@@ -61,9 +61,10 @@ export const chatCompletion = async ({ url, headers, body, signal }: StreamReque
         const errorBody = await response.text();
         throw new OpenAiHttpError(response.status, errorBody, parseRetryAfter(response.headers.get("retry-after")));
     }
-    const j = (await response.json()) as Record<string, any>;
-    const choice = (j.choices?.[0] ?? {}) as Record<string, any>;
-    const msg = (choice.message ?? {}) as Record<string, any>;
+    const j = (await response.json()) as Record<string, unknown>;
+    const choices = j.choices as Array<Record<string, unknown>> | undefined;
+    const choice = (choices?.[0] ?? {}) as Record<string, unknown>;
+    const msg = (choice.message ?? {}) as Record<string, unknown>;
     const reasoning = msg.reasoning_content ?? msg.reasoning ?? msg.thinking ?? "";
     const chunkMetadata: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(j)) if (k !== "choices" && k !== "usage") chunkMetadata[k] = v;

@@ -15,32 +15,17 @@ import { toProviderError, classifyProviderError, ProviderError, type TelemetryEv
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
 // How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
-// -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4):
-//  - "template":          llama-server (jinja) → `chat_template_kwargs.enable_thinking`,
-//                         ALWAYS emitted — the explicit false is the only working
-//                         off-switch (llama-server ignores `think` and per-request
-//                         budgets; its --reasoning-budget default otherwise keeps
-//                         the channel live — fatal under an active grammar, §13).
-//  - "think":             Ollama OpenAI-compat → `think: true` when on (budget != 0)
-//  - "include_reasoning": OpenRouter relay passthrough toggle when on
-//  - "effort":            o-series / Grok / Gemini → reasoning_effort tier from a
-//                         capped budget (N>0); adaptive (-1) omits the field (API default)
-//  - "anthropic":         Claude OpenAI-compat endpoint → `thinking: { type, budget_tokens }`
-//                         (it IGNORES reasoning_effort): 0 off → disabled, N>0 → enabled with
-//                         budget_tokens, -1 adaptive → omit (the API's default depth)
-//  - "none":              provider has no reasoning toggle (e.g. Cloudflare, Bedrock relay)
+// -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4);
+// the per-style mapping lives in #reasoningBody. Two non-obvious ones: "template"
+// ALWAYS emits enable_thinking — the explicit false is llama-server's only working
+// off-switch (§13); "anthropic" uses the `thinking` object and IGNORES reasoning_effort.
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic";
 
 // How a caller-supplied GBNF grammar is carried on the wire — backends accept
-// different shapes for the SAME GBNF (probed/configured, never guessed; §13):
-//  - "llamacpp":         llama.cpp/llama-server → top-level `grammar` field
-//                        (+ the repeat-penalty floor); detected via the probe.
-//  - "response_format":  Fireworks (and compatible) → `response_format:
-//                        { type: "grammar", grammar }`. Verified live: a forcing
-//                        grammar constrains the output (plurnk-providers#…).
-//  - "none":             backend has no working GBNF path — the grammar is NOT
-//                        sent (never silently, so a constrained consumer can't
-//                        mistake unconstrained output for enforced).
+// different shapes for the SAME GBNF (probed/configured, never guessed; §13); the
+// wire shape per style lives in #grammarBody. "none" means the grammar is NOT sent
+// (never silently — so a constrained consumer can't mistake unconstrained output
+// for enforced).
 export type GrammarStyle = "none" | "llamacpp" | "response_format";
 
 export type OpenAICompatConfig = {

@@ -220,18 +220,12 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrl: "https://api.anthropic.com/v1", baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "anthropic", tokenizerDefault: "heuristic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
     },
-    // AWS Bedrock via its OpenAI-compat chat-completions endpoint, authed with a
-    // Bedrock API key as a bearer token (SigV4 is optional, not required). The
-    // base is region-templated: BEDROCK_BASE_URL overrides, else it's derived
-    // from the standard AWS_REGION / AWS_DEFAULT_REGION as
-    // https://bedrock-runtime.{region}.amazonaws.com/openai/v1 — so an operator
-    // with AWS creds already exported needs no extra var. (Note the OpenAI-compat
-    // path is /openai/v1, not /v1.) Multi-model relay (Claude, gpt-oss, Llama, …)
-    // → no single reasoning toggle. Model ids are inference profiles like
-    // `us.anthropic.claude-sonnet-4-6`; `catalogContextLookup` strips the region and
-    // resolves the window under the model's publisher (#22). Cost stays unknown
-    // (bedrock marks up over the native rate); set PLURNK_PROVIDER_CONTEXT_SIZE for
-    // a publisher the catalog lacks (e.g. meta).
+    // AWS Bedrock via its OpenAI-compat endpoint (path is /openai/v1, NOT /v1),
+    // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
+    // (see baseUrlFromEnv); model ids are inference profiles like
+    // `us.anthropic.claude-sonnet-4-6` (see catalogContextLookup). Cost stays unknown —
+    // bedrock marks up over the native rate, so set PLURNK_PROVIDER_CONTEXT_SIZE for
+    // a publisher the catalog lacks (#22).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
@@ -253,19 +247,12 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
     // The plurnk hosted model — deliberately the most boring OpenAI-compatible
-    // client we can ship. The open-source ecosystem must not know or care what
-    // sits behind model.plurnk.ai (model, window, grammar, tuning are the
-    // router's business). So: no reasoning param ("none"), an agnostic tokenizer
-    // (heuristic), and NO grammar — the endpoint "doesn't support" GBNF here only
-    // because the router injects its own. It DOES read its context window from
-    // upstream (probeNctx), so a 32k→48k change is a one-line server decision,
-    // never a client release — but `detectLlamaServer: false` keeps it a plain
-    // remote OpenAI server that can't be flipped into grammar/slot behavior.
-    // Base URL defaults to model.plurnk.ai, overridable via PLURNK_BASE_URL. Auth
-    // is a single OPTIONAL bearer PLURNK_API_KEY — the key identifies the account
-    // server-side, so there is no separate account header; sent only when set,
-    // exactly like any other standard bearer (a keyless local server gets none).
-    // firstPartyMetadata forwards attribution/client headers.
+    // client we can ship: the ecosystem must not know what sits behind
+    // model.plurnk.ai (model/window/grammar/tuning are the router's business).
+    // probeNctx reads the window from upstream (a 32k→48k change is a server
+    // decision, not a client release), but detectLlamaServer:false keeps it a
+    // plain remote server that can NOT be flipped into grammar/slot behavior.
+    // PLURNK_API_KEY is an optional bearer (identifies the account server-side).
     plurnk: {
         baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
