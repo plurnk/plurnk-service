@@ -25,9 +25,13 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
     catch (err) { if (explicit) throw err; return null; }
 };
 
-// System Policy: PLURNK_POLICY (~-expanded) or the default ~/.plurnk/AGENTS.md.
+// System Policy: PLURNK_POLICY (~-expanded) or the default ~/.plurnk/AGENTS.md. An EXPLICITLY-empty
+// PLURNK_POLICY disables it (undefined → default; "" → off; a path → that file). The test cascade
+// (.env.test) sets it empty so test/demo/live packets never foist the operator's dogfooding policy.
 export const readSystemPolicy = async (): Promise<string | null> => {
-    const env = process.env.PLURNK_POLICY?.trim();
+    const raw = process.env.PLURNK_POLICY;
+    if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)
+    const env = raw?.trim();
     return readPolicy(env ? resolveInjectPath(env) : join(homedir(), ".plurnk", "AGENTS.md"), !!env);
 };
 
