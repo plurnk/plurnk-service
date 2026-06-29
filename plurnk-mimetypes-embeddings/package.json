@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
-    "version": "0.5.0",
-    "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) on a portable WASM runtime (onnxruntime-web) — hermetic, no native addon, no runtime network.",
+    "version": "0.6.0",
+    "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) on a vendored portable WASM runtime (onnxruntime-web) — hermetic, no native addon, no runtime network, no transitive install scripts.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -22,18 +22,22 @@
         "embed-worker.js",
         "model/**",
         ".model-pin",
+        "vendor/**",
+        ".ort-pin",
         "README.md"
     ],
     "scripts": {
         "build:model": "node scripts/fetch-model.mjs",
         "verify:model": "node scripts/verify-model.mjs",
+        "vendor:ort": "node scripts/vendor-ort.mjs",
+        "verify:ort": "node scripts/verify-ort.mjs",
+        "pretest": "npm run verify:ort",
         "test:unit": "node --test index.test.js",
         "test:integration": "node --test test/integration/*.test.js",
         "test": "npm run test:unit && npm run test:integration"
     },
     "dependencies": {
-        "@huggingface/tokenizers": "^0.1.3",
-        "onnxruntime-web": "^1.27.0"
+        "@huggingface/tokenizers": "^0.1.3"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.0"

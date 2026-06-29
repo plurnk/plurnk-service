@@ -7,7 +7,13 @@ Opt-in embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurn
 - **Xenova/all-MiniLM-L6-v2**, q8 quantized onnx (`onnx/model_quantized.onnx`), **384 dimensions**.
 - Pinned revision: `751bff37182d3f1213fa05d7196b954e230abad9` (`.model-pin`).
 - Model files are **bundled in the package** — no runtime network, ever. Hermetic by construction: the embedder only reads local files, so there is no fetcher to disable. Integrity manifest in `model/model.sha256` (`npm run verify:model`).
-- Inference runs on a **portable WASM runtime** — [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) (single-threaded) for the onnx graph, [`@huggingface/tokenizers`](https://www.npmjs.com/package/@huggingface/tokenizers) for WordPiece. No native N-API addon: runs anywhere Node/Bun/Deno/edge runs, ships no per-platform binary, and leaks no event-loop handles (a process that embeds drains and exits on its own — plurnk-mimetypes#36). Output is vector-identical to the prior native (`onnxruntime-node`) path — same `model` identity, no re-embed.
+- Inference runs on a **portable WASM runtime** — [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) (single-threaded, **vendored** — see below) for the onnx graph, [`@huggingface/tokenizers`](https://www.npmjs.com/package/@huggingface/tokenizers) for WordPiece. No native N-API addon: runs anywhere Node/Bun/Deno/edge runs, ships no per-platform binary, and leaks no event-loop handles (a process that embeds drains and exits on its own — plurnk-mimetypes#36). Output is vector-identical to the prior native (`onnxruntime-node`) path — same `model` identity, no re-embed.
+
+## Vendored runtime (clean install, no install scripts)
+
+`onnxruntime-web` is **vendored** into `vendor/onnxruntime-web/`, not pulled as an npm dependency. The reason: `onnxruntime-web` hard-depends on `protobufjs`, whose `postinstall` script trips dependency script-gates (lavamoat, pnpm `approve-builds`, hardened npm) — so a first install downstream would greet the user with a script-approval prompt. `protobufjs` is a **phantom**: the `.onnx` protobuf is parsed inside the wasm, never by the JS library (proven — `require.cache`/`moduleLoadList` report zero on a real `embed()`).
+
+Vendoring ORT's own self-contained pre-built dist removes both `onnxruntime-web` and `protobufjs` from the install tree, so this package's runtime dependencies reduce to `@huggingface/tokenizers` and a consumer install runs **zero** install scripts. The committed bytes are reproducible from `.ort-pin` via `npm run vendor:ort` and gated by `npm run verify:ort` (checksum + phantom assertion, run in `pretest`). Full rationale, the bump runbook, and the `npm audit` blind-spot note: [`vendor/onnxruntime-web/PROVENANCE.md`](vendor/onnxruntime-web/PROVENANCE.md).
 
 ## Install
 
@@ -57,4 +63,6 @@ For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `o
 
 - `npm run build:model` — re-download the pinned revision into `model/` and regenerate `model/model.sha256`.
 - `npm run verify:model` — check the committed model bytes against the manifest.
-- `npm test` — unit (duck surface, determinism, normalization, cosine sanity) + integration (real framework loader path).
+- `npm run vendor:ort` — re-copy the onnxruntime-web runtime from `.ort-pin` into `vendor/` and regenerate `ort.sha256` (re-asserts the protobufjs-phantom invariant).
+- `npm run verify:ort` — check the vendored runtime against its manifest and the phantom invariant (runs in `pretest`).
+- `npm test` — unit (duck surface, determinism, normalization, cosine sanity, vendoring phantom guard) + integration (real framework loader path).

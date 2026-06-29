@@ -100,6 +100,27 @@ describe("embedder duck surface", () => {
         }
     });
 
+    it("protobufjs is never loaded at runtime (vendoring phantom invariant)", () => {
+        // The vendored onnxruntime-web build drops protobufjs from the install
+        // tree; this guards the assumption it rests on — that the inference path
+        // never actually loads it (the .onnx protobuf is parsed inside the wasm).
+        // Run as a child so the check is isolated to a single real embed().
+        const indexPath = path.join(import.meta.dirname, "index.js");
+        const src = `import { createRequire } from "node:module";\n`
+            + `import { embed, dispose } from ${JSON.stringify(indexPath)};\n`
+            + `const require = createRequire(${JSON.stringify(indexPath)});\n`
+            + `await embed("does this touch protobufjs?");\n`
+            + `await dispose();\n`
+            + `const inCache = Object.keys(require.cache).filter((p) => /protobuf/i.test(p)).length;\n`
+            + `const inList = (process.moduleLoadList || []).filter((m) => /protobuf/i.test(m)).length;\n`
+            + `if (inCache || inList) { console.error("protobufjs loaded: cache=" + inCache + " list=" + inList); process.exit(3); }\n`;
+        // Throws on non-zero exit (protobufjs detected) or timeout.
+        execFileSync(process.execPath, ["--input-type=module", "--eval", src], {
+            timeout: 60000,
+            stdio: "ignore",
+        });
+    });
+
     it("dispose() is idempotent and re-lazy-inits (#36)", async () => {
         await dispose(); // before any use — no-op, must not throw
         await embed("warm");

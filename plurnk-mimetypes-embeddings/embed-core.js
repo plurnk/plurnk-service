@@ -6,13 +6,20 @@
 // identity regardless of how many workers run — and holds no event-loop handles.
 import path from "node:path";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Tokenizer } from "@huggingface/tokenizers";
-import * as ort from "onnxruntime-web";
-
-ort.env.wasm.numThreads = 1;
+// Vendored self-contained ESM build of onnxruntime-web (see
+// vendor/onnxruntime-web/PROVENANCE.md) — NOT the npm package. Vendoring drops
+// onnxruntime-web's phantom protobufjs dependency (and its install script) from
+// every consumer install, so the embedder lands clean. The web build takes the
+// model as bytes and resolves its wasm from env.wasm.wasmPaths.
+import * as ort from "./vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+ort.env.wasm.numThreads = 1;
+// Load our committed wasm binary, never a node_modules / CDN path.
+ort.env.wasm.wasmPaths = `${pathToFileURL(path.join(here, "vendor", "onnxruntime-web")).href}/`;
 
 export const dimension = 384;
 
@@ -28,7 +35,9 @@ export async function loadRuntime() {
     const tokenizer = new Tokenizer(tok, cfg);
     const sepId = tokenizer.token_to_id("[SEP]");
     if (typeof sepId !== "number") throw new Error("embed: tokenizer has no [SEP] token");
-    const session = await ort.InferenceSession.create(path.join(here, "model", "onnx", "model_quantized.onnx"));
+    // The web build takes the graph as bytes (it treats a string arg as a URL).
+    const onnx = new Uint8Array(readFileSync(path.join(here, "model", "onnx", "model_quantized.onnx")));
+    const session = await ort.InferenceSession.create(onnx);
     return { tokenizer, sepId, session };
 }
 
