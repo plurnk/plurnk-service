@@ -1,8 +1,8 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import BaseExecutor from "../BaseExecutor.ts";
-import SubprocessExecutor from "../SubprocessExecutor.ts";
-import type { ChannelDecl, ExecArgs, ExecResult } from "../types.ts";
+import BaseExecutor from "../src/BaseExecutor.ts";
+import SubprocessExecutor from "../src/SubprocessExecutor.ts";
+import type { ChannelDecl, ExecArgs, ExecResult } from "../src/types.ts";
 
 // plurnk-service#181 — probe() availability check. Asserts the agreed contract:
 // {available, detail?}, default available, env-aware, may reject (consumer

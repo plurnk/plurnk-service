@@ -10,7 +10,7 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, Runti
 // The consuming scheme owns all I/O and lifecycle machinery (db, channels,
 // subscriptions, AbortController bridging, wake-on-completion). The executor
 // receives sinks via ExecArgs and nothing more — it stays stateless across
-// runs beyond its construction metadata (SPEC §5).
+// runs beyond its construction metadata (SPEC §5; the statelessness rule is §6).
 export default abstract class BaseExecutor implements SchemeHandler {
     readonly runtime: string;
     readonly glyph: string;
@@ -20,7 +20,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
         this.glyph = glyph;
     }
 
-    // --- output addressing: the executor produces, the consumer reads --------
+    // --- output addressing: the executor produces, the consumer reads (SPEC §2.6)
     // The executor is a PRODUCER. Its output streams (via run()'s write/setState)
     // into a consumer-held log entry addressed at `<tag>://<coord>`; every READ /
     // FIND over that entry is the consumer's uniform machinery, identical across

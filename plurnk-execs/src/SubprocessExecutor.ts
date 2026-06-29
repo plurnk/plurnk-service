@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import BaseExecutor from "./BaseExecutor.ts";
-import { resolveRuntime } from "./runtime.ts";
+import Runtime from "./runtime.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
 // KILL[code]: an abort reason carrying `{ signal }` (a Unix signal name or
@@ -53,18 +53,18 @@ export default class SubprocessExecutor extends BaseExecutor {
     override async probe(): Promise<RuntimeAvailability> {
         const bin = this.binary;
         if (bin === null) return { available: true };
+        // No internal deadline. The per-probe timeout is the consumer's — set
+        // once from its env and applied uniformly across the family (SPEC §2.2);
+        // the executor stays oblivious to deadlines here exactly as it does for
+        // run() (SPEC §2.5). A timed-out probe is surfaced consumer-side as the
+        // rejection→unavailable it already treats any probe failure as.
         return new Promise<RuntimeAvailability>((resolve) => {
             let settled = false;
             const done = (r: RuntimeAvailability): void => { if (!settled) { settled = true; resolve(r); } };
             let out = "";
-            const child = spawn(bin, ["--version"], { signal: AbortSignal.timeout(3000) });
+            const child = spawn(bin, ["--version"]);
             child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
-            child.on("error", (err) => done({
-                available: false,
-                detail: (err as NodeJS.ErrnoException).code === "ABORT_ERR"
-                    ? `${bin} probe timed out`
-                    : `${bin} not found on PATH`,
-            }));
+            child.on("error", () => done({ available: false, detail: `${bin} not found on PATH` }));
             child.on("close", (code) => done(code === 0
                 ? { available: true, detail: out.trim().split("\n")[0] || undefined }
                 : { available: false, detail: `${bin} --version exited ${code}` }));
@@ -72,11 +72,11 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     // Translate the matched tag + command into spawn args. Default delegates to
-    // resolveRuntime (sh/node/python); subclasses with their own interpreter
+    // Runtime.resolve (sh/node/python); subclasses with their own interpreter
     // table (e.g. the common-REPL harness) override this — and so inherit run()'s
     // streaming + process-group abort handling rather than reimplementing it.
     protected spawnArgs(runtime: string, command: string): SpawnArgs {
-        return resolveRuntime(runtime, command);
+        return Runtime.resolve(runtime, command);
     }
 
     run({ runtime, command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {

@@ -3,11 +3,11 @@ import { strict as assert } from "node:assert";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { discover } from "./discover.ts";
+import Discover from "./discover.ts";
 
 // Materialize a throwaway package dir with the given package.json contents and
 // return its path. Each call gets a unique temp dir; callers collect the dirs
-// and pass them to discover({ packageDirs }).
+// and pass them to Discover.scan({ packageDirs }).
 const makePkg = async (pkg: unknown): Promise<string> => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg), "utf-8");
@@ -25,7 +25,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
             ],
         },
     });
-    const { registry } = await discover({ packageDirs: [dir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir] });
 
     assert.equal(registry.size, 2);
     // `example` + `documentation` flow through verbatim when declared, "" when not.
@@ -50,7 +50,7 @@ test("discover: documentation is sourced from docs/<tag>.md, inline field as fal
     await fs.mkdir(path.join(dir, "docs"), { recursive: true });
     await fs.writeFile(path.join(dir, "docs", "sh.md"), "# sh\n\nfrom the file", "utf-8");
 
-    const { registry } = await discover({ packageDirs: [dir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.equal(registry.get("sh")?.documentation, "# sh\n\nfrom the file", "docs/<tag>.md wins over the inline field");
     assert.equal(registry.get("node")?.documentation, "inline-node (no file → kept)", "inline is the fallback when no file ships");
     assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
@@ -69,7 +69,7 @@ test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag 
         name: "@plurnk/plurnk-execs-sh",
         plurnk: { kind: "exec", runtimes: [{ name: "sh" }] },
     });
-    const { registry } = await discover({ packageDirs: [strDir, arrDir, noneDir] });
+    const { registry } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
     assert.equal(registry.get("git")?.attribution, "git", "string attribution rides every tag of the package");
     assert.equal(registry.get("gh")?.attribution, "git");
     assert.deepEqual(registry.get("foo")?.attribution, ["acme", "foo"], "array surfaced raw");
@@ -100,7 +100,7 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags (#1
             ];
         }`,
     );
-    const { registry } = await discover({ packageDirs: [dir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir] });
 
     assert.equal(registry.size, 2);
     assert.deepEqual(registry.get("github"), {
@@ -117,7 +117,7 @@ test("discover: the dynamic hook accepts a default export and a sync return", as
         "@plurnk/plurnk-execs-mcp",
         `export default () => [{ name: "slack" }];`,
     );
-    const { registry } = await discover({ packageDirs: [dir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.deepEqual([...registry.keys()], ["slack"]);
 });
 
@@ -125,16 +125,16 @@ test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", 
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
-    await assert.rejects(discover({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-mcp/);
+    await assert.rejects(Discover.scan({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-mcp/);
 
     const noFn = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = 42;`);
-    await assert.rejects(discover({ packageDirs: [noFn] }), /runtimes hook invalid:.*must export 'runtimes'/);
+    await assert.rejects(Discover.scan({ packageDirs: [noFn] }), /runtimes hook invalid:.*must export 'runtimes'/);
 
     const threw = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export function runtimes() { throw new Error("boom"); }`);
-    await assert.rejects(discover({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-mcp/);
+    await assert.rejects(Discover.scan({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-mcp/);
 
     const nonArray = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", `export const runtimes = () => ({ name: "x" });`);
-    await assert.rejects(discover({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
+    await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
 });
 
 test("discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate before import)", async () => {
@@ -146,7 +146,7 @@ test("discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate befo
         `export function runtimes() { throw new Error("hook executed — gate breached"); }`,
     );
     await withGate("1", async () => {
-        const { registry, skipped } = await discover({ packageDirs: [acme] });
+        const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
         assert.equal(registry.size, 0, "untrusted dynamic package registers nothing");
         assert.deepEqual(skipped, ["@acme/acme-execs-rogue"], "reported as skipped, hook never ran");
     });
@@ -159,7 +159,7 @@ test("discover: static runtimes[] wins when both it and runtimesModule are decla
         plurnk: { kind: "exec", runtimes: [{ name: "static" }], runtimesModule: "./runtimes.mjs" },
     }), "utf-8");
     await fs.writeFile(path.join(dir, "runtimes.mjs"), `export function runtimes() { throw new Error("should not load"); }`, "utf-8");
-    const { registry } = await discover({ packageDirs: [dir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.deepEqual([...registry.keys()], ["static"], "static array short-circuits the hook");
 });
 
@@ -174,7 +174,7 @@ test("discover: ignores non-exec packages and missing glyphs default to empty", 
     });
     const plainDir = await makePkg({ name: "left-pad" });
 
-    const { registry } = await discover({ packageDirs: [execDir, mimeDir, plainDir] });
+    const { registry } = await Discover.scan({ packageDirs: [execDir, mimeDir, plainDir] });
 
     assert.equal(registry.size, 1);
     assert.deepEqual(registry.get("sh"), {
@@ -193,7 +193,7 @@ test("discover: tag collision across packages is fail-hard", async () => {
     });
 
     await assert.rejects(
-        discover({ packageDirs: [a, b] }),
+        Discover.scan({ packageDirs: [a, b] }),
         /runtime collision: 'search' claimed by both @plurnk\/plurnk-execs-search and @plurnk\/plurnk-execs-othersearch/,
     );
 });
@@ -207,14 +207,14 @@ test("discover: skips entries with no/empty name and malformed package.json", as
     await fs.writeFile(path.join(brokenDir, "package.json"), "{ not json", "utf-8");
     const emptyDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
 
-    const { registry } = await discover({ packageDirs: [dir, brokenDir, emptyDir] });
+    const { registry } = await Discover.scan({ packageDirs: [dir, brokenDir, emptyDir] });
 
     assert.equal(registry.size, 1);
     assert.ok(registry.has("ok"));
 });
 
 test("discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
-    const { registry } = await discover({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
+    const { registry } = await Discover.scan({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
     assert.equal(registry.size, 0);
 });
 
@@ -232,7 +232,7 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
     await write("execs-fortran", { name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
     await write("left-pad", { name: "left-pad" });
 
-    const { registry } = await discover({ cwd: root });
+    const { registry } = await Discover.scan({ cwd: root });
 
     assert.deepEqual([...registry.keys()].sort(), ["cobol", "fortran", "sh"]);
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
@@ -256,7 +256,7 @@ test("trust gate ON: untrusted third-party is skipped (not registered); @plurnk 
     const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [{ name: "sh" }] } });
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     await withGate("1", async () => {
-        const { registry, skipped } = await discover({ packageDirs: [plurnk, acme] });
+        const { registry, skipped } = await Discover.scan({ packageDirs: [plurnk, acme] });
         assert.deepEqual([...registry.keys()], ["sh"], "@plurnk registers; the untrusted third-party does not");
         assert.deepEqual(skipped, ["@acme/acme-execs-cobol"], "the untrusted package is reported as skipped");
     });
@@ -266,7 +266,7 @@ test("trust gate ON with an allowlist: a named third-party package is trusted", 
     const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
     await withGate("@acme/acme-execs-cobol", async () => {
-        const { registry, skipped } = await discover({ packageDirs: [cobol, fortran] });
+        const { registry, skipped } = await Discover.scan({ packageDirs: [cobol, fortran] });
         assert.deepEqual([...registry.keys()], ["cobol"], "the allowlisted package registers");
         assert.deepEqual(skipped, ["execs-fortran"], "the non-allowlisted third-party is skipped");
     });
@@ -275,7 +275,7 @@ test("trust gate ON with an allowlist: a named third-party package is trusted", 
 test('trust gate OFF ("0"): every installed package loads, nothing skipped', async () => {
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     await withGate("0", async () => {
-        const { registry, skipped } = await discover({ packageDirs: [acme] });
+        const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
         assert.deepEqual([...registry.keys()], ["cobol"], "gate off → third-party loads (no regression)");
         assert.deepEqual(skipped, [], "nothing skipped when the gate is off");
     });

@@ -1,8 +1,8 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import BaseExecutor from "../BaseExecutor.ts";
-import SubprocessExecutor from "../SubprocessExecutor.ts";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult } from "../types.ts";
+import BaseExecutor from "../src/BaseExecutor.ts";
+import SubprocessExecutor from "../src/SubprocessExecutor.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult } from "../src/types.ts";
 
 // plurnk-service#182 — effect() proposal gating. Asserts the agreed contract:
 // pure + synchronous + cheap; classifies the TARGET only (never the command);

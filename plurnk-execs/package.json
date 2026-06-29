@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "0.4.19",
+    "version": "0.4.20",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": [
         "plurnk",
@@ -39,7 +39,7 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test:unit": "node --test \"src/**/*.test.ts\" \"test/**/*.test.ts\"",
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",

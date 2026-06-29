@@ -1,8 +1,8 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import SubprocessExecutor from "../SubprocessExecutor.ts";
-import type { ExecArgs, ExecResult } from "../types.ts";
+import SubprocessExecutor from "../src/SubprocessExecutor.ts";
+import type { ExecArgs, ExecResult } from "../src/types.ts";
 
 // plurnk-execs#4 — "abort leaks shell grandchildren (SIGTERMs only the shell,
 // not the process group)". Asserts the contract the fix promised, not the impl.
