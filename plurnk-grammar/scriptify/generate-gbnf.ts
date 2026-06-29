@@ -307,8 +307,9 @@ export const buildModel = (): GModel => {
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
     // status-final: model-emittable turn-closers — 102 continue, 202 parked,
-    // 200 done (success), 499 give-up (HTTP 499 client-closed), and 300 = a question
-    // for the user (awaiting input). 300 is ALLOWED/emittable but UNTAUGHT in canon (no
+    // 200 done (success), 499 give-up (HTTP 499 client-closed), and 300 = a multiple-
+    // choice question to the user (HTTP 300 Multiple Choices, awaiting selection). 300
+    // is ALLOWED/emittable but UNTAUGHT in canon (no
     // example) — staged ahead of the engine like 202/500 were; an unrecognized terminal
     // degrades gracefully (no state change) until the service handles it. NOT 500:
     // "failed" is an ENGINE verdict, never a model SEND (persisted-only). Emittable vs

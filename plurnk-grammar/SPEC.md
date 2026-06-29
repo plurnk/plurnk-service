@@ -383,7 +383,7 @@ transfers directly:
 
 - `1xx` Informational — continuation; `102 Processing` is the canonical loop-continuation code.
 - `2xx` Success — terminal delivery; `200 OK` is the canonical final-answer code.
-- `3xx` Redirection — handoff to another agent or address.
+- `3xx` Redirection - `300 Multiple Choices` is the canonical code: a multiple-choice question posed to the user, awaiting their selection.
 - `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation).
 - `5xx` Server Error — runtime or infrastructure failure (network, permission, tool unavailable).
 

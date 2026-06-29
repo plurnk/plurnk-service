@@ -318,7 +318,7 @@ test("GBNF: SEND[499] is a terminal disposition; 500 is not a valid terminal (en
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND\n<<SEND[102]:done:SEND"), true);
 });
 
-test("GBNF: SEND[300] (user-question) is a valid terminal disposition (untaught in canon)", () => {
+test("GBNF: SEND[300] (multiple-choice question) is a valid terminal disposition (untaught in canon)", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300]:Which sources do you trust?:SEND"), true);
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300](agent://user):clarify?:SEND"), true); // terminate-and-ask
     // 300 may also appear as a mid code now (mid SENDs are unrestricted).
