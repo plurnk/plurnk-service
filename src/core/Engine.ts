@@ -48,7 +48,7 @@ const DEFAULT_BUDGET_CEILING = 0.9;
 // Each surfaces as a LogCoordinate TelemetryEvent derived from log≥400 — one channel,
 // no per-kind handling. {§telemetry-uniform-error-channel}
 const ENGINE_ERRORS = Object.freeze({
-    budget_overflow: { status: 413, term: "Budget Overflow" },
+    budget_overflow: { status: 413, term: "Budget Overflow: Previous turn log items automatically FOLDed" },
     max_commands_exceeded: { status: 429, term: "Max Commands Exceeded" },
     premature_terminate: { status: 409, term: "Premature Termination" },
     idle_turn: { status: 409, term: "Idle Turn" },
