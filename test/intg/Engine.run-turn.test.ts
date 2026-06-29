@@ -295,19 +295,15 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
             });
             assert.equal(known?.n, 3, "3 known:/// entries; overflow ops never reached schemes");
 
-            // Turn 2 packet should carry the max_commands_exceeded telemetry.
+            // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
+            // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
             const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{
-                    kind: string; source?: string; emitted?: number; dropped?: number;
-                }>;
+                telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
             };
-            const capErrors = packet.telemetryErrors.filter((e) => e.kind === "max_commands_exceeded");
-            assert.equal(capErrors.length, 1, "exactly one max_commands_exceeded entry from turn 1");
-            assert.equal(capErrors[0].source, "engine:rail");
-            assert.equal(capErrors[0].emitted, 5);
-            assert.equal(capErrors[0].dropped, 2);
+            const capErrors = packet.telemetryErrors.filter((e) => e.status === 429 && e.position?.type === "log-coordinate");
+            assert.equal(capErrors.length, 1, "exactly one Max Commands Exceeded (429) error pointer from turn 1");
             // `cap` field removed — engine bookkeeping per gamification policy.
             assert.equal((capErrors[0] as { cap?: number }).cap, undefined);
         } finally { await db.close(); }
@@ -497,12 +493,12 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
         });
         assert.equal(result.finalStatus, 200);
         const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
-        const t2packet = JSON.parse(t2?.packet ?? "{}") as { telemetryErrors: Array<{ kind: string }> };
+        const t2packet = JSON.parse(t2?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number; position?: { type?: string } }> };
         const errors = t2packet.telemetryErrors;
-        // The 403 action_failure DOES surface (real error that happened).
-        assert.ok(errors.find((e) => e.kind === "action_failure"), "action_failure surfaces the 403");
-        // The strike count does NOT (engine bookkeeping).
-        assert.equal(errors.find((e) => e.kind === "strike"), undefined);
+        // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
+        assert.ok(errors.find((e) => e.status === 403 && e.position?.type === "log-coordinate"), "the 403 action failure surfaces as a log-coordinate pointer");
+        // The strike count does NOT — every surfaced error is a real log-row failure; gamification never leaks.
+        assert.ok(errors.every((e) => e.position?.type === "log-coordinate"), "strike accounting stays engine-internal — only real failures reach the packet");
     } finally { await db.close(); }
 });
 
@@ -657,19 +653,21 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const getErrors = async (turnId: number): Promise<string[]> => {
+        const get403s = async (turnId: number): Promise<number[]> => {
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
-                telemetryErrors: Array<{ kind: string }>;
+                telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
             };
-            return packet.telemetryErrors.map((e) => e.kind);
+            return packet.telemetryErrors.filter((e) => e.position?.type === "log-coordinate" && e.status === 403).map((e) => e.status!);
         };
-        // T1's packet: no errors yet (failures from T1 surface on T2).
-        assert.deepEqual((await getErrors(t1.turnId)).filter((k) => k === "action_failure"), []);
-        // T2's packet: action_failure drained from T1.
-        assert.deepEqual((await getErrors(t2.turnId)).filter((k) => k === "action_failure"), ["action_failure"]);
-        // T3's packet: action_failure GONE (drained at T2, doesn't replay).
-        assert.deepEqual((await getErrors(t3.turnId)).filter((k) => k === "action_failure"), []);
+        // The errors section is a recency window (current + immediately-prior turn), so a failure
+        // surfaces once and ages out — same observable as the old drain, now log-derived.
+        // T1's packet: the 403 hasn't surfaced yet (it happens during T1's dispatch).
+        assert.deepEqual(await get403s(t1.turnId), []);
+        // T2's packet: the prior-turn 403 surfaces as a log-coordinate pointer.
+        assert.deepEqual(await get403s(t2.turnId), [403]);
+        // T3's packet: the 403 has aged out of the window (T2 was clean), doesn't replay.
+        assert.deepEqual(await get403s(t3.turnId), []);
     } finally { await db.close(); }
 });
 
@@ -851,19 +849,16 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
-            telemetryErrors: Array<{ kind: string; coordinate: string; op: string; target: string; status: number; error: string }>;
+            telemetryErrors: Array<{ status: number; position: { type: string; coordinate: string } }>;
         };
         assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.telemetryErrors;
-        assert.equal(err.kind, "action_failure");
-        // Turn-as-container, 1-based: turn-0 `model` exemplar at 1/1/1 (§model-entry),
-        // prompt at 1/1/2; the model's denied EDIT shifts to 1/1/3.
-        assert.equal(err.coordinate, "1/1/3");
-        assert.equal(err.op, "EDIT");
-        assert.equal(err.target, "log:///illegal");
+        assert.equal(err.position.type, "log-coordinate", "a LogCoordinate pointer, not a JSON blob");
+        // Turn-as-container, 1-based: turn-0 `model` exemplar at 1/1/1 (§model-entry), prompt at 1/1/2;
+        // the model's denied EDIT shifts to 1/1/3. The coordinate carries the op suffix; the terse
+        // detail (the scheme's "writer 'model' denied" fact) lives on the row, READ via the link.
+        assert.equal(err.position.coordinate, "1/1/3/EDIT");
         assert.equal(err.status, 403);
-        // `error` carries the scheme's terse fact — not editorial guidance.
-        assert.match(err.error, /writer 'model'.*'log'/);
     } finally { await db.close(); }
 });
 

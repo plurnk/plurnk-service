@@ -293,12 +293,13 @@ INSERT INTO log_entries (
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_render_telemetry_errors
--- SPEC §telemetry: action-bound failures from the immediately previous turn
--- are mirrored into the next packet's telemetry.errors[]. Forces the
--- model to confront 4xx/5xx outcomes instead of letting them rot in
--- log:///. "Previous turn" = sequence one below the currently-open one
--- (turn-as-container model: the current turn exists with status=102
--- when this query fires, so we explicitly look one back).
+-- SPEC §telemetry: 4xx/5xx log rows are mirrored into the packet's telemetry as
+-- LogCoordinate pointers, forcing the model to confront failures instead of letting
+-- them rot in log:///. Window = the current turn AND the immediately-prior one
+-- (>= current_turn_seq - 1): prior-turn for action failures the model just caused,
+-- current-turn so a same-turn engine error (the grinder's budget-overflow row, minted
+-- pre-generate then re-derived) surfaces THIS turn rather than a turn late.
+-- §telemetry-uniform-error-channel
 SELECT
     le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
@@ -308,37 +309,40 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
-  AND t.sequence = $current_turn_seq - 1
-ORDER BY le.sequence;
+  AND t.sequence >= $current_turn_seq - 1
+ORDER BY t.sequence, le.sequence;
 
 -- PREP: engine_grinder_prior_turn_logs
 -- §grinder pass 1 (prior-turn rollback): the immediately-prior turn's still-open
 -- log entries — the latest emissions that pushed the packet over. Folding them
 -- (collapse to coordinate, not deleting) lightens the render; bodies persist, re-OPENable.
+-- op='error' rows are EXEMPT — errors never auto-fold (§grinder-errors-exempt); the
+-- model curates them by hand so the recurrence trail stays visible.
 SELECT le.id, le.scheme
 FROM log_entries le
-WHERE le.loop_id = $loop_id AND le.expanded = 1
+WHERE le.loop_id = $loop_id AND le.expanded = 1 AND le.op != 'error'
   AND le.turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_grinder_fold_prior_turn_logs
 -- §grinder pass 1: fold the prior turn's still-open logs in one set-op (same WHERE
 -- as engine_grinder_prior_turn_logs above). Rows + bodies stay, re-OPENable.
 UPDATE log_entries SET expanded = 0
-WHERE loop_id = $loop_id AND expanded = 1
+WHERE loop_id = $loop_id AND expanded = 1 AND op != 'error'
   AND turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id);
 
 -- PREP: engine_grinder_current_turn_logs
 -- §grinder turn-1 self-fold (#2): when there is NO prior turn, the items over the wall are
 -- THIS turn's own foists (the catalog FINDs / prompt). The grinder still touches exactly one
--- turn — here the current one. Rows + bodies stay, re-OPENable.
+-- turn — here the current one. Rows + bodies stay, re-OPENable. op='error' rows are EXEMPT
+-- (§grinder-errors-exempt) — errors never auto-fold.
 SELECT le.id, le.scheme
 FROM log_entries le
-WHERE le.loop_id = $loop_id AND le.expanded = 1 AND le.turn_id = $turn_id;
+WHERE le.loop_id = $loop_id AND le.expanded = 1 AND le.op != 'error' AND le.turn_id = $turn_id;
 
 -- PREP: engine_grinder_fold_current_turn_logs
 -- §grinder turn-1 self-fold (#2): fold this turn's own still-open foists in one set-op.
 UPDATE log_entries SET expanded = 0
-WHERE loop_id = $loop_id AND expanded = 1 AND turn_id = $turn_id;
+WHERE loop_id = $loop_id AND expanded = 1 AND op != 'error' AND turn_id = $turn_id;
 
 -- PREP: engine_fold_log_entry
 -- §prompt-fold (User Note 6): fold a single log row by id — collapse to its

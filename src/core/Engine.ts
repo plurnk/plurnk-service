@@ -43,6 +43,18 @@ const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
 const DEFAULT_BUDGET_CEILING = 0.9;
 
+// §telemetry — the uniform error channel. Every engine failure is a terse op='error'
+// log row: a status code + the canonical term, no prose (the packet teaches recovery).
+// Each surfaces as a LogCoordinate TelemetryEvent derived from log≥400 — one channel,
+// no per-kind handling. {§telemetry-uniform-error-channel}
+const ENGINE_ERRORS = Object.freeze({
+    budget_overflow: { status: 413, term: "Budget Overflow" },
+    max_commands_exceeded: { status: 429, term: "Max Commands Exceeded" },
+    premature_terminate: { status: 409, term: "Premature Termination" },
+    idle_turn: { status: 409, term: "Idle Turn" },
+} as const);
+type EngineErrorKind = keyof typeof ENGINE_ERRORS;
+
 // Substituted into the budget readout after the assembled packet is measured
 // (the figure depends on the packet's own rendered size — chicken/egg).
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
@@ -926,12 +938,19 @@ export default class Engine {
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#enforceBudget({
-            packet: requestPacket, provider, runId, loopId, turnId, sessionId, turnNumber,
-            rebuild: (telemetryErrors) => this.#buildRequestPacket({
+            packet: requestPacket, provider, runId, loopId, turnId,
+            // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
+            // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
+            mintSequence: nextActionIndex,
+            // No preset telemetry — the rebuild RE-DERIVES the errors section from log≥400 so the
+            // overflow row just minted surfaces THIS turn (§grinder-overflow-error-row). Safe: the
+            // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
+            rebuild: () => this.#buildRequestPacket({
                 initialMessages: messages, requirements, sessionId, runId, loopId,
-                currentTurnSeq: seq, provider, telemetryErrors, gitStatus,
+                currentTurnSeq: seq, provider, gitStatus,
             }),
         });
+        if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
         requestPacket = enforced.packet;
         if (!enforced.fit) {
             // Hard 413: won't fit even with only the manifest left. Skip the LLM,
@@ -1045,6 +1064,9 @@ export default class Engine {
         // §grinder-strike-coupling): the loop continues, the model sees the steering hint not the strike
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
+        // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
+        // post-dispatch sequence counter). §telemetry-uniform-error-channel
+        const pendingEngineErrors: EngineErrorKind[] = [];
 
         // Premature terminate: a SEND[200] while the run still holds a live thing — an open stream/spawn
         // OR a non-terminal child run (§run-lifecycle: children and streams are the same kind of "live
@@ -1058,12 +1080,7 @@ export default class Engine {
             if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true || liveChild !== undefined) {
                 sendOp.signal = TURN_STATUS_IMPLICIT_CONTINUE; // 102 — downgraded, no longer a terminal
                 steerStruck = true;
-                this.#pushTelemetry(sessionId, loopId, {
-                    source: "engine:rail",
-                    kind: "premature_terminate",
-                    message: "Attempted termination with active streams or child runs. Terminate with 202 to hibernate until they complete, KILL(path) with 200 again to clean up, or 499 to fail.",
-                    level: "warn",
-                });
+                pendingEngineErrors.push("premature_terminate");
             }
         }
 
@@ -1078,12 +1095,7 @@ export default class Engine {
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
         if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
             steerStruck = true;
-            this.#pushTelemetry(sessionId, loopId, {
-                source: "engine:rail",
-                kind: "idle_turn",
-                message: "If the turn's work is complete, terminate with 200. If awaiting a stream or run trigger, terminate with 202 to hibernate.",
-                level: "warn",
-            });
+            pendingEngineErrors.push("idle_turn");
         }
 
         // Close the turn with the final packet, status, and usage stats.
@@ -1143,25 +1155,15 @@ export default class Engine {
             statuses.push(result.status);
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
-        // max_commands_exceeded IS model-facing: dropped ops are things
-        // the model emitted that didn't run — it needs to know. Engine
-        // bookkeeping (the cap value, our threshold reasoning) stays
-        // internal; only the facts of what happened are reported.
-        if (droppedCount > 0) {
-            this.#pushTelemetry(sessionId, loopId, {
-                source: "engine:rail",
-                kind: "max_commands_exceeded",
-                emitted: opsCount,
-                dropped: droppedCount,
-                level: "error",
-            });
-        }
-
-        // §telemetry — parse errors as LOG ITEMS: a failed-to-parse emission records an actionless
-        // `error` row (status 400, no target, snippet = the foldable body) at the turn's next free
-        // sequence (after the dispatched ops). The model folds/kills/recalls it like any log entry,
-        // and the errors section derives a pointer (status + coordinate) from log≥400 — one surface.
-        let errSeq = rowSeq;  // after every dispatched row, including a multi-file READ's fan-out
+        // §telemetry-uniform-error-channel — every engine + parse failure mints as an op='error'
+        // log row at the turn's next free sequence (after every dispatched row, incl. a multi-file
+        // READ's fan-out). One channel: the errors section derives a LogCoordinate pointer from log≥400.
+        let errSeq = rowSeq;
+        // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
+        if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
+        for (const kind of pendingEngineErrors) await this.#mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
+        // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
+        // resolved against the model's born-OPEN emission (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
@@ -1396,8 +1398,8 @@ export default class Engine {
         if (log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
-            // Per-turn weight — the grinder's rollback unit, oldest first: the
-            // model sees what's first to go (§tokenomics {§tokenomics-turn-totals}).
+            // Per-turn weight — chronological (oldest first); the turn is the grinder's
+            // rollback unit and the rail folds the newest first (§tokenomics {§tokenomics-turn-totals}).
             if (log.byTurn.length > 0) {
                 lines.push("", "Turns:", "| turn | tokens |", "|---|--:|");
                 for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
@@ -1463,55 +1465,60 @@ export default class Engine {
     // then the catalog except the manifest lifeline. The strike it raises and the
     // hard-stop it can signal are returned to runLoop, which owns abandonment.
     // §grinder-overflow-only — fires only on actual overflow, never speculatively
-    async #enforceBudget({ packet, provider, runId, loopId, turnId, sessionId, turnNumber, rebuild }: {
+    async #enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, rebuild }: {
         packet: RequestPacket; provider: Provider;
-        runId: number; loopId: number; turnId: number; sessionId: number;
-        turnNumber: number; rebuild: (telemetryErrors: object[]) => Promise<RequestPacket>;
+        runId: number; loopId: number; turnId: number; mintSequence: number;
+        rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const measure = (p: RequestPacket): number => p.tokens;
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
-
-        const folded = new Map<string, number>();
-        const note = (scheme: string): void => { folded.set(scheme, (folded.get(scheme) ?? 0) + 1); };
 
         // The grinder may compact ONLY the newest turn — the immediately-prior turn's emissions
         // (turn N>1), or, when there is no prior turn (turn 1), THIS turn's own foists. It NEVER
         // reaches older history; the model alone curates history via FOLD/KILL, and the engine never
         // janitors stale context. §grinder-newest-turn-only
         let foldedAny = false;
-        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number }>({ loop_id: loopId, turn_id: turnId });
         if (priorLogs.length > 0) {
-            for (const le of priorLogs) note(le.scheme ?? "log");
             await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
             foldedAny = true;
         } else {
             // Turn 1 — no prior turn: fold THIS turn's own foists (the catalog/prompt that overflowed). §grinder-turn-1-self-fold (#2)
-            const curLogs = await (this.#db.engine_grinder_current_turn_logs as PrepMethod).all<{ id: number; scheme: string | null }>({ loop_id: loopId, turn_id: turnId });
+            const curLogs = await (this.#db.engine_grinder_current_turn_logs as PrepMethod).all<{ id: number }>({ loop_id: loopId, turn_id: turnId });
             if (curLogs.length > 0) {
-                for (const le of curLogs) note(le.scheme ?? "log");
                 await (this.#db.engine_grinder_fold_current_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
                 foldedAny = true;
             }
         }
-        const current = foldedAny ? await rebuild(packet.telemetryErrors) : packet;
-        this.#emitBudgetOverflow(sessionId, loopId, folded);
-        // Every compaction is a strike — including turn 0/1 (no soft exemption, #4). struck iff the
-        // grinder actually folded something (a real compaction), never on a clean fit. §grinder-compaction-strikes
-        return { packet: current, fit: measure(current) <= ceiling, struck: foldedAny };
+        if (!foldedAny) return { packet, fit: measure(packet) <= ceiling, struck: false };
+
+        // Mint the overflow as a terse op='error' log row BEFORE the rebuild, so the rebuild's
+        // re-derived errors section surfaces it THIS turn — the warning lands at strike 1, not a
+        // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
+        // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
+        // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
+        await this.#mintEngineError("budget_overflow", { runId, loopId, turnId, sequence: mintSequence });
+        const current = await rebuild();
+        // Every compaction is a strike — including turn 0/1 (no soft exemption, #4). §grinder-compaction-strikes
+        return { packet: current, fit: measure(current) <= ceiling, struck: true };
     }
 
-    // The model-facing budget event (SPEC §grinder, §telemetry): which entries left the
-    // window, by scheme — the model's own terms, no mechanism vocabulary. The
-    // strike this overflow triggers stays engine-internal (gamification policy).
-    // §grinder-event-model-terms — model-facing terms only; the strike stays engine-internal
-    #emitBudgetOverflow(sessionId: number, loopId: number, folded: Map<string, number>): void {
-        if (folded.size === 0) return;
-        this.#pushTelemetry(sessionId, loopId, {
-            source: "engine:rail",
-            kind: "budget_overflow",
-            folded: [...folded.entries()].map(([scheme, count]) => ({ scheme, count })),
-            level: "warn",
+    // Mint an engine failure as a uniform op='error' log row (§telemetry-uniform-error-channel):
+    // a terse status + canonical term keyed by `kind` (the packet teaches recovery, not the row),
+    // origin engine:rail. The errors section derives its LogCoordinate pointer from log≥400 — one
+    // channel, no per-kind handling.
+    async #mintEngineError(kind: EngineErrorKind, { runId, loopId, turnId, sequence }: { runId: number; loopId: number; turnId: number; sequence: number }): Promise<void> {
+        const { status, term } = ENGINE_ERRORS[kind];
+        await (this.#db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+            origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({ kind, message: term }),
+            mimetype_rx: "application/json",
+            status_rx: status, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
     }
 
@@ -1547,30 +1554,23 @@ export default class Engine {
     //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
     // Buffer drains on read — each error appears in exactly one packet.
     async #buildTelemetryErrors(loopId: number, currentTurnSeq: number): Promise<object[]> {
+        // The uniform error channel (§telemetry-uniform-error-channel): every 4xx/5xx log row
+        // becomes a LogCoordinate-positioned TelemetryEvent — a terse pointer; the model READs the
+        // row for its term + detail. Buffer events that point at the model's own emission keep their
+        // ContentOffset position. info-level notices (progress) are not errors and never surface here.
         const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
             op: string; sequence: number; status_rx: number;
-            rx: string; mimetype_rx: string;
-            scheme: string | null; pathname: string | null;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
-        const actionFailures = rows.map((r) => {
-            const target = r.scheme !== null
-                ? `${r.scheme}://${r.pathname ?? ""}`
-                : (r.pathname ?? null);
-            const parsedRx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
-            return {
-                kind: "action_failure",
-                level: "error", // the derived error pointer is always an error — clients color off level (#276)
-                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
-                op: r.op,
-                target,
-                status: r.status_rx,
-                error: typeof parsedRx === "object" && parsedRx !== null && "error" in parsedRx
-                    ? (parsedRx as { error: string }).error
-                    : typeof parsedRx === "string" ? parsedRx : "",
-            };
-        });
-        return [...this.#drainTelemetry(loopId), ...actionFailures];
+        const logErrors = rows.map((r) => ({
+            source: "engine:rail",
+            kind: "log_error",
+            level: "error",
+            status: r.status_rx,
+            position: { type: "log-coordinate", coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}` },
+        }));
+        const bufferEvents = this.#drainTelemetry(loopId).filter((e) => (e as { level?: string }).level !== "info");
+        return [...bufferEvents, ...logErrors];
     }
 
     // SPEC §packet the log section — chronological action-entries for the loop.
