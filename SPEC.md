@@ -1280,7 +1280,7 @@ The `log` section is the durable audit; the `errors` section surfaces both — t
 |---|---|---|
 | parse failure | `op='error'`, origin `model`, source `grammar`; body = parser message + content-offset `line:col` | 400 |
 | action failure | the failed op's own row (the scheme set `status_rx ≥ 400`); body = the scheme's error | 4xx/5xx |
-| budget overflow | `op='error'`, origin `plurnk`, source `rail`; body = `Budget Overflow` | 413 |
+| budget overflow | `op='error'`, origin `plurnk`, source `rail`; body = `Budget Overflow: Previous turn log items automatically FOLDed` | 413 |
 | max commands exceeded | `op='error'`, origin `plurnk`, source `rail`; body = `Max Commands Exceeded` | 429 |
 | idle turn / premature termination | `op='error'`, origin `plurnk`, source `rail`; body = `Idle Turn` / `Premature Termination` | 409 |
 
