@@ -58,7 +58,9 @@
         "grammars:check": "node scripts/update-grammars.mjs --check",
         "grammars:update": "node scripts/update-grammars.mjs",
         "grammars:publish": "node scripts/publish-grammars.mjs",
-        "deps:check": "node scripts/deps-check.mjs"
+        "deps:check": "node scripts/deps-check.mjs",
+        "deps:fresh": "npm outdated",
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
         "antlr-ng": "^1.0.10"
