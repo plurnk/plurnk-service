@@ -77,9 +77,14 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (!expected) return null;
         const types: number[] = expected.toArray();
         if (types.length === 0) return null;
-        const names = types
-            .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-            .filter((s): s is string => Boolean(s));
+        // Every OPEN_<OP> token maps to the same canon name (`open tag <<OPsuffix`), so a
+        // statement-position expected-set yields that phrase 10+ times. Dedup to one entry —
+        // the model needs the distinct options, not the alternation count.
+        const names = [...new Set(
+            types
+                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
+                .filter((s): s is string => Boolean(s)),
+        )];
         if (names.length === 0) return null;
         if (names.length === 1) return names[0];
         if (names.length === 2) return `${names[0]} or ${names[1]}`;
@@ -108,10 +113,12 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         this.beginErrorCondition(recognizer);
         const tok = recognizer.getCurrentToken();
         const expectedTokens = this.getExpectedTokens(recognizer);
-        const expectedNames = expectedTokens
-            .toArray()
-            .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-            .filter((s): s is string => Boolean(s));
+        const expectedNames = [...new Set(
+            expectedTokens
+                .toArray()
+                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
+                .filter((s): s is string => Boolean(s)),
+        )];
         const expected = expectedNames.length > 0
             ? (expectedNames.length === 1 ? expectedNames[0] : expectedNames.join(" or "))
             : "more input";
@@ -126,10 +133,12 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const tok = recognizer.getCurrentToken();
         const got = PlurnkErrorStrategy.#describeToken(tok);
         const expectedTokens = this.getExpectedTokens(recognizer);
-        const expectedNames = expectedTokens
-            .toArray()
-            .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-            .filter((s): s is string => Boolean(s));
+        const expectedNames = [...new Set(
+            expectedTokens
+                .toArray()
+                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
+                .filter((s): s is string => Boolean(s)),
+        )];
         const expected = expectedNames.length > 0
             ? (expectedNames.length === 1 ? expectedNames[0] : expectedNames.join(" or "))
             : null;

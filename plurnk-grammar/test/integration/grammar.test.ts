@@ -129,9 +129,10 @@ test("#45: bare text in parse() yields only the grammar error, no internal null-
     for (const e of errors) {
         assert.doesNotMatch(e!.message, /getText|Cannot read properties/, `internal crash leaked: ${e!.message}`);
     }
-    // Exactly the one legitimate grammar error, pointing the model at the fix.
+    // Exactly the one legitimate grammar error, pointing the model at the fix (the turn-shape
+    // imperative — bare text is a turn with no PLAN anchor).
     assert.equal(errors.length, 1, `expected 1 grammar error, got ${errors.length}`);
-    assert.match(errors[0]!.message, /<<OPsuffix/);
+    assert.match(errors[0]!.message, /begin with `<<PLAN/);
 });
 
 test("#45: a valid turn still parses clean (the phantom-skip guard does not eat real statements)", () => {
@@ -139,6 +140,65 @@ test("#45: a valid turn still parses clean (the phantom-skip guard does not eat 
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const ops = result.items.filter((i) => i.kind === "statement").map((i) => (i.kind === "statement" ? i.statement.op : ""));
     assert.deepEqual(ops, ["PLAN", "SEND"]);
+});
+
+// -------------------------------------------------------------------------
+// Error-message value-adds (we own syntax errors end to end)
+// -------------------------------------------------------------------------
+
+const errMsgs = (input: string) =>
+    PlurnkParser.parse(input).items
+        .filter((i) => i.kind === "error")
+        .map((i) => (i.kind === "error" ? i.error : null));
+
+test("value-add: expected-token list is deduped (no `<<OPsuffix` repeated 10x)", () => {
+    const msg = errMsgs("<<PLAN:t:PLAN <<READ(x)::READ")[0]!.message;
+    assert.equal((msg.match(/<<OPsuffix/g) ?? []).length <= 1, true, msg);
+});
+
+test("value-add: PLAN-less turn gets the begin-with-PLAN imperative", () => {
+    const errs = errMsgs("<<SEND[200]:done:SEND");
+    assert.equal(errs.length, 1);
+    assert.match(errs[0]!.message, /begin with `<<PLAN:…:PLAN`/);
+});
+
+test("value-add: SEND-less turn gets the end-with-SEND imperative", () => {
+    const errs = errMsgs("<<PLAN:think:PLAN");
+    assert.match(errs[errs.length - 1]!.message, /end with a terminal `<<SEND/);
+});
+
+test("value-add: a turn that derails mid-op does NOT get a misleading SEND imperative", () => {
+    // The real fix is the unclosed target; the missing SEND is a parse artifact.
+    const errs = errMsgs("<<PLAN:t:PLAN <<READ(:READ <<SEND[200]:d:SEND");
+    assert.equal(errs.some((e) => /end with a terminal/.test(e!.message)), false);
+    assert.equal(errs.some((e) => e!.source === "lexer"), true);
+});
+
+test("value-add: near-miss op swallowed as prose surfaces a warning, not an error", () => {
+    const r = PlurnkParser.parse("<<PLAN:t:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:d:SEND");
+    const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
+    assert.ok(warn && warn.kind === "error", "expected a warning advisory");
+    assert.match(warn.error.message, /`<<CLOSE`.*did you mean `<<FOLD`/);
+    // It is a warning, not an error, and the turn still parsed.
+    assert.equal(r.items.filter((i) => i.kind === "error" && i.error.severity === "error").length, 0);
+    assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
+});
+
+test("value-add: near-miss is immune to bodies — embedded `<<CLOSE` in an EDIT is not flagged", () => {
+    const r = PlurnkParser.parse("<<PLAN:t:PLAN <<EDIT(x):close via <<CLOSE later:CLOSE done:EDIT <<SEND[200]:d:SEND");
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("value-add: a bare `<<DELETE` mention without heredoc close is NOT flagged (op-shape gate)", () => {
+    const r = PlurnkParser.parse("<<PLAN:weighing <<DELETE vs KILL:PLAN <<KILL(x)::KILL <<SEND[200]:d:SEND");
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
+});
+
+test("value-add: warning carries severity through to the TelemetryEvent level", () => {
+    const r = PlurnkParser.parse("<<PLAN:t:PLAN <<DELETE(x)::DELETE <<SEND[200]:d:SEND");
+    const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
+    assert.ok(warn && warn.kind === "error");
+    assert.equal(warn.error.toTelemetryEvent().level, "warn");
 });
 
 // -------------------------------------------------------------------------

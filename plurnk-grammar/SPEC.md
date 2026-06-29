@@ -645,12 +645,14 @@ their `toJSON()` method to `{ line, column, source, message }`.
 
 ```typescript
 type ErrorSource = "lexer" | "parser" | "visitor";
+type Severity = "error" | "warning";
 
 class PlurnkParseError extends Error {
     readonly line: number;
     readonly column: number;
     readonly source: ErrorSource;
-    // .message is "Plurnk <source> error at <line>:<column> — <message>"
+    readonly severity: Severity;   // default "error"; "warning" for advisories (e.g. near-miss ops)
+    // .message is "Plurnk <source> <severity> at line <line>:<column> - <message>"
 }
 ```
 
@@ -660,6 +662,8 @@ The three sources distinguish:
 - **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
 - **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
+`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final model-ready message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`). `severity: "warning"` maps to TelemetryEvent `level: "warn"`. Consumers transmit the message to the model unaltered.
+
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
 
@@ -668,7 +672,8 @@ runtime constructs this; the parser provides the fields):
     "line": 1,
     "column": 12,
     "source": "parser",
-    "message": "expected close tag; got end of input"
+    "severity": "error",
+    "message": "expected close tag `:OPsuffix`; got end of input"
 }
 ```
 
