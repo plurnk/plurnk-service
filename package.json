@@ -54,30 +54,30 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.19",
+        "@plurnk/plurnk-execs": "0.4.22",
         "@plurnk/plurnk-execs-all": "0.1.10",
-        "@plurnk/plurnk-execs-mcp": "0.1.1",
-        "@plurnk/plurnk-grammar": "0.74.34",
-        "@plurnk/plurnk-mimetypes": "0.15.36",
-        "@plurnk/plurnk-mimetypes-all": "0.5.4",
+        "@plurnk/plurnk-execs-mcp": "0.2.0",
+        "@plurnk/plurnk-grammar": "0.74.38",
+        "@plurnk/plurnk-mimetypes": "0.15.38",
+        "@plurnk/plurnk-mimetypes-all": "0.5.6",
         "@plurnk/plurnk-mimetypes-text-html": "0.6.6",
-        "@plurnk/plurnk-providers": "0.19.0",
+        "@plurnk/plurnk-providers": "0.20.1",
         "@plurnk/plurnk-providers-all": "0.10.0",
-        "@plurnk/plurnk-schemes": "0.31.7",
-        "@plurnk/plurnk-schemes-all": "0.2.22",
+        "@plurnk/plurnk-schemes": "0.32.0",
+        "@plurnk/plurnk-schemes-all": "0.2.23",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.5.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "0.6.0",
         "@types/diff": "^7.0.2",
         "@types/node": "^26.0.0",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.5.0"
+        "@plurnk/plurnk-mimetypes-embeddings": "0.6.0"
     },
     "peerDependenciesMeta": {
         "@plurnk/plurnk-mimetypes-embeddings": {
