@@ -2,8 +2,8 @@ import test, { before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import Mcp, { closeAll } from "./Mcp.ts";
-import { runtimes } from "./runtimes.ts";
-import { installAllowed, serverConfig, serverNames } from "./config.ts";
+import { runtimes, runtimeDecl } from "./runtimes.ts";
+import { installAllowed, serverConfig, serverNames, registerServer, isInjected, parseTarget } from "./config.ts";
 import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -188,4 +188,59 @@ test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
     const { result, events } = await invoke("echo", 'echo {"msg":"x"}', { signal: controller.signal });
     assert.equal(result.status, 499);
     assert.equal(events.length, 0, "caller cancellation is normal flow, not telemetry");
+});
+
+// --- hotload route surface (plurnk-execs#13). registerServer mutates module
+// state, so these run last and assert on their own injected names. ------------
+
+test("hotload: registerServer makes a server resolvable with no env", () => {
+    registerServer("hot", { transport: "stdio", command: "node", args: ["srv.mjs"] });
+    assert.deepEqual(serverConfig("hot", {}), { transport: "stdio", command: "node", args: ["srv.mjs"] });
+    assert.ok(serverNames({}).includes("hot"));
+    assert.equal(isInjected("hot"), true);
+    assert.equal(isInjected("echo"), false, "an env-declared server is not injected");
+});
+
+test("hotload: env-declared servers take precedence over an injected name", () => {
+    registerServer("echo", { transport: "http", url: "https://shadow.test" });
+    assert.deepEqual(serverConfig("echo", { PLURNK_MCP_ECHO: "node x.mjs" }), {
+        transport: "stdio", command: "node", args: ["x.mjs"], env: undefined,
+    });
+});
+
+test("hotload: parseTarget splits http vs stdio like env resolution does", () => {
+    assert.deepEqual(parseTarget("https://mcp.test/rpc"), { transport: "http", url: "https://mcp.test/rpc", headers: undefined });
+    assert.deepEqual(parseTarget("node srv.mjs --flag"), { transport: "stdio", command: "node", args: ["srv.mjs", "--flag"], env: undefined });
+});
+
+test("hotload: registerServer rejects a reserved control-key name", () => {
+    assert.throws(() => registerServer("install", { transport: "stdio", command: "x" }), /reserved control key/);
+});
+
+test("hotload: runtimeDecl mints the same shape boot discovery does", () => {
+    const decl = runtimeDecl("hot");
+    assert.equal(decl.name, "hot");
+    assert.equal(decl.glyph, "🔌");
+    assert.match(decl.example ?? "", /^<<EXEC\[hot\]:.*:EXEC$/);
+});
+
+test("hotload: an injected server is refused at run() when PLURNK_MCP_INSTALL is off (501)", async () => {
+    registerServer("hotecho", { transport: "stdio", command: "node", args: [FIXTURE] });
+    delete process.env.PLURNK_MCP_INSTALL;
+    const { result, events, states } = await invoke("hotecho", "echo");
+    assert.equal(result.status, 501);
+    assert.equal(events[0].kind, "mcp_install_disabled");
+    assert.deepEqual(states, [{ channel: "results", state: "errored" }]);
+});
+
+test("hotload: an injected server runs at run() when PLURNK_MCP_INSTALL is on", async () => {
+    registerServer("hotecho2", { transport: "stdio", command: "node", args: [FIXTURE] });
+    process.env.PLURNK_MCP_INSTALL = "1";
+    try {
+        const { result, writes } = await invoke("hotecho2", "echo");
+        assert.equal(result.status, 200);
+        assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
+    } finally {
+        delete process.env.PLURNK_MCP_INSTALL;
+    }
 });

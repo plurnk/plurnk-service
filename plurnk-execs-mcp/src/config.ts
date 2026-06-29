@@ -92,21 +92,58 @@ export const installAllowed = (env: NodeJS.ProcessEnv = process.env): boolean =>
     return !(gate === undefined || gate === "" || gate === "0");
 };
 
-// The configured server names (= the tags), case-folded and sorted. Empty when
-// none are set.
-export const serverNames = (env: NodeJS.ProcessEnv = process.env): string[] =>
-    [...parse(env).targets.keys()].sort();
+// Runtime-injected servers — the `/mcp` hotload route (plurnk-execs#13). The
+// consumer gates registration with installAllowed() then calls registerServer();
+// the injected set supplements env discovery so the executor's run()/probe()
+// resolve the new tag. Env-declared servers always take precedence (the locked
+// #240 rule: they're operator-vetted, never shadowed by a runtime add).
+const injected = new Map<string, ServerConfig>();
 
-// Resolve a server's transport config. An http(s) URL target → http; anything
-// else → a stdio command line. null when the server names no target.
+// Register a runtime-injected server under a tag. The consumer's route MUST gate
+// this behind installAllowed(); the executor re-checks at connect (isInjected).
+export const registerServer = (name: string, config: ServerConfig): void => {
+    const key = name.toLowerCase();
+    if (CONTROL_KEYS.has(key)) throw new Error(`"${key}" is a reserved control key, not a server name`);
+    injected.set(key, config);
+};
+
+// Whether `name` resolves to a runtime-injected server that env does NOT also
+// claim — the executor gates exactly these on installAllowed() at connect
+// (defense in depth behind the consumer's route gate). An env-declared server is
+// never gated, even if a name was also injected, since env always wins.
+export const isInjected = (name: string, env: NodeJS.ProcessEnv = process.env): boolean => {
+    const key = name.toLowerCase();
+    return !parse(env).targets.has(key) && injected.has(key);
+};
+
+// Parse a server target string into transport config. An http(s) URL → http;
+// anything else → a stdio command line. Shared by env resolution and the hotload
+// route, which turns an operator-supplied `<address>` into a ServerConfig.
+export const parseTarget = (
+    target: string,
+    { env, headers }: { env?: Record<string, string>; headers?: Record<string, string> } = {},
+): ServerConfig => {
+    if (/^https?:\/\//i.test(target)) return { transport: "http", url: target, headers };
+    const [command, ...args] = target.split(/\s+/);
+    return { transport: "stdio", command, args, env };
+};
+
+// The configured server names (= the tags), case-folded and sorted: env-declared
+// unioned with runtime-injected. Empty when none are set.
+export const serverNames = (env: NodeJS.ProcessEnv = process.env): string[] =>
+    [...new Set([...parse(env).targets.keys(), ...injected.keys()])].sort();
+
+// Resolve a server's transport config. Env-declared wins; a runtime-injected
+// server resolves only when no env target claims the name. null when neither does.
 export const serverConfig = (name: string, env: NodeJS.ProcessEnv = process.env): ServerConfig | null => {
     const { targets, envs, headers } = parse(env);
     const key = name.toLowerCase();
     const target = targets.get(key);
-    if (target === undefined) return null;
-    if (/^https?:\/\//i.test(target)) {
-        return { transport: "http", url: target, headers: jsonRecord(headers.get(key), `${PREFIX}${key.toUpperCase()}_HEADERS`) };
+    if (target !== undefined) {
+        return parseTarget(target, {
+            env: jsonRecord(envs.get(key), `${PREFIX}${key.toUpperCase()}_ENV`),
+            headers: jsonRecord(headers.get(key), `${PREFIX}${key.toUpperCase()}_HEADERS`),
+        });
     }
-    const [command, ...args] = target.split(/\s+/);
-    return { transport: "stdio", command, args, env: jsonRecord(envs.get(key), `${PREFIX}${key.toUpperCase()}_ENV`) };
+    return injected.get(key) ?? null;
 };

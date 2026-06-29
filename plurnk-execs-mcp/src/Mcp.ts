@@ -3,7 +3,7 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
-import { serverConfig, type ServerConfig } from "./config.ts";
+import { serverConfig, isInjected, installAllowed, type ServerConfig } from "./config.ts";
 
 const CLIENT_VERSION = "0.1.0";
 
@@ -87,6 +87,12 @@ export default class Mcp extends BaseExecutor {
             return { status };
         };
         if (cfg === null) return fail("mcp_not_configured", `MCP server '${runtime}' is not configured`);
+        // Defense in depth behind the consumer's route gate (#240): a runtime-injected
+        // server is honored only while PLURNK_MCP_INSTALL permits added tooling. An
+        // env-declared server is never gated (isInjected is false for it).
+        if (isInjected(runtime) && !installAllowed()) {
+            return fail("mcp_install_disabled", `MCP server '${runtime}' was added at runtime but PLURNK_MCP_INSTALL is off`, 501);
+        }
 
         let client: Client;
         try {

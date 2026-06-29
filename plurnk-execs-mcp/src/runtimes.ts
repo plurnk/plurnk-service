@@ -14,16 +14,19 @@ const GLYPH = "🔌";
 // discovery stays cheap and offline; reachability and the live tool catalog are
 // probe()/run()'s job at boot/call.
 export function runtimes(): RuntimeDecl[] {
-    return serverNames().map((name) => ({
-        name,
-        glyph: GLYPH,
-        // The discovery move — concrete, valid, and server-agnostic (the tools
-        // are per-deployment, so no real tool name is universally correct; `?`
-        // lists them). The full canonical op, `<<`-delimited, surfaced verbatim.
-        example: `<<EXEC[${name}]:?:EXEC`,
-        documentation: doc(name),
-    }));
+    return serverNames().map(runtimeDecl);
 }
+
+// The decl for one server tag. Exported so the `/mcp` hotload route can mint the
+// same decl for a runtime-injected server that boot discovery mints for an
+// env-declared one — example is the server-agnostic `?` (lists tools, since no
+// real tool name is universally correct), the full canonical `<<`-delimited op.
+export const runtimeDecl = (name: string): RuntimeDecl => ({
+    name,
+    glyph: GLYPH,
+    example: `<<EXEC[${name}]:?:EXEC`,
+    documentation: doc(name),
+});
 
 // Per-tag documentation served on demand. Static usage — the *live* tool
 // catalog is fetched by running the tag with an empty (or `?`) body, since
