@@ -138,3 +138,23 @@ test("effect: inline body → pure; file-path target → read", () => {
 test("unclaimed runtime tag is fail-hard", async () => {
     await assert.rejects(run("brainfuck", "+"), /unclaimed runtime tag 'brainfuck'/);
 });
+
+// SPEC §6 — must honor args.signal. A pre-aborted signal is caught at the first
+// phase boundary: nothing instantiates or runs, the channel closes errored 499.
+test("pre-aborted signal → 499 errored, nothing runs", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const states: string[] = [];
+    let wrote = false;
+    const args: ExecArgs = {
+        runtime: "wat", command: WAT, cwd: null,
+        signal: ac.signal,
+        write: () => { wrote = true; },
+        setState: (_c, s) => states.push(s),
+        emit: () => {},
+    };
+    const result = await new Wasm({ runtime: "wat", glyph: "🧩" }).run(args);
+    assert.equal(result.status, 499);
+    assert.equal(wrote, false);
+    assert.deepEqual(states, ["errored"]);
+});

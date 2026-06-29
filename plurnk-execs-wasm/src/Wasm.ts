@@ -48,12 +48,17 @@ export default class Wasm extends BaseExecutor {
         return { available: true, detail: "WebAssembly + wabt" };
     }
 
-    async run({ runtime, command, cwd, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const fail = (kind: string, message: string): ExecResult => {
             emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
             return { status: 500 };
         };
+        // Honor an abort at each phase boundary (SPEC §6). The file read, wabt init,
+        // and instantiate are the await points where a KILL/cancel can land; the
+        // entry-point call itself is synchronous and uninterruptible.
+        const aborted = (): ExecResult => { setState("results", "errored"); return { status: 499 }; };
+        if (signal.aborted) return aborted();
         // The EXEC target slot, when set, is a module file path; otherwise the
         // module rides the body (WAT text / base64). Mirrors sqlite's target.
         const path = cwd && cwd.length > 0 ? cwd : null;
@@ -91,6 +96,7 @@ export default class Wasm extends BaseExecutor {
             throw new Error(`plurnk-execs-wasm received unclaimed runtime tag '${runtime}'`);
         }
 
+        if (signal.aborted) return aborted();
         // 2. Instantiate in the sandbox (only the log-capture import).
         const log: unknown[] = [];
         let instance: { exports: Record<string, unknown> };
@@ -100,6 +106,7 @@ export default class Wasm extends BaseExecutor {
             return fail("wasm_invalid", (err as Error).message);
         }
 
+        if (signal.aborted) return aborted();
         // 3. Call the entry point if present; capture its return.
         const exports = instance.exports;
         const funcs = Object.keys(exports).filter((n) => typeof exports[n] === "function");
