@@ -5,9 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: "0 9 * * 1" # Mondays 09:00 UTC — weekly dependency-freshness sweep
-  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -30,20 +27,3 @@ jobs:
 
       - name: Test
         run: npm test
-
-  # Weekly freshness gate. CI checks out only this repo, so deps:check is
-  # self-scoped here — it catches THIS framework's own pin drift (stale floor
-  # handler pins + external caret ranges outrun by latest, the web-tree-sitter
-  # class). A family-wide sweep needs the siblings checked out side-by-side;
-  # run `npm run deps:check` locally for that. Scheduled/manual only — not a
-  # PR blocker, since an unrelated upstream release shouldn't fail someone's PR.
-  deps-fresh:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 25
-      - name: Dependency freshness (deps:check)
-        run: npm run deps:check
