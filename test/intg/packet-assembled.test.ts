@@ -42,14 +42,16 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         assert.match(log, /known:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
 
-        // Section presence + order: system holds the rules (definition → schemes, NO log); the log
-        // is data, so it lives at the bottom of the user slot — just above requirements (the action point).
+        // Section slots are a TRUST boundary (§packet-assembly): system holds framework-authored,
+        // non-injectable sections (definition → schemes → policy → errors → git → budget-the-law, NO log);
+        // the user slot holds injectable content (prompt, log) plus the requirements footer.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes"], "system slot: definition → schemes, no log (the log is data, not a privileged rule)");
-        assert.ok(slot("system").includes("budget"), "budget lives in system — it's LAW (the ceiling), a privileged constraint, not status");
-        assert.ok(!slot("system").includes("git"), "git stays in user — workspace status, not law");
+        assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes"], "system slot: definition → schemes, no log (the log is injectable data, not a privileged rule)");
+        assert.ok(slot("system").includes("errors") && slot("system").includes("git"), "errors + git ride system — framework status (pointers / counts), not injection surfaces");
+        assert.equal(slot("system").at(-1), "budget", "budget is the last system line — LAW (the ceiling), the final word before the model acts");
         const usr = slot("user");
-        assert.deepEqual(usr.slice(-3), ["log", "git", "requirements"], "user slot ends: log → git → requirements");
+        assert.ok(!usr.includes("git") && !usr.includes("errors"), "no framework status in the user slot — only injectable content + the requirements footer");
+        assert.deepEqual(usr.slice(-2), ["log", "requirements"], "user slot ends: log → requirements footer");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally {
         await db.close();

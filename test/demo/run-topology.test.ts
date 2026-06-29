@@ -40,7 +40,7 @@ test("topo: delegate a lookup to a child run and report its result", { timeout: 
     // The simplest topology: spawn one worker, hibernate, wake on its conclusion, report what it found.
     const story = await runStory({
         label: "delegate",
-        prompt: "Delegate this to a separate worker run: spawn a worker and have it read the project codename out of notes.md. Hibernate until the worker finishes, then tell me ONLY the codename it found.",
+        prompt: "Have a separate worker look up the project codename in notes.md, then tell me what it found.",
     });
     try {
         if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
@@ -53,7 +53,7 @@ test("topo: fan-out three workers and join their results", { timeout: TIMEOUT },
     // Fan-out + join: three parallel workers, hibernate, wake as each concludes, aggregate.
     const story = await runStory({
         label: "fanout",
-        prompt: "src/config.json has three settings: db, pool, and host. Spawn THREE separate worker runs — one to look up each value — then hibernate until all three have reported back, and give me all three values together.",
+        prompt: "src/config.json has three settings: db, pool, and host. Use a separate worker to look up each one, then give me all three values together.",
         maxTurns: 12,
     });
     try {
@@ -68,7 +68,7 @@ test("topo: a two-stage pipeline of dependent workers", { timeout: TIMEOUT }, as
     // Sequential dependency: worker A's result feeds worker B. The parent waits between stages.
     const story = await runStory({
         label: "pipeline",
-        prompt: "Run this as a two-stage pipeline. Stage 1: spawn a worker to count how many users are in data/users.json. Once it reports the count, Stage 2: spawn a second worker that tells you whether that count is greater than 2. Hibernate while each stage runs, then give me the final yes/no answer.",
+        prompt: "First have a worker count how many users are in data/users.json. Then, once you have that count, have a second worker check whether it's more than 2. Give me the final yes-or-no answer.",
         maxTurns: 14,
     });
     try {

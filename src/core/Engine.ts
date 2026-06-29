@@ -1321,13 +1321,13 @@ export default class Engine {
         // omitted, section lines still shown). §tokenomics-render-weight-budget
         const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
-        // The default packet: an ordered list of sections, each addressable state
-        // (§packet-construction). `slot` is the prompt-cache boundary; the STATIC
-        // sections (definition, tools) lead the system slot so they form the cached
-        // prefix, with the dynamic log after. In the user slot, requirements renders
-        // last (the contract closest to the assistant turn); budget/errors/git are
-        // peer sections (unbundled). The budget section carries its {{tokensFree}}
-        // placeholders here; they resolve below once the assembled total is known.
+        // The default packet: an ordered list of addressable sections (§packet-construction).
+        // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
+        // framework-authored, non-injectable sections — the static head (definition/tools/
+        // schemes/policy) forms the cached prefix, then the volatile-but-trusted tail of
+        // errors/git/budget; user holds injectable content (the log, the operator prompt) plus
+        // the requirements footer. The budget section carries its {{tokensFree}} placeholders
+        // here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_POLICY)
@@ -1340,13 +1340,19 @@ export default class Engine {
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
             { name: "system-policy", slot: "system", header: "Plurnk System Policy", content: systemPolicy ?? "", tokens: 0 },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
-            // budget at the BOTTOM of the SYSTEM slot — budget is LAW (the ceiling is a hard constraint the model must obey), so it belongs in the lean privileged zone, not as user-slot status.
+            // The packet split is a TRUST boundary: system carries only framework-authored, non-injectable
+            // sections; anything that could carry attacker-reachable text (a READ result, exec output, the
+            // model's own mirrored bytes) stays in user. errors + git are framework status — the errors
+            // section is uri+status POINTERS (the error item + body live in the log), git is counts — so
+            // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
+            { name: "errors", slot: "system", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "git", slot: "system", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            // budget is the very last system line — LAW (a hard ceiling the model must obey), the final word before the model acts.
             { name: "budget", slot: "system", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
             { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
-            { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
-            // log in the USER slot, low: short-term memory (data, not rules) at the action point, so the model consults its history instead of skimming it. git follows it as workspace status — not law, so it stays in user, never system.
+            // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
             { name: "log", slot: "user", header: "Plurnk System Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
-            { name: "git", slot: "user", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: baseRequirements, tokens: 0 },
         ];
         // Plugin packet control (§packet-construction): trusted schemes rewrite the

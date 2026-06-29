@@ -276,15 +276,17 @@ WHERE r.session_id = $session_id
 ORDER BY l.terminated_at;
 
 -- PREP: engine_insert_loop_termination_delta
--- §run-scheme — materialize a sibling's loop-termination as a FOLDED delta: a SEND
--- from run:///<name> carrying the terminal status + message (the deliverable).
--- origin=plurnk, source=the terminated run — uniform with the env-delta.
+-- §run-scheme — materialize a sibling's loop-termination as a delta: a SEND from
+-- run:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
+-- source=the terminated run — uniform with the env-delta. Born OPEN for a 2xx deliverable
+-- (a child's success must reach the parent open + awakening), folded otherwise.
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
 ) VALUES (
     $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'SEND', 'run', $pathname, '', 'text/plain', $rx, 'text/markdown', $status, 0
+    'SEND', 'run', $pathname, '', 'text/plain', $rx, 'text/markdown', $status,
+    CASE WHEN $status >= 200 AND $status < 300 THEN 1 ELSE 0 END
 );
 
 -- PREP: engine_entry_tags

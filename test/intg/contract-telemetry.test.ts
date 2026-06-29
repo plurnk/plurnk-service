@@ -106,8 +106,9 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
         assert.deepEqual(notice.position, { type: "content-offset", line: 2, column: 4 }, "carries a content-offset line:col");
         assert.equal(notice.snippet, undefined, "no embedded snippet — the model resolves the line against its own emission");
 
-        // The wire: a meta line carrying the position, no snippet / error:// fence.
-        const wire = PacketWire.renderSlot(p2.sections, "user");
+        // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
+        // section is framework status (uri+status pointers) — it rides the SYSTEM slot (§packet-assembly).
+        const wire = PacketWire.renderSlot(p2.sections, "system");
         assert.match(wire, /## Plurnk System Errors/);
         assert.doesNotMatch(wire, /"snippet":/, "no snippet in the meta JSON");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");

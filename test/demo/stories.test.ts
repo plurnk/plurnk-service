@@ -77,7 +77,7 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     // over-define adjacent unknowns and stall on Completion."
     const story = await runStory({
         label: "config-lookup",
-        prompt: "Look in src/config.json and tell me ONLY the value of the `host` field. Don't report any other settings.",
+        prompt: "What database host does src/config.json use?",
     });
     try {
         if (story.finalStatus !== 200 || !/db\.internal/.test(story.lastContent)) await story.dump();
@@ -90,7 +90,7 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
 test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "codename",
-        prompt: "The project's codename is recorded somewhere in notes.md. Read it and tell me the codename. Just the codename, nothing else.",
+        prompt: "What's the project codename? It's in notes.md.",
     });
     try {
         if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
@@ -143,7 +143,7 @@ test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () =
     // fixture's src/app.js is `const app = express();`.
     const story = await runStory({
         label: "one-line",
-        prompt: "What's on line 2 of src/app.js? Tell me what the line says.",
+        prompt: "What's on line 2 of src/app.js?",
     });
     try {
         if (story.finalStatus !== 200 || !/express/.test(story.lastContent)) await story.dump();
@@ -160,7 +160,7 @@ test("story: locate a pattern in a file by regex", { timeout: TIMEOUT }, async (
     // the outcome is reporting "phoenix" back.
     const story = await runStory({
         label: "regex-find",
-        prompt: "In notes.md, find the project codename. Just report the codename, nothing else.",
+        prompt: "What's the project codename in notes.md?",
     });
     try {
         if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
@@ -177,7 +177,7 @@ test("story: extract one specific value from a structured config", { timeout: TI
     // one matcher. Either path is fine; the outcome is mentioning "5".
     const story = await runStory({
         label: "extract-pool",
-        prompt: "What's the pool size in src/config.json? Just the number.",
+        prompt: "What's the pool size in src/config.json?",
     });
     try {
         if (story.finalStatus !== 200 || !/\b5\b/.test(story.lastContent)) await story.dump();
@@ -233,7 +233,7 @@ test("story: extract all h1 headings from an HTML page", { timeout: TIMEOUT }, a
     // Fallback: regex /<h1>(.+?)<\/h1>/ or full READ + visual parse.
     const story = await runStory({
         label: "html-headings",
-        prompt: "Read data/users.html and tell me what the page's heading says.",
+        prompt: "What does the heading on data/users.html say?",
     });
     try {
         if (story.finalStatus !== 200 || !/Team Roster/i.test(story.lastContent)) await story.dump();
@@ -262,7 +262,7 @@ test("story: report the number of files in a directory", { timeout: TIMEOUT }, a
     // src/ has 2 files: app.js, config.json.
     const story = await runStory({
         label: "count-files",
-        prompt: "How many files are in the src/ directory of this project? Reply with just the number.",
+        prompt: "How many files are in the src/ directory?",
     });
     try {
         if (story.finalStatus !== 200 || !/\b2\b/.test(story.lastContent)) await story.dump();

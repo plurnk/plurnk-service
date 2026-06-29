@@ -164,7 +164,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 // run://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
 // so a graceful 200 and a grinder 499 surface the same way.
-test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carrying its deliverable (SEND body) or abandon reason", async () => {
+test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `loopterm-${crypto.randomUUID()}`);
@@ -185,7 +185,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
         await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: workerLoop, message: "the answer is 42" });
         await (db.engine_loop_set_status as PrepMethod).run({ status: 413, loop_id: grinderLoop, message: "budget_overflow" });
 
-        // A's turn 2 pulls both terminations from the shared log, folded.
+        // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ run_id: runA });
 
@@ -195,13 +195,14 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces folded, carry
         assert.equal(win!.source, String(worker), "attributed to the run that terminated");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
-        assert.equal(win!.expanded, 0, "folded — listed, collapsed until A OPENs it");
+        assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
 
         const grind = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/grinder");
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
         assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
         assert.equal(grind!.source, String(grinder), "attributed to the abandoned run");
+        assert.equal(grind!.expanded, 0, "an abandonment (non-2xx) stays folded — only a 2xx deliverable is born open");
     } finally {
         await db.close();
     }

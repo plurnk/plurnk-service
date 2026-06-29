@@ -121,11 +121,13 @@ export default class Dsl {
             } else if (item.kind === "error") {
                 // Drop the parser's "Plurnk <source> error at L:C — " prefix; the de-offset line:col
                 // below is authoritative (the prefix's embedded L:C is in the PLAN-prefixed text).
-                const message = item.error.message.replace(/^Plurnk \w+ error at \d+:\d+ — /, "");
-                // The parser emits a benign "unexpected end of input" item when the text ends without a
-                // terminal — a complete set of statements is valid for parse-and-dispatch; the genuine
-                // unterminated case is the unparsedTail below. Drop the EOF noise; keep real errors.
-                if (message.startsWith("unexpected end of input")) continue;
+                const message = item.error.message.replace(/^Plurnk \w+ error at (?:line )?\d+:\d+ [-—] /, "");
+                // The parser emits benign turn-structure items for parse-and-dispatch input that isn't a
+                // full turn — "unexpected end of input" (pre-0.74.34) / the imperative "a turn must begin
+                // with PLAN" + "a turn must end with a terminal SEND" (0.74.34+). op.parse dispatches a
+                // statement set, not a turn, so these are noise; the genuine unterminated case is the
+                // unparsedTail below. Drop the scaffolding; keep real errors.
+                if (message.startsWith("unexpected end of input") || message.startsWith("a turn must ")) continue;
                 errors.push({ message, line: line(item.error.line), column: item.error.column });
             }
         }

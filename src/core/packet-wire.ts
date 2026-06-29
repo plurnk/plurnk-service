@@ -380,6 +380,13 @@ export default class PacketWire {
                 const opBody = typeof b === "string" ? b
                     : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
                 if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
+                // §run-scheme-collect: an injected SEND (a child run's concluded deliverable surfaced in
+                // the parent) has no authored tx body — its payload is the deliverable in rx (a raw string,
+                // not the {status} envelope a model SEND gets). Surface it so a child's 2xx reaches the
+                // parent OPEN (born-open at the insert), never a bodyless `*` row.
+                else if (op === "SEND" && opBody.length === 0 && typeof e.rx === "string" && e.rx.length > 0) {
+                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, e.rx, "text/plain");
+                }
             } else if (op === "error") {
                 // §telemetry — a parse-error row is a LOG ITEM; its body is the parser message, which
                 // carries the content-offset `line:col`. The model resolves that line against its own

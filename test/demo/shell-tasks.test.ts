@@ -54,7 +54,7 @@ test("demo: 'what is the hostname of this machine?' — model uses EXEC to run h
     const realHostname = execSync("hostname", { encoding: "utf8" }).trim();
     await runShellDemo({
         label: "hostname",
-        prompt: "What is the hostname of this machine? Tell me exactly what your tools report.",
+        prompt: "What's the hostname of this machine?",
         expected: new RegExp(realHostname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     });
 });
