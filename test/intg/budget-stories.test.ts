@@ -66,9 +66,10 @@ const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assis
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((\d+)%\) · Tokens Free (\d+)/);
+    // percent renders `<1` for sub-1% usage (be85626 — never a bare 0%); accept it, mapping to 0.5.
+    const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
     assert.ok(m, `budget headline present; got: ${budget}`);
-    return { ceiling: Number(m![1]), usage: Number(m![2]), percent: Number(m![3]), free: Number(m![4]) };
+    return { ceiling: Number(m![1]), usage: Number(m![2]), percent: m![3] === "<1" ? 0.5 : Number(m![3]), free: Number(m![4]) };
 };
 const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string }>> =>
     (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string }>({ run_id: runId });
