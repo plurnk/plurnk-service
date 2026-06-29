@@ -411,8 +411,9 @@ export default class AstBuilder {
         let url: URL;
         try {
             url = new URL(raw);
-        } catch (e: any) {
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${e?.message ?? raw}`);
+        } catch (e) {
+            const detail = e instanceof Error ? e.message : raw;
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${detail}`);
         }
         // Uniform WHATWG decomposition — no per-scheme authority allowlist. `://`
         // introduces an authority for every scheme; an authority-less reference

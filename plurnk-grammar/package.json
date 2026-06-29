@@ -19,10 +19,10 @@
     "./plurnk.gbnf": "./dist/plurnk.gbnf"
   },
   "bin": {
-    "plurnk": "./bin/plurnk.js"
+    "plurnk": "./bin/plurnk-grammar.js"
   },
   "files": [
-    "bin/plurnk.js",
+    "bin/plurnk-grammar.js",
     "dist/**/*",
     "plurnk.md"
   ],

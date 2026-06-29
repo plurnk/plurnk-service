@@ -45,20 +45,20 @@ export default class Validator {
         return validator;
     }
 
-    static validatePosition(obj: unknown): ValidationResult { return Validator.#run_(Validator.#position, obj); }
-    static validateLineMarker(obj: unknown): ValidationResult { return Validator.#run_(Validator.#lineMarker, obj); }
-    static validateParams(obj: unknown): ValidationResult { return Validator.#run_(Validator.#params, obj); }
-    static validateChannelContent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#channelContent, obj); }
-    static validateParsedPath(obj: unknown): ValidationResult { return Validator.#run_(Validator.#parsedPath, obj); }
-    static validateMatcherBody(obj: unknown): ValidationResult { return Validator.#run_(Validator.#matcherBody, obj); }
-    static validateSendBody(obj: unknown): ValidationResult { return Validator.#run_(Validator.#sendBody, obj); }
-    static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#schemeRegistration, obj); }
-    static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run_(Validator.#providerDeclaration, obj); }
-    static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#plurnkStatement, obj); }
-    static validateClientStatement(obj: unknown): ValidationResult { return Validator.#run_(Validator.#clientStatement, obj); }
-    static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run_(Validator.#telemetryEvent, obj); }
+    static validatePosition(obj: unknown): ValidationResult { return Validator.#run(Validator.#position, obj); }
+    static validateLineMarker(obj: unknown): ValidationResult { return Validator.#run(Validator.#lineMarker, obj); }
+    static validateParams(obj: unknown): ValidationResult { return Validator.#run(Validator.#params, obj); }
+    static validateChannelContent(obj: unknown): ValidationResult { return Validator.#run(Validator.#channelContent, obj); }
+    static validateParsedPath(obj: unknown): ValidationResult { return Validator.#run(Validator.#parsedPath, obj); }
+    static validateMatcherBody(obj: unknown): ValidationResult { return Validator.#run(Validator.#matcherBody, obj); }
+    static validateSendBody(obj: unknown): ValidationResult { return Validator.#run(Validator.#sendBody, obj); }
+    static validateSchemeRegistration(obj: unknown): ValidationResult { return Validator.#run(Validator.#schemeRegistration, obj); }
+    static validateProviderDeclaration(obj: unknown): ValidationResult { return Validator.#run(Validator.#providerDeclaration, obj); }
+    static validatePlurnkStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#plurnkStatement, obj); }
+    static validateClientStatement(obj: unknown): ValidationResult { return Validator.#run(Validator.#clientStatement, obj); }
+    static validateTelemetryEvent(obj: unknown): ValidationResult { return Validator.#run(Validator.#telemetryEvent, obj); }
 
-    static #run_(validator: CfValidator, obj: unknown): ValidationResult {
+    static #run(validator: CfValidator, obj: unknown): ValidationResult {
         const result = validator.validate(obj);
         return { valid: result.valid, errors: result.errors };
     }

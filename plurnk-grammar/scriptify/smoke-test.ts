@@ -2,13 +2,13 @@
 // sibling dir, and verify a real `import { PlurnkParser, Validator }` works
 // at runtime. Catches issues like #4 (npm-installed package failing because
 // of Node's node_modules type-stripping restriction).
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const run = promisify(exec);
+const run = promisify(execFile);
 const grammarDir = process.cwd();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-smoke-"));
 let tarballPath: string | undefined;
@@ -20,7 +20,7 @@ const cleanup = async (): Promise<void> => {
 
 try {
     process.stdout.write(`[smoke] packing tarball in ${grammarDir}...\n`);
-    const { stdout: packOut } = await run("npm pack --json --silent", { cwd: grammarDir });
+    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent"], { cwd: grammarDir });
     const tarballName = JSON.parse(packOut)[0].filename;
     tarballPath = join(grammarDir, tarballName);
     process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
@@ -34,7 +34,7 @@ try {
     }, null, 2) + "\n");
 
     process.stdout.write(`[smoke] installing tarball...\n`);
-    await run(`npm install --no-package-lock --no-audit --no-fund --silent ${tarballPath}`, { cwd: tempDir });
+    await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath], { cwd: tempDir });
 
     // Stale-artifact guard: the shipped dist/schema must mirror source schema/
     // exactly — a deleted schema surviving in dist (issue #27) fails here.
@@ -78,16 +78,17 @@ console.log("OK: parser, validator, error class, and parsePath all consumable fr
 `);
 
     process.stdout.write(`[smoke] running consume.js...\n`);
-    const { stdout: consumeOut, stderr: consumeErr } = await run("node consume.js", { cwd: tempDir });
+    const { stdout: consumeOut, stderr: consumeErr } = await run("node", ["consume.js"], { cwd: tempDir });
     if (consumeErr) process.stderr.write(consumeErr);
     process.stdout.write(consumeOut);
 
     await cleanup();
     process.stdout.write(`[smoke] PASS\n`);
-} catch (e: any) {
+} catch (e) {
     await cleanup();
-    process.stderr.write(`[smoke] FAIL: ${e?.message ?? e}\n`);
-    if (e?.stdout) process.stderr.write(`[stdout] ${e.stdout}\n`);
-    if (e?.stderr) process.stderr.write(`[stderr] ${e.stderr}\n`);
+    const err = e as { message?: string; stdout?: string; stderr?: string };
+    process.stderr.write(`[smoke] FAIL: ${err.message ?? e}\n`);
+    if (err.stdout) process.stderr.write(`[stdout] ${err.stdout}\n`);
+    if (err.stderr) process.stderr.write(`[stderr] ${err.stderr}\n`);
     process.exit(1);
 }
