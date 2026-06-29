@@ -145,7 +145,7 @@ export default class PacketWire {
     } {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries, countTokens) : "";
-        const HEAVIEST_COUNT = 10;
+        const HEAVIEST_COUNT = 5;
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
