@@ -34,7 +34,9 @@
         "pretest": "npm run verify:ort",
         "test:unit": "node --test index.test.js",
         "test:integration": "node --test test/integration/*.test.js",
-        "test": "npm run test:unit && npm run test:integration"
+        "test": "npm run test:unit && npm run test:integration",
+        "deps:fresh": "npm outdated",
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"
