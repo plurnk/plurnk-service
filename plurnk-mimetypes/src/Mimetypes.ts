@@ -17,12 +17,8 @@ import type {
     QueryMatch,
 } from "./types.ts";
 
-// The channels process() can materialize (issues #17, #24). Each is
-// computed iff requested; unrequested channels pay no work and are absent
-// from the result. Default is the four STRUCTURAL channels — process() is
-// the universal projection surface (#11); callers that want less say less.
-// "embedding" is NEVER in the default set: it is a model inference (orders
-// of magnitude costlier than parsing) and must be requested explicitly.
+// SPEC §5 / §12.1 (#17, #24): channels process() can materialize, computed
+// iff requested. "embedding" is opt-in only — never in the default set (§17).
 export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
@@ -44,11 +40,8 @@ export interface MimetypesOptions {
     // for consumers that build their registry programmatically.
     discovery?: Discovery;
     loader?: HandlerLoader;
-    // Mimetype to substitute when detection finds no match. plurnk-service sets
-    // this to "text/markdown" because LLM output is overwhelmingly markdown —
-    // null is a worse answer than markdown for almost all model-generated
-    // content. Unset → detection returns null when nothing matches (the
-    // original behavior, preserved for standalone use).
+    // Mimetype to substitute when detection finds no match (plurnk-service sets
+    // "text/markdown": LLM output is overwhelmingly markdown). Unset → null.
     defaultMimetype?: string;
 }
 
@@ -64,92 +57,66 @@ export interface ProcessInput {
 }
 
 export interface ProcessOptions {
-    // Channels to materialize on this call (issue #17). Default: all.
-    // Unrequested channels are not computed and their fields are absent from
-    // the result. `[]` is valid — metadata only (mimetype, ok, totalLines,
-    // extent), no parse paid.
+    // Channels to materialize on this call (SPEC §5, #17). Default: all.
+    // Absent fields = not requested; `[]` = metadata only, no parse paid.
     channels?: readonly Channel[];
-    // When true, missing grammar for a detected mimetype throws
-    // GrammarNotInstalledError instead of degrading to a text-plain fallback.
-    // Default false — see issue #14: in the a-la-carte world, a missing
-    // grammar is the expected normal state for any deployment that installs
-    // only the languages it uses, not an error condition. Consumers that
-    // genuinely require a specific grammar to be present can opt in.
+    // SPEC §7 / §13.5 (#14): when set, a missing grammar throws
+    // GrammarNotInstalledError instead of degrading to text-plain. Default
+    // false — in the a-la-carte world a missing grammar is the normal state.
     strict?: boolean;
 }
 
 export interface ProcessResult {
-    // ——— Always-on metadata (every call, every channel selection) ———
+    // ——— Always-on metadata (SPEC §7) ———
     mimetype: string | null;
     ok: boolean;
-    // Editor-convention line count of the source content (`abc\ndef` → 2;
-    // `abc\ndef\n` → 2; "" → 0). Binary content: 0 — lines aren't a
-    // meaningful unit; consumers reason about size differently (pages for
-    // PDF). 0 on every error path. The one process() output plurnk-service's
-    // manifest hard-depends on (its `lines` field).
+    // Editor-convention line count (SPEC §7); 0 for binary and every error
+    // path. plurnk-service's manifest hard-depends on this (`lines`).
     totalLines: number;
-    // Addressable extent for the model's navigation bounds (issue #9), per
-    // plurnk-grammar's `<L>` convention: line count for text, item count for
-    // structured entries (text-csv overrides extent() to return rows).
+    // Addressable extent for navigation bounds (SPEC §12.5, #9): line count
+    // for text, item count for structured.
     extent: number;
-    // Per issue #14: when the detected mimetype's grammar package isn't
-    // installed, process() degrades to a text-plain fallback and surfaces
-    // the missing package name here so consumers can show an install hint.
-    // Absent on the happy path. Independent of `ok` — degraded results
-    // still set ok:true.
+    // SPEC §7 / §13.5 (#14): missing grammar package name when process()
+    // degrades to text-plain. Absent on the happy path; independent of `ok`.
     grammarMissing?: string;
 
-    // ——— Channels (issues #17/#24): present iff requested, absent otherwise ———
-    // Structured definitions — the graph's symbol_defs raw material and the
-    // outline source (render via format() when a human needs to read it).
+    // ——— Channels (SPEC §12.1, #17/#24): present iff requested ———
+    // Structured definitions — symbol_defs raw material; outline source via
+    // format() (SPEC §3/§12.1).
     symbols?: MimeSymbol[];
-    // Full structural tree, jsonpath query target (issue #10). null when the
-    // handler has no faithful tree for its algebra.
+    // Full structural tree, jsonpath target (SPEC §12.2, #10). null when the
+    // handler has no faithful tree.
     deepJson?: unknown;
-    // XML projection of the structural tree, xpath query target (issue #10).
-    // Handler deepXml() overrides are honored (text-html/application-xml
-    // serve real source markup).
+    // XML projection, xpath target (SPEC §12.3, #10). Handler overrides are
+    // honored (text-html/application-xml serve real source markup).
     deepXml?: string;
-    // Classified symbol uses (issue #16 D4) — the graph's symbol_refs raw
-    // material. [] until the per-language extraction engine lands (#19); the
-    // field ships now so consumers build against the final shape.
+    // Classified symbol uses — symbol_refs raw material (SPEC §16, #16/#19).
     references?: MimeRef[];
-    // Model-facing readable text — the markup-free projection for READ and
-    // the embed-source (the content channel). Present only when the readable
-    // form differs from the raw body: text/html projects Readability+turndown
-    // markdown; directly-readable formats (code/markdown/json) leave it
-    // absent (the body IS the content); binary uses toText as its body, not
-    // this channel. HTML-only for now.
+    // Model-facing readable text, the embed-source (SPEC §18). Present only
+    // when the readable form differs from the raw body (text/html → markdown);
+    // HTML-only for now.
     content?: string;
-    // Embedding vector (issue #24): native-endian raw Float32 bytes,
-    // length = 4 × dimension, scalar per entry. plurnk-service stores the
-    // bytes verbatim as a sqlite BLOB and cosine-ranks over a Float32Array
-    // view. Empty (length 0) when the content has no text projection or the
-    // embedder package is missing (see embeddingMissing). NEVER materialized
-    // unless explicitly requested.
+    // Embedding vector (SPEC §17, #24): native-endian raw Float32 bytes,
+    // length = 4 × dimension. Empty when no text projection / embedder missing
+    // (see embeddingMissing). Never materialized unless requested.
     embedding?: Uint8Array;
-    // Set when the embedding channel was requested but the opt-in
-    // @plurnk/plurnk-mimetypes-embeddings package isn't installed — the
-    // install hint, mirroring grammarMissing (#14). strict: true throws
-    // instead.
+    // SPEC §17 (#14/#24): set when embedding requested but the embeddings
+    // package is absent — install hint mirroring grammarMissing. strict throws.
     embeddingMissing?: string;
-    // Model identity for the vector above, when the embedder declares one.
-    // Store it next to the BLOB: vectors from different models are silently
-    // incomparable, and this is the staleness detector.
+    // Model identity for the vector above (SPEC §17, #31): store next to the
+    // BLOB; vectors from different models are incomparable — the staleness
+    // detector.
     embeddingModel?: string;
-    // The framework's contribution to plurnk-service's telemetry stream for
-    // this call (plurnk-service#276). Carries non-fatal conditions whose
-    // severity is HIDDEN by ok:true — a degraded result still reports success,
-    // so grammarMissing/embeddingMissing surface here as `warn` events the host
-    // forwards into `packet.user.telemetry.events[]`. Absent on the happy path.
-    // Hard failures (ok:false) need no entry: the status is the severity.
+    // Degradation telemetry (SPEC §11.5, plurnk-service#276): warn events for
+    // conditions hidden by ok:true — grammarMissing/embeddingMissing surface
+    // here for the host to forward into packet.user.telemetry.events[]. Absent
+    // on the happy path; hard failures (ok:false) need no entry.
     telemetry?: readonly TelemetryEvent[];
 }
 
-// Top-level orchestrator. Plurnk-service constructs one of these at boot,
-// injecting its tokenize function. process(path) is the primary entry point;
-// detect() and getHandler() are exposed for callers that want to drive the
-// pipeline manually.
+// Top-level orchestrator. plurnk-service constructs one at boot. process() is
+// the primary entry point; detect() and getHandler() are exposed for callers
+// that want to drive the pipeline manually.
 export default class Mimetypes {
     readonly #discoverOptions: DiscoverOptions;
     readonly #loader: HandlerLoader;
@@ -240,18 +207,11 @@ export default class Mimetypes {
         return new TreeSitterLanguageHandler(metadata, entry);
     }
 
-    // The pipeline. Detection → content read → handler resolve → validate →
-    // requested channels (issue #17). The handler is the sole authority on
-    // each channel's material; the framework owns selection, routing, and
-    // the default deep-xml projection.
-    //
-    // Error routing:
-    //   * detection fails → ok:false, metadata only
-    //   * content read fails → ok:false, metadata only
-    //   * handler missing → ok:false, metadata only
-    //   * validate throws → propagates (caller's contract; bug in content or handler)
-    //   * grammar missing → degrades to text-plain metadata + empty channels
-    //     with grammarMissing set (#14), unless options.strict
+    // The pipeline: detect → read content → resolve handler → validate →
+    // materialize requested channels (SPEC §5, #17). The handler is the sole
+    // authority on each channel's material; the framework owns selection,
+    // routing, and the default deep-xml projection. Error routing per SPEC §7
+    // (grammar-missing degrades to text-plain unless options.strict; #14).
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
         const channels = new Set<Channel>(options.channels ?? DEFAULT_CHANNELS);
         const mimetype = await this.detect(input);
@@ -279,20 +239,17 @@ export default class Mimetypes {
         // Await in case the handler returns a Promise (async validators).
         await handler.validate(content);
 
-        // Materialize exactly the requested channels, in parallel. The
-        // default deep-xml projection needs the deep-json value, so deepJson
-        // is computed (but not exposed) when deepXml alone is requested and
-        // the handler hasn't overridden deepXml().
+        // Materialize requested channels in parallel. The default deep-xml
+        // projection needs deep-json, so deepJson is computed (unexposed) when
+        // only deepXml is requested and the handler hasn't overridden deepXml().
+        // GrammarNotInstalledError → degradation path (SPEC §7, #14) unless strict.
         //
-        // GrammarNotInstalledError routes to the degradation path per issue
-        // #14 unless options.strict is set. Anything else propagates.
-        // Pre-0.15 handler packages bundle an old framework copy whose
-        // BaseHandler lacks the newer channel methods. A handler that can't
-        // serve a requested channel is a contract violation — crash with the
-        // cause and the fix, not "undefined is not a function" (#21).
+        // A pre-0.15 handler package's BaseHandler lacks the newer channel
+        // methods; a handler that can't serve a requested channel is a contract
+        // violation — crash with the cause and the fix, not "undefined is not a
+        // function" (#21).
         for (const method of ["deepXml", "references"] as const) {
-            if (channels.has(method === "deepXml" ? "deepXml" : "references")
-                && typeof handler[method] !== "function") {
+            if (channels.has(method) && typeof handler[method] !== "function") {
                 throw new TypeError(
                     `Handler for ${mimetype} does not implement ${method}() — its `
                     + `@plurnk/plurnk-mimetypes-* package predates the 0.15 duck `
@@ -354,13 +311,13 @@ export default class Mimetypes {
         });
     }
 
-    // Pure model facts for plurnk-service's lossless chunker (embeddings#1).
+    // Pure model facts for the host's lossless chunker (SPEC §17, embeddings#1).
     // Delegates to the embedder seam (Embeddings.ts).
     async embedderInfo(): Promise<EmbedderInfo | null> {
         return this.#embeddings.info();
     }
 
-    // Bulk embedding entry for the host's corpus ingest (plurnk-service#272).
+    // Bulk embedding for the host's corpus ingest (SPEC §17, plurnk-service#272).
     // Delegates to the embedder seam (Embeddings.ts).
     async embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
         return this.#embeddings.batch(texts, options);
@@ -377,29 +334,12 @@ export default class Mimetypes {
         this.#handlerInstances.clear();
     }
 
-    // Body-matcher query entry point. Accepts the matcher in EITHER form (#42):
-    //
-    //   * a raw matcher string (e.g. "$.users[0].name", "//user", "/error.*/g",
-    //     "*.log") — we classify the dialect by leading prefix via
-    //     parseBodyMatcher; or
-    //   * an already-parsed `{ dialect, pattern, flags? }` — the shape
-    //     `@plurnk/plurnk-grammar` produces for the model-facing matcher syntax.
-    //
-    // The grammar owns that syntax, so when the caller already holds the parsed
-    // body it passes the object and the framework dispatches it verbatim — no
-    // second parser, no re-derivation, no drift between the grammar's
-    // classification and ours (#42). Both forms converge on the same per-dialect
-    // dispatch, so `m.lines` (#41) comes back uniformly for regex/glob/jsonpath/
-    // xpath either way.
-    //
-    // Errors:
-    //   * detection fails → throws ReferenceError (no handler to query)
-    //   * content read fails → throws (caller must know to retry/handle)
-    //   * handler missing → throws ReferenceError
-    //   * dialect unsupported for this mimetype → UnsupportedDialectError → 415
-    //   * malformed expression → InvalidExpressionError → 400
-    //   * content can't be parsed for dialect → QueryParseFailureError → 422
-    //   * zero matches → returns [] (consumer maps to 204)
+    // Body-matcher query (SPEC §11). Accepts the matcher as a raw string
+    // (classified by leading prefix via parseBodyMatcher) OR an already-parsed
+    // ParsedBodyMatcher — the grammar owns the syntax, so a parsed body is
+    // dispatched verbatim: no second parser, no drift (#42). Errors per §11.4:
+    // detection/content/handler missing → ReferenceError; dialect/expression/
+    // parse failures → typed QueryErrors; zero matches → [].
     async query(input: ProcessInput, matcher: string | ParsedBodyMatcher): Promise<QueryMatch[]> {
         const mimetype = await this.detect(input);
         if (mimetype === null) {
@@ -424,11 +364,10 @@ export default class Mimetypes {
         return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
     }
 
-    // Build a degraded ProcessResult when the detected mimetype's grammar
-    // isn't installed (issue #14). The consumer still gets honest metadata
-    // (line count, extent) plus empty channels for whatever it requested, and
-    // grammarMissing as a structured install hint. ok stays true — in the
-    // a-la-carte world a missing grammar is a normal state, not an error.
+    // Degraded ProcessResult when the grammar isn't installed (SPEC §7/§13.5,
+    // #14): honest metadata (line count, extent) + empty requested channels +
+    // grammarMissing install hint. ok stays true — a missing grammar is a
+    // normal a-la-carte state, not an error.
     async #degradedResult(
         mimetype: string,
         content: string | Uint8Array,
@@ -469,9 +408,8 @@ export default class Mimetypes {
     }
 }
 
-// Error-path result. Metadata only — channel fields stay absent, matching
-// the "present iff requested AND produced" contract. Centralized so every
-// error route returns the same shape.
+// Error-path result: metadata only, channel fields absent (SPEC §7).
+// Centralized so every error route returns the same shape.
 function errorResult(mimetype: string | null): ProcessResult {
     return {
         mimetype,
@@ -481,12 +419,11 @@ function errorResult(mimetype: string | null): ProcessResult {
     };
 }
 
-// Project a successful result's degradation fields into `warn` telemetry
-// (plurnk-service#276). A degraded result reports ok:true, so its severity is
-// invisible unless the producer puts it on the wire — we know it's a warning,
-// the host shouldn't have to infer it from a bare package string. Derived from
-// the result's own fields so the event can never drift from grammarMissing/
-// embeddingMissing. Only reached for ok:true results that carry a mimetype.
+// Project a degraded result's grammarMissing/embeddingMissing into `warn`
+// telemetry (SPEC §11.5, plurnk-service#276) — a degraded result reports
+// ok:true, so its severity is invisible unless the producer puts it on the
+// wire. Derived from the result's own fields so it can't drift. Only reached
+// for ok:true results that carry a mimetype.
 function attachTelemetry(result: ProcessResult): ProcessResult {
     const events: TelemetryEvent[] = [];
     if (typeof result.grammarMissing === "string") {
@@ -516,10 +453,9 @@ function attachTelemetry(result: ProcessResult): ProcessResult {
     return events.length === 0 ? result : { ...result, telemetry: events };
 }
 
-// Editor-convention line count: `abc\ndef` → 2, `abc\ndef\n` → 2 (trailing
-// newline is a line terminator, not a new line), `\n` → 1 (one empty line),
-// "" → 0 (no lines). Matches what the model sees in `wc -l`-style output
-// and what plurnk-grammar's `<L>` slot addresses.
+// Editor-convention line count (SPEC §7): `abc\ndef`→2, `abc\ndef\n`→2
+// (trailing newline terminates, doesn't add a line), `\n`→1, ""→0. Matches
+// `wc -l` and plurnk-grammar's `<L>` slot addressing.
 function countLines(text: string): number {
     if (text.length === 0) return 0;
     let newlines = 0;
