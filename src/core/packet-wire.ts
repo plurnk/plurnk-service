@@ -22,7 +22,7 @@ import type { GitStatus } from "./git-state.ts";
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
 // leaf fields are untyped (SectionView), narrowed by the runtime `typeof`
 // checks below (boundaries validate). Engine's RequestPacket is strict.
-interface ActionTarget { scheme?: string | null; pathname?: string | null; fragment?: string | null }
+interface ActionTarget { scheme?: string | null; hostname?: string | null; port?: number | null; pathname?: string | null; fragment?: string | null }
 // Only `body` is read off the log row's tx now — the mirror renders the model's WORK as content
 // (PLAN/SEND bodies, EXEC commands, READ/FIND matchers), never the op's emission tag re-serialized.
 interface StatementTx {
@@ -425,7 +425,15 @@ export default class PacketWire {
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
-        const rendered = PacketWire.#renderModelUri(target.scheme, target.pathname);
+        // An authority-bearing target (run://<name> — the run IS the authority, §run-scheme;
+        // a web host http://host/path) keeps its name in `hostname`. Without it a spawn renders
+        // as a bare `run://`, indistinguishable across workers — the model goes blind to what it
+        // spawned and re-spawns. Reconstruct the authority form when a hostname is present;
+        // namespace schemes (plurnk/known) fold their authority into the path and fall through.
+        const host = typeof target.hostname === "string" && target.hostname.length > 0 ? target.hostname : null;
+        const rendered = host !== null && typeof target.scheme === "string" && target.scheme.length > 0
+            ? `${target.scheme}://${host}${target.port ? `:${target.port}` : ""}${target.pathname ?? ""}`
+            : PacketWire.#renderModelUri(target.scheme, target.pathname);
         if (rendered.length === 0) return null;
         // The channel fragment (#stdout/#stderr) is part of the address — a stream delta has to
         // say WHICH channel it is, not just the entry. §exec-stream

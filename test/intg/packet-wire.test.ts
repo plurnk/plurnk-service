@@ -28,6 +28,28 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
 });
 
+test("log entry: a run:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
+    // The spawn-blindness root cause: the run name lives in the URI authority (run://<name>),
+    // not the path. Rendering scheme+path alone collapsed every spawn to a bare `run://`, so the
+    // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
+    // must reach the rendered target.
+    const out = PacketWire.renderLog([
+        { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "run", hostname: "worker_db", pathname: "" } },
+        { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "run", hostname: "worker_pool", pathname: "" } },
+    ], tok);
+    assert.match(out, /"target":"run:\/\/worker_db"/, "the spawned worker name reaches the model's log");
+    assert.match(out, /"target":"run:\/\/worker_pool"/, "distinct workers render distinctly — no bare run://");
+    assert.doesNotMatch(out, /"target":"run:\/\/"/, "no nameless run:// rows (the blindness)");
+});
+
+test("log entry: a web host survives into the target — http://host/path, not http:///path", () => {
+    // Same render path, same bug class: an authority-bearing scheme keeps its host in `hostname`.
+    const out = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" } },
+    ], tok);
+    assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the web host reaches the rendered target");
+});
+
 test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",
