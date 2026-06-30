@@ -39,7 +39,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 // Drive one EXEC[tag] through the full Exec path and return its captured, ANSI-stripped output —
 // from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite/wat → results) —
 // plus whether it ran INLINE (effect pure/read → ungated) or PROPOSED (effect host → review-gated).
-const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; inline: boolean }> => {
+const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; inline: boolean; mimetype: string; declaredMimetype: string | undefined }> => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -48,6 +48,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const registry = await testExecutors();
         engine.setExecutors(registry);
         const channel = registry.entry(tag)?.executor.defaultChannel ?? "stdout";
+        const declaredMimetype = registry.entry(tag)?.executor.channels[channel]?.mimetype;
         const sessionId = await insertSession(db, `batt-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "batteries");
@@ -75,10 +76,10 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         // idle() awaits the spawn promise, which drains the channel-write queue before resolving, so the
         // output is committed by here — for inline and proposed runtimes alike. No poll, no close-race.
         const out = entryRow
-            ? await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryRow.id, name: channel })
+            ? await (db.test_get_channel as PrepMethod).get<{ content: string; state: string; mimetype: string }>({ entry_id: entryRow.id, name: channel })
             : undefined;
         assert.equal(out?.state, "closed", `EXEC[${tag}] output channel settled to closed by idle()`);
-        return { status: result.status, out: stripAnsi(out?.content ?? ""), inline };
+        return { status: result.status, out: stripAnsi(out?.content ?? ""), inline, mimetype: out?.mimetype ?? "", declaredMimetype };
     } finally {
         await db.close();
     }
@@ -133,6 +134,15 @@ test("execs batteries: coverage census — every self-contained default-install 
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
     assert.ok(available.has("jq") && available.has("sqlite") && available.has("wat"), "the core batteries executors (jq, sqlite, wat) are discovered and available");
+
+    // Channel mimetype shape: JSON-returning runtimes declare application/json on their results channel
+    // (so consumers route jsonpath/render correctly), subprocess runtimes declare text/stream on stdout.
+    const declMime = (tag: string): string | undefined => {
+        const e = reg.entry(tag);
+        return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
+    };
+    for (const t of ["jq", "sqlite", "wat"]) assert.equal(declMime(t), "application/json", `EXEC[${t}] results channel is application/json, not text/stream`);
+    for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
@@ -143,9 +153,13 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
             t.skip(`EXEC[${tag}] not available in this env (probe failed / resource-gated)`);
             return;
         }
-        const { status, out, inline } = await runExec(tag, body, cwd);
+        const { status, out, inline, mimetype, declaredMimetype } = await runExec(tag, body, cwd);
         assert.equal(status, 200, `${label} dispatch returns 200`);
         assert.equal(out, expect, `${label} output`);
+        // The stream entry's channel carries the executor's OWN declared mimetype — so a JSON-returning
+        // runtime (sqlite/jq/wat → application/json) is routed by mimetype-aware consumers (jsonpath,
+        // render), never mislabelled text/stream. The Exec seed honors the declaration; the write never overwrites it.
+        assert.equal(mimetype, declaredMimetype, `${label} channel carries the executor's declared mimetype`);
         // The security boundary: effect→gate must match. A host runtime MUST propose (be review-gated);
         // a pure/read one MUST run inline. A regression that flips a host runtime to inline would let
         // arbitrary host code run ungated — this assertion guards exactly that.
