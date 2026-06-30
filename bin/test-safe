@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Wall-clock-bounded test runner with forensic-on-hang.
+#
+# node's `--test-timeout` is per-test and event-loop-based, so a CPU-spinning or worker-pool hang
+# outlives it (the timer can't fire) — that's how an intg subprocess once pegged ~8 cores for 66
+# minutes, unreaped. This wrapper bounds the WHOLE run at the OS level and, on the deadline, dumps a
+# node diagnostic report (SIGUSR2 → JS stack + libuv handles + worker/resource state) BEFORE SIGKILL,
+# so a recurrence leaves a stack to read instead of a mystery zombie.
+#
+#   bin/test-safe npm run test:intg
+#   PLURNK_TEST_BUDGET=2400 bin/test-safe npm run test:demo   # longer budget for real-model tiers
+#
+# Caveat: SIGUSR2 reports the main thread; it fires for a worker-pool spin (main free) but NOT a pure
+# main-thread sync spin (the handler starves too). For that, reproduce under `node --prof` and process
+# the incremental isolate-*.log — there is no OS sampler (perf/gdb) in this sandbox.
+set -uo pipefail
+
+BUDGET="${PLURNK_TEST_BUDGET:-900}"          # seconds of wall clock before we step in
+GRACE="${PLURNK_TEST_KILL_GRACE:-8}"         # seconds between the report dump and SIGKILL
+REPORTS="$(cd "$(dirname "$0")/.." && pwd)/.reports"
+mkdir -p "$REPORTS"
+
+# --report-on-signal rides NODE_OPTIONS so EVERY node in the tree (the runner + its per-file
+# subprocesses) honors it; SIGUSR2 is node's default report signal.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-directory=$REPORTS"
+
+# Own process group so we can signal the whole tree (runner + npm + subprocesses) at once.
+setsid "$@" &
+child=$!
+
+(
+    sleep "$BUDGET"
+    if kill -0 "$child" 2>/dev/null; then
+        echo "test-safe: ${BUDGET}s budget exceeded — dumping node reports to $REPORTS, then killing" >&2
+        kill -USR2 "-$child" 2>/dev/null   # negative pid = the process group
+        sleep "$GRACE"
+        kill -KILL "-$child" 2>/dev/null
+    fi
+) &
+watchdog=$!
+
+wait "$child"; status=$?
+kill "$watchdog" 2>/dev/null               # run finished in time → cancel the watchdog
+wait "$watchdog" 2>/dev/null
+
+reports=$(ls -1 "$REPORTS"/report.*.json 2>/dev/null | wc -l)
+[ "$reports" -gt 0 ] && echo "test-safe: $reports node diagnostic report(s) in $REPORTS" >&2
+exit "$status"

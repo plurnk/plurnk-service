@@ -172,3 +172,4 @@ scriptify/
 dist/
 .claude/
 test/intg/.tmp/
+.reports/
