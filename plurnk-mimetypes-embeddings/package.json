@@ -36,7 +36,8 @@
         "test:integration": "PLURNK_EMBED_WORKERS=2 node --test test/integration/*.test.js",
         "test": "npm run test:unit && npm run test:integration",
         "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test",
+        "prepare": "(git config core.hooksPath .githooks || true)"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"
