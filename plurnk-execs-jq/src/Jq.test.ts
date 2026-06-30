@@ -36,8 +36,8 @@ test("manifest declares jq", async () => {
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["jq"]);
 });
 
-test("channels: results (application/json)", () => {
-    assert.deepEqual(new Jq({ runtime: "jq", glyph: "🧰" }).channels, { results: { mimetype: "application/json" } });
+test("channels: results (application/jsonl)", () => {
+    assert.deepEqual(new Jq({ runtime: "jq", glyph: "🧰" }).channels, { results: { mimetype: "application/jsonl" } });
 });
 
 test("effect: inline/-n → pure; file-path data source → read", () => {
@@ -56,6 +56,16 @@ test("inline (-n): a self-contained program computes with no data source", { ski
     assert.equal(result.status, 200);
     assert.equal(out?.trim(), "6");
     assert.deepEqual(states, ["closed"]);
+});
+
+test("multi-value object output is one compact JSON value per line — honest JSONL (#2)", { skip: !HAS_JQ }, async () => {
+    // Without -c this object stream pretty-prints across multiple lines and is
+    // neither valid application/json nor valid JSONL — the bug in #2.
+    const { result, out } = await run("[{a:1},{a:2}] | .[]");
+    assert.equal(result.status, 200);
+    const lines = out!.trim().split("\n");
+    assert.equal(lines.length, 2, "each value on its own line");
+    assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ a: 1 }, { a: 2 }], "every line is a standalone JSON value");
 });
 
 test("a file-path target is filtered", { skip: !HAS_JQ }, async () => {

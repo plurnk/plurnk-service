@@ -15,8 +15,12 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 // spawn is sufficient — no process-group machinery needed. It's a pure filter
 // (no host writes / exec), so `effect` is `pure`/`read` — always auto-run.
 export default class Jq extends BaseExecutor {
+    // jq is a streaming filter: a multi-value program emits one value per line.
+    // run() spawns with -c so each value stays compact on its own line, making
+    // the channel honest JSONL — a single value is a valid 1-line JSONL doc too
+    // (plurnk-execs-jq#2).
     get channels(): Readonly<Record<string, ChannelDecl>> {
-        return { results: { mimetype: "application/json" } };
+        return { results: { mimetype: "application/jsonl" } };
     }
 
     // Inline/`-n` → pure; a file-path data source → read (filesystem). Both auto-run.
@@ -39,8 +43,10 @@ export default class Jq extends BaseExecutor {
     async run({ command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const program = command.trim() || ".";
         const path = cwd && cwd.length > 0 ? cwd : null;
-        // Target present → jq reads the file; absent → -n, the program stands alone.
-        const args = path !== null ? [program, path] : ["-n", program];
+        // -c → one compact JSON value per line, so multi-value output is honest
+        // JSONL (plurnk-execs-jq#2). Target present → jq reads the file; absent →
+        // -n, the program stands alone.
+        const args = path !== null ? ["-c", program, path] : ["-c", "-n", program];
 
         return new Promise<ExecResult>((resolve) => {
             let settled = false;
