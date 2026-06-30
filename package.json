@@ -63,8 +63,8 @@
         "@plurnk/plurnk-mimetypes-text-html": "0.6.6",
         "@plurnk/plurnk-providers": "^0.21.0",
         "@plurnk/plurnk-providers-all": "0.10.0",
-        "@plurnk/plurnk-schemes": "^0.32.4",
-        "@plurnk/plurnk-schemes-all": "^0.2.27",
+        "@plurnk/plurnk-schemes": "^0.32.5",
+        "@plurnk/plurnk-schemes-all": "^0.2.28",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
