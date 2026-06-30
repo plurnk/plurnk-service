@@ -107,13 +107,26 @@ export default class Run {
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
         const authority = Run.#authority(statement.target);
         if (authority === null) return { status: 400, content: null, mimetype: null, channel: null };
+        if (authority === "") return { status: 400, content: null, mimetype: null, channel: null };  // empty-authority run:/// is invalid
         const entryPath = Run.#entryPath(statement.target);
-        if (entryPath === "") return { status: 400, content: null, mimetype: null, channel: null };  // a run is not READable, only its entries
-        if (authority === "") return { status: 400, content: null, mimetype: null, channel: null };  // retired empty-authority form
-        // Cross-run READ is allowed — resolve self, fold the owner into the storage path.
+        // Path-absent READ(run://<name>) COLLECTS the run's deliverable (§run-scheme-collect, pull side):
+        // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
+        // still running hasn't delivered yet → 425 steers the model to hibernate [202] until it does (the
+        // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
+        if (entryPath === "") {
+            const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
+            const row = await (ctx.db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null }>({ session_id: ctx.sessionId, name: owner });
+            if (row === undefined) return { status: 404, content: `run://${owner} not found in this session`, mimetype: "text/markdown", channel: null };
+            if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — SEND[202] to hibernate until it delivers its result ]`, mimetype: "text/markdown", channel: null };
+            return { status: 200, content: row.terminal_message ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
+        }
+        // Path-present: cross-run scratch READ — resolve self, fold the owner into the storage path.
         const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
         return EntryOps.readSessionEntry(Run.#withOwner(statement, owner), ctx, Run.manifest);
     }
+
+    // Terminal loop statuses (§lifecycle-terms) — a loop here has DELIVERED; anything else is still running.
+    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 508]);
 
     // §run-scheme — FIND a run's scratch. `run://self/**` is self; `run://<name>/**` a sister
     // (cross-run READ is allowed, so cross-run FIND is too). Resolve the owner and fold it into

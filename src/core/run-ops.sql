@@ -13,6 +13,18 @@ ORDER BY id DESC LIMIT 1;
 -- acting run (ctx.runId) to its name to key its run-scope entries by authority.
 SELECT name FROM runs WHERE id = $run_id;
 
+-- PREP: run_deliverable_by_name
+-- The newest run holding this name, with its latest loop's status + terminal message — the
+-- deliverable a sister COLLECTS by READing run://<name> (§run-scheme-collect, the pull side of
+-- the same deliverable the push delta carries). Terminal status → the message is the result (200)
+-- or the abandonment reason; non-terminal → the worker hasn't delivered yet (READ steers to 202).
+SELECT r.id AS run_id, l.status, l.terminal_message
+FROM runs r
+JOIN loops l ON l.run_id = r.id
+WHERE r.session_id = $session_id AND r.name = $name
+ORDER BY r.id DESC, l.sequence DESC
+LIMIT 1;
+
 -- PREP: run_live_by_name
 -- The newest run holding this name that is still LIVE (a non-terminal loop, 100/102) —
 -- the spawn gate's collision check. A hit means the name is in use by a running sister

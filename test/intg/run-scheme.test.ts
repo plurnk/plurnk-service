@@ -14,7 +14,7 @@ import Run from "../../src/schemes/Run.ts";
 import Fork from "../../src/core/fork.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
-import { editStmt, sendStmt } from "./_dsl.ts";
+import { editStmt, sendStmt, readStmt } from "./_dsl.ts";
 
 // §run-scheme — the run is the AUTHORITY: run://<name> (name in hostname), run://self for the current run.
 // run://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
@@ -195,6 +195,33 @@ test("[§run-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn suc
         const resolved = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
         assert.notEqual(resolved?.id, dead, "run_resolve_by_name resolves the fresh run, never the terminated one");
         assert.equal(calls[0]?.runId, resolved?.id, "inject targets the reclaimed run");
+    } finally { await db.close(); }
+});
+
+test("[§run-scheme-collect] READ(run://name) collects the deliverable — message done, 425 running, 404 absent", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `run-collect-${crypto.randomUUID()}`);
+        const reader = await insertRun(db, sessionId); // the sister doing the collection
+        const ctx = makeSchemeCtx({ db, sessionId, runId: reader });
+        const run = new Run();
+
+        // No such run → 404 (not a bare 400 the model can't read).
+        const missing = await run.read(readStmt(runPath("ghost")), ctx);
+        assert.equal(missing.status, 404, "a name with no run is 404");
+
+        // A worker still running (its loop at the default live status 102) hasn't delivered → 425, steer to 202.
+        const worker = await insertRun(db, sessionId, null, "worker-db");
+        const wLoop = await insertLoop(db, worker, 1, "find db");
+        const running = await run.read(readStmt(runPath("worker-db")), ctx);
+        assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
+        assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
+
+        // It concludes 200 with a deliverable → READing the run yields the deliverable (the pull side of collect).
+        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, message: "postgres", loop_id: wLoop });
+        const done = await run.read(readStmt(runPath("worker-db")), ctx);
+        assert.equal(done.status, 200, "a concluded worker's READ succeeds");
+        assert.equal(done.content, "postgres", "the deliverable (terminal message) is collected by READing the run itself — no scratch-path guessing");
     } finally { await db.close(); }
 });
 
