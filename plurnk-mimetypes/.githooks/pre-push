@@ -1,0 +1,5 @@
+#!/bin/sh
+# Local test gate (replaces GitHub CI, per house preference: npm scripts > hooks
+# > github). Runs the full suite before every push; a red suite blocks the push,
+# so a regression never reaches the remote. Emergency bypass: git push --no-verify.
+exec npm test

@@ -49,7 +49,7 @@
     "scripts": {
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
-        "prepare": "npm run build",
+        "prepare": "npm run build && (git config core.hooksPath .githooks || true)",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
         "test:intg": "node --test test/integration/**/*.test.ts",
