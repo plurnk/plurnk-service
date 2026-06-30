@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE        INDEX IF NOT EXISTS runs_session_id_created_at ON runs (session_id, created_at);
 CREATE        INDEX IF NOT EXISTS runs_parent_run_id         ON runs (parent_run_id);
-CREATE UNIQUE INDEX IF NOT EXISTS runs_session_name          ON runs (session_id, name);
+-- NOT unique: a name is frozen per run (§machine-processes-run-origin) but RECLAIMABLE across
+-- time — a terminated run keeps its name in permanent history while a fresh spawn reuses it;
+-- run_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
+-- → run_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
+CREATE        INDEX IF NOT EXISTS runs_session_name          ON runs (session_id, name);
 
 -- INIT: loops
 -- flags: per-loop runtime flags (yolo, noProposals, noWeb, noInteraction,

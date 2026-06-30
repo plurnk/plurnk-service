@@ -70,6 +70,11 @@ export default class Run {
             if (ctx.injectRun === undefined) throw new Error("run.edit: injectRun capability absent");
             const denied = await RunCap.deny(ctx.db, ctx.sessionId);
             if (denied !== null) return denied;
+            // A name is frozen per run but reclaimable across time (§machine-processes-run-origin):
+            // a LIVE sister already holding it is a conflict (409, legible — not a raw UNIQUE 500);
+            // a name free or held only by a terminated run is reclaimed (the resolver picks newest).
+            const live = await (ctx.db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: authority });
+            if (live !== undefined) return { status: 409, error: `run '${authority}' is already running` };
             const row = await (ctx.db.fork_insert_run as PrepMethod).get<{ id: number }>({
                 session_id: ctx.sessionId, name: authority, parent_run_id: ctx.runId, origin: ctx.writer,
             });

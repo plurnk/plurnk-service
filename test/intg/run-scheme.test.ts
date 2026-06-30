@@ -147,6 +147,57 @@ test("[§run-scheme-spawn] EDIT(run://name):prompt spawns a same-session sister,
     } finally { await db.close(); }
 });
 
+test("[§run-scheme-spawn] spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectRun } = recordingInjectRun();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
+        const sessionId = await insertSession(db, `run-spawn-live-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        // A sister 'worker' is already RUNNING (a loop at the default live status 102).
+        const sister = await insertRun(db, sessionId, null, "worker");
+        await insertLoop(db, sister, 1, "working");
+
+        const result = await engine.dispatch({
+            statement: editStmt(runPath("worker"), "do it again"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
+        assert.match(String((result as { error?: string }).error ?? ""), /worker.*already running|already running/, "the message names the live run");
+        assert.equal(calls.length, 0, "no inject on a refused spawn");
+    } finally { await db.close(); }
+});
+
+test("[§run-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectRun } = recordingInjectRun();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
+        const sessionId = await insertSession(db, `run-spawn-reclaim-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        // A sister 'worker' that already TERMINATED (its loop crossed into 200) — its name is spent.
+        const dead = await insertRun(db, sessionId, null, "worker");
+        const deadLoop = await insertLoop(db, dead, 1, "done");
+        await (db.test_set_loop_status as PrepMethod).run({ id: deadLoop, status: 200 });
+
+        const result = await engine.dispatch({
+            statement: editStmt(runPath("worker"), "fresh work"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 200, "a terminated name is free to reclaim");
+        assert.equal(calls.length, 1, "the reclaimed spawn injects its fresh prompt");
+        // The frozen-name/permanent-history invariant: the dead run keeps its name (a new row holds it
+        // too) and resolution picks the NEWEST — the reclaimed run, not the corpse.
+        const resolved = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        assert.notEqual(resolved?.id, dead, "run_resolve_by_name resolves the fresh run, never the terminated one");
+        assert.equal(calls[0]?.runId, resolved?.id, "inject targets the reclaimed run");
+    } finally { await db.close(); }
+});
+
 test("[§run-scheme-spawn] EDIT(run://self) cannot spawn self — 400, no inject", async () => {
     const db = await openMigrated();
     try {

@@ -172,18 +172,28 @@ test("runs: index runs_parent_run_id exists", async () => {
     } finally { await db.close(); }
 });
 
-test("runs: unique (session_id, name) — duplicate name within session rejected", async () => {
+test("runs: a name repeats within a session — reclamation across time, NOT store-unique (§machine-processes-run-origin)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-uniqname");
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: "same-name" });
-        await assert.rejects(
-            () => (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: "same-name" }),
-            /UNIQUE constraint failed/,
-        );
-        // Same name in different session is fine.
-        const otherSessionId = await insertSession(db, "ws-uniqname-other");
-        await (db.test_runs_insert as PrepMethod).run({ session_id: otherSessionId, name: "same-name" });
+        const sessionId = await insertSession(db, "ws-reclaim");
+        const first = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        // The store PERMITS a second 'worker': a name is frozen per run but reclaimable across time —
+        // a terminated run keeps its name in permanent history while a fresh spawn reuses it. A LIVE
+        // collision is refused at the spawn gate (Run.edit → run_live_by_name → 409), never by the
+        // store. The dropped UNIQUE index returned a raw 500 the model couldn't read.
+        const second = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        assert.notEqual(first?.id, second?.id, "two distinct runs can hold the same name");
+        // Resolution is newest-wins — the live/fresh run, never the corpse.
+        const resolved = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        assert.equal(resolved?.id, second?.id, "run_resolve_by_name resolves the newest holder");
+    } finally { await db.close(); }
+});
+
+test("runs: index runs_session_name exists (plain — the by-name resolve/spawn lookup, not a uniqueness constraint)", async () => {
+    const db = await openMigrated();
+    try {
+        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "runs_session_name" });
+        assert.equal(row?.name, "runs_session_name");
     } finally { await db.close(); }
 });
 
