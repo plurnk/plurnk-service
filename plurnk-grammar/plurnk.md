@@ -1,4 +1,4 @@
-# Plurnk Service: Preposterously Lean Universal Resource NetworK
+# Plurnk Service
 
 Plurnk Service is an agentic service for acting on and answering user prompts.
 
@@ -46,8 +46,8 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
 <<KILL(path)::KILL deletes files and entries, erases log items, and kills streams.
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
-<<SEND[202]:holding:SEND to hibernate when awaiting results of long EXECs or worker runs.
-<<SEND[200]:done:SEND to terminate a completed run only after all OPs, streams, and runs have returned.
+<<SEND[202]:holding:SEND to hibernate when awaiting results of long EXEC streams or worker runs.
+<<SEND[200]:done:SEND to terminate a completed run only if all OPs, streams, and runs have already returned.
 
 ### Suffix
 
@@ -111,7 +111,7 @@ YOU SHOULD distill source information into taxonomized, tagged, and topical know
 YOU MUST terminate the turn by SENDing a message to the user with the proper status code.
 * 102: submit a continuing turn with status code 102: <<SEND[102]:Submitting operations and optimizing log relevance.:SEND
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
-* 202: submit a hibernation turn with status code 202: <<SEND[202]:Checking on background task in 10 minutes.:SEND
+* 202: submit a hibernation turn with status code 202: <<SEND[202]:Awaiting streams and worker responses.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
 YOU MUST SEND[102] to receive the results of OPs you submitted. Avoid premature SEND[200].
