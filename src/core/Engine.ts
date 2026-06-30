@@ -1295,10 +1295,11 @@ export default class Engine {
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
-        const latestPromptRow = await (this.#db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` });
+        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` }))
+            .filter((r) => typeof r.content === "string" && r.content.length > 0);
         const promptCap = Number.parseInt(process.env.PLURNK_PROMPT_PREVIEW_CHARS ?? "", 10);
-        const prompt = (latestPromptRow !== undefined && typeof latestPromptRow.content === "string" && latestPromptRow.content.length > 0)
-            ? PacketWire.previewPrompt(latestPromptRow.content, renderAddress("plurnk", latestPromptRow.pathname), Number.isInteger(promptCap) ? promptCap : -1)
+        const prompt = promptRows.length > 0
+            ? PacketWire.renderActivePrompts(promptRows, Number.isInteger(promptCap) ? promptCap : -1)
             : byRole("user");
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (callers read the sysprompt but never the
@@ -1353,8 +1354,10 @@ export default class Engine {
             { name: "budget", slot: "system", header: "Plurnk Service Budget", content: budgetReadout, tokens: 0 },
             // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
             { name: "log", slot: "user", header: "Plurnk Service Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
-            // the PRIMARY user prompt ("primary" since loops admit injected prompts too) renders at the BOTTOM, just above requirements — at the action point, closest to the model's turn.
-            { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: prompt, tokens: 0 },
+            // the ACTIVE user prompts (all the current loop holds, in order — a loop admits injected
+            // prompts) render at the BOTTOM, just above requirements — at the action point, closest to
+            // the model's turn. Each is a bare heredoc (the fence is the link); §prompt-fold.
+            { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: prompt, tokens: 0 },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: baseRequirements, tokens: 0 },
         ];

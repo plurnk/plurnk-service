@@ -61,6 +61,20 @@ WHERE e.scheme = 'plurnk'
 ORDER BY e.id DESC
 LIMIT 1;
 
+-- PREP: drain_get_all_prompt_bodies_for_loop
+-- Sources the Active User Prompts section (§prompt-fold): EVERY prompt entry the
+-- current loop holds, OLDEST first — typically one, but an active loop admits injected
+-- prompts (multiple plurnk:///prompt/<loop>/<N>), all shown in order. Same pattern as
+-- the latest-only sibling (`/prompt/<loop_id>/%`, built JS-side); the section renders
+-- each body as a bare heredoc.
+SELECT c.content, e.pathname
+FROM entries e
+JOIN entry_channels c ON c.entry_id = e.id
+WHERE e.scheme = 'plurnk'
+  AND e.pathname LIKE $pattern
+  AND c.name = 'body'
+ORDER BY e.id ASC;
+
 -- PREP: drain_orphaned_prompt_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a loop.run-while-active that landed on a turn the

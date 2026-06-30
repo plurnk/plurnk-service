@@ -241,7 +241,7 @@ test("[§requirements-requirements-render-last] requirements renders LAST in the
     // The default packet orders the user slot prompt → budget → errors → … →
     // requirements; renderSlot preserves that order, so requirements lands last.
     const out = PacketWire.renderSlot([
-        { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: "Reply with just the number.", tokens: 0 },
+        { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: "Reply with just the number.", tokens: 0 },
         { name: "budget", slot: "user", header: "Plurnk Service Budget", content: "5000 free", tokens: 0 },
         { name: "errors", slot: "user", header: "Plurnk Service Errors", content: PacketWire.renderErrors([{ kind: "no_ops", coordinate: "1/1/1" }]), tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
@@ -252,14 +252,14 @@ test("[§requirements-requirements-render-last] requirements renders LAST in the
     assert.match(out, /## Plurnk Service Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
         "requirements renders LAST under its own header, nothing after it");
     const reqIdx = out.indexOf("## Plurnk Service Requirements");
-    assert.ok(reqIdx > out.indexOf("## Plurnk Service Primary User Prompt"), "requirements follows the prompt");
+    assert.ok(reqIdx > out.indexOf("## Plurnk Service Active User Prompts"), "requirements follows the prompt");
     assert.ok(reqIdx > out.indexOf("## Plurnk Service Budget"), "requirements follows the budget section");
     assert.ok(reqIdx > out.indexOf("## Plurnk Service Errors"), "requirements follows the errors section");
 });
 
 test("[§requirements-requirements-omitted-when-empty] empty requirements section emits no header", () => {
     const out = PacketWire.renderSlot([
-        { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: "P", tokens: 0 },
+        { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: "P", tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "", tokens: 0 },
     ], "user");
     assert.doesNotMatch(out, /## Plurnk Service Requirements/, "no requirements section when the content is empty");

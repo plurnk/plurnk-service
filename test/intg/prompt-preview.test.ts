@@ -1,7 +1,7 @@
-// End-to-end: a fat prompt renders TRUNCATED in the built packet's user.prompt (capped by
-// PLURNK_PROMPT_PREVIEW_CHARS) with a pointer to the full body — which stays intact at its
-// plurnk://prompt/<loop>/<seq> entry. The cap is model-context (what replays each turn); the
-// database entry is never truncated (the full body is always recoverable by READ).
+// End-to-end: a fat prompt over PLURNK_PROMPT_PREVIEW_CHARS renders as the pointer PLACEHOLDER in
+// the built packet's Active User Prompts section (no inlined body) — while the full body stays intact
+// at its plurnk://prompt/<loop>/<seq> entry. The cap is model-context (what replays each turn); the
+// database entry is never truncated (the full body is always recoverable by READ/OPEN).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -33,8 +33,8 @@ test("[prompt-preview] a fat prompt renders capped in the packet but stays whole
         const userPrompt = packetSection(JSON.parse(row!.packet), "prompt");
 
         assert.ok(userPrompt.length < fullPrompt.length, "the rendered prompt is capped below the full body");
-        assert.equal(userPrompt.slice(0, 50), fullPrompt.slice(0, 50), "the first cap chars are preserved verbatim");
-        assert.match(userPrompt, /full body READable at plurnk:\/\/prompt\/\d+\/\d+/, "a pointer to the prompt entry is appended");
+        assert.doesNotMatch(userPrompt, /DESCRIBE DESCRIBE/, "the over-cap body is NOT inlined");
+        assert.match(userPrompt, /^\[ Prompt exceeds preview limit\. Full content: plurnk:\/\/prompt\/\d+\/\d+ \]$/, "the over-cap prompt renders the pointer placeholder");
 
         // The database entry is NEVER truncated — the full body is recoverable by READ.
         const entry = await (db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({ pattern: `/prompt/${loopId}/%` });
