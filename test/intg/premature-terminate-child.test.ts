@@ -8,9 +8,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { sendStmt } from "./_dsl.ts";
 
-test("[§send-premature-terminate] SEND[200] with a live CHILD run downgrades to 102 + steers", async () => {
+test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `prem-child-${crypto.randomUUID()}`);
@@ -34,8 +35,15 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run downgrades to
 
         // Now SEND[200] is premature — the child is still a live thing the run holds.
         const premature = await send200();
-        assert.equal(premature.status, 102, "with a live child, SEND[200] downgrades to 102 (premature-terminate)");
+        assert.equal(premature.status, 102, "the TURN stays a continue (102) — the loop never went terminal");
         assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
+
+        // The record is faithful, NOT erased: the SEND row keeps its [200] emission but is stamped 409
+        // (refused — Conflict), auto-surfacing in the errors section (status≥400). The old downgrade
+        // rewrote the row to 102, erasing what the model did.
+        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: premature.turnId });
+        const sendRow = rows.find((r) => r.op === "SEND");
+        assert.equal(sendRow?.status_rx, 409, "the SEND row records the refusal as 409, preserving the model's termination attempt");
     } finally { await db.close(); }
 });
 

@@ -50,7 +50,9 @@ const DEFAULT_BUDGET_CEILING = 0.9;
 const ENGINE_ERRORS = Object.freeze({
     budget_overflow: { status: 413, term: "Budget Overflow: newest log items automatically FOLDed" },
     max_commands_exceeded: { status: 429, term: "Max Commands Exceeded" },
-    premature_terminate: { status: 409, term: "Premature Termination" },
+    // premature-terminate is NOT a terse engine-error: it's a SEND op-result (409 + an actionable
+    // outcome, §send-premature-terminate) — the SEND row records the [200] attempt faithfully and
+    // auto-surfaces (status≥400) like any op failure, never an erasure to 102.
     idle_turn: { status: 409, term: "Idle Turn" },
 } as const);
 type EngineErrorKind = keyof typeof ENGINE_ERRORS;
@@ -147,6 +149,10 @@ type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
+    // Set by runTurn for THIS turn's terminal SEND when the PRE-DISPATCH snapshot found a live thing
+    // (§send-premature-terminate). Threaded — never re-checked at dispatch — so a child spawned in the
+    // SAME turn (fire-and-forget) isn't miscounted: the snapshot is taken before this turn's spawns run.
+    prematureRefusal?: boolean;
 };
 
 type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
@@ -1070,25 +1076,23 @@ export default class Engine {
 
         // Premature terminate: a SEND[200] while the run still holds a live thing — an open stream/spawn
         // OR a non-terminal child run (§run-lifecycle: children and streams are the same kind of "live
-        // thing a run holds"). The model declared done with work running. Downgrade the 200 to 102 so it
-        // dispatches as a continue (its body is preserved, not discarded) and steer; the stream's/child's
-        // own conclusion (the wake edge) or a KILL is the exit.
-        if (sendOp?.signal === 200) {
-            const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
-            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-            const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
-            if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true || liveChild !== undefined) {
-                sendOp.signal = TURN_STATUS_IMPLICIT_CONTINUE; // 102 — downgraded, no longer a terminal
-                steerStruck = true;
-                pendingEngineErrors.push("premature_terminate");
-            }
-        }
+        // thing a run holds"). The model declared done with work running. The SEND is REFUSED 409 at
+        // dispatch (#handleSendBroadcast) — the row records the [200] attempt + body faithfully (no
+        // erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal. Here we only
+        // flag it so the turn stays a continue and the strike couples to the grinder (steerStruck →
+        // turnErrors): a model that won't stop premature-200ing escalates out via the rails.
+        const prematureTerminate = sendOp?.signal === 200 && await this.#runHoldsLiveThing(runId);
+        if (prematureTerminate) steerStruck = true;
 
         // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
         // SEND." SEND is purely a signal verb; many turns pass without one. An empty op list strikes.
-        const turnStatus = sendOp !== undefined
-            ? sendOp.signal
-            : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
+        // A refused premature-terminate keeps the turn a continue (102) though the SEND's signal stays
+        // 200 (the un-erased record) — the loop never went terminal, so the turn didn't either.
+        const turnStatus = prematureTerminate
+            ? TURN_STATUS_IMPLICIT_CONTINUE
+            : sendOp !== undefined
+                ? sendOp.signal
+                : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
@@ -1151,6 +1155,7 @@ export default class Engine {
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
+                prematureRefusal: prematureTerminate && statement === sendOp, // the pre-dispatch snapshot's decision, only for this turn's terminal SEND
             });
             statuses.push(result.status);
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
@@ -1749,7 +1754,7 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch } = context;
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, prematureRefusal } = context;
         const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -1769,7 +1774,7 @@ export default class Engine {
             // those are system failures.
             try {
                 if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, loopId);
+                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal === true);
                 } else if (statement.op === "COPY") {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -2508,10 +2513,31 @@ export default class Engine {
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number): Promise<DispatchResult> {
+    // A run "holds a live thing" iff it has an open stream/spawn (subscription registry or an
+    // exec spawn) OR a non-terminal child run — the structured-concurrency invariant a terminal
+    // SEND[200] must respect (§send-premature-terminate, §run-lifecycle: children and streams are
+    // the same kind of live thing a run holds).
+    async #runHoldsLiveThing(runId: number): Promise<boolean> {
+        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        if (openSubs.length > 0) return true;
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+        if (execHandler?.hasActiveSpawns?.(runId) === true) return true;
+        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        return liveChild !== undefined;
+    }
+
+    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: boolean): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const status = statement.signal;
         if (status === null) return { status: 400 };
+        // Premature terminate (§send-premature-terminate): a terminal SEND[200] while the run holds a
+        // live thing is REFUSED 409 — the row keeps the [200] emission + body (faithful, never erased),
+        // the loop never goes terminal. The model hibernates [202] to wait or KILLs before terminating.
+        // The decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget
+        // spawn isn't miscounted as a live thing the SEND holds.
+        if (status === 200 && prematureRefusal) {
+            return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
+        }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
             // the loop; each carries its body as the loop's terminal message — the deliverable.
