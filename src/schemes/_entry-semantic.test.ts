@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import EntrySemantic from "./_entry-semantic.ts";
 
+// These exercise the CAPABLE-embedder path (via a stub embedder), so the embedder must be ON —
+// the fast lane disables it in .env.test (PLURNK_EMBED_DISABLE=1), which would force #embedderInfo
+// to null and collapse every assertion to the FTS fallback. Re-enable it for this file.
+process.env.PLURNK_EMBED_DISABLE = "0";
+
 const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
 const fakeVector = (s: string): Uint8Array => new Uint8Array(new Float32Array([s.length, wordCount(s), 0]).buffer);
 
