@@ -117,8 +117,11 @@ export default class Embeddings {
                 // Any OTHER load error means the embedder IS installed but threw
                 // on import (e.g. a required env knob unset) — that's a
                 // misconfiguration, not "no embedder". Surface it, never silently
-                // downgrade a broken embedder to "absent".
-                if ((err as { code?: string })?.code === "ERR_MODULE_NOT_FOUND") return null;
+                // downgrade a broken embedder to "absent". "Absent" is the
+                // resolver's own signal: import() of a missing specifier sets
+                // code ERR_MODULE_NOT_FOUND (ESM) / MODULE_NOT_FOUND (CJS).
+                const code = (err as { code?: string })?.code;
+                if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
                 throw err;
             }
             const m = mod as { embed?: unknown; dimension?: unknown; default?: { embed?: unknown; dimension?: unknown } };

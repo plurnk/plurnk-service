@@ -605,7 +605,7 @@ describe("Mimetypes — degradation telemetry (plurnk-service#276)", () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async (pkg: string) => {
-                if (pkg === "@plurnk/plurnk-mimetypes-embeddings") throw new Error("MODULE_NOT_FOUND");
+                if (pkg === "@plurnk/plurnk-mimetypes-embeddings") throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
                 return { default: FakePlainHandler };
             },
         });

@@ -61,7 +61,7 @@ function mk(embedder: unknown | null) {
         discovery: makeDiscovery(),
         loader: async (pkg) => {
             if (pkg === EMB_PKG) {
-                if (embedder === null) throw new Error("MODULE_NOT_FOUND");
+                if (embedder === null) throw Object.assign(new Error("MODULE_NOT_FOUND"), { code: "ERR_MODULE_NOT_FOUND" });
                 return embedder;
             }
             return { default: BaseHandler };
