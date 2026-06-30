@@ -149,11 +149,16 @@ type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
-    // Set by runTurn for THIS turn's terminal SEND when the PRE-DISPATCH snapshot found a live thing
-    // (§send-premature-terminate). Threaded — never re-checked at dispatch — so a child spawned in the
-    // SAME turn (fire-and-forget) isn't miscounted: the snapshot is taken before this turn's spawns run.
-    prematureRefusal?: boolean;
+    // Set by runTurn for THIS turn's terminal SEND when it's premature (§send-premature-terminate) —
+    // the reason: a live thing the run holds (open stream/spawn or non-terminal child), or a READ
+    // submitted THIS turn whose result the model can't have seen yet. Threaded — never re-checked at
+    // dispatch — so a same-turn fire-and-forget spawn isn't miscounted: the snapshot precedes the turn's ops.
+    prematureRefusal?: PrematureReason;
 };
+
+// Why a terminal SEND[200] is refused (§send-premature-terminate): the run holds a live thing, or the
+// turn submitted a READ whose result the model hasn't observed (results fold back next turn).
+type PrematureReason = "live-thing" | "submitted-read";
 
 type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
 
@@ -1081,7 +1086,18 @@ export default class Engine {
         // erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal. Here we only
         // flag it so the turn stays a continue and the strike couples to the grinder (steerStruck →
         // turnErrors): a model that won't stop premature-200ing escalates out via the rails.
-        const prematureTerminate = sendOp?.signal === 200 && await this.#runHoldsLiveThing(runId);
+        // A terminal SEND[200] is premature when the run still holds a live thing (open stream/spawn or
+        // a non-terminal child), OR when the model submitted a READ THIS turn whose result it cannot have
+        // seen — results fold back on the NEXT turn, so terminating now means terminating on data it
+        // doesn't have (the classic "READ + SEND[200] in one turn" that ends mid-sentence). Both refuse
+        // 409 + strike; live-thing takes precedence when both hold.
+        const isTerminalSend = sendOp?.signal === 200;
+        const prematureReason: PrematureReason | undefined =
+            !isTerminalSend ? undefined
+                : (await this.#runHoldsLiveThing(runId)) ? "live-thing"
+                    : packetAssistant.ops.some((op) => op.op === "READ") ? "submitted-read"
+                        : undefined;
+        const prematureTerminate = prematureReason !== undefined;
         if (prematureTerminate) steerStruck = true;
 
         // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
@@ -1155,7 +1171,7 @@ export default class Engine {
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
-                prematureRefusal: prematureTerminate && statement === sendOp, // the pre-dispatch snapshot's decision, only for this turn's terminal SEND
+                prematureRefusal: prematureTerminate && statement === sendOp ? prematureReason : undefined, // the pre-dispatch snapshot's reason, only for this turn's terminal SEND
             });
             statuses.push(result.status);
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
@@ -1786,7 +1802,7 @@ export default class Engine {
             // those are system failures.
             try {
                 if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal === true);
+                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal);
                 } else if (statement.op === "COPY") {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -2573,17 +2589,20 @@ export default class Engine {
         return liveChild !== undefined;
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: boolean): Promise<DispatchResult> {
+    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: PrematureReason | undefined): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const status = statement.signal;
         if (status === null) return { status: 400 };
-        // Premature terminate (§send-premature-terminate): a terminal SEND[200] while the run holds a
-        // live thing is REFUSED 409 — the row keeps the [200] emission + body (faithful, never erased),
-        // the loop never goes terminal. The model hibernates [202] to wait or KILLs before terminating.
-        // The decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget
-        // spawn isn't miscounted as a live thing the SEND holds.
-        if (status === 200 && prematureRefusal) {
+        // Premature terminate (§send-premature-terminate): a terminal SEND[200] is REFUSED 409 — the row
+        // keeps the [200] emission + body (faithful, never erased), the loop never goes terminal. The
+        // decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget spawn
+        // isn't miscounted. Two reasons, two terse signals: a live thing the run holds, or a READ
+        // submitted this turn whose result the model can't have seen (it folds back next turn).
+        if (status === 200 && prematureRefusal === "live-thing") {
             return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
+        }
+        if (status === 200 && prematureRefusal === "submitted-read") {
+            return { status: 409, error: "Attempted termination with submitted READ operation(s)." };
         }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance

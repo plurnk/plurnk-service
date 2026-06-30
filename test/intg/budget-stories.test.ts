@@ -44,8 +44,11 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // A turn that writes a fat entry then READS it back (the read RESULT renders into
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.
+// A heavy read turn — EDIT a fat entry then READ it back; the READ folds into the NEXT turn's packet
+// (that's what makes the next turn fat). It CONTINUES (SEND[102]) — a turn that submits a READ must not
+// terminate in the same breath (§send-premature-terminate), and the result is for the next turn anyway.
 const fatReads = (chars: number, n = 1): MockResponse[] =>
-    Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(200, null, "ok")]));
+    Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(102, null, "ok")]));
 
 const engineAt = (db: Db, ceiling: number): Engine => {
     process.env.PLURNK_BUDGET_CEILING = String(ceiling);
@@ -103,7 +106,10 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, WIDE);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: fatReads(FAT) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        // A heavy DELIVERING turn (fat EDIT + terminal SEND[200], no same-turn READ) — under a wide
+        // ceiling it delivers and the packet reads ≤ 100%.
+        const fatDeliver = [response([editStmt(urlPath("known", "big"), heavy(FAT)), sendStmt(200, null, "ok")])];
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: fatDeliver }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 200, "delivered");
         assert.equal(t.budgetHardStop, false, "no hard-stop under a wide ceiling");
         const { percent } = budgetHeadline((await packetOf(db, t.turnId)).packet);

@@ -405,7 +405,10 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
                 response([readMissing("a"), sendStmt(102, "1")]),
                 response([readMissing("b"), sendStmt(102, "2")]),
                 response([readMissing("c"), sendStmt(102, "3")]),
-                response([readMissing("d"), sendStmt(200, "done")]),
+                response([readMissing("d"), sendStmt(102, "4")]),
+                // terminate on a clean turn — a READ + same-turn SEND[200] is itself a strike
+                // (§send-premature-terminate), which would confound this 404-soft-failure assertion.
+                response([sendStmt(200, "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -413,7 +416,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         });
         assert.equal(result.finalStatus, 200);
         assert.equal(result.reason, "external");
-        assert.equal(result.turnIds.length, 4);
+        assert.equal(result.turnIds.length, 5); // 4 soft-404 read turns (SEND[102]) + 1 clean terminal
     } finally { await db.close(); }
 });
 

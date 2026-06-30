@@ -206,14 +206,17 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             contextSize: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), sendStmt(102, "stored")]),
-                response([readStmt("/state"), sendStmt(200, "retrieved")]),
+                // READ continues (SEND[102]) — its result folds into turn 3; terminating same-turn as a
+                // READ is refused (§send-premature-terminate). Turn 3 delivers.
+                response([readStmt("/state"), sendStmt(102, "reading")]),
+                response([sendStmt(200, "retrieved")]),
             ],
         });
         const result = await engine.runLoop({
             provider, sessionId, runId, loopId,
             messages: [{ role: "user", content: "store then retrieve" }],
         });
-        assert.equal(result.turnIds.length, 2);
+        assert.equal(result.turnIds.length, 3);
         const readLog = await (db.test_read_log_entries_for_turn_by_op as PrepMethod).get<{ status_rx: number }>({ turn_id: result.turnIds[1], op: "READ" });
         assert.equal(readLog?.status_rx, 200, "READ in turn 2 found the entry written in turn 1");
     } finally { await db.close(); }

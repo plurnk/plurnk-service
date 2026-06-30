@@ -7,9 +7,15 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { sendStmt } from "./_dsl.ts";
+import type { ParsedPath } from "@plurnk/plurnk-grammar";
+import { sendStmt, readStmt } from "./_dsl.ts";
+
+const knownPath = (pathname: string): ParsedPath => ({
+    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null,
+});
 
 test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
@@ -72,6 +78,50 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
         });
         assert.equal(result.status, 200, "the child's LATEST loop is terminal → SEND[200] terminates cleanly, no false 409");
         assert.equal(result.steerStruck, false, "no premature-terminate strike for a concluded child");
+    } finally { await db.close(); }
+});
+
+test("[§send-premature-terminate] SEND[200] in the SAME TURN as a submitted READ is refused 409 — the result isn't observed yet", async () => {
+    // The jsonpath/xpath extraction dead-end: the model emits READ(...) and SEND[200] in one breath,
+    // terminating on a value it can't have — a READ result folds back on the NEXT turn, so the SEND body
+    // ends mid-sentence ("...is ") or carries a literal placeholder. Refuse 409 + strike; the correct
+    // shape is READ → SEND[102] → receive the result → SEND[200]. The READ's own success is irrelevant —
+    // SUBMITTING a READ this turn is what makes the same-turn terminate premature.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `prem-read-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "The host is")] } }] }),
+            sessionId, runId: parentRun, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
+        assert.equal(result.steerStruck, true, "the submitted-READ premature-terminate steer fired");
+        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
+        assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409, faithfully (no erasure)");
+    } finally { await db.close(); }
+});
+
+test("[§send-premature-terminate] a READ with a non-terminal SEND[102] is NOT struck — only terminal [200] is gated", async () => {
+    // The correct shape must stay clean: submit the READ, SEND[102] to receive it next turn. The rail
+    // gates only the terminal [200], never the continue.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `prem-read-ok-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
+            sessionId, runId: parentRun, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.steerStruck, false, "READ + SEND[102] does not strike — the rail gates only terminal [200]");
     } finally { await db.close(); }
 });
 
