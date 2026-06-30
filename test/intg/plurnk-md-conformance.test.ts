@@ -29,6 +29,10 @@ import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
+// One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
+// fast lane turns off (.env.test PLURNK_EMBED_DISABLE=1); --test-isolation scopes this to this file.
+process.env.PLURNK_EMBED_DISABLE = "0";
+
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,

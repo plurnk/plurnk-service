@@ -107,6 +107,10 @@ export default class EntryManifest {
         // The embedding config signature is identical for every entry this pass — compute it
         // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
+        // No embedder (absent OR PLURNK_EMBED_DISABLE) → don't request the embedding channel: it loads/
+        // runs the model independent of the capability probe, and deriveEmbeddings would only discard the
+        // vector. The signature already collapses to "embed:none" in that case, so reuse it (no new flag read).
+        const embedActive = deepCfgSig !== "embed:none";
         // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
         // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
         // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
@@ -125,7 +129,7 @@ export default class EntryManifest {
                 let result: ProcessResult;
                 if (wantGraph) {
                     try {
-                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: ["symbols", "references", "embedding"] }); // §mimetype-methods-process-entry-point
+                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
                         await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                     } catch {
                         // A handler predating the references channel throws → metadata-only, clear graph.

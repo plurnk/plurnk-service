@@ -13,6 +13,10 @@ import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
+// Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
+// re-enable the embedder the fast lane turns off (.env.test PLURNK_EMBED_DISABLE=1); per-file isolation.
+process.env.PLURNK_EMBED_DISABLE = "0";
+
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",
     username: null, password: null, hostname: null, port: null,

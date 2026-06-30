@@ -108,6 +108,11 @@ export default class EntrySemantic {
     // The embedder capability surface (daughter window + tokenizer + model id), probed
     // through the Mimetypes handle. null until an embedder is installed.
     static async #embedderInfo(mimetypes: Mimetypes): Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> {
+        // PLURNK_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
+        // IS installed — the whole semantic stack (deriveEmbeddings, the ~query FTS→cosine fusion, the
+        // deep_hash config) funnels through here, so one gate makes everything FTS-only. The fast lane
+        // (mock-provider tests) sets it so the suite doesn't spin up the MiniLM worker pool for nothing.
+        if (process.env.PLURNK_EMBED_DISABLE === "1") return null;
         return (await (mimetypes as { embedderInfo?: () => Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> }).embedderInfo?.()) ?? null;
     }
 
