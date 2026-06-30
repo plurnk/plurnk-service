@@ -16,6 +16,14 @@ test("application/json + relatives are text", () => {
     assert.equal(MimetypeClassifier.isBinary("application/xml"), false);
 });
 
+test("NDJSON family is text, line-navigable, and NOT structural-JSON (schemes#28)", () => {
+    for (const mt of ["application/jsonl", "application/x-ndjson"]) {
+        assert.equal(MimetypeClassifier.isBinary(mt), false);       // was true → 415 on READ
+        assert.equal(MimetypeClassifier.isLineNavigable(mt), true); // each line is a record
+        assert.equal(MimetypeClassifier.isJson(mt), false);         // line slicer, not jsonItems
+    }
+});
+
 test("+json / +xml / +yaml suffix is text", () => {
     assert.equal(MimetypeClassifier.isBinary("application/vnd.api+json"), false);
     assert.equal(MimetypeClassifier.isBinary("image/svg+xml"), false);

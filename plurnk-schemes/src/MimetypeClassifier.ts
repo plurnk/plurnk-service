@@ -21,6 +21,12 @@ const TEXT_APPLICATION_MIMETYPES: ReadonlySet<string> = new Set([
     "application/javascript",
     "application/typescript",
     "application/sql",
+    // NDJSON family — line-delimited JSON. Text, and MORE line-navigable than a
+    // single JSON doc (each line is a record); the `jsonl` suffix isn't `+json`,
+    // so without an explicit entry it falls through to binary → 415 on READ
+    // (schemes#28; surfaced via EXEC[jq] streams labelled application/jsonl).
+    "application/jsonl",
+    "application/x-ndjson",
 ]);
 
 // Mimetypes that are structurally tree-navigated rather than line-
