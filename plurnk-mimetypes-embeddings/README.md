@@ -45,7 +45,7 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 ## Exports
 
 - `embed(text) → Promise<Uint8Array>` — the 1536-byte vector (above), computed on the calling thread. The framework's per-entry path.
-- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a pool of single-threaded workers, returning vectors **in input order**. Each vector is **bit-identical** to `embed()` of the same text (workers are single-threaded; parallelism is data-parallel across them), so the `model` identity is unchanged. `onProgress({ completed, total })` fires as each finishes — the host's progress signal for a long corpus run. `signal` (`AbortSignal`) cancels in flight. The pool is lazy + persistent, unref'd while idle (the process still drains without `dispose()`), and torn down by `dispose()`. Pool size = `PLURNK_EMBED_WORKERS` (default `min(cores, 8)`; each worker holds its own model copy, so it's a memory↔throughput dial — ~6× at 8 workers, scales toward core count).
+- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a pool of single-threaded workers, returning vectors **in input order**. Each vector is **bit-identical** to `embed()` of the same text (workers are single-threaded; parallelism is data-parallel across them), so the `model` identity is unchanged. `onProgress({ completed, total })` fires as each finishes — the host's progress signal for a long corpus run. `signal` (`AbortSignal`) cancels in flight. The pool is lazy + persistent, unref'd while idle (the process still drains without `dispose()`), and torn down by `dispose()`. Pool size = `PLURNK_EMBED_WORKERS` (**required, no default**; each worker holds its own model copy, so it's a memory↔throughput dial you must set — ~6× at 8 workers, scales toward core count).
 - `dimension` — `384`.
 - `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
 - `maxTokens` — `512`, the model's token window.
@@ -57,7 +57,7 @@ For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `o
 
 ## Environment
 
-- `PLURNK_EMBED_WORKERS` — `embedBatch` pool size (default `min(cores, 8)`). Set to the core count on a dedicated box; lower it on a shared or low-RAM host (one model copy per worker).
+- `PLURNK_EMBED_WORKERS` — **required, no default.** `embedBatch` pool size. Set to the core count on a dedicated box; lower it on a shared or low-RAM host (one model copy per worker). Unset, empty, or malformed → the embedder crashes on load (it will not guess a fallback). See `.env.example`.
 
 ## Scripts
 

@@ -17,7 +17,6 @@
 //
 // Model: Xenova/all-MiniLM-L6-v2, q8 quantized onnx, bundled in model/ at the
 // revision in .model-pin. Hermetic: only local files are read.
-import os from "node:os";
 import { Worker } from "node:worker_threads";
 import path from "node:path";
 import { readFileSync } from "node:fs";
@@ -40,11 +39,24 @@ const PIN = readFileSync(path.join(here, ".model-pin"), "utf-8").trim();
 // DERIVED, never a hand-synced literal.
 export const model = `${REPO}@${PIN.slice(0, 8)}+${DTYPE}`;
 
-// Pool size: bounded multi-core by default (each worker holds its own model copy,
-// so this is a memory↔throughput dial). Override with PLURNK_EMBED_WORKERS — set
-// it to the core count on a dedicated box, or down on a shared/low-RAM one.
-const CPU = os.availableParallelism?.() ?? os.cpus().length;
-const WORKERS = Math.max(1, Number(process.env.PLURNK_EMBED_WORKERS) || Math.min(CPU, 8));
+// embedBatch() pool size. REQUIRED — there is no default. Each worker holds its
+// own model copy, so the count is a memory↔throughput decision only the operator
+// can make; the embedder will not guess it (no CPU heuristic, no magic 8). Set
+// PLURNK_EMBED_WORKERS to a positive integer (see .env.example). Unset, empty, or
+// malformed → crash on load. No fallback, ever.
+const WORKERS = requireWorkers(process.env.PLURNK_EMBED_WORKERS);
+
+function requireWorkers(raw) {
+    const n = Number(raw);
+    if (raw === undefined || raw.trim() === "" || !Number.isInteger(n) || n < 1) {
+        throw new RangeError(
+            `PLURNK_EMBED_WORKERS is required and must be a positive integer; got ${JSON.stringify(raw)}. `
+            + `Set it (see .env.example) — the embedBatch worker count is a memory↔throughput `
+            + `decision the embedder will not make for you.`,
+        );
+    }
+    return n;
+}
 
 let runtimePromise = null;
 function runtime() {
