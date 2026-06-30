@@ -33,18 +33,24 @@ describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
         });
     });
 
-    it("under a generous cap the same PDF extracts normally (cap is the only difference)", async () => {
+    it("with no cap set (unbounded default), the same PDF extracts normally", async () => {
         const pdf = buildPdf({ title: "Doc", outline: [{ title: "A" }] });
         const syms = await h.extractRaw(pdf);
-        assert.ok(syms.length > 0, "expected symbols under the default cap");
+        assert.ok(syms.length > 0, "expected symbols with no cap set");
     });
 
-    it("the page cap bounds text reading", async () => {
+    it("a malformed page cap crashes loud — never silently degrades to empty", async () => {
         const pdf = buildPdf({ title: "Doc", outline: [{ title: "A" }] });
-        await withEnv("PLURNK_PDF_MAX_PAGES", "0", async () => {
-            const text = await h.query(pdf, "regex", ".+");
-            assert.deepEqual(text, [], "no pages read → no body matches");
-        });
+        // `0`, negatives, and non-numbers are operator misconfigurations: they
+        // must throw at the public entry, not get swallowed by the channel's
+        // degrade-to-dark catch as an empty result (the old `|| magic-default`
+        // bug, inverted).
+        for (const bad of ["0", "-1", "abc"]) {
+            await withEnv("PLURNK_PDF_MAX_PAGES", bad, async () => {
+                await assert.rejects(() => h.extractRaw(pdf), /PLURNK_PDF_MAX_PAGES must be a positive integer/);
+                await assert.rejects(() => h.query(pdf, "regex", ".+"), /PLURNK_PDF_MAX_PAGES must be a positive integer/);
+            });
+        }
     });
 
     it("render-free path: ordinary text + structure extraction succeeds (canvas never on the path)", async () => {

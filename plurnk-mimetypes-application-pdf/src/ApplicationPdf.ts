@@ -52,17 +52,31 @@ const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
 const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 
 // Resource caps (DoS resistance — decompression bombs, pathological page
-// counts). A PDF over the byte cap never reaches the parser; text extraction
-// is bounded to the page cap (the document still parses, we just stop reading).
-// Both degrade through the handler's existing per-channel error policy. Read at
-// call time and overridable via env for operators on tighter/looser budgets
-// (mirrors the ecosystem's PLURNK_* knob convention).
-const DEFAULT_MAX_PDF_BYTES = 100 * 1024 * 1024;
-const DEFAULT_MAX_TEXT_PAGES = 5000;
+// counts). UNBOUNDED by default: the library invents no budget it can't validate
+// as the operator's intent (the family "no magic budget defaults" rule). Set
+// PLURNK_PDF_MAX_BYTES (a PDF over it never reaches the parser) or
+// PLURNK_PDF_MAX_PAGES (text extraction stops there) to a positive integer to
+// cap. Read at call time. Unset → no cap; malformed → crash, never a silent
+// revert to a guessed number. See .env.example.
+function envCap(name: string): number {
+    const raw = process.env[name];
+    if (raw === undefined || raw.trim() === "") return Infinity;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) {
+        throw new RangeError(
+            `${name} must be a positive integer (or unset for no cap); got ${JSON.stringify(raw)}.`,
+        );
+    }
+    return n;
+}
 
-function envCap(name: string, fallback: number): number {
-    const raw = Number(process.env[name]);
-    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+// Validate both caps at the public entry, BEFORE each channel's degrade-to-dark
+// catch — a MALFORMED cap is an operator misconfiguration that must crash loud,
+// not get swallowed into an empty channel by the parse-error degrade. (A
+// valid-but-exceeded cap still degrades inside: the documented DoS behavior.)
+function assertCapsValid(): void {
+    envCap("PLURNK_PDF_MAX_BYTES");
+    envCap("PLURNK_PDF_MAX_PAGES");
 }
 
 interface OutlineItem {
@@ -101,7 +115,7 @@ async function withDocument<T>(
     bytes: Uint8Array,
     use: (doc: PdfDocument) => Promise<T>,
 ): Promise<T> {
-    const maxBytes = envCap("PLURNK_PDF_MAX_BYTES", DEFAULT_MAX_PDF_BYTES);
+    const maxBytes = envCap("PLURNK_PDF_MAX_BYTES");
     if (bytes.byteLength > maxBytes) {
         throw new RangeError(`PDF exceeds ${maxBytes}-byte cap (${bytes.byteLength})`);
     }
@@ -161,6 +175,7 @@ export default class ApplicationPdf extends BaseHandler {
     // reachable via toText (regex/glob queries). Parse failures route to
     // empty symbols per the handler error policy.
     override async extractRaw(content: HandlerContent): Promise<MimeSymbol[]> {
+        assertCapsValid();
         const bytes = toBytes(content);
         try {
             return await extractStructure(bytes);
@@ -179,6 +194,7 @@ export default class ApplicationPdf extends BaseHandler {
     // not store a deep-channel for those entries; that's the right outcome
     // since the content isn't xpath-queryable in any meaningful way.
     override async deepJson(content: HandlerContent): Promise<unknown> {
+        assertCapsValid();
         const bytes = toBytes(content);
         // Always-present for a parseable PDF: even outline-less documents carry
         // metadata + security signals, so the deep channel is no longer dark
@@ -188,6 +204,7 @@ export default class ApplicationPdf extends BaseHandler {
 
     protected override async toText(content: string | Uint8Array): Promise<string> {
         if (typeof content === "string") return content;
+        assertCapsValid();
         try {
             return await extractAllText(content);
         } catch (cause) {
@@ -206,6 +223,7 @@ export default class ApplicationPdf extends BaseHandler {
         pattern: string,
         flags?: string,
     ): Promise<QueryMatch[]> {
+        assertCapsValid();
         if (dialect === "jsonpath") {
             // Bookmark-by-name navigation: `$['Chapter 1']['Section 1.1']`. The
             // deepJson channel carries the richer document model (metadata +
@@ -292,7 +310,7 @@ async function collectSymbols(doc: PdfDocument): Promise<MimeSymbol[]> {
 // number (PDF's unit of navigation). Page-bounded by the same cap as text.
 async function collectStructHeadings(doc: PdfDocument): Promise<MimeSymbol[]> {
     const out: MimeSymbol[] = [];
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
     for (let p = 1; p <= limit; p += 1) {
         const page = await doc.getPage(p);
         try {
@@ -421,15 +439,16 @@ function pdfDate(raw: unknown): string | undefined {
 }
 
 // Detect-only security signals. We never execute the JS or extract the files —
-// presence is the signal the host wants (plurnk-mimetypes#38). Defensive: a
-// build without these APIs, or a malformed doc, reports "no signal".
+// presence is the signal the host wants (plurnk-mimetypes#38). A build without
+// these APIs honestly reports "no signal" (null branch). A probe that THROWS on
+// a malformed doc propagates — buildDocumentModel degrades the whole model to
+// null — rather than reporting a falsely-safe "no JavaScript": a security check
+// must never fail soft.
 async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boolean; hasEmbeddedFiles: boolean }> {
     const present = (v: Record<string, unknown> | null | undefined): boolean =>
         v != null && Object.keys(v).length > 0;
-    const js = typeof doc.getJSActions === "function"
-        ? await doc.getJSActions().catch(() => null) : null;
-    const files = typeof doc.getAttachments === "function"
-        ? await doc.getAttachments().catch(() => null) : null;
+    const js = typeof doc.getJSActions === "function" ? await doc.getJSActions() : null;
+    const files = typeof doc.getAttachments === "function" ? await doc.getAttachments() : null;
     return { hasJavaScript: present(js), hasEmbeddedFiles: present(files) };
 }
 
@@ -442,7 +461,7 @@ async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boole
 async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; line: number; endLine: number }>> {
     const out: Array<{ url: string; line: number; endLine: number }> = [];
     const seen = new Set<string>();
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
     for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         try {
@@ -494,7 +513,7 @@ async function readAllPagesText(doc: PdfDocument): Promise<string> {
     const pages: string[] = [];
     // Bound the read — a multi-million-page PDF can't pin the event loop here.
     // The cap is well past any real document.
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES", DEFAULT_MAX_TEXT_PAGES));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
     for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
