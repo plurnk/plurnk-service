@@ -248,13 +248,13 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     },
     // The plurnk hosted model — deliberately the most boring OpenAI-compatible
     // client we can ship: the ecosystem must not know what sits behind
-    // model.plurnk.ai (model/window/grammar/tuning are the router's business).
+    // plurnk.ai (model/window/grammar/tuning are the router's business).
     // probeNctx reads the window from upstream (a 32k→48k change is a server
     // decision, not a client release), but detectLlamaServer:false keeps it a
     // plain remote server that can NOT be flipped into grammar/slot behavior.
     // PLURNK_API_KEY is an optional bearer (identifies the account server-side).
     plurnk: {
-        baseUrl: "https://model.plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
+        baseUrl: "https://plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
         reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico",
