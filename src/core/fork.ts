@@ -12,23 +12,37 @@
 import type { Db, PrepMethod } from "./Db.ts";
 
 export default class Fork {
+    // Terminal loop statuses (§lifecycle-terms) — inherited loops outside this set are clamped to 200.
+    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 508]);
+
     static async fork(db: Db, parentRunId: number, name?: string): Promise<number> {
         const parent = await (db.fork_get_run as PrepMethod).get<{ session_id: number; name: string; origin: string }>({ id: parentRunId });
         if (parent === undefined) throw new Error(`fork: run ${parentRunId} not found`);
 
-        // #248 — name the branch at instantiation (immutable after); default `<parent>-fork`.
-        const branchName = name ?? `${parent.name}-fork`;
+        // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
+        // is `<parent>-fork-<N>` (N = next free), so N self-forks of one parent are individually
+        // addressable instead of all colliding on a single `<parent>-fork` (§run-scheme-fork).
+        let branchName = name;
+        if (branchName === undefined) {
+            const existing = await (db.fork_count_branches as PrepMethod).get<{ n: number }>({ parent_run_id: parentRunId, name_prefix: `${parent.name}-fork%` });
+            branchName = `${parent.name}-fork-${(existing?.n ?? 0) + 1}`;
+        }
         const branch = await (db.fork_insert_run as PrepMethod).get<{ id: number }>({
             session_id: parent.session_id, name: branchName, parent_run_id: parentRunId, origin: parent.origin,
         });
         if (branch === undefined) throw new Error("fork: branch run insert returned no row");
         const branchRunId = branch.id;
 
-        // loops → new loops, mapping old id → new id.
+        // loops → new loops, mapping old id → new id. A copied loop is INHERITED HISTORY, never the
+        // branch's live work (its own loop is enqueued fresh by injectRun) — so a non-terminal status
+        // is clamped to terminal (200). Otherwise a fork taken while the parent's loop is mid-flight (102)
+        // would carry a frozen-live loop no drain ever advances, falsely marking the branch forever-live
+        // to any liveness check (§run-scheme-fork, the premature-terminate gate §send-premature-terminate).
         const loops = await (db.fork_get_loops as PrepMethod).all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ run_id: parentRunId });
         const loopMap = new Map<number, number>();
         for (const l of loops) {
-            const nl = await (db.fork_insert_loop as PrepMethod).get<{ id: number }>({ run_id: branchRunId, sequence: l.sequence, status: l.status, prompt: l.prompt, flags: l.flags });
+            const status = Fork.#TERMINAL_LOOP.has(l.status) ? l.status : 200;
+            const nl = await (db.fork_insert_loop as PrepMethod).get<{ id: number }>({ run_id: branchRunId, sequence: l.sequence, status, prompt: l.prompt, flags: l.flags });
             if (nl === undefined) throw new Error("fork: loop insert returned no row");
             loopMap.set(l.id, nl.id);
         }

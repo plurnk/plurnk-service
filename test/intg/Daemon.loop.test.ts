@@ -87,7 +87,7 @@ test("run.fork branches the model run into a new -fork run; names it at instanti
             const r = fork.result as { runId: number; runName: string | null; parentRunId: number };
             assert.ok(typeof r.runId === "number" && typeof r.parentRunId === "number", "returns new + parent run ids");
             assert.notEqual(r.runId, r.parentRunId, "the fork is a distinct run");
-            assert.match(r.runName ?? "", /-fork$/, "the fork is named <parent>-fork by default");
+            assert.match(r.runName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
 
             // #248 — an explicit name names the branch at instantiation (immutable after; no rename).
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });

@@ -335,7 +335,7 @@ test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started
         });
         assert.equal(result.status, 200, "fork returns 200");
         const branchName = (result as { body?: string }).body ?? "";
-        assert.equal(branchName, "explorer-fork", "the branch is the source's name + -fork");
+        assert.equal(branchName, "explorer-fork-1", "the branch is the source's name + -fork-<N> (unique per fork)");
 
         const branch = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch run in the session");

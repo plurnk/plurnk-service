@@ -47,6 +47,34 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 40
     } finally { await db.close(); }
 });
 
+test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-terminal loop does NOT block terminate (the fanout 508 bug)", async () => {
+    // The fork-fanout failure: a fork inherits the parent's loops, so a child whose OWN (latest) loop
+    // concluded at 200 still carried a frozen seq-1 loop at 102. The any-loop 409 gate read it as
+    // forever-live and refused SEND[200] — while the child-orientation (latest-loop) showed nothing, so
+    // the model was refused for a child it couldn't see and struck out at 508. The gate now uses the
+    // SAME latest-loop definition as the orientation: a concluded child never blocks, inherited history
+    // never counts. (Fork.fork also now clamps inherited loops terminal — this asserts the gate itself.)
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `prem-concluded-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        const childRun = await insertRun(db, sessionId, parentRun);
+        await insertLoop(db, childRun, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
+        const ownLoop = await insertLoop(db, childRun, 2, "own work");        // seq 2 — the child's actual loop
+        await (db.test_set_loop_status as PrepMethod).run({ id: ownLoop, status: 200 }); // it concluded
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            sessionId, runId: parentRun, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.status, 200, "the child's LATEST loop is terminal → SEND[200] terminates cleanly, no false 409");
+        assert.equal(result.steerStruck, false, "no premature-terminate strike for a concluded child");
+    } finally { await db.close(); }
+});
+
 test("[§send-premature-terminate] a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
     // The 200-vs-202 robustness: a confused model that keeps declaring done while its child runs is
     // not allowed to falsely complete — each premature 200 strikes, and it abandons at 500. It can't

@@ -6,8 +6,13 @@ SELECT status FROM loops WHERE id = $loop_id;
 -- PREP: engine_run_has_live_child
 -- A non-terminal CHILD run (run:// spawn/fork set parent_run_id) — a "live thing the run holds",
 -- like an open stream. A SEND[200] while one exists is a premature-terminate (§send-premature-terminate).
--- Live = any loop in a child run still pending/running/parked (100/102/202).
-SELECT 1 AS live FROM loops l JOIN runs r ON r.id = l.run_id
+-- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
+-- engine_child_runs_live uses for the Child Runs orientation, so the 409 gate and the section the model
+-- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
+-- (§child-orientation). An inherited/historical loop (a fork copies the parent's loops) is not the
+-- latest, so it never makes a concluded child look forever-live.
+SELECT 1 AS live FROM runs r
+JOIN loops l ON l.id = (SELECT id FROM loops WHERE run_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
 WHERE r.parent_run_id = $run_id AND l.status IN (100, 102, 202) LIMIT 1;
 
 -- PREP: engine_count_active_loops_for_run

@@ -14,6 +14,12 @@ INSERT INTO runs (session_id, name, parent_run_id, origin)
 VALUES ($session_id, $name, $parent_run_id, $origin)
 RETURNING id;
 
+-- PREP: fork_count_branches
+-- How many fork branches the parent already has — for a UNIQUE `<parent>-fork-<N>` default name, so N
+-- self-forks of one parent are individually addressable (KILL/SEND/READ by name) instead of colliding
+-- on a single `<parent>-fork` that run_resolve_by_name would resolve to the newest only (§run-scheme-fork).
+SELECT COUNT(*) AS n FROM runs WHERE parent_run_id = $parent_run_id AND name LIKE $name_prefix;
+
 -- PREP: fork_get_loops
 SELECT id, sequence, status, prompt, flags
 FROM loops WHERE run_id = $run_id ORDER BY id;
