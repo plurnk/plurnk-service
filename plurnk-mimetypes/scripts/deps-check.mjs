@@ -45,7 +45,10 @@ const runAudit = !only || only === "audit";
 
 const SEVERITIES = ["info", "low", "moderate", "high", "critical"];
 const auditLevel = process.env.PLURNK_AUDIT_LEVEL || "moderate";
-const levelIdx = Math.max(0, SEVERITIES.indexOf(auditLevel));
+// Unset → "moderate" (the honest documented default); SET-but-invalid is a
+// contract violation — crash, don't collapse a typo'd level to index 0 ("info").
+if (!SEVERITIES.includes(auditLevel)) throw new Error(`Invalid PLURNK_AUDIT_LEVEL "${auditLevel}" — expected one of ${SEVERITIES.join("|")}`);
+const levelIdx = SEVERITIES.indexOf(auditLevel);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = process.env.PLURNK_FAMILY_ROOT
