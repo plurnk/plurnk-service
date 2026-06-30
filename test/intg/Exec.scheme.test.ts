@@ -249,7 +249,10 @@ test("EXEC[node]: runs node code via -e and captures stdout", async () => {
         const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({
             entry_id: entryRow.id, name: "stdout",
         });
-        assert.equal(stdout?.content, "5\n");
+        // stdout reflects the subprocess's INHERITED env (§exec-env-scoped) — a host FORCE_COLOR makes
+        // node colorize the number (`\x1b[33m5\x1b[39m`). This test verifies stdout CAPTURE, not exact
+        // bytes, so strip ANSI control codes before the equality (deterministic on any host).
+        assert.equal((stdout?.content ?? "").replace(/\x1b\[[0-9;]*m/g, ""), "5\n");
     });
 });
 
