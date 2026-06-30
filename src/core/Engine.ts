@@ -2008,6 +2008,28 @@ export default class Engine {
         return (row?.n ?? 0) > 0;
     }
 
+    // #290 — run the derivation pump (deep channels: symbols/refs/FTS +
+    // embeddings, deep_hash-gated) at SESSION-SCOPE, off the per-turn path, so a freshly-created
+    // session's corpus warms DURING the client's startup window instead of freezing the first
+    // loop.run. session.create fires this and returns immediately; embed_progress live-fans-out as it
+    // runs. Idempotent + deep_hash-gated, so turn 1's pump finds the work done (or harmlessly re-runs);
+    // a no-embedder build derives the cheap symbols/refs/FTS channels and skips the embed pass. Has no
+    // loop yet — telemetry fans out live only (loopId 0), never buffered to a loop that never drains.
+    async warmSessionDerivations(sessionId: number): Promise<void> {
+        const ctx: PlurnkSchemeContext = {
+            db: this.#db, sessionId, runId: 0, loopId: 0, turnId: 0,
+            writer: "plurnk",
+            signal: undefined,
+            streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
+            tokenize: this.#tokenize,
+            mimetypes: this.#mimetypes,
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            pushTelemetry: (event) => this.#telemetryEventNotify?.(sessionId, { loopId: 0, event }),
+        };
+        await EntryManifest.maintainDerivations(ctx);
+    }
+
     // Inject a prompt into the run's currently-executing loop. Writes a
     // plurnk:///prompt/<loop_id>/<next-turn> entry whose body becomes the
     // prompt section at the next turn boundary. Last-wins: if two

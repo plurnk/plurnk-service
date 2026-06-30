@@ -40,6 +40,10 @@ export default class SessionCreateMethod {
                     await GitMembership.resolveGitMembership(ctx.db, envelope.sessionId, undefined);
                 }
                 ctx.attachSession(envelope);
+                // #290 — warm the session's embeddings/deep channels NOW, during the client's startup
+                // window, instead of freezing the first loop.run. Fire-and-forget: create returns
+                // immediately and embed_progress streams as it runs; turn 1's pump is the backstop.
+                void ctx.engine.warmSessionDerivations(envelope.sessionId).catch(() => {});
                 ctx.notify("all", "session/created", {
                     id: envelope.sessionId,
                     name: envelope.sessionName,

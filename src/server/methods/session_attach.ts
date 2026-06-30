@@ -21,6 +21,10 @@ export default class SessionAttachMethod {
                 }
                 const envelope = await Envelope.attachToSession(ctx.db, p.id, { runId: p.runId, runName: p.runName });
                 ctx.attachSession(envelope);
+                // #290 — re-warm derivations on attach: an existing session's corpus may have changed
+                // under it (other clients, fs divergence) since its last turn. Fire-and-forget,
+                // deep_hash-gated, so unchanged entries are skipped — cheap on a steady-state reconnect.
+                void ctx.engine.warmSessionDerivations(envelope.sessionId).catch(() => {});
                 return {
                     id: envelope.sessionId,
                     name: envelope.sessionName,
