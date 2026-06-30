@@ -1340,6 +1340,14 @@ export default class Engine {
         const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_POLICY)
         const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_PROJECT)
+        // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
+        // unconcluded child runs — surfaced every turn as terse `* <status> <path>` pointers (same shape
+        // as errors) just above the errors section. Orienting STATE so the model never loses track of
+        // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
+        const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ run_id: runId }))
+            .map((s) => ({ status: "active", path: renderAddress(s.scheme, s.pathname) }));
+        const childRuns = (await (this.#db.engine_child_runs_live as PrepMethod).all<{ name: string; status: number }>({ run_id: runId }))
+            .map((r) => ({ status: r.status, path: `run://${r.name}` }));
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
@@ -1353,6 +1361,10 @@ export default class Engine {
             // model's own mirrored bytes) stays in user. errors + git are framework status — the errors
             // section is uri+status POINTERS (the error item + body live in the log), git is counts — so
             // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
+            // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
+            // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
+            { name: "child-streams", slot: "system", header: "Plurnk Service Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
+            { name: "child-runs", slot: "system", header: "Plurnk Service Child Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
             { name: "errors", slot: "system", header: "Plurnk Service Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "system", header: "Plurnk Service Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget is the very last system line — LAW (a hard ceiling the model must obey), the final word before the model acts.

@@ -121,6 +121,47 @@ test("[§policy-sections] assembled packet: PLURNK_POLICY + PLURNK_PROJECT rende
     }
 });
 
+test("[§child-orientation] the live things a run holds — child runs — surface as terse pointers in the system slot", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `child-orient-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        // A live child run this run holds (parent_run_id = runId; insertLoop's default status 102 = live).
+        const child = await insertRun(db, sessionId, runId, "worker-x");
+        await insertLoop(db, child, 1, "working");
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const packet = await getPacket(db, result.turnId);
+
+        // The live child surfaces as a terse `* <status> run://<name>` pointer — orienting state, not advice.
+        assert.match(packetSection(packet, "child-runs"), /^\* 102 run:\/\/worker-x$/m, "the live child run is a status+path pointer the model READs/KILLs itself");
+        // Framework status, NOT an injection surface — rides the system slot, above budget-the-law.
+        const sys = packet.sections.filter((x) => x.slot === "system").map((x) => x.name);
+        assert.ok(sys.includes("child-runs"), "child-runs rides the system slot");
+        assert.ok(sys.indexOf("child-runs") < sys.indexOf("budget"), "child-runs sits in the volatile-status tail above budget-the-law");
+    } finally { await db.close(); }
+});
+
+test("[§child-orientation] no live children or streams → the orientation sections are omitted (like errors)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `child-orient-empty-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
+        // model never sees a bare header — same as the errors section when there are no errors.
+        const packet = await getPacket(db, result.turnId);
+        assert.equal(packetSection(packet, "child-runs"), "", "no live child runs → child-runs renders nothing");
+        assert.equal(packetSection(packet, "child-streams"), "", "no open streams → child-streams renders nothing");
+    } finally { await db.close(); }
+});
+
 test("assembled packet: the grammar definition reaches the packet + the schemes directory renders well-formed << heredocs", async () => {
     const db = await openMigrated();
     try {

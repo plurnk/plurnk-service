@@ -292,6 +292,27 @@ INSERT INTO log_entries (
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
+-- PREP: engine_child_runs_live
+-- The run's LIVE child runs — latest loop non-terminal (100 pending / 102 processing / 202 parked).
+-- Powers the Child Runs orienting section (§child-orientation): terse `* <status> run://<name>`
+-- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
+-- Empty → section omitted.
+SELECT r.name, l.status
+FROM runs r
+JOIN loops l ON l.id = (SELECT id FROM loops WHERE run_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
+WHERE r.parent_run_id = $run_id AND l.status IN (100, 102, 202)
+ORDER BY r.name;
+
+-- PREP: engine_child_streams_open
+-- The run's OPEN streams (subscriptions not yet closed) — their addressable coord. Powers the Child
+-- Streams orienting section (§child-orientation): terse `* active <runtime>:///<coord>` pointers the
+-- model OPENs/READs/KILLs. Empty → section omitted.
+SELECT s.scheme, e.pathname
+FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+WHERE s.run_id = $run_id AND s.closed_at IS NULL
+ORDER BY e.pathname;
+
 -- PREP: engine_render_telemetry_errors
 -- SPEC §telemetry: 4xx/5xx log rows are mirrored into the packet's telemetry as
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting

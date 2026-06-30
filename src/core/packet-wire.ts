@@ -108,6 +108,15 @@ export default class PacketWire {
         return events.length > 0 ? PacketWire.#renderTelemetryErrors(events) : "";
     }
 
+    // The Child Streams / Child Runs sections (§child-orientation) — the OPPOSITE of advice: terse
+    // `* <status> <path>` pointers (same shape as the errors section) to the live things the run holds,
+    // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
+    // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
+    static renderChildPointers(rows: unknown): string {
+        const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown }>) : [];
+        return items.map((r) => `* ${String(r.status)} ${String(r.path)}`).join("\n");
+    }
+
     // The git section content: the working-tree summary. "" when absent.
     static renderGit(git: unknown): string {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
