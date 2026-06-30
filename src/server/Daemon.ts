@@ -96,6 +96,12 @@ export default class Daemon {
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
     // Per-run drain-transition lock — see #withDrainLock (R4 / §run-lifecycle-single-drain).
     #drainLocks = new Map<number, Promise<unknown>>();
+    // §run-lifecycle-child-wake — runs OWED a wake: a child/stream conclusion fired while the run was
+    // mid-turn (not yet slept), so #wakeParkedRun could not resume it. A worker-run conclusion is a
+    // BOUNDED, lossless wake (a worker always concludes), so a hibernation awaiting one MUST return —
+    // never deadlock. The drain honors the owed wake at the run's next park, closing the conclude-
+    // before-park race. (Only a live exec stream, unbounded absent a timeout, may hold a park open.)
+    #owedWakes = new Set<number>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
@@ -572,9 +578,18 @@ export default class Daemon {
                         // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
                         void this.#schedulePollWake(sessionId, runId, provider, systemPrompt);
+                        // Honor an OWED wake (§run-lifecycle-child-wake): a child/stream concluded while
+                        // this run was mid-turn, before it slept — resume in place rather than park blind,
+                        // so a worker-run hibernation always returns. The loop is 202 here; reset to
+                        // claimable and the drain re-runs it on the next claim below.
+                        if (this.#owedWakes.delete(runId)) {
+                            await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: loopRow.id });
+                            continue;
+                        }
                         void this.#maybeSignalQuiesced(sessionId, runId, loopRow.id);
                         continue;
                     }
+                    this.#owedWakes.delete(runId); // the loop concluded (non-202) — no park to honor a held wake at
                     const usage = await this.#engine.loopUsage(loopRow.id);
                     this.#broadcast({ sessionId }, null, "loop/terminated", {
                         loopId: loopRow.id,
@@ -899,7 +914,14 @@ export default class Daemon {
         const scope = this.#runAborts.get(runId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(runId)) return; // cancelled — no resurrection
         const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
-        if (slept === undefined) return; // already active/concluded — nothing to wake
+        if (slept === undefined) {
+            // Not parked. If a drain is still ACTIVE, the run is mid-turn and about to park — the
+            // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
+            // race). OWE the wake: the drain honors it at park so a worker-run hibernation never deadlocks.
+            // (No active drain → already concluded/running; nothing to wake.)
+            if (this.#activeDrains.has(runId)) this.#owedWakes.add(runId);
+            return;
+        }
         await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
         const started = await this.#ensureDrain({
             sessionId, runId, provider, systemPrompt,
