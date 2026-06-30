@@ -9,7 +9,7 @@
 // fenced code blocks for entry bodies, lists for arrays. No invented
 // separators. Models parse markdown natively.
 //
-// Section headers follow the `## Plurnk System X` convention so the model
+// Section headers follow the `## Plurnk Service X` convention so the model
 // sees consistent framing across every section it might receive. Sections
 // with no content are omitted entirely (no empty headers in the wire).
 
@@ -163,7 +163,7 @@ export default class PacketWire {
         }
         return {
             entries: logEntries.length,
-            tokens: logBody ? countTokens(`## Plurnk System Log\n\n${logBody}`) : 0,
+            tokens: logBody ? countTokens(`## Plurnk Service Log\n\n${logBody}`) : 0,
             byTurn: [...byTurn.entries()]
                 .map(([turn, tokens]) => ({ turn, tokens }))
                 .toSorted((a, b) => {

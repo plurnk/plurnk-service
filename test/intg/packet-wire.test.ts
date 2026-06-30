@@ -219,28 +219,28 @@ test("[§requirements-requirements-render-last] requirements renders LAST in the
     // The default packet orders the user slot prompt → budget → errors → … →
     // requirements; renderSlot preserves that order, so requirements lands last.
     const out = PacketWire.renderSlot([
-        { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: "Reply with just the number.", tokens: 0 },
-        { name: "budget", slot: "user", header: "Plurnk System Budget", content: "5000 free", tokens: 0 },
-        { name: "errors", slot: "user", header: "Plurnk System Errors", content: PacketWire.renderErrors([{ kind: "no_ops", coordinate: "1/1/1" }]), tokens: 0 },
-        { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
+        { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: "Reply with just the number.", tokens: 0 },
+        { name: "budget", slot: "user", header: "Plurnk Service Budget", content: "5000 free", tokens: 0 },
+        { name: "errors", slot: "user", header: "Plurnk Service Errors", content: PacketWire.renderErrors([{ kind: "no_ops", coordinate: "1/1/1" }]), tokens: 0 },
+        { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "Conclude the loop with <<SEND[200]:answer:SEND", tokens: 0 },
     ], "user");
     // §requirements: requirements is the contract that must win conflicts with the
     // natural-language prompt, so it renders closest to the assistant turn —
     // after the prompt, budget, and errors, with nothing following it.
-    assert.match(out, /## Plurnk System Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
+    assert.match(out, /## Plurnk Service Requirements\n\nConclude the loop with <<SEND\[200\]:answer:SEND$/,
         "requirements renders LAST under its own header, nothing after it");
-    const reqIdx = out.indexOf("## Plurnk System Requirements");
-    assert.ok(reqIdx > out.indexOf("## Plurnk System User Prompt"), "requirements follows the prompt");
-    assert.ok(reqIdx > out.indexOf("## Plurnk System Budget"), "requirements follows the budget section");
-    assert.ok(reqIdx > out.indexOf("## Plurnk System Errors"), "requirements follows the errors section");
+    const reqIdx = out.indexOf("## Plurnk Service Requirements");
+    assert.ok(reqIdx > out.indexOf("## Plurnk Service Primary User Prompt"), "requirements follows the prompt");
+    assert.ok(reqIdx > out.indexOf("## Plurnk Service Budget"), "requirements follows the budget section");
+    assert.ok(reqIdx > out.indexOf("## Plurnk Service Errors"), "requirements follows the errors section");
 });
 
 test("[§requirements-requirements-omitted-when-empty] empty requirements section emits no header", () => {
     const out = PacketWire.renderSlot([
-        { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: "P", tokens: 0 },
-        { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: "", tokens: 0 },
+        { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: "P", tokens: 0 },
+        { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "", tokens: 0 },
     ], "user");
-    assert.doesNotMatch(out, /## Plurnk System Requirements/, "no requirements section when the content is empty");
+    assert.doesNotMatch(out, /## Plurnk Service Requirements/, "no requirements section when the content is empty");
 });
 
 test("[§render-rule-find-renders-result] log render: FIND@200 renders its result catalog, not just the echoed query", () => {

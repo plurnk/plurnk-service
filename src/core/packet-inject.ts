@@ -16,7 +16,7 @@ export const readPacketInject = async (): Promise<string | null> => {
     return readFile(resolveInjectPath(raw), "utf8");
 };
 
-// Policy sections (## Plurnk System Policy / ## Project Policy) — the client's foot in the privileged
+// Policy sections (## Plurnk Service Policy / ## Project Policy) — the client's foot in the privileged
 // system zone, distinct from the freeform PLURNK_PACKET_INJECT. A DEFAULT path that's absent is fine
 // (no section); an EXPLICIT env override that can't be read FAILS HARD (a deliberate-but-broken
 // setting is a misconfig). Read per-turn for live edits.

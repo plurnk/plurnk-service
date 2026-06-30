@@ -520,7 +520,7 @@ export default class Engine {
         provider: Provider;
         messages: ChatMessage[];
         // The requirements section content. Rendered at the end of the user
-        // slot under `## Plurnk System Requirements`. Caller sources from
+        // slot under `## Plurnk Service Requirements`. Caller sources from
         // Paths.defaultRequirements.
         requirements?: string;
         sessionId: number; runId: number; loopId: number;
@@ -1337,25 +1337,26 @@ export default class Engine {
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
-            { name: "schemes", slot: "system", header: "Plurnk System Schemes", content: this.#schemes.teach(), tokens: 0 },
+            { name: "schemes", slot: "system", header: "Plurnk Service Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Plurnk System Policy", content: systemPolicy ?? "", tokens: 0 },
+            { name: "system-policy", slot: "system", header: "Plurnk Service Policy", content: systemPolicy ?? "", tokens: 0 },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
             // The packet split is a TRUST boundary: system carries only framework-authored, non-injectable
             // sections; anything that could carry attacker-reachable text (a READ result, exec output, the
             // model's own mirrored bytes) stays in user. errors + git are framework status — the errors
             // section is uri+status POINTERS (the error item + body live in the log), git is counts — so
             // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
-            { name: "errors", slot: "system", header: "Plurnk System Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
-            { name: "git", slot: "system", header: "Plurnk System Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "errors", slot: "system", header: "Plurnk Service Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "git", slot: "system", header: "Plurnk Service Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget is the very last system line — LAW (a hard ceiling the model must obey), the final word before the model acts.
-            { name: "budget", slot: "system", header: "Plurnk System Budget", content: budgetReadout, tokens: 0 },
-            { name: "prompt", slot: "user", header: "Plurnk System User Prompt", content: prompt, tokens: 0 },
+            { name: "budget", slot: "system", header: "Plurnk Service Budget", content: budgetReadout, tokens: 0 },
             // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
-            { name: "log", slot: "user", header: "Plurnk System Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            { name: "log", slot: "user", header: "Plurnk Service Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            // the PRIMARY user prompt ("primary" since loops admit injected prompts too) renders at the BOTTOM, just above requirements — at the action point, closest to the model's turn.
+            { name: "prompt", slot: "user", header: "Plurnk Service Primary User Prompt", content: prompt, tokens: 0 },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
-            { name: "requirements", slot: "user", header: "Plurnk System Requirements", content: baseRequirements, tokens: 0 },
+            { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: baseRequirements, tokens: 0 },
         ];
         // Plugin packet control (§packet-construction): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
@@ -1381,7 +1382,7 @@ export default class Engine {
         return { tokens: packetTokens, sections, telemetryErrors };
     }
 
-    // Budget readout body, rendered into the `## Plurnk System Budget` section.
+    // Budget readout body, rendered into the `## Plurnk Service Budget` section.
     // Headline `ceiling/free` only when a ceiling exists; section lines for the
     // curatable index/log weight the model can FOLD back. tokensFree is a
     // placeholder here — buildSystem substitutes it after measuring the packet.
@@ -1416,7 +1417,7 @@ export default class Engine {
         return lines.join("\n");
     }
 
-    // The ## Plurnk System Tools capability sheet (SPEC §tools). A hook: each enabled
+    // The ## Plurnk Service Tools capability sheet (SPEC §tools). A hook: each enabled
     // capability contributes one line, rendered above Requirements so the model sees what
     // it can do before the rules. Each available executor tag contributes its self-documenting
     // example (plurnk-execs#7), retiring the blind EXEC.

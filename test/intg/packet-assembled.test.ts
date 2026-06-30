@@ -44,14 +44,15 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
 
         // Section slots are a TRUST boundary (§packet-assembly): system holds framework-authored,
         // non-injectable sections (definition → schemes → policy → errors → git → budget-the-law, NO log);
-        // the user slot holds injectable content (prompt, log) plus the requirements footer.
+        // the user slot holds injectable content (log) and the PRIMARY prompt, plus the requirements
+        // footer — ordered log → prompt → requirements (the primary prompt sits at the action point).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system").filter((n) => ["definition", "schemes", "log"].includes(n)), ["definition", "schemes"], "system slot: definition → schemes, no log (the log is injectable data, not a privileged rule)");
         assert.ok(slot("system").includes("errors") && slot("system").includes("git"), "errors + git ride system — framework status (pointers / counts), not injection surfaces");
         assert.equal(slot("system").at(-1), "budget", "budget is the last system line — LAW (the ceiling), the final word before the model acts");
         const usr = slot("user");
         assert.ok(!usr.includes("git") && !usr.includes("errors"), "no framework status in the user slot — only injectable content + the requirements footer");
-        assert.deepEqual(usr.slice(-2), ["log", "requirements"], "user slot ends: log → requirements footer");
+        assert.deepEqual(usr.slice(-2), ["prompt", "requirements"], "user slot ends: primary prompt → requirements footer");
         assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
     } finally {
         await db.close();
