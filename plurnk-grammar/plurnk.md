@@ -43,7 +43,7 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
 <<OPEN(log path)::OPEN expands (`+`) the log item body to view it (costs tokens). Not all log items have a body (`*`).
 <<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens).
-<<EXEC::EXEC produces output stream channels on the next turn that you can then OPEN, FOLD, FIND, READ, or KILL.
+<<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 <<KILL(path)::KILL deletes files and entries, erases log items, and kills streams.
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
 <<SEND[202]:holding:SEND to hibernate when awaiting results of long EXEC streams or worker runs.
@@ -75,12 +75,23 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 ### `(path)`
 
-* The universal resource path is formatted as a URI for everything but file paths.
-* File paths are bare, relative to the project folder. `(known:///entry_example.md)` is an entry; `(file_example.md)` is a file.
-* Log items also possess URI-formatted paths to be FIND, READ, OPEN, FOLD, or KILLed (but not EDITed).
+* The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
+* `run://name` is the run entity (COPY to spawn or fork, KILL to stop); `run://name/path` is a file in its workspace (EDIT and READ it as a file).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
+
+| OP   | file | entry | run | stream | log |
+|------|------|-------|-----|--------|-----|
+| FIND | yes  | yes   | yes | yes    | yes |
+| READ | yes  | yes   | yes | yes    | yes |
+| EDIT | yes  | yes   | no  | no     | no  |
+| COPY | yes  | yes   | yes | yes    | yes |
+| MOVE | yes  | yes   | yes | no     | no  |
+| OPEN | no   | no    | no  | no     | yes |
+| FOLD | no   | no    | no  | no     | yes |
+| EXEC | yes  | yes   | no  | no     | no  |
+| KILL | yes  | yes   | yes | yes    | yes |
 
 ### `<Line / Result>`
 
@@ -116,7 +127,7 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 
 YOU MUST SEND[102] to receive the results of OPs you submitted. Avoid premature SEND[200].
 
-To spawn a separate run: <<EDIT(run://capital-checker):Find the capital of France.:EDIT
+To spawn a separate run: <<COPY(run://capital-checker):Find the capital of France.:COPY
 To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
 
 ## Examples
