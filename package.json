@@ -54,8 +54,8 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
-        "@plurnk/plurnk-execs": "0.4.24",
-        "@plurnk/plurnk-execs-all": "0.1.11",
+        "@plurnk/plurnk-execs": "^0.4.25",
+        "@plurnk/plurnk-execs-all": "^0.1.12",
         "@plurnk/plurnk-execs-mcp": "0.2.0",
         "@plurnk/plurnk-grammar": "^0.74.42",
         "@plurnk/plurnk-mimetypes": "0.15.39",

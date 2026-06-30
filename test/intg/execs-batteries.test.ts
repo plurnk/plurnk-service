@@ -135,13 +135,17 @@ test("execs batteries: coverage census — every self-contained default-install 
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
     assert.ok(available.has("jq") && available.has("sqlite") && available.has("wat"), "the core batteries executors (jq, sqlite, wat) are discovered and available");
 
-    // Channel mimetype shape: JSON-returning runtimes declare application/json on their results channel
-    // (so consumers route jsonpath/render correctly), subprocess runtimes declare text/stream on stdout.
+    // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
+    // so consumers route jsonpath/render correctly — sqlite/wat emit a single document (application/json),
+    // jq is a streaming filter that emits newline-delimited values (application/jsonl, jq 0.1.8 #2).
+    // Subprocess runtimes declare text/stream on stdout.
     const declMime = (tag: string): string | undefined => {
         const e = reg.entry(tag);
         return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
     };
-    for (const t of ["jq", "sqlite", "wat"]) assert.equal(declMime(t), "application/json", `EXEC[${t}] results channel is application/json, not text/stream`);
+    assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
+    assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
+    assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
     for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });
 
