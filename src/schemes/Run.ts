@@ -1,6 +1,5 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { PrepMethod } from "../core/Db.ts";
-import RunCap from "../core/run-cap.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -8,14 +7,15 @@ import type { FindResult } from "./_entry-find.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
-// run:// — the run scheme: inter-run CONTROL (spawn/irc; COPY=fork is Engine.#handleCopy) AND
-// run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
+// run:// — the run scheme: inter-run CONTROL (irc=SEND; COPY=spawn/fork is Engine.#handleRunFork)
+// AND run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
 // entry <path> owned by run <name>; `run://self` is the current run, empty authority is invalid.
 // Run is excluded from #extractTarget's authority-fold (Engine) so the authority stays the run
 // name, never folded.
 //   - path present → storage: READ any run's entry by address (cross-run read ok); EDIT self
 //     only (cross-run write → 403 — a run reads a sister's notes, never writes them).
-//   - path absent  → control on the run-as-actor: EDIT spawns a sister, SEND ircs one.
+//   - path absent  → control on the run-as-actor: COPY spawns/forks (Engine), SEND ircs, READ
+//     collects the deliverable; EDIT on the bare entity is rejected (the entity is not an entry).
 export default class Run {
     static manifest: SchemeManifest = {
         name: "run",
@@ -64,24 +64,9 @@ export default class Run {
         if (authority === null) return { status: 400, error: "run:// requires a run target" };
         const entryPath = Run.#entryPath(statement.target);
 
-        if (entryPath === "") {
-            // Control: spawn the sister named by the authority. Self cannot be spawned.
-            if (authority === "" || authority === "self") return { status: 400, error: "run:// spawn cannot target self (run://<name>)" };
-            if (ctx.injectRun === undefined) throw new Error("run.edit: injectRun capability absent");
-            const denied = await RunCap.deny(ctx.db, ctx.sessionId);
-            if (denied !== null) return denied;
-            // A name is frozen per run but reclaimable across time (§machine-processes-run-origin):
-            // a LIVE sister already holding it is a conflict (409, legible — not a raw UNIQUE 500);
-            // a name free or held only by a terminated run is reclaimed (the resolver picks newest).
-            const live = await (ctx.db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: authority });
-            if (live !== undefined) return { status: 409, error: `run '${authority}' is already running` };
-            const row = await (ctx.db.fork_insert_run as PrepMethod).get<{ id: number }>({
-                session_id: ctx.sessionId, name: authority, parent_run_id: ctx.runId, origin: ctx.writer,
-            });
-            if (row === undefined) throw new Error("run.edit: run insert returned no row");
-            await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt: statement.body ?? "" });
-            return { status: 200, body: authority };
-        }
+        // The run ENTITY (path-absent run://<name>) is not EDITable — EDIT is file/entry only
+        // (grammar 0.74.41 OP×resource matrix). COPY(run://<name>) spawns; COPY(run://self) forks.
+        if (entryPath === "") return { status: 400, error: "run:// entity is not editable — COPY(run://<name>) to spawn, COPY(run://self) to fork" };
 
         // Storage: write a run-scope entry. Self only — cross-run write is denied (§run-scheme).
         if (authority === "") return { status: 400, error: "run:// requires a run name or 'self' (run://self/<path>)" };

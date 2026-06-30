@@ -13,7 +13,7 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
     const mock = new Mock({ contextSize: 8192, responses: [
         // Parent turn 1: spawn a child run, then hibernate awaiting it.
-        makeMockResponse("<<EDIT(run://worker):compute the thing and finish:EDIT\n<<SEND[202]:spawned worker; waiting on it:SEND", 10),
+        makeMockResponse("<<COPY(run://worker):compute the thing and finish:COPY\n<<SEND[202]:spawned worker; waiting on it:SEND", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
         makeMockResponse("<<SEND[200]:worker done:SEND", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
@@ -39,7 +39,7 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
 test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent — any conclusion is a wake edge", async () => {
     // A child that abandons (SEND[499]) is still "done"; the parent must wake, not wait forever.
     const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<EDIT(run://flaky):try the risky thing:EDIT\n<<SEND[202]:waiting on flaky:SEND", 10),
+        makeMockResponse("<<COPY(run://flaky):try the risky thing:COPY\n<<SEND[202]:waiting on flaky:SEND", 10),
         makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
         makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
     ] });
@@ -57,8 +57,8 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
     const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<EDIT(run://child):do subwork:EDIT\n<<SEND[202]:awaiting child:SEND", 10),       // parent t1
-        makeMockResponse("<<EDIT(run://grandchild):do leaf work:EDIT\n<<SEND[202]:awaiting grandchild:SEND", 10), // child t1
+        makeMockResponse("<<COPY(run://child):do subwork:COPY\n<<SEND[202]:awaiting child:SEND", 10),       // parent t1
+        makeMockResponse("<<COPY(run://grandchild):do leaf work:COPY\n<<SEND[202]:awaiting grandchild:SEND", 10), // child t1
         makeMockResponse("<<SEND[200]:leaf done:SEND", 10),                                                   // grandchild
         makeMockResponse("<<SEND[200]:child done:SEND", 10),                                                  // child t2 (woken)
         makeMockResponse("<<SEND[200]:all done:SEND", 10),                                                    // parent t2 (woken)
@@ -75,9 +75,9 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
 
 test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<EDIT(run://w1):first job:EDIT\n<<SEND[202]:awaiting w1:SEND", 10), // parent t1
+        makeMockResponse("<<COPY(run://w1):first job:COPY\n<<SEND[202]:awaiting w1:SEND", 10), // parent t1
         makeMockResponse("<<SEND[200]:w1 done:SEND", 10),                                       // w1
-        makeMockResponse("<<EDIT(run://w2):second job:EDIT\n<<SEND[202]:awaiting w2:SEND", 10),// parent t2 (woken by w1)
+        makeMockResponse("<<COPY(run://w2):second job:COPY\n<<SEND[202]:awaiting w2:SEND", 10),// parent t2 (woken by w1)
         makeMockResponse("<<SEND[200]:w2 done:SEND", 10),                                       // w2
         makeMockResponse("<<SEND[200]:both done:SEND", 10),                                     // parent t3 (woken by w2)
     ] });
@@ -96,7 +96,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a sibling p
     // or start a fresh loop? Driver spawns 'butler' (parks awaiting a message); we wait until it's
     // actually parked, then irc it as a client. Assert butler's run reaches a terminal (it woke).
     const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<EDIT(run://butler):await the entry code, then confirm it:EDIT\n<<SEND[200]:spawned butler:SEND", 10),
+        makeMockResponse("<<COPY(run://butler):await the entry code, then confirm it:COPY\n<<SEND[200]:spawned butler:SEND", 10),
         makeMockResponse("<<SEND[202]:awaiting the entry code:SEND", 10),   // butler t1 — parks
         makeMockResponse("<<SEND[200]:received and confirmed:SEND", 10),     // butler — woken (resume or fresh)
     ] });

@@ -179,7 +179,7 @@ test("runs: a name repeats within a session — reclamation across time, NOT sto
         const first = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
         // The store PERMITS a second 'worker': a name is frozen per run but reclaimable across time —
         // a terminated run keeps its name in permanent history while a fresh spawn reuses it. A LIVE
-        // collision is refused at the spawn gate (Run.edit → run_live_by_name → 409), never by the
+        // collision is refused at the spawn gate (Engine.#handleRunCopy → run_live_by_name → 409), never by the
         // store. The dropped UNIQUE index returned a raw 500 the model couldn't read.
         const second = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
         assert.notEqual(first?.id, second?.id, "two distinct runs can hold the same name");

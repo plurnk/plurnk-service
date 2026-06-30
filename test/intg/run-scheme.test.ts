@@ -1,9 +1,9 @@
-// run:// scheme — spawn (EDIT), irc (SEND), fork (COPY). Same-session sisters
+// run:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-session sisters
 // (SPEC §machine-processes, §actor-boundary). injectRun is the daemon's
 // loop-start seam; here it's a recording stub (Daemon.inject's drain has its own
 // tests), so these assert the run-scheme's OWN work: the run-table effect + the
-// exact inject call. The dispatch gates (#checkWritable run-fork branch, the
-// #handleCopy run-fork routing) are exercised end-to-end.
+// exact inject call. The dispatch gates (#checkWritable run-copy branch, the
+// #handleCopy run-copy routing) are exercised end-to-end.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -29,6 +29,13 @@ const runEntry = (owner: string, path: string): ParsedPath => ({
     kind: "url", raw: `run://${owner}/${path}`, scheme: "run",
     username: null, password: null, hostname: owner, port: null,
     pathname: `/${path}`, params: {}, fragment: null,
+});
+
+// Run control via COPY (grammar 0.74.41 OP×resource matrix): COPY(run://<name>):prompt spawns a
+// fresh sister; COPY(run://self):prompt forks. The body is the seed prompt, not a dst path.
+const copyRun = (name: string, prompt: string): CopyStatement => ({
+    op: "COPY", suffix: "", signal: null, target: runPath(name),
+    lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 
 // The Daemon.inject seam as a recording stub — its drain/enqueue behavior is
@@ -120,7 +127,7 @@ test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a s
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] EDIT(run://name):prompt spawns a same-session sister, seeded via injectRun", async () => {
+test("[§run-scheme-spawn] COPY(run://name):prompt spawns a same-session sister, seeded via injectRun", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -131,7 +138,7 @@ test("[§run-scheme-spawn] EDIT(run://name):prompt spawns a same-session sister,
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: editStmt(runPath("worker"), "investigate the bug"),
+            statement: copyRun("worker", "investigate the bug"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "spawn returns 200");
@@ -147,7 +154,7 @@ test("[§run-scheme-spawn] EDIT(run://name):prompt spawns a same-session sister,
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
+test("[§run-scheme-spawn] COPY-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -161,7 +168,7 @@ test("[§run-scheme-spawn] spawning a name a LIVE sister holds is refused 409 �
         await insertLoop(db, sister, 1, "working");
 
         const result = await engine.dispatch({
-            statement: editStmt(runPath("worker"), "do it again"),
+            statement: copyRun("worker", "do it again"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
@@ -185,7 +192,7 @@ test("[§run-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn suc
         await (db.test_set_loop_status as PrepMethod).run({ id: deadLoop, status: 200 });
 
         const result = await engine.dispatch({
-            statement: editStmt(runPath("worker"), "fresh work"),
+            statement: copyRun("worker", "fresh work"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "a terminated name is free to reclaim");
@@ -225,22 +232,27 @@ test("[§run-scheme-collect] READ(run://name) collects the deliverable — messa
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] EDIT(run://self) cannot spawn self — 400, no inject", async () => {
+test("[§run-scheme-spawn] EDIT on the bare run entity is rejected — COPY spawns, not EDIT (400, no inject)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
-        const sessionId = await insertSession(db, `run-spawn-self-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, `run-edit-entity-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
+        // grammar 0.74.41 OP×resource matrix: EDIT is file/entry only — the run ENTITY (path-absent
+        // run://<name>) is not editable. The old EDIT-spawn form is gone; COPY(run://<name>) spawns.
         const result = await engine.dispatch({
-            statement: editStmt(runPath("self"), "loop forever"),
+            statement: editStmt(runPath("worker"), "loop forever"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 400, "spawning self is rejected");
-        assert.equal(calls.length, 0, "no inject on a rejected spawn");
+        assert.equal(result.status, 400, "EDIT on the run entity is rejected");
+        assert.match(String((result as { error?: string }).error ?? ""), /COPY\(run:\/\/|not editable/, "the rejection steers to COPY");
+        assert.equal(calls.length, 0, "no inject on a rejected EDIT");
+        const worker = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        assert.equal(worker, undefined, "no run is created by a rejected EDIT");
     } finally { await db.close(); }
 });
 
@@ -345,7 +357,7 @@ test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const spawn = await engine.dispatch({
-            statement: editStmt(runPath("worker"), "go"),
+            statement: copyRun("worker", "go"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(spawn.status, 508, "spawn at the ceiling is refused, hard");
