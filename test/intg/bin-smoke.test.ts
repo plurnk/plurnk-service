@@ -79,10 +79,13 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
         booted.child.once("exit", (code, signal) => resolvePromise({ code, signal }));
     });
     booted.child.kill("SIGTERM");
+    // Generous, contention-tolerant: this spawns a REAL daemon process that competes for CPU with the
+    // rest of the parallel intg suite (subprocess-heavy exec tests included). Shutdown is clean and sub-second
+    // in isolation; the budget exists only to absorb CPU starvation on a saturated box, not slow teardown.
     const result = await Promise.race([
         exited,
         new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((_, reject) =>
-            setTimeout(() => reject(new Error("daemon did not exit within 5s of SIGTERM")), 5_000),
+            setTimeout(() => reject(new Error("daemon did not exit within 15s of SIGTERM")), 15_000),
         ),
     ]);
     await rm(booted.tmpdir, { recursive: true, force: true });
