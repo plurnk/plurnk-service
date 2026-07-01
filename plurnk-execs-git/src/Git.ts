@@ -15,8 +15,12 @@ import { tokenizeArgv } from "./tokenizeArgv.ts";
 // (plurnk-execs#5). All run/stream/abort behavior is inherited from
 // SubprocessExecutor.
 export default class Git extends SubprocessExecutor {
-    protected override spawnArgs(runtime: string, command: string): SpawnArgs {
-        // runtime is "git" or "gh" — the tag is the executable.
+    protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
+        // runtime is "git" or "gh" — the tag is the executable. With a target the
+        // target IS the invocation (tokenized argv) and the body is its stdin
+        // (plurnk-execs#15) — `EXEC[git](apply --index):<patch>`, `commit -F -`,
+        // `hash-object -w --stdin`. No target → the body is the invocation.
+        if (target !== null) return { cmd: runtime, args: tokenizeArgv(target), useShell: false, stdin: command };
         return { cmd: runtime, args: tokenizeArgv(command), useShell: false };
     }
 

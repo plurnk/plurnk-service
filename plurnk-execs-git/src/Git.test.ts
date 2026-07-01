@@ -44,6 +44,12 @@ test("spawnArgs: the tag is the binary; command tokenized into real argv (no she
         { cmd: "gh", args: ["pr", "list", "--state", "open"], useShell: false });
 });
 
+test("spawnArgs: a target is the invocation, the body its stdin (#15)", () => {
+    // @ts-expect-error protected hook — `EXEC[git](apply --index):<patch>`
+    assert.deepEqual(make("git").spawnArgs("git", "<patch bytes>", "apply --index"),
+        { cmd: "git", args: ["apply", "--index"], useShell: false, stdin: "<patch bytes>" });
+});
+
 test("probe: git reflects PATH presence", async () => {
     const r = await make("git").probe();
     assert.equal(r.available, present("git"));
