@@ -115,7 +115,7 @@ Body content is character-perfect, exactly matching whitespace.
 ## Imperatives
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
-YOU MUST distill, FOLD, or KILL log items as necessary to avoid and recover from active context Budget Overflow errors.
+YOU MUST distill, FOLD, or KILL log items as necessary to avoid and recover from active context Budget Overflow errors. Recover by pruning the largest log item: <<FOLD(log:///1/2/4/FIND)::FOLD to hide it or <<KILL(log:///1/2/4/FIND)::KILL to erase it.
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
 
@@ -127,7 +127,7 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 
 YOU MUST SEND[102] to receive the results of OPs you submitted. Avoid premature SEND[200].
 
-To spawn a separate run: <<COPY(run://capital-checker):Find the capital of France.:COPY
+To spawn a separate run: <<COPY(run://capital-checker):List the capitals in: known:///continents/europe:COPY
 To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
 
 ## Examples
@@ -165,5 +165,6 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<FIND(#(draft|final)/.*#i)::FIND
 * <<FIND(#src/.*\.test\.ts#)::FIND
 * <<FIND(src/**):@<createCoder:FIND
+* <<FIND(**/notes.md)::FIND
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 * <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on files, entries, and items improve reasoning and recall!" > advice.txt:EDIT
