@@ -18,6 +18,17 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 The command is tokenized into **real argv** (`tokenizeArgv`) and the tag's binary is run directly — **never** through a shell. That's deliberate: shelling `git commit -m "costs $5"` would expand `$5` and corrupt the message; passing argv preserves `$`, backticks, and other specials literally. Shell metacharacters (`|`, `;`, `>`) are passed as literal args, not interpreted.
 
+### Feeding stdin — the `(target)` slot
+
+For commands that read **stdin** (`git apply`, `commit -F -`, `hash-object --stdin`, `mktree`), put the invocation in the **`(target)` slot** and the stdin content in the body (plurnk-execs#15):
+
+```
+<<EXEC[git](apply --index):<patch text>:EXEC
+<<EXEC[git](hash-object -w --stdin):<blob bytes>:EXEC
+```
+
+The target is tokenized the same way; the body is written to the child's stdin. With no target, the body is the invocation (as above).
+
 ## Effect & gating
 
 `effect` is **`host` for every command** (proposal-gated). This is required, not a shortcut: `effect(target)` classifies the target only and must never inspect the command, so `git status` and `git push` are indistinguishable to it. **The service owns all gating** — membership, proposal/confirm, the enable ceiling, and outward-confirm for `push` / `gh pr create`. The executor only runs the command and declares the effect.
