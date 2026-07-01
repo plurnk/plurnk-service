@@ -12,6 +12,10 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./digest": {
+            "types": "./dist/digest/Digest.d.ts",
+            "default": "./dist/digest/Digest.js"
+        },
         "./package.json": "./package.json"
     },
     "bin": {
