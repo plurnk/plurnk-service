@@ -51,7 +51,7 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3",
-        "@plurnk/plurnk-mimetypes": "0.15.37"
+        "@plurnk/plurnk-mimetypes": "0.15.39"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^0.15.0"
