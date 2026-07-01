@@ -53,7 +53,7 @@
         "xpath": "^0.0.34"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "0.15.37",
+        "@plurnk/plurnk-mimetypes": "0.15.39",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
