@@ -24,7 +24,7 @@ type RegistryArg = Parameters<SchemeRegistry["registerRuntimeSchemes"]>[0];
 
 test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard (#240)", () => {
     const registry = new SchemeRegistry();
-    const shadows = { availableRuntimes: () => ["file"] } as unknown as RegistryArg;
+    const shadows = { availableRuntimes: () => ["file"], entry: () => ({ executor: { manifest: { name: "file", channels: {}, defaultChannel: "body" } } }) } as unknown as RegistryArg;
     assert.throws(
         () => registry.registerRuntimeSchemes(shadows),
         /collides with a reserved built-in/,
@@ -45,7 +45,7 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
 test("registerRuntimeSchemes: a tag colliding with an already-claimed (non-reserved) scheme fails hard — one name, one owner (#240)", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", {}); // an external scheme sibling claims the name first
-    const collides = { availableRuntimes: () => ["figma"] } as unknown as RegistryArg;
+    const collides = { availableRuntimes: () => ["figma"], entry: () => ({ executor: { manifest: { name: "figma", channels: {}, defaultChannel: "results" } } }) } as unknown as RegistryArg;
     assert.throws(
         () => registry.registerRuntimeSchemes(collides),
         /one name, one owner/,

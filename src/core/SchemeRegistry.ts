@@ -14,6 +14,7 @@ import type { PacketSectionTransformer } from "./scheme-types.ts";
 import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import type { Executor } from "./ExecutorRegistry.ts";
 import { readdir, readFile } from "node:fs/promises";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 
@@ -70,20 +71,26 @@ export default class SchemeRegistry {
     // delegated to the shared Exec handler. Minted from the boot ExecutorRegistry; in-tree
     // names take precedence (a tag shadowing a built-in is skipped, never overrides it).
     registerRuntimeSchemes(executors: ExecutorRegistry): void {
-        const exec = this.#handlers.get("exec");
-        if (!(exec instanceof Exec)) throw new Error("registerRuntimeSchemes: the exec handler is not registered");
         for (const tag of executors.availableRuntimes()) {
-            if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — boot fail-hard (#240)`);
-            if (this.#runtimeSchemes.has(tag)) continue; // idempotent re-scan — already this tag's own runtime scheme
-            // #240 cross-family namespace: a tag already claimed by a DIFFERENT scheme (an external
-            // scheme sibling) is a collision, not a re-scan — one name, one owner across the exec and
-            // scheme families. Fail the boot hard rather than silently first-wins-skipping the tag.
-            if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families (#240)`);
             const entry = executors.entry(tag);
             if (entry === undefined) continue;
-            this.register(tag, new ExecOutputScheme(entry.executor, exec));
-            this.#runtimeSchemes.add(tag);
+            this.registerRuntimeScheme(tag, entry.executor);
         }
+    }
+
+    // Register ONE executor tag's scheme face (the boot loop above + the #289 runtime hotload:
+    // an MCP server connected live becomes EXEC[<server>]). The reserved/cross-family arbitration
+    // lives HERE so both paths share it — one name, one owner across the exec/scheme families (#240):
+    // idempotent on a tag that already has its own runtime scheme (a boot re-scan), fail-hard on a
+    // collision with a reserved built-in or a DIFFERENT already-claimed scheme.
+    registerRuntimeScheme(tag: string, executor: Executor): void {
+        const exec = this.#handlers.get("exec");
+        if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
+        if (this.#reserved.has(tag)) throw new Error(`executor tag '${tag}' collides with a reserved built-in scheme — fail-hard (#240)`);
+        if (this.#runtimeSchemes.has(tag)) return; // idempotent — already this tag's own runtime scheme
+        if (this.#handlers.has(tag)) throw new Error(`executor tag '${tag}' collides with an already-claimed scheme '${tag}' — one name, one owner across the exec/scheme families (#240)`);
+        this.register(tag, new ExecOutputScheme(executor, exec));
+        this.#runtimeSchemes.add(tag);
     }
 
     get(name: string): object | undefined { return this.#handlers.get(name); }

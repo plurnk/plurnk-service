@@ -44,12 +44,23 @@ export interface RegistryEntry {
 // degrades that tag to unavailable — it never crashes boot. SPEC §scheme;
 // plurnk-service#181, #185.
 export default class ExecutorRegistry {
-    readonly #byTag: ReadonlyMap<string, RegistryEntry>;
+    readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime-registration (#289) mutates it in place
     readonly #attributions: readonly string[]; // #249 — declared attribution tags of discovered exec packages
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, attributions: readonly string[] = []) {
-        this.#byTag = byTag;
+        this.#byTag = new Map(byTag);
         this.#attributions = attributions;
+    }
+
+    // Runtime registration (#289) — add an executor TAG after boot (the /mcp hotload: an MCP server
+    // becomes an EXEC[<server>] runtime once connected). The boot path is discover→probe→build; this
+    // is the post-boot door for a runtime the operator installs live. The caller owns availability
+    // (a hotloaded MCP server is connected, hence available); the SchemeRegistry face is registered
+    // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
+    // Fail-hard on a tag already registered — one name, one owner (mirrors #240 boot policy).
+    register(tag: string, entry: RegistryEntry): void {
+        if (this.#byTag.has(tag)) throw new Error(`executor tag '${tag}' is already registered — one name, one owner (#289)`);
+        this.#byTag.set(tag, entry);
     }
 
     // #249 — declared attribution tags of the discovered exec packages (opaque; the engine

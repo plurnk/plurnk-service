@@ -22,6 +22,7 @@ import SessionSettings from "./session-settings.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
@@ -444,6 +445,21 @@ export default class Engine {
     // (discover + probe), after Engine construction.
     setExecutors(executors: ExecutorRegistry): void {
         this.#executors = executors;
+    }
+
+    // Runtime hotload (#289) — register an executor TAG live, after boot (the /mcp route: an MCP
+    // server connected at runtime becomes EXEC[<server>]). Registers on BOTH registries the boot path
+    // wires: the ExecutorRegistry (dispatch resolves the tag; the tools sheet, rebuilt per packet, then
+    // offers it to the model) and the SchemeRegistry face (the tag's READ/FIND/KILL scheme), sharing the
+    // same reserved/cross-family arbitration boot uses. Fail-hard if the registry isn't wired yet — a
+    // hotload before daemon start() is a caller bug, not a silent no-op.
+    hotloadRuntime(tag: string, entry: RegistryEntry): void {
+        if (this.#executors === undefined) throw new Error("hotloadRuntime: executor registry not wired yet (call after daemon start)");
+        // Scheme face FIRST — it is the arbitration gate (reserved / cross-family collision, #240) and
+        // throws before we mutate the executor registry, so a rejected tag leaves neither registry
+        // half-written. A brand-new tag registers on both; a reserved/claimed tag throws here untouched.
+        this.#schemes.registerRuntimeScheme(tag, entry.executor);
+        this.#executors.register(tag, entry);
     }
 
     // Grammar-constrained sampling (#189): when PLURNK_PROVIDERS_GBNF is enabled

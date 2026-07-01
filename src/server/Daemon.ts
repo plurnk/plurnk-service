@@ -52,6 +52,7 @@ import EntryReadMethod from "./methods/entry_read.ts";
 import LogReadMethod from "./methods/log_read.ts";
 import ProvidersListMethod from "./methods/providers_list.ts";
 import LoopResolveMethod from "./methods/loop_resolve.ts";
+import McpInstallMethod from "./methods/mcp_install.ts";
 
 export interface DaemonOptions {
     host?: string;
@@ -300,6 +301,7 @@ export default class Daemon {
         EntryReadMethod.register(this.#registry);
         LogReadMethod.register(this.#registry);
         ProvidersListMethod.register(this.#registry);
+        McpInstallMethod.register(this.#registry);
     }
 
     #registerNotifications(): void {
