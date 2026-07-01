@@ -26,6 +26,7 @@ const harness = () => {
         runtime: "search",
         command: "pie recipes",
         cwd: null,
+        target: null,
         signal: new AbortController().signal,
         write: (channel, chunk, mimetype) => writes.push({ channel, chunk, ...(mimetype !== undefined ? { mimetype } : {}) }),
         setState: (channel, state) => states.push({ channel, state }),

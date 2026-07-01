@@ -76,7 +76,8 @@ export default abstract class BaseExecutor implements SchemeHandler {
     }
 
     // Side-effect class of an invocation against `target` (the parsed EXEC
-    // target — what run() receives as cwd), for the consumer's proposal-gating
+    // `(target)` slot — the same value run() receives as `args.target`), for the
+    // consumer's proposal-gating
     // policy (service#182). MUST be pure, synchronous, and cheap — it runs on
     // the dispatch hot path at propose time: classify the target only, NEVER
     // the command (parsing SQL/shell to judge intent is a sandbox-escape

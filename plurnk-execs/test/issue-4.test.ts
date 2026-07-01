@@ -9,7 +9,7 @@ import type { ExecArgs, ExecResult } from "../src/types.ts";
 
 const run = async (command: string, signal: AbortSignal): Promise<ExecResult> => {
     const args: ExecArgs = {
-        runtime: "sh", command, cwd: null, signal,
+        runtime: "sh", command, cwd: null, target: null, signal,
         write: () => {}, setState: () => {}, emit: () => {},
     };
     return new SubprocessExecutor({ runtime: "sh", glyph: "🐚" }).run(args);

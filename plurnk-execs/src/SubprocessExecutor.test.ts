@@ -1,18 +1,20 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import type { ExecArgs, ExecResult } from "./types.ts";
 import type { TelemetryEvent } from "./TelemetryEvent.ts";
 
 // Drive a real subprocess and collect the sink activity. Resolves once run()
 // settles.
-const exec = async (runtime: string, command: string, opts: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}) => {
+const exec = async (runtime: string, command: string, opts: { signal?: AbortSignal; env?: NodeJS.ProcessEnv; cwd?: string; target?: string } = {}) => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const states: { channel: string; state: string }[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: null, env: opts.env,
+        runtime, command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => states.push({ channel, state }),
@@ -39,6 +41,13 @@ test("effect: subprocess is always host (regardless of target)", () => {
     const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/work/dir"), "host");
+});
+
+test("cwd is the process working dir; a set target does not affect subprocess (#15)", async () => {
+    const dir = realpathSync(tmpdir());
+    const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir, target: "ignored.txt" });
+    assert.equal(result.status, 200);
+    assert.equal(realpathSync(out.stdout.trim()), dir, "the child ran in cwd; the target slot did not touch it");
 });
 
 test("env: a scoped env is handed to the child verbatim (#8)", async () => {
@@ -72,7 +81,7 @@ class StdinExec extends SubprocessExecutor {
 test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        runtime: "x", command: "piped-through-stdin", cwd: null,
+        runtime: "x", command: "piped-through-stdin", cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},

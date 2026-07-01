@@ -43,9 +43,18 @@ export interface ExecArgs {
     runtime: string;
     // The EXEC op body: a shell line, source to interpret, or a search query.
     command: string;
-    // Working directory for subprocess runtimes; null (and ignored) for
-    // logical runtimes like search.
+    // Process working directory — the session workspace. Filesystem-touching
+    // runtimes resolve relative paths (including `target`) against it; subprocess
+    // runtimes spawn in it. null for logical runtimes (search) that touch no
+    // filesystem.
     cwd: string | null;
+    // The parsed EXEC `(target)` slot — the data source the op names: jq's input
+    // file, sqlite's db, wasm's module — resolved relative to `cwd`. null when the
+    // op names no target (bare `EXEC[sh]:…`, inline `EXEC[jq]:…`, `:memory:`
+    // sqlite). Kept distinct from `cwd` so a data-source runtime receives BOTH the
+    // workspace and the source rather than one overloaded onto the other
+    // (plurnk-execs#15).
+    target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child
     // gets EXACTLY this env — the consumer scopes out its own secrets (provider
     // keys, PLURNK_*) so a model-directed `printenv` can't read them
