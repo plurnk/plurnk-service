@@ -23,6 +23,7 @@
     },
     "files": [
         ".env.example",
+        "PLURNK_PERSONALITY.md",
         "dist/**/*",
         "docs/**/*",
         "migrations/**/*.sql",

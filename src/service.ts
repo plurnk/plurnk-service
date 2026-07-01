@@ -36,6 +36,11 @@ export default class Service {
         const shipped = resolve(Service.#projectRoot, ".env.example");
         if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
         writeFileSync(resolve(Service.#homeDir, ".env"), "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
+        // Seed the default operating policy → ~/.plurnk/AGENTS.md, foisted as ## Plurnk Service Policy
+        // (readSystemPolicy). A new install opens with a sane disposition, not a blank policy; the user
+        // owns + edits it after — a deleted policy stays deleted, like the .env floor.
+        const shippedPolicy = resolve(Service.#projectRoot, "PLURNK_PERSONALITY.md");
+        if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }
 
