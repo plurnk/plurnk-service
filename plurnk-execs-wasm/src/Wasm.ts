@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import wabtInit from "wabt";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
@@ -48,7 +49,7 @@ export default class Wasm extends BaseExecutor {
         return { available: true, detail: "WebAssembly + wabt" };
     }
 
-    async run({ runtime, command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const fail = (kind: string, message: string): ExecResult => {
             emit({ source: `exec:${runtime}`, kind, message });
             setState("results", "errored");
@@ -59,9 +60,9 @@ export default class Wasm extends BaseExecutor {
         // entry-point call itself is synchronous and uninterruptible.
         const aborted = (): ExecResult => { setState("results", "errored"); return { status: 499 }; };
         if (signal.aborted) return aborted();
-        // The EXEC target slot, when set, is a module file path; otherwise the
-        // module rides the body (WAT text / base64). Mirrors sqlite's target.
-        const path = cwd && cwd.length > 0 ? cwd : null;
+        // target = a module file, resolved against cwd (the workspace) —
+        // plurnk-execs#15; otherwise the module rides the body (WAT / base64).
+        const path = target === null ? null : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
 
         // 1. Obtain the module bytes — from the file-path target, else the body.
         let bytes: Uint8Array;

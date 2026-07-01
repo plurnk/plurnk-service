@@ -1,6 +1,6 @@
 import test, { afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import { readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import wabtInit from "wabt";
@@ -14,12 +14,12 @@ interface Capture {
     events: TelemetryEvent[];
 }
 
-const run = async (runtime: string, command: string, cwd: string | null = null): Promise<Capture> => {
+const run = async (runtime: string, command: string, target: string | null = null, cwd: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd,
+        runtime, command, cwd, target,
         signal: new AbortController().signal,
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
@@ -123,6 +123,20 @@ test("wasm from a file-path target reads + runs the binary module", async () => 
     assert.equal(JSON.parse(out!).returned, 42);
 });
 
+test("a relative file target resolves against cwd, not the process dir (#15)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "execs-wasm-cwd-"));
+    try {
+        await writeFile(join(dir, "mod.wat"), WAT, "utf8");
+        // relative target + cwd → resolves inside cwd (the workspace); against the
+        // process dir it'd be not-found.
+        const { result, out } = await run("wat", "ignored-body", "mod.wat", dir);
+        assert.equal(result.status, 200);
+        assert.equal(JSON.parse(out!).returned, 42, "resolved the relative target inside cwd");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test("a missing file-path target → wasm_read_failed, 500", async () => {
     const { result, events } = await run("wasm", "", "/no/such/execs-wasm-module.wasm");
     assert.equal(result.status, 500);
@@ -147,7 +161,7 @@ test("pre-aborted signal → 499 errored, nothing runs", async () => {
     const states: string[] = [];
     let wrote = false;
     const args: ExecArgs = {
-        runtime: "wat", command: WAT, cwd: null,
+        runtime: "wat", command: WAT, cwd: null, target: null,
         signal: ac.signal,
         write: () => { wrote = true; },
         setState: (_c, s) => states.push(s),
