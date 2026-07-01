@@ -41,6 +41,13 @@ test("spawnArgs: the subprocess floor (sh/node/python)", () => {
     assert.deepEqual(make("python").spawnArgs("python", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
+test("spawnArgs: a target runs the program with body as stdin — shell via -c, interpreter as a script file (#15)", () => {
+    // @ts-expect-error protected hook
+    assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: "sh", args: ["-c", "./run.sh"], useShell: false, stdin: "stdin body" });
+    // @ts-expect-error
+    assert.deepEqual(make("python").spawnArgs("python", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
+});
+
 test("probe: node is always available (not PATH-gated) and reports its version", async () => {
     const r = await make("node").probe();
     assert.equal(r.available, true);

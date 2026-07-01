@@ -60,9 +60,17 @@ const onPath = (bin: string): boolean =>
 // (inherited, proposal-gated). Reuses SubprocessExecutor's run() (streaming +
 // process-group abort) via the spawnArgs() hook.
 export default class Common extends SubprocessExecutor {
-    protected override spawnArgs(runtime: string, command: string): SpawnArgs {
+    protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = RECIPES[runtime];
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
+        // With a target the program IS the target and the body is its stdin
+        // (plurnk-execs#15): a shell runs it as a command line (`-c`, so the shell
+        // tokenizes — we don't); every other runtime runs it as a single
+        // script-file positional.
+        if (target !== null) {
+            const shell = runtime === "sh" || runtime === "bash";
+            return { cmd: r.bin, args: shell ? ["-c", target] : [target], useShell: false, stdin: command };
+        }
         // Trailing newline so line-oriented readers (bc, tclsh) evaluate the
         // final line before EOF rather than erroring on an unterminated line.
         if (r.stdin) return { cmd: r.bin, args: [], useShell: false, stdin: `${command}\n` };
