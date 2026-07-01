@@ -74,6 +74,6 @@ test("topo: a two-stage pipeline of dependent workers", { timeout: TIMEOUT }, as
     try {
         if (story.finalStatus !== 200) await story.dump();
         assert.equal(story.finalStatus, 200, "the parent ran both stages, hibernating between, and concluded");
-        assert.match(story.lastContent, /\b(yes|true|greater|more than)\b/i, `final answer resolves the comparison; got: ${story.lastContent.slice(0, 250)}`);
+        assert.match(story.lastContent, /\byes\b/i, `3 users IS more than 2 → the final answer is yes; got: ${story.lastContent.slice(0, 250)}`);
     } finally { await story.cleanup(); }
 });

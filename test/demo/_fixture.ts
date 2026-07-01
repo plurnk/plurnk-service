@@ -64,7 +64,9 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
     await writeFile(
         join(workspace, "data/users.json"),
         JSON.stringify(
-            [{ name: "Alice", role: "admin" }, { name: "Bob", role: "viewer" }],
+            // Three users so the topo-pipeline "is the count more than 2?" resolves to a clear YES.
+            // Alice stays the sole admin (Bob/Carol viewers) so the admin story still names just her.
+            [{ name: "Alice", role: "admin" }, { name: "Bob", role: "viewer" }, { name: "Carol", role: "viewer" }],
             null, 2,
         ) + "\n",
     );
