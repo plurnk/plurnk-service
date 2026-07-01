@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-ini",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "description": "text/x-ini (INI / config) mimetype handler for plurnk-service. Sections and keys as symbols. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -51,7 +51,7 @@
         "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.31",
+        "@plurnk/plurnk-mimetypes": "0.16.0",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
