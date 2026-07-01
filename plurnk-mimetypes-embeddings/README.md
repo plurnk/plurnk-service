@@ -57,7 +57,7 @@ For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `o
 
 ## Environment
 
-- `PLURNK_EMBED_WORKERS` — **required, no default.** `embedBatch` pool size. Set to the core count on a dedicated box; lower it on a shared or low-RAM host (one model copy per worker). Unset, empty, or malformed → the embedder crashes on load (it will not guess a fallback). See `.env.example`.
+- `PLURNK_EMBED_WORKERS` — **required, no default.** `embedBatch` pool size. A positive integer sets the exact count; **`-1` sizes to the host** (`availableParallelism` — an explicit "match cores" directive, not a fallback). Lower it on a shared or low-RAM host (one model copy per worker). Unset, empty, `0`, or malformed → the embedder crashes on load (it will not guess). See `.env.example`.
 
 ## Scripts
 

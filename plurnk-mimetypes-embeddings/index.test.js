@@ -219,3 +219,32 @@ describe("embedder duck surface", () => {
         );
     });
 });
+
+describe("PLURNK_EMBED_WORKERS contract (embeddings#2: -1 = match cores)", () => {
+    const indexPath = path.join(import.meta.dirname, "index.js");
+    // Load index.js in a child with a given env value (bare import runs the
+    // top-level requireWorkers; the pool/model stay lazy, so it's cheap).
+    // Throws on non-zero exit = the module crashed on load.
+    const load = (value) => {
+        const env = { ...process.env };
+        if (value === undefined) delete env.PLURNK_EMBED_WORKERS;
+        else env.PLURNK_EMBED_WORKERS = value;
+        execFileSync(process.execPath, ["--input-type=module", "--eval", `import ${JSON.stringify(indexPath)};`], {
+            env, timeout: 30000, stdio: "pipe",
+        });
+    };
+
+    it("-1 sizes to the host (availableParallelism) — loads, never crashes", () => {
+        load("-1"); // returns cleanly = loaded; execFileSync throws on non-zero exit
+    });
+
+    it("a positive integer loads", () => {
+        load("4");
+    });
+
+    for (const bad of [undefined, "", "0", "-2", "abc", "1.5"]) {
+        it(`still crashes on ${JSON.stringify(bad)} — required, no fallback`, () => {
+            assert.throws(() => load(bad));
+        });
+    }
+});
