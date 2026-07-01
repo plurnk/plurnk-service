@@ -54,6 +54,6 @@
         "@plurnk/plurnk-mimetypes": "0.15.39"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.0"
+        "@plurnk/plurnk-mimetypes": "0.16.0"
     }
 }
