@@ -992,7 +992,15 @@ export default class Engine {
         // #249 — session-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
         const { client } = await SessionSettings.read(this.#db, sessionId);
         try {
+            // §turn-lifecycle (#301) — the provider call is the long, opaque window (submit → first
+            // committed op is provider latency + a full first-turn generation, ~70s local): a static
+            // screen there is indistinguishable from a hang. Bracket generate() with two telemetry beats
+            // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
+            // ops are about to land. Base telemetry/event channel (the embed_progress precedent, §tokenomics
+            // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
+            if (!signal?.aborted) this.#pushTelemetry(sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            if (!signal?.aborted) this.#pushTelemetry(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
             // grammar_unenforced is the one the MODEL can recover from — the backend didn't

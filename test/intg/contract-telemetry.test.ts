@@ -291,6 +291,32 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
     } finally { await db.close(); }
 });
 
+test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(),
+            telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+        });
+        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+
+        // The two beats bracket the provider call, in order — so a client flips "thinking… → working…"
+        // across the one long opaque window (submit → first committed op) instead of a static screen
+        // that reads as a hang. Live-broadcast, info-level, scoped to the loop.
+        const lifecycle = broadcasts.filter((b) => b.payload.event.source === "engine:turn");
+        assert.deepEqual(lifecycle.map((b) => b.payload.event.kind), ["turn_awaiting_model", "turn_generated"], "two engine:turn beats, in generate()-bracket order");
+        for (const b of lifecycle) {
+            assert.equal(b.payload.event.level, "info", "lifecycle beats are info-level progress notices, never errors");
+            assert.equal(b.payload.loopId, loopId, "scoped to the loop");
+        }
+    } finally { await db.close(); }
+});
+
 test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
