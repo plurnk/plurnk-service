@@ -39,12 +39,12 @@ The framework instantiates **one executor per tag**, injecting `{ runtime, glyph
 - **Logical / in-process runtimes** (sqlite, search, wasm, jq): subclass **`BaseExecutor`** directly and implement:
   - `get channels()` — the output channels you write, each `{ mimetype, defaultState? }`.
   - `run(args) → ExecResult` — do the work, resolve `{ status }`. Never throw for an expected failure — `emit` telemetry and set the channel to `errored` instead.
-  - `probe()` *(optional)* — `{ available, detail? }`; defaults to available. Override when you depend on an external binary or config (the `detail` is model-facing on a 501).
+  - `probe(signal?)` *(optional)* — `{ available, detail? }`; defaults to available. Override when you depend on an external binary or config (the `detail` is model-facing on a 501). If you spawn a child (or open a connection) to check, hand it `signal` so a resolved/timed-out probe reaps it — no stray write EPIPEs after teardown (plurnk-execs#16).
   - `effect(target)` *(optional)* — `"pure" | "read" | "host"`; the consumer maps it to its proposal policy (host → propose, read/pure → auto-run inline). Classify the **target only**, never the command. Defaults to `host` (the safe end).
 
 ### 3. What `run` receives (`ExecArgs`) — sinks, never the substrate
 
-`{ runtime, command, cwd, env, signal, write(channel, chunk), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). `cwd` is the parsed EXEC target; **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
+`{ runtime, command, cwd, target, env, signal, write(channel, chunk, mimetype?), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). **`cwd`** is the session workspace (the process working directory); **`target`** is the parsed EXEC `(target)` slot — the data source (jq's input file, sqlite's db, wasm's module), resolved relative to `cwd`, `null` when the op names none (plurnk-execs#15). `write`'s optional `mimetype` stamps the channel with the real per-call output type. **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
 
 ### How the model sees your tag
 
