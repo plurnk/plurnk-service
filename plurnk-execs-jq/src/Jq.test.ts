@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import Jq from "./Jq.ts";
 import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
 
@@ -11,12 +11,12 @@ const HAS_JQ = spawnSync("jq", ["--version"]).status === 0;
 
 interface Capture { result: ExecResult; out: string | undefined; states: string[]; events: TelemetryEvent[]; }
 
-const run = async (command: string, cwd: string | null = null, env?: NodeJS.ProcessEnv): Promise<Capture> => {
+const run = async (command: string, target: string | null = null, env?: NodeJS.ProcessEnv, cwd: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime: "jq", command, cwd, env,
+        runtime: "jq", command, cwd, target, env,
         signal: new AbortController().signal,
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
@@ -74,6 +74,16 @@ test("a file-path target is filtered", { skip: !HAS_JQ }, async () => {
     const { result, out } = await run(".users[].name", p);
     assert.equal(result.status, 200);
     assert.deepEqual(out!.trim().split("\n"), ['"ada"', '"alan"']);
+});
+
+test("a relative target resolves against cwd, not the process dir (#15)", { skip: !HAS_JQ }, async () => {
+    const full = tmp();
+    await writeFile(full, JSON.stringify([{ x: 1 }, { x: 2 }, { x: 3 }]));
+    // cwd = the file's dir, target = only its basename → resolves solely because
+    // jq runs in cwd (the workspace); against the process dir it'd be not-found.
+    const { result, out } = await run("length", basename(full), undefined, tmpdir());
+    assert.equal(result.status, 200);
+    assert.equal(out?.trim(), "3", "jq resolved the relative target inside cwd");
 });
 
 test("empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async () => {

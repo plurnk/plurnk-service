@@ -40,13 +40,13 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    async run({ command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, target, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         const program = command.trim() || ".";
-        const path = cwd && cwd.length > 0 ? cwd : null;
-        // -c → one compact JSON value per line, so multi-value output is honest
-        // JSONL (plurnk-execs-jq#2). Target present → jq reads the file; absent →
-        // -n, the program stands alone.
-        const args = path !== null ? ["-c", program, path] : ["-c", "-n", program];
+        // target = the data-source file; spawn resolves a relative one against cwd
+        // (the workspace) — plurnk-execs#15. Absent → -n, the program stands alone.
+        // -c keeps each value compact on its own line so multi-value output is
+        // honest JSONL (plurnk-execs-jq#2).
+        const args = target !== null ? ["-c", program, target] : ["-c", "-n", program];
 
         return new Promise<ExecResult>((resolve) => {
             let settled = false;
@@ -59,7 +59,7 @@ export default class Jq extends BaseExecutor {
             let err = "";
             // jq can read the environment (`env`, `$ENV`), so honor the
             // consumer's scoped env when provided (plurnk-execs#8).
-            const child = spawn("jq", args, { signal, env: env ?? process.env });
+            const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: env ?? process.env });
             child.stdout?.on("data", (c: Buffer) => write("results", c.toString("utf8")));
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });
             child.on("error", (e) => {
