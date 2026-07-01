@@ -22,7 +22,8 @@ type ExecResult = { status: number; body?: string; attrs?: object; error?: strin
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
-    cwd: string | null;     // working directory, or null = daemon's cwd
+    cwd: string | null;     // process working directory = the session workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
+    target: string | null;  // the parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm module); null = no source (subprocess ignores it). (#15)
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Engine.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
@@ -163,20 +164,18 @@ export default class Exec {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
             return { status: 501, error: `\`${runtime}\` is unavailable${why}` };
         }
-        const cwdFromOp = cwdFromTarget(statement.target);
-        // Effect on the RAW target (pre-cwd-default) decides the lifecycle:
-        // host → propose, read/pure → auto-run inline (plurnk-service#182).
-        const policy = EffectPolicy.decide(resolved.executor.effect(cwdFromOp, command));  // command-aware (#289): a per-tool readOnlyHint can auto-run a read-only call — pure/read ungated — §exec-readpure-ungated
-        // Default cwd to the session's project_root so EXEC runs in the
-        // same directory File scheme writes to. Without this default, the
-        // model creates a file via EDIT (lands in project_root) and then
-        // EXECs (runs in daemon cwd) and can't find what it just wrote.
-        // Explicit (cwd) in the EXEC statement still wins.
-        let cwd: string | null = cwdFromOp;
-        if (cwd === null) {
-            const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
-            cwd = sessionRow?.project_root ?? null;
-        }
+        // The parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm
+        // module; ignored by subprocess). execs 0.4.26 (#15) carries it distinct from cwd.
+        const target = cwdFromTarget(statement.target);
+        // Effect classifies by the target only, never by parsing the command (§289): host → propose,
+        // read/pure → auto-run inline (plurnk-service#182).
+        const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
+        // cwd is ALWAYS the session WORKSPACE (project_root) — the process working directory a relative
+        // target resolves against (execs 0.4.26 §2). The old overload (target-as-cwd) is gone: EXEC runs
+        // in the same directory the File scheme writes to, and a data-source runtime resolves its target
+        // against it (so EXEC[jq](data/x.json) finds the workspace file, not one at the daemon's cwd).
+        const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
+        const cwd: string | null = sessionRow?.project_root ?? null;
         // Pathname is assigned by Engine.#writeLog as <runtime>/<loop_seq>/
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
@@ -190,7 +189,7 @@ export default class Exec {
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
         const pollSec = typeof marks?.[1] === "number" && marks[1] > 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
-            runtime, cwd, command, pathname: "", inline: policy === "auto",
+            runtime, cwd, command, target, pathname: "", inline: policy === "auto",
             ...(schemeTarget !== null ? { schemeTarget } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
             ...(turnScoped ? { turnScoped: true } : {}),
@@ -210,7 +209,8 @@ export default class Exec {
         let command = typeof attrs.command === "string" ? attrs.command : "";
         const pathname = attrs.pathname;
         const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
-        let cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
+        const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
+        let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
         if (typeof pathname !== "string" || pathname.length === 0) {
             return { status: 500, outcome: "missing_pathname" };
         }
@@ -218,7 +218,7 @@ export default class Exec {
         // #201 — resolve a scheme-URI target to content (executors stay scheme-blind).
         // Empty body → the resolved content IS the command (run a stored script).
         // Non-empty body → materialize the content to a temp file whose path becomes
-        // the runtime-interpreted cwd (the data source for filters/sqlite/wasm).
+        // the runtime's data-source TARGET (the input for filters/sqlite/wasm).
         let tempPath: string | null = null;
         if (attrs.schemeTarget !== undefined) {
             const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
@@ -233,7 +233,7 @@ export default class Exec {
             } else {
                 tempPath = join(tmpdir(), `plurnk-exec-${ctx.sessionId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
                 await writeFile(tempPath, content, "utf8");
-                cwd = tempPath;
+                target = tempPath;
             }
         }
         if (command.length === 0) {
@@ -289,7 +289,7 @@ export default class Exec {
 
         const tail = this.#runExecutor({
             executor: resolved.executor,
-            runtime, command, cwd, ctx, pathname,
+            runtime, command, cwd, target, ctx, pathname,
             entryId, subscriptionId, signal: controller.signal, controller, tempPath,
             timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
@@ -315,12 +315,12 @@ export default class Exec {
     // as "active." Chain through a single promise queue to serialize.
     async #runExecutor(opts: {
         executor: Executor;
-        runtime: string; command: string; cwd: string | null; ctx: PlurnkSchemeContext;
+        runtime: string; command: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
     }): Promise<number> {
-        const { executor, runtime, command, cwd, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
+        const { executor, runtime, command, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);  // #224 — stamped on stream/event + stream/concluded
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
@@ -340,7 +340,7 @@ export default class Exec {
         let stderrLength = 0;
         try {
             const result = await executor.run({
-                runtime, command, cwd, signal,
+                runtime, command, cwd, target, signal,
                 env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
                 write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                     entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,

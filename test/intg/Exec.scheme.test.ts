@@ -117,6 +117,29 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
     });
 });
 
+test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs.cwd (execs 0.4.26 #15)", async () => {
+    await withSession(async (ctx) => {
+        const idDeferred = deferred<number>();
+        // A data-source runtime with a target — EXEC[jq](data/users.json):length. The target is the
+        // input file; cwd is the workspace it resolves against. The old contract crammed the target into
+        // cwd (so a relative data path resolved against the daemon's cwd → not found). Now they're distinct.
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: execStmt("jq", "data/users.json", "length"),
+            sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; command: string };
+        assert.equal(attrs.target, "data/users.json", "the (target) slot is the data source, in attrs.target");
+        assert.equal(attrs.cwd, null, "cwd is the workspace (null headless here), never the target");
+        assert.equal(attrs.command, "length", "the body is the jq program");
+        await dispatchPromise; // jq(read) auto-runs inline (no proposal); let it settle
+        await ctx.exec.idle();
+    });
+});
+
 // applyResolution returns 200/"started" immediately; the spawn runs async.
 // The dispatch outcome on the log entry is "started" — the SPAWN's exit
 // info (exit code, abort) lives on the subscription row's close_status
