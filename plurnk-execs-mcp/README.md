@@ -46,20 +46,29 @@ PLURNK_MCP_FIGMA="npx -y figma-developer-mcp --stdio"
 PLURNK_MCP_FIGMA_ENV='{"FIGMA_API_KEY":"…"}'
 ```
 
+### Authorization
+
+Two ways a server gets credentials:
+
+- **Static token** — put it where the transport carries it: `PLURNK_MCP_<server>_HEADERS='{"Authorization":"Bearer …"}'` for http, or `PLURNK_MCP_<server>_ENV` for a stdio child. The executor is a pass-through carrier — it never mints or refreshes a token.
+- **OAuth, via service's proposal system** — when an http server demands OAuth, its `connect` returns **401**. The executor can't run an interactive consent round-trip (it's a *producer*), so it emits **`mcp_auth_required`** (`{ server, resource }`) and stops with status `401`. The consumer (plurnk-service) runs the OAuth flow through **its proposal system** — proposes the authorization link, the user consents in the client, the callback is exchanged for a token — then injects that token as a Bearer header (via the hotload `registerServer` route or `_HEADERS`) and re-dispatches. The dance lives in service + client; the executor only surfaces the need and then carries the resulting token. No `authProvider` is wired into the transport, precisely so the interactive leg stays where the UI is.
+
 ## Calling tools
 
-```
-<<EXEC[<server>]:<tool_name> <json-arguments>:EXEC
-```
-
-`<json-arguments>` is a single JSON object; omit it for a no-argument tool.
+The **tool is the `(target)` slot**; its arguments are the body — a single JSON object:
 
 ```
-<<EXEC[github]:create_issue {"title":"Bug","body":"…"}:EXEC
-<<EXEC[github]:list_repos:EXEC
+<<EXEC[<server>](<tool>):<json-arguments>:EXEC
 ```
 
-Run a tag with `?` (or `help`, or an empty body) to write the server's live tool catalog — names, descriptions, input JSON schemas — to the `results` stream:
+```
+<<EXEC[github](create_issue):{"title":"Bug","body":"…"}:EXEC
+<<EXEC[github](list_repos):EXEC          # no-argument tool → empty body
+```
+
+This is the family's `(target)`/body split: for an executable runtime the target is the program and the body its stdin; here the target is the **tool** and the body its **arguments**. Putting the tool in `(target)` also makes it visible to the synchronous `effect()` hook — which is what enables per-tool gating (below).
+
+Run a tag with **no target** (`?`, `help`, or an empty body) to write the server's live tool catalog — names, descriptions, and input JSON **schemas** — to the `results` stream, so the model learns each tool's argument shape before calling it:
 
 ```
 <<EXEC[github]:?:EXEC
@@ -69,9 +78,9 @@ Run a tag with `?` (or `help`, or an empty body) to write the server's live tool
 
 The tool result is written as JSON (`application/json`) to the `results` channel. A tool that reports `isError` closes the channel errored with status 500.
 
-Every call is **proposal-gated** (`effect` → `host`): the side-effect class of an individual MCP tool isn't visible to the synchronous, target-only gating hook, so the conservative default applies. Finer `readOnlyHint`-driven auto-run awaits a command-aware gating hook in the consumer.
+Gating is **per tool**, by the tool's `readOnlyHint`. Because the tool is the `(target)` slot, the synchronous `effect()` hook can see it and consult the hint cached from the catalog: a read-only tool (`readOnlyHint: true`) reports `effect → read` and **auto-runs**; a mutating tool — or one not yet probed — reports `effect → host` and is **proposed** for approval; listing the catalog is read-only. (This is the per-tool gating plurnk-execs#13 parked while the tool lived in the body.)
 
-Failures emit a `TelemetryEvent` (`source: "exec:<server>"`): `mcp_not_configured`, `mcp_unreachable`, `mcp_list_failed`, `mcp_bad_arguments`, `mcp_tool_error`.
+Failures emit a `TelemetryEvent` (`source: "exec:<server>"`): `mcp_not_configured`, `mcp_unreachable`, `mcp_list_failed`, `mcp_bad_arguments`, `mcp_tool_error`, and `mcp_auth_required` (see [Authorization](#authorization)).
 
 ## Lifecycle
 

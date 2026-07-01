@@ -1,6 +1,7 @@
 import test, { before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
 import Mcp, { closeAll } from "./Mcp.ts";
 import { runtimes, runtimeDecl } from "./runtimes.ts";
 import { installAllowed, serverConfig, serverNames, registerServer, isInjected, parseTarget } from "./config.ts";
@@ -15,12 +16,12 @@ interface Capture {
     events: TelemetryEvent[];
 }
 
-const invoke = async (runtime: string, command: string, opts: { signal?: AbortSignal } = {}): Promise<Capture> => {
+const invoke = async (runtime: string, command: string, opts: { signal?: AbortSignal; target?: string | null } = {}): Promise<Capture> => {
     const writes: Capture["writes"] = [];
     const states: Capture["states"] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: null, target: null,
+        runtime, command, cwd: null, target: opts.target ?? null,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk, mimetype) => writes.push({ channel, chunk, mimetype }),
         setState: (channel, state) => states.push({ channel, state }),
@@ -111,8 +112,13 @@ test("runtimes: empty when no servers are configured", () => {
 
 // --- Mcp executor (real stdio server end-to-end) ---------------------------
 
-test("effect: every MCP call is host (conservative, proposal-gated)", () => {
-    assert.equal(new Mcp({ runtime: "echo", glyph: "🪞" }).effect(null), "host");
+test("effect: read-only tools auto-run (read), mutating/unknown propose (host); catalog is read (#13)", async () => {
+    const mcp = new Mcp({ runtime: "echo", glyph: "🪞" });
+    await mcp.probe(); // populates the readOnlyHint cache from the live listTools
+    assert.equal(mcp.effect(null), "read", "the catalog listing is read-only");
+    assert.equal(mcp.effect("echo"), "read", "echo declares readOnlyHint: true");
+    assert.equal(mcp.effect("boom"), "host", "boom has no readOnlyHint → propose");
+    assert.equal(mcp.effect("unknown"), "host", "an un-probed tool is conservatively host");
 });
 
 test("channels: declares a results channel (application/json)", () => {
@@ -133,7 +139,7 @@ test("probe: an unconfigured server is unavailable with an actionable detail", a
 });
 
 test("run: calls a tool, writes the JSON result stamped application/json, closes 200", async () => {
-    const { result, writes, states } = await invoke("echo", 'echo {"msg":"hi"}');
+    const { result, writes, states } = await invoke("echo", '{"msg":"hi"}', { target: "echo" });
     assert.deepEqual(result, { status: 200 });
     assert.equal(writes[0].channel, "results");
     assert.equal(writes[0].mimetype, "application/json");
@@ -143,7 +149,7 @@ test("run: calls a tool, writes the JSON result stamped application/json, closes
 });
 
 test("run: a no-argument tool call (no JSON body) works", async () => {
-    const { result, writes } = await invoke("echo", "echo");
+    const { result, writes } = await invoke("echo", "", { target: "echo" });
     assert.equal(result.status, 200);
     assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
 });
@@ -156,21 +162,21 @@ test("run: an empty body writes the live tool catalog", async () => {
 });
 
 test("run: an isError tool result closes errored with status 500", async () => {
-    const { result, writes, states } = await invoke("echo", "boom");
+    const { result, writes, states } = await invoke("echo", "", { target: "boom" });
     assert.equal(result.status, 500);
     assert.equal(JSON.parse(writes[0].chunk).isError, true);
     assert.equal(states.at(-1)?.state, "errored");
 });
 
 test("run: non-JSON tool arguments → mcp_bad_arguments, status 400, no call", async () => {
-    const { result, events, states } = await invoke("echo", "echo {not json}");
+    const { result, events, states } = await invoke("echo", "{not json}", { target: "echo" });
     assert.equal(result.status, 400);
     assert.equal(events[0].kind, "mcp_bad_arguments");
     assert.equal(states.at(-1)?.state, "errored");
 });
 
 test("run: an unknown tool surfaces as mcp_tool_error, status 500", async () => {
-    const { result, events } = await invoke("echo", "nope {}");
+    const { result, events } = await invoke("echo", "{}", { target: "nope" });
     assert.equal(result.status, 500);
     assert.equal(events[0].kind, "mcp_tool_error");
     assert.match(String(events[0].message), /unknown tool/);
@@ -185,9 +191,26 @@ test("run: an unconfigured server → mcp_not_configured, status 500", async () 
 test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
     const controller = new AbortController();
     controller.abort();
-    const { result, events } = await invoke("echo", 'echo {"msg":"x"}', { signal: controller.signal });
+    const { result, events } = await invoke("echo", '{"msg":"x"}', { target: "echo", signal: controller.signal });
     assert.equal(result.status, 499);
     assert.equal(events.length, 0, "caller cancellation is normal flow, not telemetry");
+});
+
+test("run: an HTTP server that requires auth surfaces mcp_auth_required (401), not a hard failure (oauth-via-proposal)", async () => {
+    const server = createServer((_req, res) => { res.writeHead(401); res.end(); });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const { port } = server.address() as { port: number };
+    process.env.PLURNK_MCP_AUTHSRV = `http://127.0.0.1:${port}/mcp`;
+    try {
+        const { result, events, states } = await invoke("authsrv", "{}", { target: "some_tool" });
+        assert.equal(result.status, 401, "auth-required is a distinct 401, not a 500 hard failure");
+        assert.equal(events[0].kind, "mcp_auth_required");
+        assert.equal(events[0].server, "authsrv");
+        assert.equal(states.at(-1)?.state, "errored");
+    } finally {
+        delete process.env.PLURNK_MCP_AUTHSRV;
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
 });
 
 // --- hotload route surface (plurnk-execs#13). registerServer mutates module
@@ -227,7 +250,7 @@ test("hotload: runtimeDecl mints the same shape boot discovery does", () => {
 test("hotload: an injected server is refused at run() when PLURNK_MCP_INSTALL is off (501)", async () => {
     registerServer("hotecho", { transport: "stdio", command: "node", args: [FIXTURE] });
     delete process.env.PLURNK_MCP_INSTALL;
-    const { result, events, states } = await invoke("hotecho", "echo");
+    const { result, events, states } = await invoke("hotecho", "", { target: "echo" });
     assert.equal(result.status, 501);
     assert.equal(events[0].kind, "mcp_install_disabled");
     assert.deepEqual(states, [{ channel: "results", state: "errored" }]);
@@ -237,7 +260,7 @@ test("hotload: an injected server runs at run() when PLURNK_MCP_INSTALL is on", 
     registerServer("hotecho2", { transport: "stdio", command: "node", args: [FIXTURE] });
     process.env.PLURNK_MCP_INSTALL = "1";
     try {
-        const { result, writes } = await invoke("hotecho2", "echo");
+        const { result, writes } = await invoke("hotecho2", "", { target: "echo" });
         assert.equal(result.status, 200);
         assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
     } finally {

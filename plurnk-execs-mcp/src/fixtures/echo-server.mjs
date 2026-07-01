@@ -11,7 +11,7 @@ const server = new Server({ name: "echo", version: "0.0.0" }, { capabilities: { 
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
-        { name: "echo", description: "Echo the arguments back", inputSchema: { type: "object", properties: { msg: { type: "string" } } } },
+        { name: "echo", description: "Echo the arguments back", inputSchema: { type: "object", properties: { msg: { type: "string" } } }, annotations: { readOnlyHint: true } },
         { name: "boom", description: "Always returns an error", inputSchema: { type: "object", properties: {} } },
     ],
 }));
