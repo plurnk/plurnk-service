@@ -59,7 +59,7 @@
         "@plurnk/plurnk-execs-mcp": "0.2.0",
         "@plurnk/plurnk-grammar": "^0.74.42",
         "@plurnk/plurnk-mimetypes": "0.15.39",
-        "@plurnk/plurnk-mimetypes-all": "0.5.7",
+        "@plurnk/plurnk-mimetypes-all": "0.5.8",
         "@plurnk/plurnk-mimetypes-text-html": "0.6.6",
         "@plurnk/plurnk-providers": "^0.21.0",
         "@plurnk/plurnk-providers-all": "0.10.0",
@@ -70,14 +70,14 @@
         "ws": "^8.20.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.7.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "0.8.0",
         "@types/diff": "^7.0.2",
         "@types/node": "^26.0.0",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.7.0"
+        "@plurnk/plurnk-mimetypes-embeddings": "0.8.0"
     },
     "peerDependenciesMeta": {
         "@plurnk/plurnk-mimetypes-embeddings": {
