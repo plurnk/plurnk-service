@@ -15,12 +15,12 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|K
 
 ### Syntax
 
-<<OPsuffix[signal]?(target)?<Line/Result>?:body?:OPsuffix
+<<OPsuffix[signal]?(path)?<Line/Result>?:body?:OPsuffix
 
 ### OPs
 
 Fields are optional unless otherwise specified.
-The `(target)` is required for every operation except PLAN, EXEC, and SEND.
+The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 
 | OP   | `[signal]`    | `(path)`    | `<Line / Result>` | :body:                | OP   |
 |------|---------------|-------------|-------------------|-----------------------|------|
