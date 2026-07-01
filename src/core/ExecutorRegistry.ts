@@ -14,7 +14,9 @@ export interface Executor {
     get defaultChannel(): string;
     get channels(): Readonly<Record<string, ChannelDecl>>;
     run(args: ExecArgs): Promise<ExecResult>;
-    probe(): Promise<RuntimeAvailability>;
+    // signal (execs 0.4.28, #16): the host aborts it on resolve/timeout so a probe reaps its
+    // --version child at once — no in-flight write EPIPEs after teardown. Optional + ignore-safe.
+    probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     // command-aware (#289): the effect may be resolved per-command, not just per-target — an MCP
     // executor reads a per-tool readOnlyHint off the command to auto-run a read-only call. Target-only
     // executors ignore the second arg (a narrower signature still satisfies this interface).
@@ -140,7 +142,9 @@ export default class ExecutorRegistry {
             controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
         });
         try {
-            return await Promise.race([executor.probe(), timeout]);
+            // Hand the probe our abort signal — the finally reaps its child on resolve OR timeout,
+            // so a slow --version write can't EPIPE after the host tears down (execs#16).
+            return await Promise.race([executor.probe(controller.signal), timeout]);
         } catch (error) {
             return { available: false, detail: error instanceof Error ? error.message : String(error) };
         } finally {
