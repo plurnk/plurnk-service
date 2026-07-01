@@ -66,6 +66,6 @@
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.10"
+        "@plurnk/plurnk-mimetypes": "0.16.0"
     }
 }
