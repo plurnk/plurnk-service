@@ -13,12 +13,12 @@ interface Capture {
     events: TelemetryEvent[];
 }
 
-const run = async (command: string, cwd: string | null = null): Promise<Capture> => {
+const run = async (command: string, target: string | null = null, cwd: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime: "sqlite", command, cwd,
+        runtime: "sqlite", command, cwd, target,
         signal: new AbortController().signal,
         write: (_channel, chunk) => { out = (out ?? "") + chunk; },
         setState: (_channel, state) => states.push(state),
@@ -69,16 +69,14 @@ test("SELECT against default :memory: → rows as JSON, channel closed, 200", as
     assert.equal(events.length, 0);
 });
 
-test("directory cwd (consumer project_root default) → :memory:, no file written", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "execs-sqlite-root-"));
+test("a relative target resolves the db against cwd, not the process dir (#15)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "execs-sqlite-cwd-"));
     try {
-        const { result, out, states, events } = await run("SELECT 1 AS one", dir);
-        assert.deepEqual(result, { status: 200 });
-        assert.deepEqual(JSON.parse(out!), [{ one: 1 }]);
-        assert.deepEqual(states, ["closed"]);
-        assert.equal(events.length, 0);
-        // :memory: is ephemeral — the directory must stay empty (no db file).
-        assert.deepEqual(await readdir(dir), []);
+        // relative target + cwd → the db file must land inside cwd (the workspace),
+        // not the daemon's process dir. Resolves solely via cwd.
+        const create = await run("CREATE TABLE t(x)", "app.db", dir);
+        assert.equal(create.result.status, 200);
+        assert.deepEqual(await readdir(dir), ["app.db"]);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -121,7 +119,7 @@ test("pre-aborted signal → 499 errored, file mutation skipped", async () => {
     const states: string[] = [];
     let wrote = false;
     const args: ExecArgs = {
-        runtime: "sqlite", command: "CREATE TABLE t (x)", cwd: path,
+        runtime: "sqlite", command: "CREATE TABLE t (x)", cwd: null, target: path,
         signal: ac.signal,
         write: () => { wrote = true; },
         setState: (_channel, state) => states.push(state),

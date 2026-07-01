@@ -1,19 +1,17 @@
-import { statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
 
-// Resolve the EXEC target slot (delivered as `cwd`) to a db path. The consuming
-// scheme defaults a target-less EXEC's `cwd` to the session project_root — a
-// *directory*, sensible for subprocess runtimes but not a database. A directory
-// is never a valid sqlite target, so null/empty OR a directory means "no
-// target" → ephemeral :memory:; only a file path (extant or to-be-created) is a
-// persistent db. statSync only suppresses ENOENT (a new db file) — any other
-// stat failure (e.g. EACCES) still surfaces.
-const dbTarget = (cwd: string | null): string =>
-    (cwd && !statSync(cwd, { throwIfNoEntry: false })?.isDirectory() ? cwd : MEMORY);
+// Resolve the EXEC (target) slot to a db path: a relative target resolves
+// against cwd (the workspace, plurnk-execs#15); null — or an explicit
+// `:memory:` — means no file target → an ephemeral in-memory db.
+const dbPath = (cwd: string | null, target: string | null): string => {
+    if (target === null || target === MEMORY) return MEMORY;
+    return isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target);
+};
 
 // node:sqlite can return bigint for large integers; stringify them so the
 // JSON output is always serializable.
@@ -22,9 +20,8 @@ const jsonReplacer = (_key: string, value: unknown): unknown =>
 
 // In-process SQLite executor (a logical runtime, not subprocess). Runs one SQL
 // statement via node:sqlite against the EXEC target db — defaulting to an
-// ephemeral `:memory:` when no file target is given (including the consumer's
-// project_root directory default) — and writes the result to the `results`
-// channel as application/json, ready for the jsonpath body-matcher.
+// ephemeral `:memory:` when no target is given — and writes the result to the
+// `results` channel as application/json, ready for the jsonpath body-matcher.
 //
 //   <<EXEC[sqlite]:SELECT * FROM users:EXEC          → :memory: (ephemeral)
 //   <<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC → ./app.db (persistent)
@@ -51,13 +48,13 @@ export default class Sqlite extends BaseExecutor {
         return target === null || target === MEMORY ? "pure" : "host";
     }
 
-    async run({ command, cwd, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
         // node:sqlite is fully synchronous — no await point to interrupt mid-query —
         // so the only place to honor an abort is before the work starts (SPEC §6).
         // Matters for a file-backed (host) statement: a cancel/KILL that lands first
         // must not still mutate the db.
         if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
-        const path = dbTarget(cwd);
+        const path = dbPath(cwd, target);
         const sql = command.trim();
         const fail = (kind: string, message: string): ExecResult => {
             emit({ source: "exec:sqlite", kind, message });
