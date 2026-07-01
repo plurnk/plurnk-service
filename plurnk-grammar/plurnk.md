@@ -42,7 +42,7 @@ The `(target)` is required for every operation except PLAN, EXEC, and SEND.
 <<EDIT(path):literal text:EDIT is only for adding or modifying files and entries. Do not attempt to edit log items.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
 <<OPEN(log path)::OPEN expands (`+`) the log item body to view it (costs tokens). Not all log items have a body (`*`).
-<<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens).
+<<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens). FOLDed item tokens="" shows token cost if OPENed.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 <<KILL(path)::KILL deletes files and entries, erases log items, and kills streams.
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
@@ -115,7 +115,7 @@ Body content is character-perfect, exactly matching whitespace.
 ## Imperatives
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
-YOU MUST distill, FOLD, or KILL log items as necessary to optimize active context relevance within the token budget.
+YOU MUST distill, FOLD, or KILL log items as necessary to avoid and recover from active context Budget Overflow errors.
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
 
@@ -155,10 +155,10 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<KILL(sh:///3/1/2)::KILL
 * <<KILL[9](sh:///3/1/3)::KILL
 * <<KILL(log:///1/*/*/FOLD)::KILL
-* <<OPEN(log:///**/get)<1,10>::OPEN
+* <<OPEN(log:///**)<1,10>::OPEN
 * <<FIND(known:///**)<5>:~french revolutionary history:FIND
 * <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
-* <<FOLD(log:///**/get)<101,200>::FOLD
+* <<FOLD(log:///**)<101,200>::FOLD
 * <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 * <<FIND(known:///**):revolution:FIND
 * <<FIND(known:///**):$[?(@.role=="admin")]:FIND
