@@ -10,8 +10,10 @@
 // the structural navigation those formats use (jsonpath, xpath).
 //
 // Local heuristic until @plurnk/plurnk-mimetypes exposes per-mimetype
-// metadata via its public API (HandlerInfo flags exist at registry
-// level; not queryable per-mimetype yet — see plurnk-mimetypes#3).
+// binary/text + line-navigable classification via its public API — at which
+// point these tables retire and this delegates upstream. Requested in
+// plurnk-mimetypes#43 (HandlerInfo flags exist at registry level but aren't
+// queryable per-mimetype yet). The NDJSON drift (schemes#28) is the motivation.
 
 const TEXT_APPLICATION_MIMETYPES: ReadonlySet<string> = new Set([
     "application/json",
