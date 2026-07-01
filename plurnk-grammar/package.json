@@ -45,7 +45,7 @@
     "test": "npm run test:all",
     "deps:fresh": "npm outdated",
     "prepare": "git config core.hooksPath .githooks && npm run build",
-    "prepublishOnly": "npm run build && npm run test:all && npm run test:smoke"
+    "prepublishOnly": "npm run deps:fresh && npm audit && npm run build && npm run test:all && npm run test:smoke"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
