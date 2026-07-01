@@ -74,16 +74,18 @@ export default class SubprocessExecutor extends BaseExecutor {
         });
     }
 
-    // Translate the matched tag + command into spawn args. Default delegates to
-    // Runtime.resolve (sh/node/python); subclasses with their own interpreter
-    // table (e.g. the common-REPL harness) override this — and so inherit run()'s
-    // streaming + process-group abort handling rather than reimplementing it.
-    protected spawnArgs(runtime: string, command: string): SpawnArgs {
-        return Runtime.resolve(runtime, command);
+    // Translate the matched tag + command + target into spawn args. Default
+    // delegates to Runtime.resolve (sh/node/python); subclasses with their own
+    // interpreter table (e.g. the common-REPL harness) override this — and so
+    // inherit run()'s streaming + process-group abort handling rather than
+    // reimplementing it. When `target` is set, the body becomes the program's
+    // stdin (plurnk-execs#15) — the daughter maps it; the parent parses nothing.
+    protected spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
+        return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, command, cwd, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
-        const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command);
+    run({ runtime, command, cwd, target, env, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+        const { cmd, args, useShell, stdin } = this.spawnArgs(runtime, command, target);
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {

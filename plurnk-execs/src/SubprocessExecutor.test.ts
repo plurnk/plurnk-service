@@ -43,11 +43,18 @@ test("effect: subprocess is always host (regardless of target)", () => {
     assert.equal(ex.effect("/work/dir"), "host");
 });
 
-test("cwd is the process working dir; a set target does not affect subprocess (#15)", async () => {
+test("cwd is the process working dir when there's no target (#15)", async () => {
     const dir = realpathSync(tmpdir());
-    const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir, target: "ignored.txt" });
+    const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir });
     assert.equal(result.status, 200);
-    assert.equal(realpathSync(out.stdout.trim()), dir, "the child ran in cwd; the target slot did not touch it");
+    assert.equal(realpathSync(out.stdout.trim()), dir);
+});
+
+test("a target runs as the program with the body as its stdin (#15)", async () => {
+    // sh: target is the command line (sh -c "<target>"), body is its stdin.
+    const { result, out } = await exec("sh", "hello from stdin", { target: "cat" });
+    assert.equal(result.status, 200);
+    assert.equal(out.stdout, "hello from stdin");
 });
 
 test("env: a scoped env is handed to the child verbatim (#8)", async () => {

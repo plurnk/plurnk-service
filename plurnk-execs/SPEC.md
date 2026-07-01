@@ -197,7 +197,7 @@ Execs owns none of the overlay machinery — the live Active/Available state, th
 `resolveRuntime(runtime, command) → SpawnArgs` and `isKnownRuntime(runtime)` / `KNOWN_RUNTIMES` translate a subprocess runtime tag into `node:child_process.spawn` arguments:
 
 ```ts
-interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; }
+interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: string; }
 ```
 
 | Runtime | Spawn |
@@ -208,6 +208,8 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; }
 | any other | `{ cmd: runtime, args: ["-c", command], useShell: false }` (conservative fallback) |
 
 `resolveRuntime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
+
+**With a `(target)`** — `resolveRuntime(runtime, command, target)` runs the **target as the program** and the **body as its stdin** (plurnk-execs#15): a shell runs `sh -c "<target>"` (the shell tokenizes the target — the framework parses nothing), any other runtime runs `<interpreter> <target>` (a single script-file positional). No target → the body is the inline program (`-c`/`-e`) as in the table. This is family-relative: the *data* runtimes (jq/sqlite/wasm) invert it — `target` is the data, `body` the program — inside their own `run()`. Each daughter maps the two raw strings to its own tool's CLI; the parent hands them down and parses neither.
 
 The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command) → SpawnArgs`** hook (default delegates to `resolveRuntime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
 

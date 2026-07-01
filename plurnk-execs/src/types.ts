@@ -208,4 +208,4 @@ export interface SpawnArgs {
  * Consumers check `isKnownRuntime(runtime)` before calling to enforce a 501 boundary
  * on unconfigured runtimes; this function never throws.
  */
-export type RuntimeResolver = (runtime: string, command: string) => SpawnArgs;
+export type RuntimeResolver = (runtime: string, command: string, target?: string | null) => SpawnArgs;

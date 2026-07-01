@@ -48,6 +48,21 @@ test("resolveRuntime: unknown runtime → conservative `<runtime> -c <command>` 
     });
 });
 
+test("resolveRuntime: a shell target runs as `-c <target>` with body as stdin (#15)", () => {
+    assert.deepEqual(Runtime.resolve("sh", "piped input", "./run.sh"), {
+        cmd: "sh", args: ["-c", "./run.sh"], useShell: false, stdin: "piped input",
+    });
+});
+
+test("resolveRuntime: an interpreter target runs the script file with body as stdin (#15)", () => {
+    assert.deepEqual(Runtime.resolve("python", "data", "t.py"), {
+        cmd: "python3", args: ["t.py"], useShell: false, stdin: "data",
+    });
+    assert.deepEqual(Runtime.resolve("node", "data", "t.js"), {
+        cmd: "node", args: ["t.js"], useShell: false, stdin: "data",
+    });
+});
+
 test("resolveRuntime is total — never throws on any runtime/command combo", () => {
     for (const runtime of ["", "sh", "node", "python", "ruby", "🐍", "with spaces"]) {
         for (const command of ["", "echo hi", "rm -rf /", "1 && 2"]) {

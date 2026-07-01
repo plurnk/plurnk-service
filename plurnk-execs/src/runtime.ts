@@ -18,16 +18,20 @@ export default class Runtime {
         return Runtime.KNOWN.has(runtime);
     }
 
-    static resolve(runtime: string, command: string): SpawnArgs {
-        if (runtime === "" || runtime === "sh" || runtime === "bash") {
-            return { cmd: command, args: [], useShell: true };
+    static resolve(runtime: string, command: string, target: string | null = null): SpawnArgs {
+        const shell = runtime === "" || runtime === "sh" || runtime === "bash";
+        // With a target the program IS the target and the body is its stdin
+        // (plurnk-execs#15): a shell runs the target as a command line (`-c`, so
+        // the shell tokenizes it — we don't); any other runtime runs it as a
+        // single script-file positional. No target → the body is the program,
+        // inline (`-c`/`-e`), as before.
+        if (target !== null) {
+            if (shell) return { cmd: runtime || "sh", args: ["-c", target], useShell: false, stdin: command };
+            return { cmd: runtime === "python" ? "python3" : runtime, args: [target], useShell: false, stdin: command };
         }
-        if (runtime === "node") {
-            return { cmd: "node", args: ["-e", command], useShell: false };
-        }
-        if (runtime === "python" || runtime === "python3") {
-            return { cmd: "python3", args: ["-c", command], useShell: false };
-        }
+        if (shell) return { cmd: command, args: [], useShell: true };
+        if (runtime === "node") return { cmd: "node", args: ["-e", command], useShell: false };
+        if (runtime === "python" || runtime === "python3") return { cmd: "python3", args: ["-c", command], useShell: false };
         // Unknown runtime: conservative `<runtime> -c <command>` fallback.
         // Schemes should gate this off with `isKnown` and return 501, but the
         // resolver itself stays total.
