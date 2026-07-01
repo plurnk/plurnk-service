@@ -23,12 +23,12 @@ export default class Git extends SubprocessExecutor {
     // Per-tag availability: `git` needs the binary; `gh` needs the binary AND an
     // authenticated session. (Correct only once the consumer probes per-tag, not
     // per-package — plurnk-service#185.)
-    override async probe(): Promise<RuntimeAvailability> {
+    override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
         if (this.runtime === "gh") {
             return runProbe("gh", ["auth", "status"], "gh authenticated",
-                "gh present but not authenticated — run `gh auth login`", "gh not on PATH");
+                "gh present but not authenticated — run `gh auth login`", "gh not on PATH", signal);
         }
-        return runProbe("git", ["--version"], undefined, "git --version failed", "git not on PATH");
+        return runProbe("git", ["--version"], undefined, "git --version failed", "git not on PATH", signal);
     }
 }
 
@@ -41,10 +41,14 @@ const runProbe = (
     okDetail: string | undefined,
     nonzeroDetail: string,
     missingDetail: string,
+    signal?: AbortSignal,
 ): Promise<RuntimeAvailability> =>
     new Promise((resolve) => {
+        if (signal?.aborted) { resolve({ available: false, detail: missingDetail }); return; }
         let out = "";
-        const child = spawn(bin, args, { signal: AbortSignal.timeout(5000) });
+        // Honor the consumer's per-probe signal so a resolved/timed-out probe
+        // reaps the child (plurnk-execs#16); /dev/null stdin+stderr.
+        const child = spawn(bin, args, { signal, stdio: ["ignore", "pipe", "ignore"] });
         child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
         child.on("error", () => resolve({ available: false, detail: missingDetail }));
         child.on("close", (code) => resolve(code === 0

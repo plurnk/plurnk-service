@@ -11,7 +11,7 @@ const make = (tag: string): Git => new Git({ runtime: tag, glyph: "•" });
 const run = async (tag: string, command: string): Promise<{ result: ExecResult; out: Record<string, string> }> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        runtime: tag, command, cwd: null,
+        runtime: tag, command, cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
