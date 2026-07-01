@@ -63,3 +63,38 @@ test("plurnk.md examples cover every OP", () => {
         assert.ok(ops.has(op as any), `plurnk.md examples should include ${op}`);
     }
 });
+
+// CI tripwire: EVERY heredoc anywhere in plurnk.md must parse to one clean statement,
+// not just the `## Examples` block. The inline examples (the OP one-liners, the
+// `<Line / Result>` samples, the imperative recovery ops, and the spawn/fork lines)
+// otherwise carry no coverage — which is exactly how a bogus `get` target and a
+// missing `<<` opener slipped past review before. Extract by matched open/close tag
+// (suffix-aware, non-greedy, multiline), then parse each in isolation.
+const HEREDOC = /<<(FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|KILL|SEND|PLAN)(\d|[a-z]+)?[\s\S]*?:\1\2(?![A-Za-z0-9])/g;
+
+// Schematic metavariable examples: the `<Line>` slot is a placeholder (N, M), not a
+// literal, so they intentionally do not parse. Any addition here is a deliberate act.
+const SCHEMATIC = new Set([
+    "<<READ(file.md)<N>::READ",
+    "<<FIND(src/**)<N,M>::FIND",
+]);
+
+test("every heredoc in plurnk.md parses to one clean statement", () => {
+    const heredocs = [...plurnkMd.matchAll(HEREDOC)].map((m) => m[0]);
+    // Guard against a broken regex silently matching nothing and passing vacuously.
+    assert.ok(heredocs.length >= 50, `heredoc extraction found only ${heredocs.length}; regex likely broke`);
+
+    const failures: string[] = [];
+    for (const h of heredocs) {
+        if (SCHEMATIC.has(h)) continue;
+        const result = PlurnkParser.parseStatements(h);
+        const statements = result.items.filter((i) => i.kind === "statement");
+        const errors = result.items.filter((i) => i.kind === "error");
+        if (statements.length !== 1 || errors.length > 0 || result.unparsedTail) {
+            const detail = errors.map((e) => (e.kind === "error" ? e.error.message : "")).join(" | ")
+                || `${statements.length} statements, unparsedTail=${Boolean(result.unparsedTail)}`;
+            failures.push(`${JSON.stringify(h)} -> ${detail}`);
+        }
+    }
+    assert.equal(failures.length, 0, `plurnk.md heredocs that do not cleanly parse:\n${failures.join("\n")}`);
+});
