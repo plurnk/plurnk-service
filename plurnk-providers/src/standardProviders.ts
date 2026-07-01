@@ -31,14 +31,14 @@ type StandardProviderSpec = {
     // headers built from env; an empty object means no auth headers are sent.
     // When set, it REPLACES the apiKeyVar bearer logic.
     headersFromEnv?: (env: NodeJS.ProcessEnv) => Record<string, string>;
-    // Base URL: a fixed default and/or operator override var(s) (a list accepts
-    // conventional aliases, e.g. openai's BASE_URL / API_BASE). At least one of
-    // override / derived / fixed must resolve non-empty.
-    baseUrl?: string;
+    // Base URL env var(s) — REQUIRED, no in-code default (the endpoint is
+    // operator config, declared uncommented in .env.example; a baked constant
+    // would hide config from that file). A list accepts conventional aliases
+    // (openai's BASE_URL / API_BASE). Either this or baseUrlFromEnv must resolve.
     baseUrlVar?: string | readonly string[];
-    // Derive the base from env when no override var is set and there's no fixed
-    // default — for endpoints whose URL is templated from standard env (bedrock
-    // builds it from AWS_REGION). Throws a named error if it can't derive.
+    // Derive the base from env when no override var is set — for endpoints whose
+    // URL is templated from standard env (bedrock builds it from AWS_REGION).
+    // Throws a named error if it can't derive.
     baseUrlFromEnv?: (env: NodeJS.ProcessEnv) => string | undefined;
     // Custom catalog context-window resolver for a relay whose model id the
     // models.dev catalog doesn't key directly (bedrock inference profiles, #22).
@@ -109,36 +109,36 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     },
     groq: {
         apiKeyVar: "GROQ_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.groq.com/openai/v1", baseUrlVar: "GROQ_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "GROQ_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "effort", tokenizerDefault: "heuristic", tokenizerEnvVar: "GROQ_TOKENIZER",
     },
     deepseek: {
         apiKeyVar: "DEEPSEEK_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.deepseek.com/v1", baseUrlVar: "DEEPSEEK_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "DEEPSEEK_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPSEEK_TOKENIZER",
     },
     mistral: {
         apiKeyVar: "MISTRAL_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.mistral.ai/v1", baseUrlVar: "MISTRAL_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "MISTRAL_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MISTRAL_TOKENIZER",
     },
     together: {
         apiKeyVar: "TOGETHER_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.together.xyz/v1", baseUrlVar: "TOGETHER_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "TOGETHER_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "TOGETHER_TOKENIZER",
     },
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.fireworks.ai/inference/v1", baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
-        baseUrl: "https://api.deepinfra.com/v1/openai", baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
     // — Chinese cloud hosts (all OpenAI-compat, plain bearer, doc-verified 2026). —
-    // The fixed default base is the INTERNATIONAL endpoint; mainland operators
+    // The .env.example base is the INTERNATIONAL endpoint; mainland operators
     // point the override var at the `.cn` twin noted per entry. Reasoning is left
     // "none" for the whole cohort: each host's thinking toggle is either
     // model-selected or a non-standard param that rides in `extra_body` (the
@@ -148,68 +148,68 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // them (a plurnk-models issue, not this repo's).
     moonshot: {
         apiKeyVar: "MOONSHOT_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.moonshot.ai/v1", baseUrlVar: "MOONSHOT_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "MOONSHOT_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MOONSHOT_TOKENIZER",
     },
     // Alibaba Qwen via DashScope "compatible-mode". Mainland: dashscope.aliyuncs.com.
     dashscope: {
         apiKeyVar: "DASHSCOPE_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", baseUrlVar: "DASHSCOPE_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "DASHSCOPE_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DASHSCOPE_TOKENIZER",
     },
     // Zhipu GLM. Base carries /api/paas/v4 (non-/v1). Mainland: open.bigmodel.cn/api/paas/v4.
     zhipu: {
         apiKeyVar: ["ZHIPUAI_API_KEY", "ZAI_API_KEY"], apiKeyRequired: true,
-        baseUrl: "https://api.z.ai/api/paas/v4", baseUrlVar: "ZHIPU_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "ZHIPU_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ZHIPU_TOKENIZER",
     },
     // ByteDance Doubao via BytePlus ModelArk (base carries /api/v3; `model` is an
     // inference-endpoint/model id). Mainland (Volcengine): ark.cn-beijing.volces.com/api/v3.
     volcengine: {
         apiKeyVar: "ARK_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://ark.ap-southeast.bytepluses.com/api/v3", baseUrlVar: "ARK_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "ARK_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ARK_TOKENIZER",
     },
     // Tencent Hunyuan — single global host (no intl/mainland split).
     hunyuan: {
         apiKeyVar: "HUNYUAN_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.hunyuan.cloud.tencent.com/v1", baseUrlVar: "HUNYUAN_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "HUNYUAN_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "HUNYUAN_TOKENIZER",
     },
     // MiniMax. Mainland twin is api.minimaxi.com (note the extra "i").
     minimax: {
         apiKeyVar: "MINIMAX_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.minimax.io/v1", baseUrlVar: "MINIMAX_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "MINIMAX_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MINIMAX_TOKENIZER",
     },
     // StepFun. Intl twin is api.stepfun.ai (.ai vs the .com mainland host).
     stepfun: {
         apiKeyVar: "STEP_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.stepfun.com/v1", baseUrlVar: "STEPFUN_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "STEPFUN_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "STEPFUN_TOKENIZER",
     },
     // Baichuan — single host.
     baichuan: {
         apiKeyVar: "BAICHUAN_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.baichuan-ai.com/v1", baseUrlVar: "BAICHUAN_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "BAICHUAN_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BAICHUAN_TOKENIZER",
     },
     // Baidu ERNIE via Qianfan v2 (key is a bce-v3/ALTAK-… bearer; base carries /v2).
     qianfan: {
         apiKeyVar: "QIANFAN_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://qianfan.baidubce.com/v2", baseUrlVar: "QIANFAN_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "QIANFAN_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "QIANFAN_TOKENIZER",
     },
     // SiliconFlow aggregator. Mainland twin is api.siliconflow.cn.
     siliconflow: {
         apiKeyVar: "SILICONFLOW_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.siliconflow.com/v1", baseUrlVar: "SILICONFLOW_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "SILICONFLOW_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "SILICONFLOW_TOKENIZER",
     },
     // ModelScope API-Inference aggregator — single host (.cn).
     modelscope: {
         apiKeyVar: ["MODELSCOPE_API_KEY", "MODELSCOPE_TOKEN"], apiKeyRequired: true,
-        baseUrl: "https://api-inference.modelscope.cn/v1", baseUrlVar: "MODELSCOPE_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "MODELSCOPE_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MODELSCOPE_TOKENIZER",
     },
     // First-party Claude via Anthropic's OpenAI-compat endpoint: bearer auth,
@@ -217,7 +217,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // No probe — context/cost come from the @plurnk/plurnk-models catalog.
     anthropic: {
         apiKeyVar: "ANTHROPIC_API_KEY", apiKeyRequired: true,
-        baseUrl: "https://api.anthropic.com/v1", baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "anthropic", tokenizerDefault: "heuristic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
     },
     // AWS Bedrock via its OpenAI-compat endpoint (path is /openai/v1, NOT /v1),
@@ -254,7 +254,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // plain remote server that can NOT be flipped into grammar/slot behavior.
     // PLURNK_API_KEY is an optional bearer (identifies the account server-side).
     plurnk: {
-        baseUrl: "https://plurnk.ai/v1", baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
+        baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
         reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico",
@@ -277,9 +277,10 @@ const firstSet = (env: NodeJS.ProcessEnv, names: readonly string[]): string | un
 
 const resolveUrl = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, label: string, override?: string): string => {
     // per-alias override (PLURNK_BASEURL_<alias>) → base-URL var(s) → env-derived
-    // template → fixed default. The override goes through the same normalization
-    // (flexBaseStrip + chatPath), so an operator pastes the box URL verbatim.
-    const base = override ?? firstSet(env, asList(spec.baseUrlVar)) ?? spec.baseUrlFromEnv?.(env) ?? spec.baseUrl;
+    // template. No in-code default — the endpoint is required operator config.
+    // The override goes through the same normalization (flexBaseStrip + chatPath),
+    // so an operator pastes the box URL verbatim.
+    const base = override ?? firstSet(env, asList(spec.baseUrlVar)) ?? spec.baseUrlFromEnv?.(env);
     if (base === undefined || base.length === 0) {
         const names = asList(spec.baseUrlVar);
         throw new Error(`${label} provider: ${names.length > 0 ? names.join(" or ") : "base URL"} must be set`);

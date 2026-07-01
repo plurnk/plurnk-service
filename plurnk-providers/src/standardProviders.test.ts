@@ -2,7 +2,17 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
-const baseEnv = Object.freeze({ PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDER_RETRY_ATTEMPTS: "0" });
+// Base URLs are REQUIRED (no in-code default) — the fixture supplies the vendor
+// defaults for the providers exercised outside the coverage loop. `openai` is
+// deliberately omitted so its missing-base fail-hard test still fires.
+const baseEnv = Object.freeze({
+    PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDER_RETRY_ATTEMPTS: "0",
+    GROQ_BASE_URL: "https://api.groq.com/openai/v1",
+    DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
+    FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
+    ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+    PLURNK_BASE_URL: "https://plurnk.ai/v1",
+});
 
 // Mock fetch: serves GET /v1/models (the n_ctx probe) and a [DONE] stream for
 // /chat/completions (generate). `nctx` controls the probed window. Records URLs.
@@ -284,18 +294,25 @@ test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/comp
     assert.equal(chatCall(calls), "http://x/v1/chat/completions");
 });
 
-test("fixed-base provider resolves the documented chat-completions URL", async () => {
+test("a provider appends chatPath to its base URL", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://api.deepinfra.com/v1/openai/chat/completions");
 });
 
-test("baseUrlVar overrides the fixed default", async () => {
+test("baseUrlVar supplies the base URL (no in-code default)", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://proxy/openai/v1/chat/completions");
+});
+
+test("a standard provider fails hard when its base URL is unset (no in-code default)", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "" }, "m"),
+        /groq provider: GROQ_BASE_URL must be set/,
+    );
 });
 
 test("every registry entry resolves the chat URL the spec encodes", async () => {
@@ -307,9 +324,10 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
         const keyVar = first(spec.apiKeyVar);
         if (keyVar !== undefined) e[keyVar] = "k";
-        // Entries with no fixed default (openai, bedrock) require their base URL.
+        // Every entry requires its base URL (no in-code default); bedrock also
+        // accepts its BASE_URL var, so setting it here covers all specs.
         const baseVar = first(spec.baseUrlVar);
-        if (spec.baseUrl === undefined && baseVar !== undefined) e[baseVar] = "http://x/v1";
+        if (baseVar !== undefined) e[baseVar] = "http://x/v1";
         return e;
     };
     for (const name of Object.keys(STANDARD_PROVIDERS)) {
@@ -505,7 +523,7 @@ const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =
 
 test("plurnk: with no PLURNK_API_KEY, no Authorization header is sent (keyless local server)", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // default base, no key
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // base from PLURNK_BASE_URL, no key
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal("Authorization" in h, false);
