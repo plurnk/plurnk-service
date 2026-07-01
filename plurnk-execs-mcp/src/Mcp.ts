@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
-import { serverConfig, isInjected, installAllowed, type ServerConfig } from "./config.ts";
+import { serverConfig, isInjected, installAllowed, setAuthHeaders, type ServerConfig } from "./config.ts";
 
 const CLIENT_VERSION = "0.1.0";
 
@@ -40,6 +40,16 @@ export async function closeAll(): Promise<void> {
     const open = [...clients.values()];
     clients.clear();
     await Promise.allSettled(open.map(async (p) => { (await p).close(); }));
+}
+
+// Inject the OAuth bearer (from completeAuth) for a server and evict its cached
+// client so the next connect carries the token (plurnk-execs-mcp#1). This is the
+// correct injection primitive for an env-declared server: it overlays the token
+// on the resolved config (registerServer can't — an env server wins over an
+// injected rival). Any env `_HEADERS` still apply; the token merges over them.
+export function install(server: string, headers: Record<string, string>): void {
+    setAuthHeaders(server, headers);
+    clients.delete(server.toLowerCase());
 }
 
 const msg = (err: unknown): string => (err instanceof Error ? err.message : String(err));

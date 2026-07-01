@@ -133,17 +133,34 @@ export const parseTarget = (
 export const serverNames = (env: NodeJS.ProcessEnv = process.env): string[] =>
     [...new Set([...parse(env).targets.keys(), ...injected.keys()])].sort();
 
+// Runtime-injected Authorization headers — the OAuth bearer from completeAuth().
+// Merged over a server's env `_HEADERS` by serverConfig (http only). This is the
+// injection path for an ENV-declared server: registerServer creates a *new*
+// injected server, but an env server always wins over an injected rival, so a
+// token has to overlay the resolved config, not register beside it
+// (plurnk-execs-mcp#1). Mcp.install() sets these and evicts the cached client.
+const authHeaders = new Map<string, Record<string, string>>();
+
+export const setAuthHeaders = (name: string, headers: Record<string, string>): void => {
+    authHeaders.set(name.toLowerCase(), headers);
+};
+
 // Resolve a server's transport config. Env-declared wins; a runtime-injected
-// server resolves only when no env target claims the name. null when neither does.
+// server resolves only when no env target claims the name. null when neither
+// does. Runtime-injected auth headers overlay an http config's own headers.
 export const serverConfig = (name: string, env: NodeJS.ProcessEnv = process.env): ServerConfig | null => {
     const { targets, envs, headers } = parse(env);
     const key = name.toLowerCase();
     const target = targets.get(key);
-    if (target !== undefined) {
-        return parseTarget(target, {
+    const cfg = target !== undefined
+        ? parseTarget(target, {
             env: jsonRecord(envs.get(key), `${PREFIX}${key.toUpperCase()}_ENV`),
             headers: jsonRecord(headers.get(key), `${PREFIX}${key.toUpperCase()}_HEADERS`),
-        });
+        })
+        : injected.get(key) ?? null;
+    const overlay = authHeaders.get(key);
+    if (cfg !== null && cfg.transport === "http" && overlay !== undefined) {
+        cfg.headers = { ...cfg.headers, ...overlay };
     }
-    return injected.get(key) ?? null;
+    return cfg;
 };

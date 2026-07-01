@@ -51,7 +51,12 @@ PLURNK_MCP_FIGMA_ENV='{"FIGMA_API_KEY":"…"}'
 Two ways a server gets credentials:
 
 - **Static token** — put it where the transport carries it: `PLURNK_MCP_<server>_HEADERS='{"Authorization":"Bearer …"}'` for http, or `PLURNK_MCP_<server>_ENV` for a stdio child. The executor is a pass-through carrier — it never mints or refreshes a token.
-- **OAuth, via service's proposal system** — when an http server demands OAuth, its `connect` returns **401**. The executor can't run an interactive consent round-trip (it's a *producer*), so it emits **`mcp_auth_required`** (`{ server, resource }`) and stops with status `401`. The consumer (plurnk-service) runs the OAuth flow through **its proposal system** — proposes the authorization link, the user consents in the client, the callback is exchanged for a token — then injects that token as a Bearer header (via the hotload `registerServer` route or `_HEADERS`) and re-dispatches. The dance lives in service + client; the executor only surfaces the need and then carries the resulting token. No `authProvider` is wired into the transport, precisely so the interactive leg stays where the UI is.
+- **OAuth** — when an http server demands OAuth, `connect` returns **401** and the executor emits **`mcp_auth_required`** (`{ server, resource }`, status 401). The **executor owns the OAuth protocol** (it has the SDK, config, and transport) and exposes the non-interactive mechanics — no consent round-trip lands here:
+  - **`authorize(server, { redirectUri })`** → `{ authorizationUrl, pkce }` — RFC 9728 discovery + dynamic client registration + PKCE. Returns the URL to open and an opaque `pkce` blob the caller round-trips (no server-side session).
+  - **`completeAuth(server, { code, pkce, redirectUri })`** → `{ headers }` — the authorization-code token exchange, returning the `Authorization: Bearer …` headers.
+  - **`install(server, headers)`** — overlays those headers onto the server's resolved config and evicts the cached client so the next call carries the token. (This is the correct primitive for an env-declared server; `registerServer` can't inject onto one, since an env server wins over an injected rival.)
+
+  The consumer stays a **thin passthrough**: `mcp_auth_required` → `authorize()` → propose the URL through its proposal lifecycle → the **client** opens it (a loopback `redirectUri`) and returns the `code` → `completeAuth()` → `install()` → re-dispatch. Service touches no OAuth mechanics and hosts no HTTP; the client owns the browser leg. No `authProvider` is wired into the transport, so the interactive leg stays where the UI is. Static-token servers (`_HEADERS` / `_ENV`) need none of this.
 
 ## Calling tools
 
