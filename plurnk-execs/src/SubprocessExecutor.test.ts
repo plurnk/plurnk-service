@@ -110,6 +110,19 @@ test("probe: missing binary → unavailable with actionable detail", async () =>
     assert.match(String(detail), /not found on PATH/);
 });
 
+test("probe honors a pre-aborted signal → unavailable, no child spawned (#16)", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const { available } = await new BinExec("node").probe(ac.signal);
+    assert.equal(available, false);
+});
+
+test("probe accepts a live signal and still reports version when not aborted (#16)", async () => {
+    const { available, detail } = await new BinExec("node").probe(new AbortController().signal);
+    assert.equal(available, true);
+    assert.match(String(detail), /^v?\d+\./);
+});
+
 test("sh: stdout streamed, channels closed, exit 0", async () => {
     const { result, out, states, events } = await exec("sh", "echo hello");
     assert.deepEqual(result, { status: 200, exitCode: 0 });

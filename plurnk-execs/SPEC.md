@@ -56,13 +56,13 @@ The executor declares its channels; the consuming scheme seeds the exec entry fr
 interface RuntimeAvailability { available: boolean; detail?: string; }
 
 abstract class BaseExecutor {
-    async probe(): Promise<RuntimeAvailability> { return { available: true }; }  // default: available
+    async probe(signal?: AbortSignal): Promise<RuntimeAvailability> { return { available: true }; }  // default: available
 }
 ```
 
 `probe()` reports whether the runtime's *environment* is usable here — distinct from whether the *package* is installed (`discover()`). Pure / in-process runtimes (node, sqlite) inherit the available default; runtimes depending on an external binary (`python` → `python3 --version`) or config (`search` → `SEARXNG_URL`) override. `SubprocessExecutor` probes its `binary` getter (`null` = always available).
 
-Consumer contract (plurnk-service#181): probe **once at boot, per package** (not per tag — stamp all of a package's tags with the one result), **concurrently under a per-probe timeout**, and **cache**. `probe()` MAY reject; the consumer treats rejection as `{ available: false, detail: <error> }`, so a buggy probe degrades only its runtime. The model is offered a positive list of available runtimes; an attempt at an unavailable one returns **501 carrying `detail`** (so `detail` is model-facing — terse and actionable). A configured default runtime that probes unavailable is a **fail-hard boot error**.
+Consumer contract (plurnk-service#181): probe **once at boot, per package** (not per tag — stamp all of a package's tags with the one result), **concurrently under a per-probe timeout**, and **cache**. The per-probe deadline/cancellation is delivered as the optional **`signal`** — a probe that spawns a child or opens a connection MUST hand `signal` to it, so a resolved or timed-out probe **reaps** it immediately (else an in-flight `--version` write can `EPIPE` after host teardown, plurnk-execs#16). `signal` is ignore-safe: a probe that spawns nothing needs nothing. `probe()` MAY reject; the consumer treats rejection as `{ available: false, detail: <error> }`, so a buggy probe degrades only its runtime. The model is offered a positive list of available runtimes; an attempt at an unavailable one returns **501 carrying `detail`** (so `detail` is model-facing — terse and actionable). A configured default runtime that probes unavailable is a **fail-hard boot error**.
 
 ### §2.3 Effect (proposal gating)
 

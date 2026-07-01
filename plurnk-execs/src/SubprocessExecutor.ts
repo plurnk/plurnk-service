@@ -50,21 +50,24 @@ export default class SubprocessExecutor extends BaseExecutor {
         return "host";
     }
 
-    override async probe(): Promise<RuntimeAvailability> {
+    override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
         const bin = this.binary;
         if (bin === null) return { available: true };
-        // No internal deadline. The per-probe timeout is the consumer's — set
-        // once from its env and applied uniformly across the family (SPEC §2.2);
-        // the executor stays oblivious to deadlines here exactly as it does for
-        // run() (SPEC §2.5). A timed-out probe is surfaced consumer-side as the
-        // rejection→unavailable it already treats any probe failure as.
+        if (signal?.aborted) return { available: false };
+        // No internal deadline — the per-probe timeout is the consumer's (SPEC
+        // §2.2), handed in as `signal`. We pass it to spawn so a resolved or
+        // timed-out probe REAPS its child at once; no in-flight `--version` write
+        // can EPIPE after host teardown (plurnk-execs#16). stdin/stderr are
+        // /dev/null'd — only stdout is read, for the version detail.
         return new Promise<RuntimeAvailability>((resolve) => {
             let settled = false;
             const done = (r: RuntimeAvailability): void => { if (!settled) { settled = true; resolve(r); } };
             let out = "";
-            const child = spawn(bin, ["--version"]);
+            const child = spawn(bin, ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"] });
             child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
-            child.on("error", () => done({ available: false, detail: `${bin} not found on PATH` }));
+            child.on("error", (err) => done((err as NodeJS.ErrnoException).code === "ABORT_ERR"
+                ? { available: false }
+                : { available: false, detail: `${bin} not found on PATH` }));
             child.on("close", (code) => done(code === 0
                 ? { available: true, detail: out.trim().split("\n")[0] || undefined }
                 : { available: false, detail: `${bin} --version exited ${code}` }));

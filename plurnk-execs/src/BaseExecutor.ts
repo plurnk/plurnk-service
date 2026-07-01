@@ -71,7 +71,14 @@ export default abstract class BaseExecutor implements SchemeHandler {
     // MAY reject — the consumer treats a rejection as `{ available: false }` —
     // but returning a crafted `{ available: false, detail }` for an expected
     // miss gives a better model-facing reason than a raw error.
-    async probe(): Promise<RuntimeAvailability> {
+    //
+    // `signal` carries the consumer's per-probe deadline/cancellation. An
+    // override that spawns a child (or opens a connection) MUST hand it to that
+    // child so a resolved or timed-out probe REAPS it at once — otherwise an
+    // in-flight `--version` write can EPIPE after the host tears down
+    // (plurnk-execs#16). Optional and ignore-safe: a probe that spawns nothing
+    // needs nothing.
+    async probe(_signal?: AbortSignal): Promise<RuntimeAvailability> {
         return { available: true };
     }
 
