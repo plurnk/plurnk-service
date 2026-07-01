@@ -29,7 +29,7 @@ const invoke = async (
     const states: Capture["states"] = [];
     const events: TelemetryEvent[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: null,
+        runtime, command, cwd: null, target: null,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => writes.push({ channel, chunk }),
         setState: (channel, state) => states.push({ channel, state }),
