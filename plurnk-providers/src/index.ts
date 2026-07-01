@@ -2,7 +2,6 @@ export type {
     ChatMessage,
     FinishReason,
     Provider,
-    ProviderAlias,
     ProviderAssistant,
     ProviderFactory,
     ProviderOptions,
@@ -10,9 +9,13 @@ export type {
     ProviderUsage,
 } from "./types.ts";
 
+// Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases (#27), so
+// the "." surface is unchanged for existing importers and there's one source of
+// truth for the parser (thin clients depend on that package directly).
+export type { ProviderAlias } from "@plurnk/plurnk-aliases";
+export { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-aliases";
+
 export {
-    parseAliasesFromEnv,
-    resolveActiveAlias,
     instantiateProvider,
     loadActiveProvider,
     resetDiscoveryCache,

@@ -97,12 +97,8 @@ export interface Provider {
     costFor(usage: ProviderUsage): number;
 }
 
-export interface ProviderAlias {
-    readonly alias: string;     // lowercase, .env key suffix downcased
-    readonly provider: string;  // "openai", "openrouter", "ollama", etc.
-    readonly model: string;     // provider-native id; may contain "/"
-    readonly baseUrl?: string;  // PLURNK_BASEURL_<alias>: per-alias endpoint override (local boxes)
-}
+// ProviderAlias moved to @plurnk/plurnk-aliases (the zero-dep parser, #27);
+// index.ts re-exports it so the "." surface is unchanged.
 
 // Per-alias instantiation overrides, threaded from the alias cascade into the
 // factory. `baseUrl` lets two aliases on the SAME provider name (openai, ollama)

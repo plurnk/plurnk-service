@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.22.0",
+    "version": "0.23.0",
     "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
     "keywords": [
         "plurnk",
@@ -51,6 +51,7 @@
     },
     "dependencies": {
         "@plurnk/gbnf": "0.1.1",
+        "@plurnk/plurnk-aliases": "0.1.0",
         "@plurnk/plurnk-models": "0.2.0",
         "gpt-tokenizer": "^3.4.0",
         "llama-tokenizer-js": "^1.2.2"
