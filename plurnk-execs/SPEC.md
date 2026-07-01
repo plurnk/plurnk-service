@@ -31,7 +31,7 @@ interface ExecArgs {
     runtime: string;            // matched tag; multi-tag executors branch on it
     command: string;            // EXEC body: shell line / source / search query
     cwd: string | null;         // process working dir (session workspace); null for logical runtimes
-    target: string | null;      // parsed EXEC (target) slot — the data source, resolved vs cwd; null if none
+    target: string | null;      // parsed EXEC (target) slot, interpreted per-runtime (data: input+body=program / executable: program+body=stdin); resolved vs cwd; null if none
     signal: AbortSignal;        // cancellation — executors must honor it
     write: (channel: string, chunk: string) => void;          // write a chunk to a declared channel
     setState: (channel: string, state: ChannelState) => void; // drive a declared channel's lifecycle

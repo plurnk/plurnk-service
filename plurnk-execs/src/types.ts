@@ -48,12 +48,16 @@ export interface ExecArgs {
     // runtimes spawn in it. null for logical runtimes (search) that touch no
     // filesystem.
     cwd: string | null;
-    // The parsed EXEC `(target)` slot — the data source the op names: jq's input
-    // file, sqlite's db, wasm's module — resolved relative to `cwd`. null when the
-    // op names no target (bare `EXEC[sh]:…`, inline `EXEC[jq]:…`, `:memory:`
-    // sqlite). Kept distinct from `cwd` so a data-source runtime receives BOTH the
-    // workspace and the source rather than one overloaded onto the other
-    // (plurnk-execs#15).
+    // The parsed EXEC `(target)` slot — a referenced resource, interpreted
+    // **per-runtime** (plurnk-execs#15). Each executor maps `(target, command)`
+    // onto its own tool's CLI; the framework passes both raw and parses neither:
+    //   - a *data* runtime reads `target` as the input and `command` as the
+    //     program — jq `(file):filter`, sqlite `(db):SQL`, wasm `(module):…`;
+    //   - an *executable* runtime runs `target` as the program and `command` as
+    //     its **stdin** — sh `(cmdline):stdin`, python `(script):stdin`.
+    // Resolved relative to `cwd`; null when the op names none (bare
+    // `EXEC[sh]:…`, inline `EXEC[jq]:…`, `:memory:` sqlite). Kept distinct from
+    // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child
     // gets EXACTLY this env — the consumer scopes out its own secrets (provider
