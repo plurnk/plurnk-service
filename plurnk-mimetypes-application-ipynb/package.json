@@ -49,7 +49,7 @@
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "0.16.0"
+        "@plurnk/plurnk-mimetypes": "0.16.1"
     },
     "dependencies": {
         "jsonc-parser": "^3.3.1"
