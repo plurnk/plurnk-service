@@ -28,12 +28,17 @@ export default class Jq extends BaseExecutor {
         return target ? "read" : "pure";
     }
 
-    override async probe(): Promise<RuntimeAvailability> {
+    override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
+        if (signal?.aborted) return { available: false };
         return new Promise((resolve) => {
             let out = "";
-            const child = spawn("jq", ["--version"], { signal: AbortSignal.timeout(3000) });
+            // Honor the consumer's per-probe signal so a resolved/timed-out probe
+            // reaps the child (plurnk-execs#16); /dev/null stdin+stderr.
+            const child = spawn("jq", ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"] });
             child.stdout?.on("data", (c: Buffer) => { out += c.toString("utf8"); });
-            child.on("error", () => resolve({ available: false, detail: "jq not on PATH" }));
+            child.on("error", (err) => resolve((err as NodeJS.ErrnoException).code === "ABORT_ERR"
+                ? { available: false }
+                : { available: false, detail: "jq not on PATH" }));
             child.on("close", (code) => resolve(code === 0
                 ? { available: true, detail: out.trim() || "jq" }
                 : { available: false, detail: `jq --version exited ${code}` }));
