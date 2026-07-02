@@ -155,6 +155,28 @@ test("file.edit: creates a new file on accept (target doesn't exist)", async () 
     });
 });
 
+test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent dirs and lands", async () => {
+    // The fan-out digest's write_failed: applyResolution wrote with no mkdir, so any accepted
+    // proposal into a fresh subdir died on ENOENT — the model saw a bare 400 and parked on a
+    // worker that never existed. The write-back edge owns its parents now.
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "tasks/nested/extract_config_values.md";
+        const stmt = fileEditStmt(target, "# task\n");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200, "the accept applies — never write_failed on a missing parent");
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, "# task\n");
+    });
+});
+
 test("file.edit: refuses traversal escape", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");

@@ -1,5 +1,5 @@
-import { realpath, stat, writeFile } from "node:fs/promises";
-import { relative, isAbsolute, join, matchesGlob, sep } from "node:path";
+import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -288,6 +288,9 @@ export default class File {
             return { status: 409, outcome: `write_conflict: ${relPath} changed on disk since the proposal (expected ${existed ? baseSig : "absent"}, found ${currentSig ?? "absent"}) — re-read and re-propose` };
         }
         try {
+            // A write into a not-yet-existing subtree creates it — an accepted proposal must not
+            // die on a missing parent dir (the fan-out digest: tasks/… write_failed on ENOENT).
+            await mkdir(dirname(canonical), { recursive: true });
             await writeFile(canonical, patched, "utf8");
         } catch (err) {
             return {

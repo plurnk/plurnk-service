@@ -28,7 +28,7 @@ import { seedDemoFixture } from "./_fixture.ts";
 // holds later turns ~3316t; with NO curation the log grows the packet past ~4200t over four turns. 3900
 // sits in that window — ~360t of curation headroom over the floor, well below the no-curation runaway.
 // Bump again when the sysprompt grows.
-const CEILING = 4700; // floor + the shipped personality section (~800 tokens, PLURNK_POLICY in test:demo) + headroom
+const CEILING = 6100; // measured turn-1 floor 5248 (personality section in-packet, PLURNK_POLICY in test:demo) + working headroom
 // The no-curation runaway: where the log accumulates over the loop if the model NEVER folds (~floor
 // 3540 + the four-turn log growth, ~683t at this sysprompt → ~4220). The success contract is INTENT,
 // not a token-perfect peak: the model can't hit an exact ceiling (one FOLD drops a couple hundred
