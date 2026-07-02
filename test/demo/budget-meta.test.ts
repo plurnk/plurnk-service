@@ -26,8 +26,8 @@ import { liveSession, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
-const FLOOR_CEILING = 3500; // just above the prod sysprompt floor (~3100) — the small fixtures must curate
-const JUMBO_CEILING = 7000; // TEMP probe: above the ~4921 floor
+const FLOOR_CEILING = 4300; // just above the prod sysprompt floor (~3100 + the ~800-token personality section, PLURNK_POLICY in test:demo) — the small fixtures must curate
+const JUMBO_CEILING = 7800; // TEMP probe: above the ~4921 floor + the ~800-token personality section
 
 interface BudgetRun {
     db: Db;
