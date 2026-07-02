@@ -43,10 +43,10 @@ export default class Mock implements Provider {
     get contextSize(): number | null { return this.#contextSize; }
     get model(): string { return "mock"; }
 
-    // Heuristic tokenizer. Mock is test-only; real provider siblings ship
-    // family-specific tokenizers.
+    // Heuristic tokenizer (chars/2 upper bound, matching the framework's
+    // fallback). Mock is test-only; real provider siblings ship exact counts.
     countTokens(text: string): number {
-        return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+        return text.length === 0 ? 0 : Math.ceil(text.length / 2);
     }
 
     // Mock is free.

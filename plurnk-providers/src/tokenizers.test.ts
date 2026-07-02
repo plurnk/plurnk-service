@@ -4,11 +4,11 @@ import { tokenizerFor, parseTokenizerFamily, tokenizerByPublisher, type Tokenize
 
 // — tokenizerFor: the three synchronous strategies (SPEC §2) —
 
-test("tokenizerFor 'heuristic': empty → 0, else ceil(len/4)", () => {
+test("tokenizerFor 'heuristic': empty → 0, else the ceil(len/2) upper bound", () => {
     const count = tokenizerFor("heuristic");
     assert.equal(count(""), 0);
-    assert.equal(count("four"), 1);   // ceil(4/4)
-    assert.equal(count("12345"), 2);  // ceil(5/4)
+    assert.equal(count("four"), 2);   // ceil(4/2)
+    assert.equal(count("12345"), 3);  // ceil(5/2)
 });
 
 test("tokenizerFor 'cl100k': empty → 0, real BPE counts otherwise", () => {

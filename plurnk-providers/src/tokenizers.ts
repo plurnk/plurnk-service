@@ -14,7 +14,11 @@ export type TokenizerFamily = "heuristic" | "cl100k" | "llama";
 
 export type CountTokens = (text: string) => number;
 
-const heuristic: CountTokens = (text) => (text.length === 0 ? 0 : Math.ceil(text.length / 4));
+// chars/2 is a deliberate UPPER BOUND, not an estimate: real agentic text runs
+// ~2.9 chars/token (gemma SP-256k) to ~3.2 (deepseek BPE-128k), so /4 silently
+// UNDERcounted 20-27% — the dangerous direction for window math. A fallback may
+// overcount (refuse a too-big prompt safely) but must never undercount.
+const heuristic: CountTokens = (text) => (text.length === 0 ? 0 : Math.ceil(text.length / 2));
 const cl100k: CountTokens = (text) => (text.length === 0 ? 0 : encodeCl100k(text).length);
 const llama: CountTokens = (text) => (text.length === 0 ? 0 : llamaTokenizer.encode(text).length);
 

@@ -33,6 +33,10 @@ interface Provider {
     countTokens(text: string): number;
     costFor(usage: ProviderUsage): number;  // pico-USD (1e-12 USD)
 
+    // OPTIONAL capability: exact tokenization served by the backend's own vocab
+    // (llama-server /tokenize). Probe-gated — undefined means the backend can't.
+    tokenize?(text: string): Promise<number[]>;
+
     // Transport. `runId` is REQUIRED: the opaque, stable identity of the
     // consumer's work stream — providers may key backend affinity on it and
     // never interpret it. `grammar` is an optional GBNF string for
@@ -83,7 +87,8 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 
 [^tools]: A provider that wants to drive native tool-calling (OpenAI `tool_calls`, Anthropic `tool_use`) would have to normalize those emissions back into a plurnk DSL string at the boundary. No provider does this and it is out of scope for v0 — tools-in-body sidesteps the whole problem. The clause is recorded only so a future native-tools mode has a defined contract.
 - `assistant.usage` is authoritative and follows the invariant above. Fill `0`s when the wire response omits a breakdown.
-- `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input.
+- `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input. Without an exact tokenizer family configured it is the **chars/2 UPPER BOUND** — deliberately conservative (real agentic text measures ~2.9–3.2 chars/token on gemma/deepseek, so the former chars/4 silently UNDERcounted 20–27%; a fallback may overcount, never under) — and it is **surfaced at construction** (`process.emitWarning`, code `PLURNK_TOKENIZER_HEURISTIC`), never silent. Exact counting is the tokenizer seam's job (mimetypes family), fed by `tokenize()` where available.
+- `tokenize?` is an **optional async capability**: token ids in the model's real vocabulary, served by the backend itself (llama-server's native root `/tokenize`, surfaced when the §11 probe fingerprints a llama-server and `detectLlamaServer` isn't false). `tokenize === undefined` is the honest "backend can't" signal. Exact-counting consumers prefer it over any client-side tokenizer data — the local model's own vocab needs no bundled `tokenizer.json` at all.
 - `costFor` is **pure**, returns pico-USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.

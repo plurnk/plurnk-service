@@ -67,11 +67,15 @@ test("openai: OPENAI_TOKENIZER=cl100k_base enables real tokenization", async () 
     assert.equal(p!.countTokens("hello world"), 2);
 });
 
-test("openai: defaults to heuristic tokenizer", async () => {
+test("openai: defaults to the chars/2 heuristic upper bound, and SURFACES it", async () => {
     mockEndpoint();
+    const warned: Array<string | Error> = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     const s = "The quick brown fox.";
-    assert.equal(p!.countTokens(s), Math.ceil(s.length / 4));
+    assert.equal(p!.countTokens(s), Math.ceil(s.length / 2));
+    // Never a silent fallback: the heuristic announces itself at construction.
+    assert.ok(warned.some((w) => String(w).includes("chars/2 upper bound")), `expected heuristic warning; got ${warned.join("; ")}`);
 });
 
 // — context-window resolution (issue #6) —
@@ -190,6 +194,35 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
     assert.equal(sent.grammar, 'root ::= "x"?');
     assert.equal(sent.repeat_penalty, 1.15);
     assert.equal(sent.id_slot, 0); // fingerprint wires internal slot affinity too
+});
+
+test("openai: llama-server fingerprint surfaces the tokenize() capability (native /tokenize, model's own vocab)", async () => {
+    const tokenizeCalls: Array<{ url: string; body: string }> = [];
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_vocab: 262144, n_ctx: 49152 } }] }), { status: 200 });
+        if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        if (u.endsWith("/tokenize")) { tokenizeCalls.push({ url: u, body: String(init?.body) }); return new Response(JSON.stringify({ tokens: [101, 7, 42] }), { status: 200 }); }
+        throw new Error(`unexpected fetch ${u}`);
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    assert.notEqual(p!.tokenize, undefined);
+    const ids = await p!.tokenize!("hello");
+    assert.deepEqual(ids, [101, 7, 42]);
+    assert.equal(tokenizeCalls[0].url, "http://local/tokenize"); // native root endpoint, not /v1
+    assert.deepEqual(JSON.parse(tokenizeCalls[0].body), { content: "hello" });
+});
+
+test("openai: non-llama-server endpoint has NO tokenize capability (undefined is the honest signal)", async () => {
+    mockEndpoint({ nctx: 8192 }); // top-level n_ctx, no meta → vLLM-ish, not llama-server
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(p!.tokenize, undefined);
+});
+
+test("plurnk: detectLlamaServer=false never surfaces tokenize, even when the endpoint fingerprints", async () => {
+    mockEndpoint({ metaNctx: 32768, modelId: "plurnk" });
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    assert.equal(p!.tokenize, undefined);
 });
 
 test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", async () => {

@@ -46,6 +46,10 @@ export type OpenAICompatConfig = {
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
+    // Backend-served exact tokenization (llama-server /tokenize). When set, the
+    // provider exposes the optional `tokenize()` capability — the model's OWN
+    // vocab, no client-side tokenizer data needed; default unset (capability absent).
+    tokenizeUrl?: string;
     // The side-channel reasoning budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_REASONING_BUDGET, read via reasoningBudgetFromEnv):
     // 0 off, -1 adaptive, N capped. The provider maps it to the backend's
@@ -98,7 +102,8 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
     return "high";
 };
 
-const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 4));
+// chars/2 upper bound (see ./tokenizers.ts) — overcounts safely, never under.
+const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 2));
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these, or it could bypass grammar transport, the stream/JSON choice, or slot
@@ -139,6 +144,12 @@ export default class OpenAICompatProvider implements Provider {
     #slotCount: number | null;
     #retryAttempts: number;
 
+    // Optional capability (SPEC §2): exact tokenization served by the backend's
+    // own vocab. Assigned in the constructor ONLY when the config carries a
+    // tokenizeUrl (llama-server), so `provider.tokenize === undefined` remains
+    // the honest capability signal for every other backend.
+    tokenize?: (text: string) => Promise<number[]>;
+
     constructor(config: OpenAICompatConfig) {
         this.#model = config.model;
         this.#url = config.url;
@@ -158,6 +169,23 @@ export default class OpenAICompatProvider implements Provider {
         this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
+        const { tokenizeUrl } = config;
+        if (tokenizeUrl !== undefined) {
+            this.tokenize = async (text: string): Promise<number[]> => {
+                const res = await fetch(tokenizeUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...this.#headers },
+                    body: JSON.stringify({ content: text }),
+                    signal: AbortSignal.timeout(this.#fetchTimeoutMs),
+                });
+                if (!res.ok) throw new Error(`${this.#source}: tokenize endpoint returned ${res.status}`);
+                const { tokens } = (await res.json()) as { tokens?: unknown };
+                if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "number")) {
+                    throw new Error(`${this.#source}: tokenize endpoint returned no token array`);
+                }
+                return tokens;
+            };
+        }
     }
 
     get contextSize(): number | null { return this.#contextSize; }

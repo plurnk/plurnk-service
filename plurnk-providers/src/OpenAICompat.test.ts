@@ -72,7 +72,7 @@ test("identity getters and defaults", () => {
     assert.equal(p.model, "m");
     assert.equal(p.contextSize, null); // default
     assert.equal(p.countTokens(""), 0);
-    assert.equal(p.countTokens("four"), 1); // default heuristic ceil(4/4)
+    assert.equal(p.countTokens("four"), 2); // default heuristic ceil(4/2) upper bound
     assert.equal(p.costFor({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free
 });
 

@@ -99,8 +99,16 @@ export interface Provider {
     // server splits --ctx-size across slots and reports the divided value).
     readonly contextSize: number | null;
     readonly model: string;
-    // Provider-owned tokenizer. Synchronous, non-negative integer.
+    // Provider-owned tokenizer. Synchronous, non-negative integer. Without an
+    // exact family configured this is the chars/2 UPPER BOUND (surfaced at
+    // construction, never silent) — safe for refusal math, not an exact count.
     countTokens(text: string): number;
+    // OPTIONAL capability: exact tokenization served by the backend's own vocab
+    // (llama-server /tokenize) — token ids in the model's real vocabulary.
+    // Present ONLY when the backend exposes such an endpoint (probe-gated);
+    // `tokenize === undefined` means the backend can't. Exact-counting
+    // consumers (the tokenizer seam) prefer this over any client-side data.
+    tokenize?(text: string): Promise<number[]>;
     // Provider-owned cost calculation. Returns pico-USD (1e-12 USD).
     // Returns 0 for siblings/models with no known rates.
     costFor(usage: ProviderUsage): number;

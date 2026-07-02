@@ -363,6 +363,15 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const headers = resolveHeaders(spec, env, name);
 
     const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
+    // A heuristic fallback is never silent: countTokens will be a chars/2 UPPER
+    // BOUND, not an exact count — surfaced so the operator knows window math is
+    // conservative until an exact tokenizer (family var, or the seam) is wired.
+    if (family === "heuristic") {
+        process.emitWarning(
+            `${name} provider: no exact tokenizer for "${model}" — countTokens is a chars/2 upper bound (set ${spec.tokenizerEnvVar} for an exact family)`,
+            { code: "PLURNK_TOKENIZER_HEURISTIC" },
+        );
+    }
     const url = resolveUrl(spec, env, name, baseUrlOverride);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
 
@@ -378,6 +387,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let grammarStyle: GrammarStyle = spec.grammarStyle ?? "none";
     let supportsSlotPinning = false;
     let slotCount: number | null = null;
+    let tokenizeUrl: string | undefined;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         const probe = await probeModels(url, headers, wireModel, fetchTimeoutMs);
@@ -386,6 +396,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             grammarStyle = "llamacpp";
             supportsSlotPinning = true;
             slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
+            // llama-server serves its NATIVE /tokenize at the root (like /props):
+            // the model's own vocab, exact — surfaced as the tokenize() capability.
+            tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
             // llama-server ignores `think` — its working reasoning toggle is the
             // jinja chat_template_kwargs.enable_thinking, including the explicit
             // FALSE at budget 0 that grammar-constrained loops require (§13).
@@ -434,5 +447,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,
+        tokenizeUrl,
     });
 };
