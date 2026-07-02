@@ -116,9 +116,22 @@ the provider's `grammar_unenforced` gate is the backstop either way.
   turns. No provider change needed from Phase 1.
 - **The one missing setting is the SERVICE's: send `max_tokens`.** Per #29 it
   deliberately sends none; per T2/T3 the decode cap is the ONLY cross-backend
-  bound and the only place the R+D budget can live. F6 arithmetic: R+D = 1024
-  bounds the gemma ramble tail at ~6s/known cost while giving 12× headroom over
-  a conformant turn; thinking-on postures (if ever enabled) need ≥4096.
+  bound and the only place the R+D budget can live.
+  - **CORRECTION (user, 2026-07-03; supersedes the initial 1024 rec):** 1024 was
+    calibrated on ONE small-task packet (~70-tok turns) — but legitimate
+    documents (an EDIT carrying a file body, multi-op turns) run to thousands of
+    tokens; a typical-turn-sized cap forces real content through a straw and
+    422s legitimate work. The cap must be sized to the LARGEST legitimate
+    document, not the typical turn: **window-derived** — `max_tokens =
+    min(contextSize − promptTokens − safety, policy ceiling)` — generous by
+    default, still finite. Its job is bounding the DEGENERATE tail, not
+    budgeting the typical case.
+  - **`max_tokens` allocates NOTHING between reasoning and content** — it is one
+    undifferentiated pool (llama-server n_predict counts think tokens; fireworks
+    counts in-band reasoning). The R/D split is controlled ONLY by the reasoning
+    switches: reasoning OFF (the shipped default) ⇒ R≈0 ⇒ the whole pool is
+    content. Reasoning ON shares the pool, and an over-thinking model starves
+    its own document — reasoning postures therefore REQUIRE generous caps.
 - **gemma's 1/5 ramble tail** is bounded-cost once capped, and the endpoint's
   existing reject→escalate/retry policy converts it to ~99% effective
   conformance. No grammar change proposed — the tail is a free-zone property,
