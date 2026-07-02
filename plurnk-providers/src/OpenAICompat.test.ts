@@ -136,6 +136,41 @@ test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", as
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
+test("reasoningStyle 'effort_explicit': 0 SENDS none, -1 SENDS adaptive, N sends the tier (#30)", async () => {
+    for (const [budget, expected] of [[0, "none"], [-1, "adaptive"], [5000, "high"]] as Array<[number, string]>) {
+        const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: budget, retryAttempts: 0, reasoningStyle: "effort_explicit" });
+        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+        await p.generate({ runId: "r", messages: [] });
+        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `budget ${budget}`);
+        mock.restoreAll();
+    }
+});
+
+test("response_format grammar carries the near-greedy temperature DEFAULT; caller sampling overrides it (#30)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    // default rides with the grammar (non-streamed demotion path)
+    let calls = installFetchJson(jsonChoice);
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
+    mock.restoreAll();
+    // explicit caller sampling wins over the default
+    calls = installFetchJson(jsonChoice);
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"', sampling: { temperature: 0.7 } });
+    assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.7);
+    mock.restoreAll();
+    // no grammar → no injected temperature
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [] });
+    assert.equal("temperature" in JSON.parse(calls[0].init.body as string), false);
+});
+
+test("llamacpp grammar path injects NO temperature default (server-side sampling stands)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal("temperature" in JSON.parse(calls[0].init.body as string), false);
+});
+
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
     const p = new OpenAICompatProvider({ model: "managed-model", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

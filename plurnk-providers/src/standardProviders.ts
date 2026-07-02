@@ -127,10 +127,14 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "TOGETHER_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "TOGETHER_TOKENIZER",
     },
+    // reasoningStyle "effort_explicit", NOT "none": fireworks serves reason-by-
+    // DEFAULT models (DeepSeek V4 defaults 'high'), so budget 0 must SEND
+    // reasoning_effort:"none" — omitting the field leaves the reasoner live inside
+    // a constrained decode until max_tokens (#30; 0/5 → 30/30 measured).
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,

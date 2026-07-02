@@ -16,10 +16,13 @@ import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
 // How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
 // -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4);
-// the per-style mapping lives in #reasoningBody. Two non-obvious ones: "template"
+// the per-style mapping lives in #reasoningBody. Non-obvious ones: "template"
 // ALWAYS emits enable_thinking — the explicit false is llama-server's only working
-// off-switch (§13); "anthropic" uses the `thinking` object and IGNORES reasoning_effort.
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "template" | "anthropic";
+// off-switch (§13); "anthropic" uses the `thinking` object and IGNORES reasoning_effort;
+// "effort_explicit" (fireworks) sends the EXPLICIT "none"/"adaptive" enum values at
+// 0/-1 instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults 'high')
+// keep reasoning when the field is omitted, fatal under an active grammar (#30).
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
 
 // How a caller-supplied GBNF grammar is carried on the wire — backends accept
 // different shapes for the SAME GBNF (probed/configured, never guessed; §13); the
@@ -67,6 +70,13 @@ export type OpenAICompatConfig = {
 // never rely on server launch flags. Probed on llama.cpp b894 + gemma-4-26B
 // (plurnk-providers#9; reference: plurnk-grammar test/llama/gbnf-live.test.ts).
 const GRAMMAR_REPEAT_PENALTY_FLOOR = 1.15;
+
+// Near-greedy temperature DEFAULT for the response_format grammar path (#30):
+// measured on Fireworks DeepSeek V4, reasoning-off grammar runs went 2/5 → 30/30
+// conformant-and-terminating adding temperature 0.2. A DEFAULT, not a floor —
+// spread under the caller's `sampling`, so an explicit temperature wins (policy
+// stays the consumer's; this only covers the no-sampling out-of-the-box call).
+const GRAMMAR_RESPONSE_FORMAT_TEMPERATURE = 0.2;
 
 // Exponential-backoff base for transient-failure retries (#18). Attempt N waits
 // RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
@@ -207,6 +217,14 @@ export default class OpenAICompatProvider implements Provider {
             // effort tiers from a capped budget; adaptive (-1) omits the field
             // (lets the API pick its default depth); off (0) omits.
             case "effort": return b > 0 ? { reasoning_effort: effortFromBudget(b) } : {};
+            // Fireworks enum (low|medium|high|xhigh|max|none|adaptive): 0 and -1
+            // are sent EXPLICITLY — omission leaves a reason-by-default model
+            // (DeepSeek V4: default 'high') reasoning inside a constrained decode
+            // until max_tokens (#30, measured 0/5 → 30/30 conformant with "none").
+            // V4 gotchas: integer efforts 400; low/medium silently promote to high.
+            case "effort_explicit": return b === 0
+                ? { reasoning_effort: "none" }
+                : b > 0 ? { reasoning_effort: effortFromBudget(b) } : { reasoning_effort: "adaptive" };
             // Anthropic compat: explicit thinking object. 0 → disabled; N>0 →
             // enabled with budget_tokens; -1 adaptive → omit (the API default).
             case "anthropic": return b === 0
@@ -376,7 +394,16 @@ export default class OpenAICompatProvider implements Provider {
         if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
 
+        // Assembly order = precedence: grammar-path sampling DEFAULTS (a
+        // response_format grammar needs near-greedy decode, #30) < the caller's
+        // `sampling` < the managed fields (model/messages/reasoning/grammar/
+        // max_tokens/slot), which always win.
+        const grammarSamplingDefaults: Record<string, unknown> =
+            sendGrammar !== undefined && this.#grammarStyle === "response_format"
+                ? { temperature: GRAMMAR_RESPONSE_FORMAT_TEMPERATURE }
+                : {};
         const body: Record<string, unknown> = {
+            ...grammarSamplingDefaults,
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
