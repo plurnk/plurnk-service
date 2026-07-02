@@ -18,18 +18,21 @@ import type {
     EntryData,
     ReadStatement,
     SendStatement,
+    EditStatement,
+    KillStatement,
     UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import type { RenderResult } from "./Browser.ts";
 
-// A fake render foundation: returns a canned rendered page, records the call.
+// A fake render foundation: returns a canned rendered page, records the call
+// (including the request headers threaded through — grammar#46).
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; runId: number }> = [];
+    const calls: Array<{ url: string; runId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
     return {
         calls,
-        render: async (url: string, opts: { runId: number; signal?: AbortSignal }): Promise<RenderResult> => {
-            calls.push({ url, runId: opts.runId });
+        render: async (url: string, opts: { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
+            calls.push({ url, runId: opts.runId, headers: opts.headers });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -79,10 +82,11 @@ const makeCtx = () => {
     };
 };
 
-const urlTarget = (raw: string, pathname: string): UrlPath => ({
+const urlTarget = (raw: string, pathname: string, headers?: [string, string][]): UrlPath => ({
     kind: "url", raw, scheme: raw.startsWith("https") ? "https" : "http",
     username: null, password: null, hostname: "example.com", port: null,
     pathname, params: {}, fragment: null,
+    ...(headers === undefined ? {} : { headers }),
 });
 
 const readStmt = (target: UrlPath | null): ReadStatement => ({
@@ -92,6 +96,14 @@ const readStmt = (target: UrlPath | null): ReadStatement => ({
 const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendStatement => ({
     op: "SEND", suffix: "SEND", signal, target, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
+    position: { line: 0, column: 0 },
+});
+const editStmt = (target: UrlPath | null, body: string | null, lineMarker: EditStatement["lineMarker"] = null): EditStatement => ({
+    op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body,
+    position: { line: 0, column: 0 },
+});
+const killStmt = (target: UrlPath | null, body: string | null = null): KillStatement => ({
+    op: "KILL", suffix: "KILL", signal: null, target, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 
@@ -204,7 +216,7 @@ test("READ: an HTML page is rendered — body is the final DOM, labelled text/ht
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1 }]);
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1, headers: undefined }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1); // single-shot: the whole rendered DOM
     assert.equal(bodyChunks[0].chunk, "<html><body>rendered</body></html>");
@@ -287,6 +299,68 @@ test("SEND with an uninterpreted status → 501", async () => {
     const r = await new Http().send(sendStmt(418, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 501);
     assert.equal(r.error?.source, "scheme:http");
+});
+
+// ── request headers + method verbs (grammar#46) ───────────────────────────
+test("READ: target {…} headers are threaded into the fetch", async () => {
+    const { ctx } = makeCtx();
+    let seenHeaders: RequestInit["headers"];
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenHeaders = init?.headers;
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    const target = urlTarget("https://api.x/v1/me", "/v1/me", [["Authorization", "Bearer T"], ["Accept", "application/json"]]);
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(target), ctx);
+    });
+    assert.deepEqual(seenHeaders, [["Authorization", "Bearer T"], ["Accept", "application/json"]]);
+});
+
+test("READ: headers reach the browser render on an HTML GET (authed page renders authed)", async () => {
+    const { ctx } = makeCtx();
+    const browser = fakeBrowser("<html><body>ok</body></html>");
+    const target = urlTarget("https://app.x/dash", "/dash", [["Authorization", "Bearer T"]]);
+    await withFetch(mockFetch(200, "OK", ["<html></html>"], { "content-type": "text/html" }), async () => {
+        await new Http(browser).read(readStmt(target), ctx);
+    });
+    assert.deepEqual(browser.calls[0].headers, [["Authorization", "Bearer T"]]);
+});
+
+test("EDIT → PUT with the body (method mapping)", async () => {
+    const { ctx, inspect } = makeCtx();
+    let seenMethod = "", seenBody: unknown = null;
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenMethod = init?.method ?? "GET"; seenBody = init?.body ?? null;
+        return new Response("updated", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), '{"done":true}'), ctx);
+        assert.equal(r.status, 102);
+    });
+    assert.equal(seenMethod, "PUT");
+    assert.equal(seenBody, '{"done":true}');
+    assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "updated");
+});
+
+test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
+    const { ctx } = makeCtx();
+    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>), ctx);
+    assert.equal(r.status, 400);
+    assert.equal(r.error?.kind, "no_line_edit");
+});
+
+test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
+    const { ctx } = makeCtx();
+    let seenMethod = "";
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenMethod = init?.method ?? "GET";
+        return new Response(null, { status: 204, statusText: "No Content" });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        const r = await new Http().kill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
+        assert.equal(r.status, 102);
+    });
+    assert.equal(seenMethod, "DELETE");
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────

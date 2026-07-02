@@ -3,16 +3,22 @@
 // It never imports plurnk-service and never touches a raw DB handle (SPEC §5);
 // the substrate is reached only through intent, via the injected caps.
 //
-// Surface:
-//   READ(http(s)://host/path)   — fetch the URL; stream the response body into
-//                                 the `body` channel as it arrives. A streaming
-//                                 read (SPEC §7.1): returns 102 Processing
-//                                 immediately, the subscription accumulates,
-//                                 the model reads the entry on a later turn.
-//   SEND[200](http(s)://...)    — request with a body (POST by default); the
-//                                 response streams back the same way.
+// Surface — the HTTP method is the OP (grammar#46): READ→GET, SEND→POST,
+// EDIT→PUT, KILL→DELETE. Every request streams its response the same way
+// (102 Processing now; the subscription accumulates; the model reads next turn).
+//   READ(http(s)://host/path)   — GET. HTML is rendered; else raw bytes stream.
+//   SEND[200](http(s)://...)    — POST the body; response streams back.
+//   EDIT(http(s)://...):body:   — PUT the body (full-resource replace; no `<L>`).
+//   KILL(http(s)://...)         — DELETE the resource.
 //   SEND[499](http(s)://...)    — cancel an in-flight request (abort the fetch).
-//   SEND[410](http(s)://...)    — delete the cached response entry.
+//   SEND[410](http(s)://...)    — delete the locally cached response entry
+//                                 (loop disposition, NOT an HTTP DELETE — that's KILL).
+//
+// Request headers ride IN the target as trailing `{Key: value}` blocks
+// (grammar#46 — `UrlPath.headers`, ordered pairs), one header per block:
+//   READ(https://api.x/v1{Authorization: Bearer T}{Accept: application/json})
+// The SEND `[code]` is loop disposition (102/200/…), never the HTTP status —
+// the real 2xx/4xx comes back in the response `header`/`body` channels.
 //
 // Network exception: SPEC §5 forbids opening connections "unless specifically
 // a network scheme." This IS that scheme — `fetch` is the whole point. No
@@ -26,6 +32,8 @@ import type {
     SchemeHandler,
     ReadStatement,
     SendStatement,
+    EditStatement,
+    KillStatement,
     UrlPath,
     EntryData,
 } from "@plurnk/plurnk-schemes";
@@ -46,7 +54,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
-    render(url: string, opts: { runId: number; signal?: AbortSignal }): Promise<RenderResult>;
+    render(url: string, opts: { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
 }
 
 export default class Http implements SchemeHandler {
@@ -86,7 +94,28 @@ export default class Http implements SchemeHandler {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// URL target");
         }
-        return this.#fetchStream(statement.target, ctx, undefined);
+        return this.#fetchStream(statement.target, ctx, "GET", undefined);
+    }
+
+    // EDIT → PUT the body (full-resource replace). `<L>` has no meaning against a
+    // remote resource — reject rather than silently ignore the model's intent.
+    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statement.target === null || statement.target.kind !== "url") {
+            return Http.#bad(400, "http", "bad_target", "EDIT requires an http(s):// URL target");
+        }
+        if (statement.lineMarker !== null) {
+            return Http.#bad(400, "http", "no_line_edit", "EDIT on http PUTs the whole body; <L> line-editing a remote resource is unsupported");
+        }
+        return this.#fetchStream(statement.target, ctx, "PUT", statement.body ?? "");
+    }
+
+    // KILL → DELETE the resource. Distinct from SEND[410] (which drops the local
+    // cached entry): KILL is an HTTP DELETE request to the remote.
+    async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statement.target === null || statement.target.kind !== "url") {
+            return Http.#bad(400, "http", "bad_target", "KILL requires an http(s):// URL target");
+        }
+        return this.#fetchStream(statement.target, ctx, "DELETE", statement.body ?? undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC §3.5).
@@ -102,7 +131,7 @@ export default class Http implements SchemeHandler {
         const status = statement.signal;
         if (status === 200) {
             const body = statement.body?.raw ?? "";
-            return this.#fetchStream(statement.target, ctx, body);
+            return this.#fetchStream(statement.target, ctx, "POST", body);
         }
         if (status === 410) {
             const { status: delStatus } = await ctx.entries.delete(statement.target.pathname);
@@ -118,15 +147,17 @@ export default class Http implements SchemeHandler {
         return Http.#bad(501, "http", "unsupported_send", `SEND[${status}] not supported by http`);
     }
 
-    // The streaming core, shared by READ and SEND[200]. Opens the subscription
-    // (registering the abort handle for SEND[499] routing), fetches headers,
-    // then EITHER renders (always-render: a GET of an HTML page is re-acquired
-    // through the browser and its final DOM becomes the body) OR streams the
-    // raw bytes (POST responses and every non-HTML body). Each chunk is labelled
-    // with its real mimetype via notifyChunk. Settles via close().
-    async #fetchStream(target: UrlPath, ctx: SchemeCtx, requestBody: string | undefined): Promise<PassthroughResult> {
+    // The streaming core, shared by every verb. Opens the subscription
+    // (registering the abort handle for SEND[499] routing), fetches, then EITHER
+    // renders (a GET of an HTML page is re-acquired through the browser and its
+    // final DOM becomes the body) OR streams the raw bytes (every non-GET
+    // response and every non-HTML body). Request headers from the target's `{…}`
+    // blocks (grammar#46) ride into both the fetch and the render. Each chunk is
+    // labelled with its real mimetype via notifyChunk. Settles via close().
+    async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
         const url = Http.#urlFrom(target);
         const pathname = target.pathname;
+        const headers = target.headers;  // [key,value][] | undefined — opaque to grammar, honored here
 
         // Local AbortController for force-cancel from outside (SEND[499]).
         const local = new AbortController();
@@ -147,8 +178,9 @@ export default class Http implements SchemeHandler {
 
         try {
             const response = await fetch(url, {
-                method: requestBody === undefined ? "GET" : "POST",
-                body: requestBody,
+                method,
+                body,
+                headers,
                 signal: local.signal,
                 redirect: "follow",
             });
@@ -156,13 +188,13 @@ export default class Http implements SchemeHandler {
 
             // Always-render: a GET of an HTML page is re-acquired through the
             // browser so the body is the final rendered DOM. The probe-fetch
-            // body is discarded — the browser does its own navigation. A POST
-            // never renders (it can't be replayed as a browser navigation).
-            const isHtml = requestBody === undefined
+            // body is discarded — the browser does its own navigation. Only GET
+            // renders; POST/PUT/DELETE can't be replayed as a browser navigation.
+            const isHtml = method === "GET"
                 && /^(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
             if (isHtml) {
                 await response.body?.cancel();
-                const result = await this.#browser.render(url, { runId: ctx.runId, signal: local.signal });
+                const result = await this.#browser.render(url, { runId: ctx.runId, signal: local.signal, headers });
                 await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
                 await ctx.subscriptions.notifyChunk(BODY, result.html, "text/html");
                 await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${result.html.length} chars`);

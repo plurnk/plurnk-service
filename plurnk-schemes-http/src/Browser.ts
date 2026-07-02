@@ -24,6 +24,7 @@ interface PwResponse {
 }
 interface PwPage {
     goto(url: string, opts: { waitUntil: "networkidle"; timeout: number }): Promise<PwResponse | null>;
+    setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
     content(): Promise<string>;
     evaluate<T>(fn: () => T): Promise<T>;
     close(): Promise<void>;
@@ -97,11 +98,16 @@ export default class Browser {
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
         url: string,
-        { runId, signal, timeout = numEnv("PLURNK_HTTP_FETCH_TIMEOUT", DEFAULT_TIMEOUT_MS) }:
-            { runId: number; signal?: AbortSignal; timeout?: number },
+        { runId, signal, headers, timeout = numEnv("PLURNK_HTTP_FETCH_TIMEOUT", DEFAULT_TIMEOUT_MS) }:
+            { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; timeout?: number },
     ): Promise<RenderResult> {
         const context = await this.#getContext(runId);
         const page = await context.newPage();
+        // Request headers (auth/accept) apply to the navigation too, so an authed
+        // HTML page renders authenticated. Ordered pairs collapse to a record here
+        // — Playwright's per-page header API is single-valued (dup names not a
+        // render concern; the byte-path fetch preserves them).
+        if (headers && headers.length > 0) await page.setExtraHTTPHeaders(Object.fromEntries(headers));
         // Abort cascades by closing the page — an in-flight goto rejects with
         // "Target closed", surfacing promptly instead of blocking on timeout.
         const onAbort = () => { page.close().catch(() => {}); };
