@@ -6,7 +6,7 @@ import Ollama from "./Ollama.ts";
 // to exercise one specific knob override its key on top of this.
 const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
-    PLURNK_FETCH_TIMEOUT: "600000",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
     PLURNK_PROVIDERS_REASONING_BUDGET: "0",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
 });
@@ -29,7 +29,7 @@ test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", asyn
 });
 
 test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
-    const rest = { PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
+    const rest = { PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
     assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
@@ -47,17 +47,17 @@ test("fromEnv: a per-alias baseUrl override normalizes a bare host:port like OLL
     assert.equal(calls[0], "http://hazel2:11434/api/show");
 });
 
-test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is unset", async () => {
+test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is unset", async () => {
     await assert.rejects(
         () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "m"),
-        /PLURNK_FETCH_TIMEOUT must be set/,
+        /PLURNK_PROVIDERS_FETCH_TIMEOUT must be set/,
     );
 });
 
-test("fromEnv: throws when PLURNK_FETCH_TIMEOUT is non-numeric", async () => {
+test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is non-numeric", async () => {
     await assert.rejects(
-        () => Ollama.fromEnv({ ...baseEnv, PLURNK_FETCH_TIMEOUT: "abc" }, "m"),
-        /PLURNK_FETCH_TIMEOUT must be a non-negative integer/,
+        () => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_FETCH_TIMEOUT: "abc" }, "m"),
+        /PLURNK_PROVIDERS_FETCH_TIMEOUT must be a non-negative integer/,
     );
 });
 

@@ -34,7 +34,7 @@ export default class Ollama {
         // OLLAMA_HOST, which may be a bare host:port with no scheme (normalized
         // below). The chosen base drives BOTH the /api/show probe and the chat URL.
         const rawBase = requireEnv(options?.baseUrl || env.OLLAMA_BASE_URL || env.OLLAMA_HOST, "OLLAMA_BASE_URL or OLLAMA_HOST (or a PLURNK_BASEURL_<alias> override)", "ollama");
-        const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", "ollama");
+        const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", "ollama");
         const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
         const normalizedBase = withScheme.replace(/\/$/, "");
 
