@@ -687,3 +687,32 @@ The `content` channel is the **model-facing readable text** of an entry — the 
 **Always-on and source-agnostic.** `content` is in the default channel set (it's cheap — pure JS, no model). text/html computes it from whatever HTML bytes arrive: a local file → the document as markdown; the bytes a browser scheme rendered and serialized → the live page's readable content. The handler is a pure function of bytes and cannot tell which (see the HTML rendering split — rendering is the http scheme's job; `content` projects whatever it's handed).
 
 **Relationship to `toText`.** A handler that overrides `content` typically routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: HTML markdown, else binary page-text, else the passthrough body.
+
+## 19. Tokenizer seam (framework v0.17.0, issue #44)
+
+Exact LLM token counting for the host's window math, on the embeddings pattern (§17). The framework runs the universal engine question; per-model vocabularies are pure data in ONE opt-in artifact package — `@plurnk/plurnk-mimetypes-tokenizers` — under the pin/sha256/fetch-verify discipline. Kept separate from the embeddings package so a deployment wanting window math never carries MiniLM ONNX weights.
+
+### 19.1 Surface
+
+`mimetypes.tokenizer(modelRef, { strict? }): Promise<TokenizerResolution>`
+
+```ts
+interface TokenizerResolution {
+    countTokens(text: string): Promise<number>;
+    tokenizerId: string;   // vocab identity, NOT model id
+    exact: boolean;
+    telemetry?: readonly TelemetryEvent[];  // present iff degraded
+}
+```
+
+**Resolution chain (#44).** The full chain is host-composed: (1) the provider's own `tokenize()` capability when the backend serves one (providers 0.26.0; the model's OWN vocab, zero bundled data) — outside this seam; (2) a bundled `tokenizer.json` matched by model ref → `exact: true`, the artifact's counter; (3) the **chars/2 upper bound** → `exact: false`, `tokenizerId: "heuristic:chars2"`, one `tokenizer_unavailable` warn event (source `tokenizer`) naming the model — plus `plurnkPackage` when the artifact package itself is absent. `strict: true` throws at (3) instead. **Never a silent estimate**: a degraded resolution is visibly degraded on the shape.
+
+chars/2 is the SAFE direction: measured agentic text runs 2.9–3.2 chars/token (#44), so /2 over-reserves; the old /4 under-counted 20–27% and blew window math silently.
+
+### 19.2 `tokenizerId` is the vocab, not the model
+
+For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 prefix). Two model refs sharing a vocabulary (deepseek pro↔flash) share the id, so a model swap that keeps the vocab never invalidates counts derived and stored against it. The host keys derivations on `(content_hash, tokenizer_id)`.
+
+### 19.3 Artifact duck contract
+
+The tokenizers package default-exports (or exports) `resolve(modelRef) → Promise<{ countTokens, tokenizerId } | null>` — null meaning "no bundled tokenizer matches this ref" (a data gap, not an error; the seam degrades). Optional `dispose()` releases engine state, forwarded from `Mimetypes.dispose()`. Loader errors follow the §17 rule: `ERR_MODULE_NOT_FOUND`/`MODULE_NOT_FOUND` → absent; anything else → a misconfigured-but-present artifact and rethrows.

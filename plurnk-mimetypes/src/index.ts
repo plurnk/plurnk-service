@@ -68,6 +68,10 @@ export type {
     TelemetrySeverity,
 } from "./TelemetryEvent.ts";
 
+// Tokenizer seam (SPEC §19, #44) — exact LLM token counting via the opt-in
+// @plurnk/plurnk-mimetypes-tokenizers artifact package.
+export type { TokenizerResolution } from "./Tokenizers.ts";
+
 // Grammar compilation utilities (for handler authors building their own pipeline)
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
 export type { CompileOptions } from "./compile.ts";

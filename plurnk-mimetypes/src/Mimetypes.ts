@@ -6,6 +6,7 @@ import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
+import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type {
     DetectInput,
@@ -26,6 +27,8 @@ const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", 
 // The embedder seam (issues #24/#31/#36) lives in Embeddings.ts; its public
 // types are re-exported here so the module's API surface is unchanged.
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
+// The tokenizer seam (SPEC §19, #44) lives in Tokenizers.ts.
+export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Loader hook: how to resolve a handler package to its default-exported class.
 // Production uses dynamic import(); tests inject a custom loader to avoid
@@ -123,6 +126,7 @@ export default class Mimetypes {
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, BaseHandler>();
     readonly #embeddings: Embeddings;
+    readonly #tokenizers: Tokenizers;
     #discovery: Discovery | null = null;
     #readyPromise: Promise<void> | null = null;
 
@@ -131,6 +135,7 @@ export default class Mimetypes {
         this.#loader = options.loader ?? defaultLoader;
         this.#defaultMimetype = options.defaultMimetype ?? null;
         this.#embeddings = new Embeddings(this.#loader);
+        this.#tokenizers = new Tokenizers(this.#loader);
         if (options.discovery !== undefined) this.#discovery = options.discovery;
     }
 
@@ -323,6 +328,14 @@ export default class Mimetypes {
         return this.#embeddings.batch(texts, options);
     }
 
+    // Exact LLM token counting for the host's window math (SPEC §19, #44).
+    // Delegates to the tokenizer seam (Tokenizers.ts). The host composes this
+    // AFTER the provider's own tokenize() capability — this seam covers the
+    // bundled-vocab and honest-degrade links of the chain.
+    async tokenizer(modelRef: string, options?: { strict?: boolean }): Promise<TokenizerResolution> {
+        return this.#tokenizers.tokenizer(modelRef, options);
+    }
+
     // Release native resources so a consumer can drain its event loop and exit
     // (issue #36). Tears down the embedder seam's onnxruntime worker pool (which
     // holds active+referenced libuv handles that otherwise keep the process
@@ -331,6 +344,7 @@ export default class Mimetypes {
     // instances per unit of work should `await m.dispose()` when done.
     async dispose(): Promise<void> {
         await this.#embeddings.dispose();
+        await this.#tokenizers.dispose();
         this.#handlerInstances.clear();
     }
 
