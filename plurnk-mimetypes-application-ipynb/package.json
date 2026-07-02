@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-ipynb",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "description": "application/x-ipynb+json (Jupyter notebook) mimetype handler for plurnk-service. Cells as symbols; notebook projected to clean reading markdown via the content channel. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -44,12 +44,12 @@
         "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.0 || ^0.16.0",
+        "@plurnk/plurnk-mimetypes": "^0.17.0",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.16.0"
+        "@plurnk/plurnk-mimetypes": "^0.16.0 || ^0.17.0"
     },
     "dependencies": {
         "jsonc-parser": "^3.3.1"
