@@ -643,9 +643,16 @@ export default class Daemon {
                     // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
                     // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
                     if (currentLoopId !== null) {
+                        // #311 — the failure must be first-class on BOTH surfaces: the loop row goes
+                        // terminal 500 carrying the cause (a dead loop must never read as live 102 —
+                        // the premature-terminate gate counts live loops), and the broadcast carries
+                        // the same message so a backend 400 (context overflow, auth, …) reaches the
+                        // client as text, never a contentless 500.
+                        const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+                        await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: currentLoopId, status: 500, message });
                         const usage = await this.#engine.loopUsage(currentLoopId);
                         this.#broadcast({ sessionId }, null, "loop/terminated", {
-                            loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage,
+                            loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
                         });
                     }
                     if (!firstSettled) {

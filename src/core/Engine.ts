@@ -153,6 +153,11 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopAborts = new Map<number, AbortController>();
+    // §tokenomics-ceiling-calibrates-to-usage (#311) — the loop's observed real/measured token
+    // ratio (provider usage.prompt ÷ our measured packet tokens), monotone max so the ceiling
+    // only tightens. A chars/4 heuristic ruler undercounts escaped-JSON logs ~1.5×; calibrating
+    // against the provider's own count makes a real context overflow unreachable past turn 1.
+    #tokenRatios = new Map<number, number>();
 
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
@@ -346,6 +351,7 @@ export default class Engine {
             this.#loopAborts.delete(loopId);
             this.#strikes.delete(loopId);
             this.#telemetry.delete(loopId);
+            this.#tokenRatios.delete(loopId);
         };
 
         while (true) {
@@ -705,13 +711,14 @@ export default class Engine {
         // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
+        const tokenRatio = this.#tokenRatios.get(loopId) ?? 1;
         let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, sessionId, runId, loopId,
-            currentTurnSeq: seq, provider, gitStatus,
+            currentTurnSeq: seq, provider, gitStatus, tokenRatio,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
-            packet: requestPacket, provider, runId, loopId, turnId,
+            packet: requestPacket, provider, runId, loopId, turnId, tokenRatio,
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
             // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
             mintSequence: nextActionIndex,
@@ -720,7 +727,7 @@ export default class Engine {
             // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, sessionId, runId, loopId,
-                currentTurnSeq: seq, provider, gitStatus,
+                currentTurnSeq: seq, provider, gitStatus, tokenRatio,
             }),
         });
         if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
@@ -793,6 +800,14 @@ export default class Engine {
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
         const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        // §tokenomics-ceiling-calibrates-to-usage — learn the loop's real/measured ratio from the
+        // provider's OWN prompt count (ground truth for the whole wire request, template overhead
+        // included). Monotone max: the ceiling only ever tightens within a loop.
+        if (callMetadata.usage.prompt > 0 && requestPacket.tokens > 0) {
+            const observed = callMetadata.usage.prompt / requestPacket.tokens;
+            const prior = this.#tokenRatios.get(loopId) ?? 1;
+            if (observed > prior) this.#tokenRatios.set(loopId, observed);
+        }
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
         // body starting with `//` being interpreted as xpath) silently

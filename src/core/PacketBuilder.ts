@@ -97,8 +97,15 @@ export default class PacketBuilder {
         this.#budgetCeiling = readCeiling();
     }
 
-    ceilingFor(provider: Provider): number | null {
-        return PacketBuilder.computeCeiling(provider.contextSize, this.#budgetCeiling);
+    // §tokenomics-ceiling-calibrates-to-usage (#311) — the ceiling divides by the loop's observed
+    // real/measured token ratio. countTokens can be a heuristic (chars/4 on the openai family);
+    // escaped-JSON log rows run ~2.7 real chars/token, so honest arithmetic on that ruler shipped a
+    // 65k-real packet into a 49k window. usage.prompt is ground truth for the WHOLE wire request:
+    // once a loop has seen one response, requiring measured ≤ ceiling/ratio makes a real overflow
+    // unreachable. ratio floors at 1 — an overcounting ruler never EXPANDS the ceiling.
+    ceilingFor(provider: Provider, tokenRatio = 1): number | null {
+        const ceiling = PacketBuilder.computeCeiling(provider.contextSize, this.#budgetCeiling);
+        return ceiling === null ? null : Math.floor(ceiling / Math.max(1, tokenRatio));
     }
 
     // Assemble the request half of the spec'd packet (Packet.json §system
@@ -106,8 +113,10 @@ export default class PacketBuilder {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async buildRequestPacket({
-        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, tokenRatio = 1, telemetryErrors: presetTelemetry,
     }: {
+        // The loop's observed real/measured token ratio (§tokenomics-ceiling-calibrates-to-usage).
+        tokenRatio?: number;
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
         // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
@@ -161,7 +170,7 @@ export default class PacketBuilder {
         // a serialized approximation. ceiling is the provider's window ×
         // PLURNK_BUDGET_CEILING (null when no window is reported → headline
         // omitted, section lines still shown). §tokenomics-render-weight-budget
-        const ceiling = this.ceilingFor(provider);
+        const ceiling = this.ceilingFor(provider, tokenRatio);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
         // The default packet: an ordered list of addressable sections (§packet-construction).
         // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
@@ -337,12 +346,13 @@ export default class PacketBuilder {
     // then the catalog except the manifest lifeline. The strike it raises and the
     // hard-stop it can signal are returned to runLoop, which owns abandonment.
     // §grinder-overflow-only — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, rebuild }: {
+    async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, tokenRatio = 1, rebuild }: {
         packet: RequestPacket; provider: Provider;
         runId: number; loopId: number; turnId: number; mintSequence: number;
+        tokenRatio?: number;
         rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
-        const ceiling = this.ceilingFor(provider);
+        const ceiling = this.ceilingFor(provider, tokenRatio);
         const measure = (p: RequestPacket): number => p.tokens;
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 

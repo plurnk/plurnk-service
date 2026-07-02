@@ -193,13 +193,20 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately (100)");
 
             const captured = await waitFor(
-                () => terminated() as Array<{ finalStatus: number; turnIds: number[]; hitMaxTurns: boolean }>,
+                () => terminated() as Array<{ finalStatus: number; turnIds: number[]; hitMaxTurns: boolean; loopId: number }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging (#265)");
             assert.equal(captured[0].finalStatus, 500, "a genuine loop error terminates at 500 (failed) — distinct from an abort's 499");
             assert.deepEqual(captured[0].turnIds, [], "turnIds is always present — [] at the error boundary, never absent (#266)");
             assert.equal(captured[0].hitMaxTurns, false);
+            // #311 [§tokenomics-ceiling-calibrates-to-usage] — the failure is first-class on BOTH
+            // surfaces: the broadcast carries the cause and the loop row is terminal 500, never a
+            // contentless corpse over a still-live 102 row.
+            const msg = (captured[0] as { message?: string }).message;
+            assert.ok(typeof msg === "string" && msg.length > 0, "loop/terminated carries the error message");
+            const loopRow = await (_db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
+            assert.equal(loopRow?.status, 500, "the loop ROW is terminal 500 — a dead loop never reads as live");
         } finally { ws.close(); }
     });
 });
