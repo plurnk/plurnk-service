@@ -44,7 +44,7 @@ grammar. It lives in decode settings.**
 | | gemma / llama.cpp | fireworks / ds4 pro+flash |
 |---|---|---|
 | reasoning switch | `chat_template_kwargs.enable_thinking` — binary, per-request | `reasoning_effort` enum; V4 promotes low/medium→high silently, 400s integers → effectively {none, adaptive, high} |
-| numeric reasoning budget | none per-request (launch `--reasoning-budget` is 0/-1) | none |
+| numeric reasoning budget | **YES at LAUNCH: `--reasoning-budget N` (N>0 token budget)** — verified on the live binary, and the local box already runs 4096. Per-request: IGNORED (probed: `reasoning_budget` 64/0 and kwargs variants all no-ops) | none (integer effort → 400, F1) |
 | where reasoning lands | separate thought channel (template-gated) | in-band under `response_format` |
 | grammar transport | top-level `grammar`; lazy/trigger REQUEST mode exists | `response_format:{type:grammar}`; whole-emission, no trigger |
 | decode cap | `max_tokens` (n_predict) | `max_tokens` |
@@ -161,3 +161,29 @@ the provider's `grammar_unenforced` gate is the backstop either way.
 - O4: where should the service's `max_tokens` (R+D) live — per-alias env, or a
   provider default when a grammar is attached? (Decide from Phase 1 data;
   provider-side default would be a SPEC conversation.)
+- O5: forced `</think>` closure at EXACTLY the launch budget under an active
+  in-grammar constraint — untested (F6's thinking run closed naturally at 3.3k
+  < 4096). Verify the clamp remains grammar-legal at the boundary.
+- O6: quality-graded paired run (hard benchmark packet): pro `none` vs
+  `adaptive`, gemma thinking-off vs thinking-on-with-launch-budget — decides
+  the differentiated per-model posture on task success, not just conformance.
+
+## F7 — llama.cpp numeric reasoning budget (2026-07-03; user-instigated, stale memory corrected)
+
+- `--reasoning-budget N` (N>0 = token budget for thinking) EXISTS on the current
+  build; prior session memory claimed 0/-1 only — wrong. The local box already
+  launches with `--reasoning-budget 4096 --reasoning-format deepseek`, and F6's
+  thinking-on run (3.3k reasoning tokens < 4096) confirms the clamp environment.
+- Per-request budget fields are IGNORED (probed live: `reasoning_budget: 64`,
+  `: 0`, and `chat_template_kwargs.thinking_budget` — all no-ops). So per-turn
+  the provider can only toggle thinking; the NUMERIC clamp is box launch config.
+- **Consequence: gemma's R/D balance IS controllable** — the user's original
+  design posture (bounded reasoning before the plan) is realizable TODAY on
+  llama.cpp as: `enable_thinking:true` + launch `--reasoning-budget 4096` +
+  window-derived `max_tokens ≥ 4096 + D_max`. Content cannot be crowded out
+  (R clamped server-side) and reasoning isn't crammed into content.
+- Fireworks has NO numeric equivalent (enum only, integers 400) — the asymmetry
+  is fireworks' API limitation. Their nearest posture is `adaptive` + the cap.
+- Operational: any OTHER llama.cpp box serving plurnk (e.g. the endpoint's
+  gemma at possumtech) needs the same launch flags — the 28k think-block
+  incident is consistent with a box missing `--reasoning-budget`.
