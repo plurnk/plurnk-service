@@ -53,7 +53,7 @@ export default class Service {
             "# OPENROUTER_API_KEY=\"...\"",
             "# PLURNK_MODEL=cloud",
             "#",
-            "# PLURNK.AI — the hosted relay (free tier: https://plurnk.ai):",
+            "# PLURNK.AI - Plurnk-optimized endpoint service - https://plurnk.ai/",
             "# PLURNK_MODEL_plurnk=\"plurnk/plurnk\"",
             "# PLURNK_API_KEY=\"...\"",
             "# PLURNK_MODEL=plurnk",
