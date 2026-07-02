@@ -1,4 +1,5 @@
-import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext, LoopFlags } from "../core/scheme-types.ts";
+import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult, ReadResult } from "./_entry-ops.ts";
@@ -141,7 +142,12 @@ export default class Run {
         }
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
-        await ctx.injectRun({ sessionId: ctx.sessionId, runId, prompt });
+        // §run-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
+        // own flags (inject ignores these there); a fresh loop raised by the message acts on
+        // the sender's behalf and carries the sender's authority.
+        const row = await (ctx.db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: ctx.loopId });
+        const flags = row === undefined ? undefined : { ...DEFAULT_LOOP_FLAGS, ...(JSON.parse(row.flags) as Partial<LoopFlags>) };
+        await ctx.injectRun({ sessionId: ctx.sessionId, runId, prompt, flags });
         return { status: 200 };
     }
 }

@@ -372,11 +372,17 @@ export default class Dispatcher {
         if (denied !== null) return denied;
         const prompt = typeof statement.body === "string" ? statement.body : "";
 
+        // §run-delegation-inherits-flags — authority flows down the delegation edge: the
+        // child's live loop runs with ITS DELEGATOR'S flags. A flagless (non-YOLO) child's
+        // every side-effecting op proposes into a resolver-less void — 300s auto-cancel per
+        // attempt was the four-sweep fan-out wedge.
+        const flags = await this.#loadLoopFlags(ctx.loopId);
+
         if (name === "self") {
             // FORK — branch the current run's log into a new sister.
             const branchRunId = await Fork.fork(this.#db, ctx.runId);
             const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
-            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt });
+            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt, flags });
             return { status: 200, body: branch?.name ?? "" };
         }
 
@@ -389,7 +395,7 @@ export default class Dispatcher {
             session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,
         });
         if (row === undefined) throw new Error("run spawn: run insert returned no row");
-        await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt });
+        await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt, flags });
         return { status: 200, body: name };
     }
 

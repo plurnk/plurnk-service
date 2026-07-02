@@ -143,10 +143,10 @@ export default class Daemon {
             // daemon owns provider + the law-file system prompt; the run scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own run). §machine-processes
-            injectRun: async ({ sessionId, runId, prompt }) => {
+            injectRun: async ({ sessionId, runId, prompt, flags }) => {
                 if (this.#provider === null) throw new Error("injectRun: no provider configured");
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const { action, loopId } = await this.inject({ sessionId, runId, prompt, provider: this.#provider, systemPrompt });
+                const { action, loopId } = await this.inject({ sessionId, runId, prompt, provider: this.#provider, systemPrompt, ...(flags === undefined ? {} : { flags }) });
                 return { action, loopId };
             },
             // run:// KILL (terminate) — abort any run's in-flight work by id. One

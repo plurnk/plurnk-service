@@ -144,3 +144,38 @@ test("[§run-lifecycle-quiesced] a 202 with an idle subtree fires loop/quiesced 
         } finally { ws.close(); }
     });
 });
+
+test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop's flags — a YOLO parent's child EDITs without proposing", async () => {
+    // The four-sweep fan-out wedge: injectRun dropped flags, so a delegated child's every
+    // side-effecting op proposed into a resolver-less void (300s auto-cancel per attempt).
+    // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
+    // state='resolved' (YOLO auto-accept inherited), never state='proposed'/'cancelled'.
+    const mock = new Mock({ contextSize: 8192, responses: [
+        // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
+        makeMockResponse("<<COPY(run://worker):edit something and finish:COPY\n<<COPY(run://self):edit something and finish:COPY\n<<SEND[202]:delegated; waiting:SEND", 10),
+        // Worker turn 1: a SIDE-EFFECTING op (proposes unless YOLO), then conclude.
+        makeMockResponse("<<EDIT(known://from-worker):payload:EDIT\n<<SEND[200]:worker done:SEND", 10),
+        // Fork turn 1: same shape.
+        makeMockResponse("<<EDIT(known://from-fork):payload:EDIT\n<<SEND[200]:fork done:SEND", 10),
+        // Parent resumes twice (one wake per child conclusion).
+        makeMockResponse("<<SEND[202]:one down:SEND", 10),
+        makeMockResponse("<<SEND[200]:all done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "delegation-flags" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything", flags: { yolo: true } });
+            assert.equal(finalStatus, 200, "the whole topology concluded — no child stalled in a proposal void");
+            // The delegated loops' persisted flags carry the parent's yolo.
+            const loops = await (db.test_all_loops as PrepMethod).all<{ id: number; run_id: number; flags: string }>({});
+            const childLive = loops.filter((l) => JSON.parse(l.flags).yolo === true);
+            assert.ok(childLive.length >= 3, `parent + both delegated live loops carry yolo; got ${JSON.stringify(loops)}`);
+            // And the children's EDITs resolved — never proposed into the void.
+            const edits = await (db.test_edit_states as PrepMethod).all<{ pathname: string; state: string }>({});
+            for (const e of edits.filter((x) => /from-(worker|fork)/.test(x.pathname))) {
+                assert.equal(e.state, "resolved", `child EDIT ${e.pathname} auto-accepted under inherited YOLO`);
+            }
+        } finally { ws.close(); }
+    });
+});

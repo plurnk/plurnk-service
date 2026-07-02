@@ -278,3 +278,12 @@ ORDER BY e.pathname;
 -- PREP: test_cosine
 SELECT cosine($a, $b) AS sim;
 
+
+-- PREP: test_all_loops
+-- [§run-delegation-inherits-flags] — every loop's persisted flags, delegation-tree-wide.
+SELECT id, run_id, flags FROM loops ORDER BY id;
+
+-- PREP: test_edit_states
+-- [§run-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
+-- must land resolved (inherited YOLO), never proposed/cancelled into the void.
+SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;

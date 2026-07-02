@@ -8,6 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db, PrepMethod } from "./Db.ts";
+import type { LoopFlags } from "./types.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
@@ -70,6 +71,12 @@ export type InjectRunNotify = (args: {
     sessionId: number;
     runId: number;
     prompt: string;
+    // §run-delegation-inherits-flags — the SENDING loop's flags. Authority flows down the
+    // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
+    // or a non-YOLO child's every side-effecting op proposes into a resolver-less void
+    // (300s auto-cancel per attempt — the fan-out wedge). Resume-in-place ignores this
+    // (a parked loop keeps its own flags).
+    flags?: LoopFlags;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
 
 // Abort a run's in-flight work by id — the run:// op family's KILL primitive

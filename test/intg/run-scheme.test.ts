@@ -150,7 +150,9 @@ test("[§run-scheme-spawn] COPY(run://name):prompt spawns a same-session sister,
         assert.equal(meta?.session_id, sessionId, "spawned run shares the session (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectRun call");
-        assert.deepEqual(calls[0], { sessionId, runId: worker.id, prompt: "investigate the bug" }, "the new run is started with the prompt");
+        const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; sessionId: number; runId: number; prompt: string };
+        assert.deepEqual(spawnRest, { sessionId, runId: worker.id, prompt: "investigate the bug" }, "the new run is started with the prompt");
+        assert.equal((spawnFlags as { yolo?: boolean } | undefined)?.yolo, false, "the delegating loop's flags ride the injection (§run-delegation-inherits-flags)");
     } finally { await db.close(); }
 });
 
@@ -272,7 +274,9 @@ test("[§run-scheme-irc] SEND(run://name):msg delivers to a sister; a missing si
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
-        assert.deepEqual(calls.at(-1), { sessionId, runId: workerId, prompt: "what's your status?" }, "the message is delivered to the named sister");
+        const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { yolo?: boolean }; sessionId: number; runId: number; prompt: string };
+        assert.deepEqual(ircRest, { sessionId, runId: workerId, prompt: "what's your status?" }, "the message is delivered to the named sister");
+        assert.equal(ircFlags?.yolo, false, "the sender's flags ride the irc (§run-delegation-inherits-flags)");
 
         const missing = await engine.dispatch({
             statement: sendStmt(null, runPath("ghost"), "anyone there?"),
@@ -340,7 +344,9 @@ test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started
         const branch = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch run in the session");
         assert.notEqual(branch.id, runId, "the branch is a distinct run");
-        assert.deepEqual(calls.at(-1), { sessionId, runId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
+        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { yolo?: boolean }; sessionId: number; runId: number; prompt: string };
+        assert.deepEqual(forkRest, { sessionId, runId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
+        assert.equal(forkFlags?.yolo, false, "the forking loop's flags ride the injection (§run-delegation-inherits-flags)");
     } finally { await db.close(); }
 });
 
