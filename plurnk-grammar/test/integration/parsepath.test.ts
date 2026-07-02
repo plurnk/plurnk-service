@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AstBuilder, PlurnkParseError } from "../../src/index.ts";
+import { AstBuilder, PlurnkParseError, PlurnkParser } from "../../src/index.ts";
 
 // AstBuilder.parsePath was promoted from private to public in 0.3.2 (issue #7)
 // so consumer RPC layers can decompose path strings without round-tripping
@@ -151,4 +151,81 @@ test("parsePath: leading `#` with no closing `#` falls back to local", () => {
 test("parsePath: leading `#` with invalid flags falls back to local", () => {
     const p = AstBuilder.parsePath("#a#zzz");
     assert.equal(p?.kind, "local");
+});
+
+// Request-metadata headers (#46): trailing `{key: value}` blocks split off a URL
+// target before WHATWG decomposition, exposed as ordered pairs for the scheme
+// handler (auth, content-type, method affordance). One header per block, so a
+// value may hold commas/colons; the URL components reflect the stripped URL.
+test("parsePath: single `{header}` block splits into an ordered pair; URL stays clean", () => {
+    const p = AstBuilder.parsePath("https://api.github.com/user{Authorization: Bearer ghp_x}");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal(p.scheme, "https");
+    assert.equal(p.hostname, "api.github.com");
+    assert.equal(p.pathname, "/user");
+    assert.deepEqual(p.headers, [["Authorization", "Bearer ghp_x"]]);
+    assert.equal(p.raw, "https://api.github.com/user{Authorization: Bearer ghp_x}");
+});
+
+test("parsePath: multiple blocks preserve order", () => {
+    const p = AstBuilder.parsePath("https://x.dev/a{Authorization: Bearer x}{Accept: application/json}");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.deepEqual(p.headers, [
+        ["Authorization", "Bearer x"],
+        ["Accept", "application/json"],
+    ]);
+});
+
+test("parsePath: comma in a value is kept (block ends at `}`, not at `,`)", () => {
+    const p = AstBuilder.parsePath("https://x.dev/a{Accept: text/html, application/json}");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.deepEqual(p.headers, [["Accept", "text/html, application/json"]]);
+});
+
+test("parsePath: only the first `:` splits key/value; internal colons stay in the value", () => {
+    const p = AstBuilder.parsePath("https://x.dev/a{X-When: 12:00:00}");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.deepEqual(p.headers, [["X-When", "12:00:00"]]);
+});
+
+test("parsePath: duplicate header names survive (ordered pairs, not a map)", () => {
+    const p = AstBuilder.parsePath("https://x.dev/a{Set-Cookie: a=1}{Set-Cookie: b=2}");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.deepEqual(p.headers, [["Set-Cookie", "a=1"], ["Set-Cookie", "b=2"]]);
+});
+
+test("parsePath: URL with no block has no headers field (back-compat)", () => {
+    const p = AstBuilder.parsePath("https://x.dev/a");
+    if (p?.kind !== "url") { assert.fail("expected url"); return; }
+    assert.equal("headers" in p, false);
+});
+
+test("parsePath: a bare local path with literal braces is left untouched (no split)", () => {
+    const p = AstBuilder.parsePath("config/a{b}.txt");
+    assert.equal(p?.kind, "local");
+    if (p?.kind !== "local") return;
+    assert.equal(p.raw, "config/a{b}.txt");
+});
+
+test("parsePath: unclosed `{` in a URL target throws a visitor error", () => {
+    assert.throws(
+        () => AstBuilder.parsePath("https://x.dev/a{Authorization: Bearer x"),
+        (err) => err instanceof PlurnkParseError && err.source === "visitor",
+    );
+});
+
+test("parsePath: a keyless/colonless block throws a visitor error", () => {
+    assert.throws(
+        () => AstBuilder.parsePath("https://x.dev/a{no-colon-here}"),
+        (err) => err instanceof PlurnkParseError && err.source === "visitor",
+    );
+});
+
+test("parsePath: headers flow through a full parse to the statement target", () => {
+    const result = PlurnkParser.parseStatements("<<READ(https://api.dev/me{Authorization: Bearer x}{Accept: q})::READ");
+    const item = result.items[0];
+    if (item?.kind !== "statement") { assert.fail("expected statement"); return; }
+    const { statement } = item;
+    if (statement.op !== "READ" || statement.target?.kind !== "url") { assert.fail("expected READ with url target"); return; }
+    assert.deepEqual(statement.target.headers, [["Authorization", "Bearer x"], ["Accept", "q"]]);
 });

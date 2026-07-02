@@ -24,6 +24,7 @@ import type {
     SendBody,
     SendStatement,
     OpenStatement,
+    UrlPath,
 } from "./types.ts";
 import type {
     BuffStatementContext,
@@ -408,9 +409,17 @@ export default class AstBuilder {
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
         }
+        // Split trailing `{key: value}` header blocks (http request metadata: auth,
+        // content-type, …) off the URL before WHATWG decomposition — `new URL()`
+        // rejects the unencoded `{`. `{`/`}` are illegal unencoded in a URI (RFC 3986),
+        // so the first `{` is an unambiguous marker. The blocks are opaque to the
+        // grammar's addressing; the scheme handler interprets them (see #46).
+        const braceIdx = raw.indexOf("{");
+        const urlPart = braceIdx === -1 ? raw : raw.slice(0, braceIdx);
+        const headers = braceIdx === -1 ? null : AstBuilder.#splitHeaders(raw.slice(braceIdx), pos);
         let url: URL;
         try {
-            url = new URL(raw);
+            url = new URL(urlPart);
         } catch (e) {
             const detail = e instanceof Error ? e.message : raw;
             throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${detail}`);
@@ -420,7 +429,7 @@ export default class AstBuilder {
         // writes the empty-authority form `scheme:///path` (host parses empty).
         // Whether a given scheme should carry an authority is a runtime concern,
         // not the grammar's; the parser just reports what the standard parsed.
-        return {
+        const parsed: UrlPath = {
             kind: "url",
             raw,
             scheme: url.protocol.replace(/:$/, ""),
@@ -432,6 +441,40 @@ export default class AstBuilder {
             params: AstBuilder.#paramsFrom(url.searchParams),
             fragment: url.hash ? url.hash.slice(1) : null,
         };
+        if (headers) parsed.headers = headers;
+        return parsed;
+    }
+
+    // Split a target's trailing `{key: value}` header region into ordered pairs.
+    // Each block is one header (the value ends at `}`, so commas inside a value are
+    // fine); the key is the text before the first `:`, the value the trimmed rest
+    // (internal colons kept). Fail-hard on a malformed region (stray text, unclosed
+    // `{`, or a keyless block) — a header slot the scheme can't read is a contract
+    // violation, not something to swallow.
+    static #splitHeaders(meta: string, pos: Position): [string, string][] {
+        const headers: [string, string][] = [];
+        let i = 0;
+        while (i < meta.length) {
+            if (meta[i] !== "{") {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: expected \`{\` at \`${meta.slice(i)}\``);
+            }
+            const end = meta.indexOf("}", i + 1);
+            if (end === -1) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: unclosed \`{\` in \`${meta.slice(i)}\``);
+            }
+            const inner = meta.slice(i + 1, end);
+            const colon = inner.indexOf(":");
+            if (colon === -1) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: no \`:\` in \`{${inner}}\``);
+            }
+            const key = inner.slice(0, colon).trim();
+            if (key.length === 0) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: empty key in \`{${inner}}\``);
+            }
+            headers.push([key, inner.slice(colon + 1).trim()]);
+            i = end + 1;
+        }
+        return headers;
     }
 
     static #paramsFrom(sp: URLSearchParams): Record<string, string | string[]> {

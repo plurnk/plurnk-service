@@ -325,6 +325,15 @@ test("GBNF: SEND[300] (multiple-choice question) is a valid terminal disposition
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300]:q:SEND\n<<SEND[200]:done:SEND"), true);
 });
 
+test("GBNF: a header-bearing http target derives (constrained models can emit auth, #46)", () => {
+    // Request-metadata `{key: value}` blocks ride inside the target as free text —
+    // `target-inner` already admits `{`, `}`, `:`, and spaces — so a rail'd model can
+    // emit auth/content-type without any GBNF change. L(GBNF) ⊆ L(ANTLR) still holds.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(https://api.dev/me{Authorization: Bearer x})::READ\n<<SEND[200]:done:SEND"), true);
+    // SEND carries the loop disposition (200 here), not the HTTP status; the http scheme maps SEND->POST and rides the headers in the target.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](https://api.dev/items{Authorization: Bearer x}{Content-Type: application/json}):{\"n\":1}:SEND"), true);
+});
+
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, any status) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derives("root-turn", batch), true);

@@ -45,7 +45,17 @@
                 },
                 "pathname": { "type": "string" },
                 "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
-                "fragment": { "type": ["string", "null"] }
+                "fragment": { "type": ["string", "null"] },
+                "headers": {
+                    "description": "Request-metadata blocks split off the target — trailing `{key: value}` groups (e.g. `(https://api{Authorization: Bearer x})`). Ordered key/value pairs so order and duplicate names survive; opaque to the grammar's addressing, interpreted by the scheme handler (auth, content-type, method affordance). Absent when the target carries no `{...}` block. See #46.",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "minItems": 2,
+                        "maxItems": 2
+                    }
+                }
             }
         },
         "RegexPath": {
