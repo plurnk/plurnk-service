@@ -21,10 +21,10 @@ export interface ProposalResolution {
     // rx — the model sees the result via the entry/index now (post-F.5
     // and EDIT-registers-entry), not via input echoes.
     body?: string;
-    // Operational reason (rejected / timeout / policy_veto / etc.).
-    // Stored on log_entries.outcome COLUMN for forensics; NOT included
-    // in the rx body — model doesn't need to know administratively how
-    // a proposal was resolved (per AGENTS.md hygiene rule).
+    // Operational reason (rejected / timeout / write_failed / policy_veto / etc.).
+    // Stored on log_entries.outcome COLUMN for forensics; a NON-accept also
+    // carries it as the rx's terse error token — the one-word why the model
+    // acts on (a mechanically failed apply must not read like a mute 400).
     outcome?: string;
 }
 interface ProposalWaiter {
@@ -249,15 +249,17 @@ export default class ProposalLifecycle {
             : decision === "reject" ? "rejected"
             : "loop_aborted";
         const outcome = resolution.outcome ?? defaultOutcome;
-        // rx is the model-facing operation result. Status always; outcome is
-        // operational (stays on log_entries for forensics, never model-facing).
-        // Body is normally dropped — the propose preview was an input echo —
-        // EXCEPT an inline auto-run (read/pure) carries its run output AS the
-        // body, which is exactly the "what happened" the model needs this turn.
-        // Per AGENTS.md "Operational hygiene on what the model sees."
+        // rx is the model-facing operation result. Status always. Body is normally dropped —
+        // the propose preview was an input echo — EXCEPT an inline auto-run (read/pure) carries
+        // its run output AS the body, the "what happened" the model needs this turn. A non-accept
+        // carries the outcome TOKEN as its terse error (write_failed / rejected / timeout — one
+        // word, never prose): a bare {"status":400} left the model blind to a mechanically failed
+        // apply and parking on a phantom worker (the fan-out digest).
         const rx = (decision === "accept" && resolution.body !== undefined)
             ? JSON.stringify({ status, body: resolution.body })
-            : JSON.stringify({ status });
+            : decision === "accept"
+                ? JSON.stringify({ status })
+                : JSON.stringify({ status, error: outcome });
         await (this.#db.engine_resolve_log_entry as PrepMethod).run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });

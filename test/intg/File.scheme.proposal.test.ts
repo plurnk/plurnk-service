@@ -111,7 +111,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
     });
 });
 
-test("file.edit: rejection leaves file untouched", async () => {
+test("[§proposal-outcome-terse-error] file.edit: rejection leaves file untouched; the rx carries the outcome as its terse error token", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
@@ -131,6 +131,10 @@ test("file.edit: rejection leaves file untouched", async () => {
         assert.equal(result.status, 400);
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, "original\n", "rejected EDIT must not touch disk");
+        // The model-facing rx carries the one-word why — a mute {"status":400} reads as a
+        // phantom failure the model can't act on (the fan-out dead-park).
+        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ rx: string }>({ id: logEntryId });
+        assert.deepEqual(JSON.parse(row?.rx ?? "{}"), { status: 400, error: "reviewer_said_no" }, "rx = status + terse outcome token, nothing more");
     });
 });
 

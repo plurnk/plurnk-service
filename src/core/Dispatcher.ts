@@ -697,7 +697,7 @@ export default class Dispatcher {
             return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
         }
         if (status === 200 && prematureRefusal === "submitted-read") {
-            return { status: 409, error: "Attempted termination with submitted READ operation(s)." };
+            return { status: 409, error: "Attempted termination with submitted READ operation(s). SEND[102]; the results arrive next turn." };
         }
         // Groundless hibernation (§send-groundless-hibernate): a SEND[202] alongside a same-turn READ,
         // with no wake edge — the READ's result folds back on a next turn this park would never reach,
@@ -705,7 +705,7 @@ export default class Dispatcher {
         // shape as the premature 200 — the row keeps the [202] attempt, the loop stays a continue, the
         // steer strikes. (A bare park holding nothing is legal — the voice door; never refused here.)
         if (status === 202 && prematureRefusal === "groundless-hibernate") {
-            return { status: 409, error: "Attempted [202] hibernation with submitted READ operation(s) and nothing to wake you — the result arrives on your next turn, which this park would never reach. SEND[102] to receive it, then act." };
+            return { status: 409, error: "Attempted [202] hibernation with submitted READ operation(s). SEND[102]; nothing here would wake you." };
         }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
