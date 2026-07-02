@@ -8,7 +8,7 @@ const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_FETCH_TIMEOUT: "600000",
     PLURNK_PROVIDERS_REASONING_BUDGET: "0",
-    PLURNK_PROVIDER_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
 });
 
 // Mock the /api/show probe. `payload` becomes the JSON body it returns.
@@ -29,7 +29,7 @@ test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", asyn
 });
 
 test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
-    const rest = { PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDER_RETRY_ATTEMPTS: "0" };
+    const rest = { PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
     assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
