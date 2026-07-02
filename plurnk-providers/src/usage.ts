@@ -32,9 +32,19 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
     let completion: number;
     let reasoning: number;
     if (reasoningDetail !== undefined) {
-        // OpenAI-style: reasoning is part of completion_tokens — split it out.
         reasoning = reasoningDetail;
-        completion = Math.max(0, completionRaw - reasoningDetail);
+        // reasoning_tokens is reported two incompatible ways when detailed. OpenAI
+        // o-series folds it INTO completion_tokens (subset: total = prompt + completion,
+        // so completion must have reasoning subtracted out). xAI/Grok reports it
+        // ADDITIVE to a visible-only completion_tokens (total = prompt + completion +
+        // reasoning), where subtracting wrongly zeroes the visible output (#28). Tell
+        // them apart by the total identity; with no total reported, fall back on the
+        // impossible-subset signal — reasoning can't exceed the completion it's a
+        // subset of.
+        const additive = reportedTotal > 0
+            ? reportedTotal === prompt + completionRaw + reasoningDetail
+            : completionRaw < reasoningDetail;
+        completion = additive ? completionRaw : Math.max(0, completionRaw - reasoningDetail);
     } else {
         // Gemini-style (or no reasoning): tokens beyond prompt+completion are
         // reasoning. Only trust the gap when a total was actually reported.

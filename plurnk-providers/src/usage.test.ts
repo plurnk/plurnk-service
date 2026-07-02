@@ -23,6 +23,21 @@ test("normalizeUsage: OpenAI-style — reasoning split out of completion_tokens"
     assert.equal(u.completion + u.reasoning, 100); // billable output unchanged
 });
 
+test("normalizeUsage: xAI/Grok-style — reasoning is ADDITIVE, not subtracted from completion (#28)", () => {
+    // Real grok-4.3 shape: completion_tokens is visible-only; reasoning_tokens is
+    // detailed but ADDITIVE — total = prompt + completion + reasoning.
+    const u = normalizeUsage({
+        prompt_tokens: 143,
+        completion_tokens: 1,
+        total_tokens: 441,
+        prompt_tokens_details: { cached_tokens: 128 },
+        completion_tokens_details: { reasoning_tokens: 297 },
+    });
+    assert.deepEqual(u, { prompt: 143, completion: 1, reasoning: 297, cached: 128, total: 441 });
+    assert.equal(u.completion, 1); // visible output preserved, NOT zeroed by the subtraction
+    assert.equal(u.completion + u.reasoning, 298); // billable output = visible + reasoning
+});
+
 test("normalizeUsage: cached read from prompt_tokens_details (OpenAI nesting)", () => {
     const u = normalizeUsage({ prompt_tokens: 50, completion_tokens: 10, total_tokens: 60, prompt_tokens_details: { cached_tokens: 30 } });
     assert.equal(u.cached, 30);
