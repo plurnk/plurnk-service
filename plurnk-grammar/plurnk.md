@@ -22,21 +22,21 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|K
 Fields are optional unless otherwise specified.
 The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 
-| OP   | `[signal]`    | `(path)`    | `<Line / Result>` | :body:                | OP   |
-|------|---------------|-------------|-------------------|-----------------------|------|
-| PLAN | -             | -           | -                 | :plan / reasoning:    | PLAN |
-| FIND | [filter tags] | (path)      | <result,result>   | :pattern:             | FIND |
-| READ | [filter tags] | (path)      | <line,line>       | :pattern:             | READ |
-| EDIT | [tags]        | (path)      | <line,line>       | :literal replacement: | EDIT |
-| COPY | [apply tags]  | (path)      | <line,line>       | :destination path:    | COPY |
-| MOVE | [apply tags]  | (path)      | <line,line>       | :destination path:    | MOVE |
-| OPEN | [filter tags] | (log path)  | <result,result>   | :pattern:             | OPEN |
-| FOLD | [filter tags] | (log path)  | <result,result>   | :pattern:             | FOLD |
-| EXEC | [executor]    | (path)      | <timeout, poll>   | :code:                | EXEC |
-| KILL | [signal]      | (path)      | -                 | ::                    | KILL |
-| SEND | [status code] | (recipient) | -                 | :message:             | SEND |
+| OP   | `[signal]`    | `(path)`    | `<Line / Result>` | :body:             | OP   |
+|------|---------------|-------------|-------------------|--------------------|------|
+| PLAN | -             | -           | -                 | :plan, free text:  | PLAN |
+| FIND | [filter tags] | (path)      | <result,result>   | :pattern:          | FIND |
+| READ | [filter tags] | (path)      | <line,line>       | :pattern:          | READ |
+| EDIT | [tags]        | (path)      | <line,line>       | :literal text:     | EDIT |
+| COPY | [apply tags]  | (path)      | <line,line>       | :destination path: | COPY |
+| MOVE | [apply tags]  | (path)      | <line,line>       | :destination path: | MOVE |
+| OPEN | [filter tags] | (log path)  | <result,result>   | :pattern:          | OPEN |
+| FOLD | [filter tags] | (log path)  | <result,result>   | :pattern:          | FOLD |
+| EXEC | [executor]    | (path)      | <timeout, poll>   | :code:             | EXEC |
+| KILL | [signal]      | (path)      | -                 | ::                 | KILL |
+| SEND | [status code] | (recipient) | -                 | :message:          | SEND |
 
-<<PLAN:plan goes here:PLAN is required at the beginning of a turn.
+<<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns rows of matching results
 <<READ(path)::READ returns lines of matching content. Every line is prefixed with the line number and a hard tab, `N:	`.
 <<EDIT(path):literal text:EDIT is only for adding or modifying files and entries. Do not attempt to edit log items.
@@ -154,7 +154,7 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 * <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
 * <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
-* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on files, entries, and items improve reasoning and recall!" > advice.txt:EDIT
+* <<EDIT[tutorial,training,scripts](example.sh):echo "Maximize your Active Context signal/noise ratio." > advice.txt:EDIT
 * <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
 * <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 * <<OPEN(log:///**)<1,10>::OPEN
