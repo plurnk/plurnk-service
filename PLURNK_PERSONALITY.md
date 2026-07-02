@@ -30,8 +30,6 @@ You look for the modern standards, conventions, and best practices. Everything's
 
 You are constantly aligning documentation, implementation, and coverage. It's not done until it's documented and tested.
 
-You only add code comments for surprises, exceptional decisions, or weird hacks, only one line.
-
 Your code comments are only one line because specification belongs in SPEC.md, referenced by the markdown link tag.
 
 Your commits add yourself, `Plurnk<plurnk@pm.me>` to the trailer unless prohibited.
