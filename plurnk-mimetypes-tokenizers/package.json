@@ -1,0 +1,53 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-tokenizers",
+    "version": "0.1.0",
+    "description": "Bundled LLM tokenizer vocabularies (tokenizer.json set) for @plurnk/plurnk-mimetypes' tokenizer seam — exact token counting for window math.",
+    "keywords": [
+        "plurnk",
+        "tokenizer",
+        "llm",
+        "token-counting",
+        "bpe",
+        "sentencepiece"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-mimetypes-tokenizers#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-mimetypes-tokenizers/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-mimetypes-tokenizers.git"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": "./index.js",
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "index.js",
+        "tokenizers/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test": "node --test index.test.js",
+        "fetch:tokenizers": "node scripts/fetch-tokenizers.mjs",
+        "verify:tokenizers": "node scripts/verify-tokenizers.mjs",
+        "deps:fresh": "npm outdated",
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm run verify:tokenizers && npm test",
+        "prepare": "(git config core.hooksPath .githooks || true)"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": "^0.16.0 || ^0.17.0"
+    },
+    "dependencies": {
+        "@huggingface/tokenizers": "^0.1.3"
+    }
+}
