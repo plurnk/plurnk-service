@@ -62,27 +62,27 @@
         "@plurnk/plurnk-execs": "^0.4.26",
         "@plurnk/plurnk-execs-all": "^0.1.14",
         "@plurnk/plurnk-execs-mcp": "0.4.0",
-        "@plurnk/plurnk-grammar": "^0.74.48",
-        "@plurnk/plurnk-mimetypes": "0.16.1",
-        "@plurnk/plurnk-mimetypes-all": "0.5.10",
-        "@plurnk/plurnk-mimetypes-text-html": "0.6.7",
-        "@plurnk/plurnk-providers": "^0.24.0",
+        "@plurnk/plurnk-grammar": "^0.74.49",
+        "@plurnk/plurnk-mimetypes": "^0.17.1",
+        "@plurnk/plurnk-mimetypes-all": "^0.5.12",
+        "@plurnk/plurnk-mimetypes-text-html": "^0.6.8",
+        "@plurnk/plurnk-providers": "^0.27.0",
         "@plurnk/plurnk-providers-all": "0.10.0",
-        "@plurnk/plurnk-schemes": "^0.32.8",
-        "@plurnk/plurnk-schemes-all": "^0.2.31",
+        "@plurnk/plurnk-schemes": "^0.32.10",
+        "@plurnk/plurnk-schemes-all": "^0.2.33",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ws": "^8.20.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.8.1",
+        "@plurnk/plurnk-mimetypes-embeddings": "^0.8.2",
         "@types/diff": "^7.0.2",
         "@types/node": "^26.1.0",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "0.8.1"
+        "@plurnk/plurnk-mimetypes-embeddings": "^0.8.2"
     },
     "peerDependenciesMeta": {
         "@plurnk/plurnk-mimetypes-embeddings": {
