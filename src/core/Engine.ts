@@ -603,15 +603,20 @@ export default class Engine {
                     // documenting surface. The prompt is shown in # Prompt, so the plurnk catalog
                     // the model orients on IS the docs; doc links are no longer rendered inline (#270).
                     const isPlurnk = schemeName === "plurnk";
+                    const isFile = schemeName === "file";
                     // Only the FILE list is cappable (PLURNK_FILES_ITEMS first-N): the tracked-file
                     // tree is external and arbitrarily large. Every other scheme — known/unknown
                     // (memory), run (scratch), plurnk (docs) — foists FULL, never truncated: a partial
                     // view of the model's own memory reads as withheld. file at -1, or any non-file
                     // scheme → no cap. (file in this loop always has entries>0, so no degenerate <1,0>.)
-                    const cap = schemeName === "file" && filesItems > 0 ? Math.min(filesItems, entries) : null;
+                    const cap = isFile && filesItems > 0 ? Math.min(filesItems, entries) : null;
+                    // The file survey foists as the BARE relative glob — the path shape plurnk.md
+                    // teaches (`src/**`, `**/notes.md`; bare = project-relative) — so the turn-0
+                    // exemplar and the log rows the model reads never train a leading-slash or
+                    // file:/// habit the rest of the teaching contradicts.
                     const catalogFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
-                        target: {
+                        target: isFile ? { kind: "local", raw: "**" } : {
                             kind: "url",
                             raw: isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`,
                             scheme: schemeName,
@@ -630,7 +635,7 @@ export default class Engine {
                     nextActionIndex++;
                     // §model-entry — the same FIND, rendered back to DSL for the turn-0 echo (the model's
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
-                    turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
+                    turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : isFile ? "**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
                 // §run-scheme — Manifest(run) = session-scope ∪ THIS run's run-scope. Foist the
                 // building run's OWN scratch (run://self/**, uncapped — a run needs the full view to
