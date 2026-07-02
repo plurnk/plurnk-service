@@ -45,7 +45,7 @@
         "prepare": "(git config core.hooksPath .githooks || true)"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.16.0 || ^0.17.0"
+        "@plurnk/plurnk-mimetypes": "^0.17.0"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"
