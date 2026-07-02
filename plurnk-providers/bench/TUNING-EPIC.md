@@ -187,3 +187,27 @@ the provider's `grammar_unenforced` gate is the backstop either way.
 - Operational: any OTHER llama.cpp box serving plurnk (e.g. the endpoint's
   gemma at possumtech) needs the same launch flags — the 28k think-block
   incident is consistent with a box missing `--reasoning-budget`.
+
+## F8 — the launch-flag posture, verified end-to-end (2026-07-03)
+
+Question (user): can the whole gemma posture live server-side — thinking on,
+reasoning budget 4096, output cap 8192?
+
+- **Flags exist for all three**: `-rea on --reasoning-budget 4096 -n 8192`.
+- **`-n` is a DEFAULT, not a clamp** (source-verified, server-task.cpp:267): a
+  request that sends `max_tokens` overrides it uncapped on this build. Since the
+  service currently sends none, the launch default IS the missing backstop; but
+  it is not defense against a caller-sent larger value.
+- **Per-request `enable_thinking` overrides `-rea on`** — our provider sends
+  false at budget 0. To run the thinking posture through the provider, the env
+  budget must be non-zero (template style then emits true; the NUMERIC clamp
+  stays the box's launch flag, F7).
+- **Measured on the live box** (real packet + real gbnf, thinking on, cap 8192,
+  N=3): 2/3 conformant (1.9–3.1k chars reasoning, ~150–190c content, 4–6.5s);
+  1/3 rambled — reasoning clamp HELD (7.5k chars ≈ 2.2k tok < 4096 budget) but
+  the CONTENT/preplan free zone ran to the 8192 cap (44.6s, bounded, incomplete).
+  The ramble tail is content-side, survives thinking-on, and remains the
+  escalate/retry policy's job. O5 (forced closure exactly at the clamp under
+  grammar) still unhit — both clean runs closed naturally.
+- Fireworks remains request-side only: no launch config exists — the service's
+  window-derived `max_tokens` is mandatory there regardless.
