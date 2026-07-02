@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-json",
-    "version": "0.5.6",
+    "version": "0.5.7",
     "description": "application/json and application/jsonc mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -54,11 +54,11 @@
         "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.0 || ^0.16.0",
+        "@plurnk/plurnk-mimetypes": "^0.17.0",
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.15.0 || ^0.16.0"
+        "@plurnk/plurnk-mimetypes": ">=0.16.0"
     }
 }
