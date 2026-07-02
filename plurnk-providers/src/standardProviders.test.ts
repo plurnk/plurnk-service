@@ -6,7 +6,7 @@ import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from 
 // defaults for the providers exercised outside the coverage loop. `openai` is
 // deliberately omitted so its missing-base fail-hard test still fires.
 const baseEnv = Object.freeze({
-    PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDER_RETRY_ATTEMPTS: "0",
+    PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     GROQ_BASE_URL: "https://api.groq.com/openai/v1",
     DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
     FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
@@ -98,9 +98,9 @@ test("openai: meta.n_ctx wins over a top-level n_ctx", async () => {
     assert.equal(p!.contextSize, 49152);
 });
 
-test("openai: explicit PLURNK_PROVIDER_CONTEXT_SIZE wins over n_ctx", async () => {
+test("openai: explicit PLURNK_PROVIDERS_CONTEXT_SIZE wins over n_ctx", async () => {
     mockEndpoint({ nctx: 49152 });
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDER_CONTEXT_SIZE: "400000" }, "m");
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_SIZE: "400000" }, "m");
     assert.equal(p!.contextSize, 400000);
 });
 
@@ -170,8 +170,8 @@ test("groq: requires its API key", async () => {
     await assert.rejects(standardProviderFromEnv("groq", { ...baseEnv }, "m"), /GROQ_API_KEY must be set/);
 });
 
-test("groq: applies PLURNK_PROVIDER_CONTEXT_SIZE", async () => {
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDER_CONTEXT_SIZE: "131072" }, "m");
+test("groq: applies PLURNK_PROVIDERS_CONTEXT_SIZE", async () => {
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "131072" }, "m");
     assert.equal(p!.contextSize, 131072);
 });
 
@@ -311,7 +311,7 @@ test("openai: env-pinned context size does not disable grammar detection (probe 
     const calls = mockEndpoint({ metaNctx: 49152 });
     const p = await standardProviderFromEnv(
         "openai",
-        { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDER_CONTEXT_SIZE: "400000" },
+        { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_SIZE: "400000" },
         "m",
     );
     assert.equal(p!.contextSize, 400000); // env wins for the window
@@ -434,15 +434,15 @@ test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the regi
 test("bedrock: contextSize resolves from the catalog via the inference-profile's publisher (#22)", async () => {
     const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-5");
-    assert.equal(p!.contextSize, 200000); // from the anthropic catalog, no PLURNK_PROVIDER_CONTEXT_SIZE set
+    assert.equal(p!.contextSize, 200000); // from the anthropic catalog, no PLURNK_PROVIDERS_CONTEXT_SIZE set
     // cost is NOT taken from the native anthropic rate (bedrock marks up) — stays 0
     assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
 });
 
-test("bedrock: a publisher the catalog lacks (meta) → contextSize null; PLURNK_PROVIDER_CONTEXT_SIZE still wins", async () => {
+test("bedrock: a publisher the catalog lacks (meta) → contextSize null; PLURNK_PROVIDERS_CONTEXT_SIZE still wins", async () => {
     const base = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-east-1" };
     assert.equal((await standardProviderFromEnv("bedrock", base, "us.meta.llama-3-70b"))!.contextSize, null);
-    const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDER_CONTEXT_SIZE: "128000" }, "us.meta.llama-3-70b");
+    const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDERS_CONTEXT_SIZE: "128000" }, "us.meta.llama-3-70b");
     assert.equal(pinned!.contextSize, 128000);
 });
 
@@ -603,7 +603,7 @@ test("fireworks: does NOT forward attributions/client — first-party telemetry 
 test("plurnk: a 401 is classified unauthorized — terminal, never retried", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const seen = plurnkMock(401);
-    const env = { ...baseEnv, PLURNK_PROVIDER_RETRY_ATTEMPTS: "3", PLURNK_API_KEY: "expired" };
+    const env = { ...baseEnv, PLURNK_PROVIDERS_RETRY_ATTEMPTS: "3", PLURNK_API_KEY: "expired" };
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
     await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError); assert.equal(err.kind, "unauthorized"); return true;

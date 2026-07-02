@@ -105,7 +105,7 @@ class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
         // plus universal operator knobs (PLURNK_PROVIDERS_REASONING_BUDGET, PLURNK_FETCH_TIMEOUT,
-        // PLURNK_PROVIDER_CONTEXT_SIZE). `options.baseUrl`, when set, is the per-alias
+        // PLURNK_PROVIDERS_CONTEXT_SIZE). `options.baseUrl`, when set, is the per-alias
         // endpoint override (PLURNK_BASEURL_<alias>, §5) and wins over the env base URL.
         return new OpenAI({ /* ... */ });
     }
@@ -127,8 +127,8 @@ Each provider's `fromEnv` reads these:
 
 Read via `reasoningBudgetFromEnv` and **fail hard when unset** — configuration lives in the operator's env (the consumer's `.env.example` declares every var); the framework never defaults a knob in code.
 - **`PLURNK_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request (**per attempt**, not shared across retries). Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
-- **`PLURNK_PROVIDER_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
-- **`PLURNK_PROVIDER_CONTEXT_SIZE`** — optional positive-integer override for the model's reported context window. Resolution: this env var → provider probe/config/table → `null`.
+- **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
+- **`PLURNK_PROVIDERS_CONTEXT_SIZE`** — optional positive-integer override for the model's reported context window. Resolution: this env var → provider probe/config/table → `null`.
 
 ## §5 Alias cascade resolution
 
@@ -283,7 +283,7 @@ The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the
 
 A spec may carry a **`modelPrefix`** — a constant model-id segment the backend requires but the operator's alias shouldn't repeat. `fireworks` sets `"accounts/fireworks/models/"`, so `PLURNK_MODEL_fast=fireworks/deepseek-v4-pro` carries only the distinctive tail; `standardProviderFromEnv` prepends it idempotently (an already-prefixed id is untouched) to form the wire id, which is **also** the catalog key (models.dev keys fireworks-ai on the full id). Specs without a `modelPrefix` use the model string verbatim.
 
-`contextSize` for a standard provider resolves: `PLURNK_PROVIDER_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't, yielding `null`) → `null`. The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws.
+`contextSize` for a standard provider resolves: `PLURNK_PROVIDERS_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't, yielding `null`) → `null`. The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws.
 
 ## §12 Telemetry — provider failures
 

@@ -59,7 +59,7 @@ export type OpenAICompatConfig = {
     // mechanism via reasoningStyle.
     reasoningBudget: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
-    // (PLURNK_PROVIDER_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
+    // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
 };
@@ -84,7 +84,7 @@ const GRAMMAR_TEMPERATURE = 0.2;
 // Exponential-backoff base for transient-failure retries (#18). Attempt N waits
 // RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
 // wins). The magnitude is mechanism, not operator intent — the COUNT is the
-// knob (PLURNK_PROVIDER_RETRY_ATTEMPTS); the base stays a constant.
+// knob (PLURNK_PROVIDERS_RETRY_ATTEMPTS); the base stays a constant.
 const RETRY_BASE_DELAY_MS = 2000;
 
 // Only these two classifications are transient and worth retrying: rate_limit

@@ -81,7 +81,7 @@ type StandardProviderSpec = {
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
     // the endpoint-reported context window (`n_ctx`, used when
-    // PLURNK_PROVIDER_CONTEXT_SIZE is unset) and the llama-server fingerprint
+    // PLURNK_PROVIDERS_CONTEXT_SIZE is unset) and the llama-server fingerprint
     // (a `meta` block on the model row) that enables grammar-constrained
     // sampling (SPEC §13). Set for providers that may front a local
     // OpenAI-compat server; cloud endpoints report neither → null / false.
@@ -148,7 +148,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // model-selected or a non-standard param that rides in `extra_body` (the
     // `effort`/`anthropic` styles don't reach it) — same posture as deepseek.
     // None are in the @plurnk/plurnk-models snapshot, so context comes from
-    // PLURNK_PROVIDER_CONTEXT_SIZE and cost stays unknown until the catalog adds
+    // PLURNK_PROVIDERS_CONTEXT_SIZE and cost stays unknown until the catalog adds
     // them (a plurnk-models issue, not this repo's).
     moonshot: {
         apiKeyVar: "MOONSHOT_API_KEY", apiKeyRequired: true,
@@ -228,7 +228,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
     // (see baseUrlFromEnv); model ids are inference profiles like
     // `us.anthropic.claude-sonnet-4-6` (see catalogContextLookup). Cost stays unknown —
-    // bedrock marks up over the native rate, so set PLURNK_PROVIDER_CONTEXT_SIZE for
+    // bedrock marks up over the native rate, so set PLURNK_PROVIDERS_CONTEXT_SIZE for
     // a publisher the catalog lacks (#22).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
@@ -380,9 +380,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
 
     // The probe always runs for probeNctx specs — grammar capability must not
-    // hinge on whether the operator pinned PLURNK_PROVIDER_CONTEXT_SIZE. For
+    // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_SIZE. For
     // contextSize itself, explicit env still wins over the probed n_ctx.
-    let contextSize = parseOptionalInt(env.PLURNK_PROVIDER_CONTEXT_SIZE, "PLURNK_PROVIDER_CONTEXT_SIZE", name);
+    let contextSize = parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_SIZE, "PLURNK_PROVIDERS_CONTEXT_SIZE", name);
     // Grammar shape: a static spec choice (e.g. fireworks → "response_format"),
     // upgraded to "llamacpp" when the probe fingerprints a llama-server. Slot
     // pinning is llama-server-only, so it keys on that same fingerprint. A spec
@@ -437,7 +437,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         reasoningBudget: reasoningBudgetFromEnv(env, name),
-        retryAttempts: parseRequiredInt(env.PLURNK_PROVIDER_RETRY_ATTEMPTS, "PLURNK_PROVIDER_RETRY_ATTEMPTS", name),
+        retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
         countTokens: tokenizerFor(family),
         costFor,

@@ -19,14 +19,14 @@ test("parseRequiredInt: rejects non-numeric, fractional, and negative values", (
 });
 
 test("parseOptionalInt: absent → null, present → integer", () => {
-    assert.equal(parseOptionalInt(undefined, "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), null);
-    assert.equal(parseOptionalInt("", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), null);
-    assert.equal(parseOptionalInt("131072", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), 131072);
+    assert.equal(parseOptionalInt(undefined, "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), null);
+    assert.equal(parseOptionalInt("", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), null);
+    assert.equal(parseOptionalInt("131072", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), 131072);
 });
 
 test("parseOptionalInt: rejects fractional and negative values", () => {
-    assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
-    assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDER_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
+    assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
+    assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
 });
 
 test("reasoningBudgetFromEnv: 0 off, -1 adaptive, N capped; required; rejects < -1 and non-int", () => {
