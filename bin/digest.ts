@@ -8,7 +8,9 @@ import Digest from "../src/digest/Digest.ts";
 
 if (import.meta.main) {
     try {
-        Digest.run({ dbPath: process.argv[2] ?? Digest.defaultDbPath() });
+        // argv[3] = optional output dir, so multi-DB triage writes side-by-side reports
+        // instead of clobbering test/digest/ per invocation.
+        Digest.run({ dbPath: process.argv[2] ?? Digest.defaultDbPath(), ...(process.argv[3] !== undefined ? { digestDir: process.argv[3] } : {}) });
     } catch (err) {
         process.stderr.write(`${(err as Error).message}\n`);
         process.exit(1);
