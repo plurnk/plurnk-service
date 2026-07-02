@@ -39,6 +39,9 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // The GBNF default is ACTIVE and resolves — a commented-out flag silently ran every
     // model tier unconstrained for days.
+    // Native reasoning ships OFF — budget 0 (in-DSL PLAN is the reasoning surface). The -1
+    // default let models think unbounded inside the grammar mask: 28k-token gemma turns.
+    assert.equal(env.get("PLURNK_PROVIDERS_REASONING_BUDGET"), "0", "reasoning budget ships 0");
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
     assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
     assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");
