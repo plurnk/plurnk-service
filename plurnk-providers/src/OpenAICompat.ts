@@ -100,6 +100,11 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
 
 const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 4));
 
+// Body keys the provider owns — a caller's `sampling` passthrough may not set
+// these, or it could bypass grammar transport, the stream/JSON choice, or slot
+// pinning (SPEC §8: backend-specific fields never cross the contract).
+const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set(["model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot"]);
+
 // Render a non-accept verdict into a terse, factual grammar_unenforced message
 // (SPEC §12 message policy: no guidance prose). `reject` names the diverging code
 // point + what the grammar would have accepted; `incomplete` names the valid-prefix
@@ -315,7 +320,19 @@ export default class OpenAICompatProvider implements Provider {
         return Object.keys(meta).length > 0 ? meta : undefined;
     }
 
-    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse> {
+    // Caller-supplied OpenAI-compat sampling params (temperature, top_p, top_k,
+    // penalties, stop, seed, …) merged UNDER the managed body: model, messages,
+    // reasoning, grammar (+ its repeat-penalty floor), max_tokens and slot always
+    // win, and reserved transport/protocol keys are stripped so the passthrough
+    // can't smuggle a grammar, a stream toggle, or a backend slot (SPEC §8).
+    #samplingBody(sampling: Record<string, unknown> | undefined): Record<string, unknown> {
+        if (sampling === undefined) return {};
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(sampling)) if (!RESERVED_BODY_KEYS.has(k)) out[k] = v;
+        return out;
+    }
+
+    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
@@ -332,6 +349,7 @@ export default class OpenAICompatProvider implements Provider {
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
 
         const body: Record<string, unknown> = {
+            ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
             ...this.#reasoningBody(),

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "0.24.0",
+    "version": "0.25.0",
     "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
     "keywords": [
         "plurnk",

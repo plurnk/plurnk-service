@@ -43,7 +43,15 @@ interface Provider {
     // first-party metadata, forwarded as `Plurnk-*` headers ONLY by a provider
     // configured with `firstPartyMetadata` (the plurnk endpoint) and dropped by
     // every other — structurally unable to reach a third-party backend (§11).
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse>;
+    // `sampling` is an optional bag of standard OpenAI-compat sampling params
+    // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) merged into the
+    // body UNDER the managed fields — model/messages/grammar/reasoning/max_tokens/
+    // slot always win, and transport/protocol keys (stream, response_format,
+    // grammar, id_slot) are stripped, so it carries sampling intent only and can't
+    // bypass grammar transport (§8). For a PROXY consumer forwarding its own
+    // caller's sampling knobs (the plurnk endpoint fronting gemma/Fireworks); a
+    // direct consumer leaves it unset.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {

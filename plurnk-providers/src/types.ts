@@ -82,7 +82,16 @@ export interface Provider {
     // in (the first-party `plurnk` endpoint, via `Plurnk-Attribution` /
     // `Plurnk-Client` headers); every other provider DROPS them — the gate is
     // structural so first-party metadata can never leak to a third-party backend.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string }): Promise<ProviderResponse>;
+    //
+    // `sampling` is an optional bag of standard OpenAI-compat sampling params
+    // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) forwarded into
+    // the request body UNDER the provider's managed fields — model/messages/grammar/
+    // reasoning/max_tokens/slot always win, and transport/protocol keys (stream,
+    // response_format, grammar, id_slot) are stripped, so it carries sampling intent
+    // only and can't bypass grammar transport (SPEC §8 holds). A PROXY consumer (the
+    // plurnk endpoint fronting its own backends) uses it to pass its caller's sampling
+    // knobs through; a direct consumer typically leaves it unset.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.

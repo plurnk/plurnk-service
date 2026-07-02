@@ -136,6 +136,29 @@ test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", as
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
+test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
+    const p = new OpenAICompatProvider({ model: "managed-model", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({
+        runId: "r",
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 100,
+        sampling: {
+            temperature: 0.2, top_p: 0.9, top_k: 40, stop: ["\n"],            // real sampling → passthrough
+            model: "hijack", response_format: { type: "grammar", grammar: "x" }, id_slot: 7, // reserved → stripped
+        },
+    });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.temperature, 0.2);
+    assert.equal(body.top_p, 0.9);
+    assert.equal(body.top_k, 40);
+    assert.deepEqual(body.stop, ["\n"]);
+    assert.equal(body.model, "managed-model"); // managed field wins over a hijack attempt
+    assert.equal(body.max_tokens, 100);
+    assert.equal("response_format" in body, false); // reserved transport key stripped
+    assert.equal("id_slot" in body, false); // reserved slot key stripped
+});
+
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
     const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
