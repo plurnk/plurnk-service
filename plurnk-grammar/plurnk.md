@@ -115,7 +115,6 @@ Body content is character-perfect, exactly matching whitespace.
 ## Imperatives
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
-YOU MUST distill, FOLD, or KILL log items as necessary to avoid and recover from active context Budget Overflow errors. Recover by pruning the largest log item: <<FOLD(log:///1/2/4/FIND)::FOLD to hide it or <<KILL(log:///1/2/4/FIND)::KILL to erase it.
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
 
@@ -125,14 +124,21 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * 202: submit a hibernation turn with status code 202: <<SEND[202]:Awaiting streams and worker responses.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
-YOU MUST SEND[102] to receive the results of OPs you submitted. Avoid premature SEND[200].
-
 To spawn a separate run: <<COPY(run://capital-checker):List the capitals in: known:///continents/europe:COPY
 To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
 
 ## Examples
 
 * <<FIND(config/**/*.xml)://user[@role='admin']:FIND
+* <<FIND(known:///**)<5>:~french revolutionary history:FIND
+* <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
+* <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
+* <<FIND(known:///**):revolution:FIND
+* <<FIND(known:///**):$[?(@.role=="admin")]:FIND
+* <<FIND(#(draft|final)/.*#i)::FIND
+* <<FIND(#src/.*\.test\.ts#)::FIND
+* <<FIND(src/**):@<createCoder:FIND
+* <<FIND(**/notes.md)::FIND
 * <<READ(lang/??.json):$.greeting:READ
 * <<READ(plurnk://docs/sh.md):$.Environment:READ
 * <<READ(known:///guides/setup.md)://h2/text():READ
@@ -148,23 +154,14 @@ To fork the current run: <<COPY(run://self):Re-derive the capital from a primary
 * <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 * <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
 * <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
+* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on files, entries, and items improve reasoning and recall!" > advice.txt:EDIT
 * <<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
 * <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
+* <<OPEN(log:///**)<1,10>::OPEN
+* <<FOLD(log:///**)<101,200>::FOLD
 * <<KILL(known:///draft.md)::KILL
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
 * <<KILL[9](sh:///3/1/3)::KILL
 * <<KILL(log:///1/*/*/FOLD)::KILL
-* <<OPEN(log:///**)<1,10>::OPEN
-* <<FIND(known:///**)<5>:~french revolutionary history:FIND
-* <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
-* <<FOLD(log:///**)<101,200>::FOLD
-* <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
-* <<FIND(known:///**):revolution:FIND
-* <<FIND(known:///**):$[?(@.role=="admin")]:FIND
-* <<FIND(#(draft|final)/.*#i)::FIND
-* <<FIND(#src/.*\.test\.ts#)::FIND
-* <<FIND(src/**):@<createCoder:FIND
-* <<FIND(**/notes.md)::FIND
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-* <<EDIT[tutorial,training,scripts](example.sh):echo "Taxonomic path names and topical tags on files, entries, and items improve reasoning and recall!" > advice.txt:EDIT
