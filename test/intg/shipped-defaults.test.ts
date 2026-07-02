@@ -42,6 +42,11 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // Native reasoning ships OFF — budget 0 (in-DSL PLAN is the reasoning surface). The -1
     // default let models think unbounded inside the grammar mask: 28k-token gemma turns.
     assert.equal(env.get("PLURNK_PROVIDERS_REASONING_BUDGET"), "0", "reasoning budget ships 0");
+    // §tokenomics-window-partition — the 64Ki invariant: the shipped numbers partition any
+    // ≥77Ki window to EXACTLY 65536 prompt tokens. Change any of the four and this names it.
+    const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_PROVIDERS_${k}`)));
+    assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
+    assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
     assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
     assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");

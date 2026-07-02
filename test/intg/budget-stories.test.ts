@@ -31,7 +31,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, packetSection } fro
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
-const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (computeCeiling gates on the narrowest of ceiling/window)
+const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (the partition gates on min(CTX, window))
 const WIDE = 1_000_000; // absolute wall capped to the window → never overflows
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
@@ -51,9 +51,13 @@ const fatReads = (chars: number, n = 1): MockResponse[] =>
     Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(102, null, "ok")]));
 
 const engineAt = (db: Db, ceiling: number): Engine => {
-    process.env.PLURNK_BUDGET_CEILING = String(ceiling);
+    // CTX = the pin, zero reserves: promptBudget IS the pin (§tokenomics-window-partition).
+    process.env.PLURNK_PROVIDERS_CTX = String(ceiling);
+    process.env.PLURNK_PROVIDERS_REASONING = "0";
+    process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
+    process.env.PLURNK_PROVIDERS_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    delete process.env.PLURNK_BUDGET_CEILING;
+    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_PROVIDERS_${k}`];
     return engine;
 };
 const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loopId: number }> => {
@@ -310,15 +314,23 @@ test("budget: the un-foldable hard-413 record reports a positive overshoot hones
     } finally { await db.close(); }
 });
 
-// 11 — ratio-mode ceiling is 90% of the window (rummy budget math: floor(window*0.9)).
-// Pins computeCeiling's ratio arm against the absolute-mode tests.
-test("budget: ratio-mode ceiling is 90% of the window, leaving headroom below the wall", async () => {
+// 11 — the narrow-window arm of the partition: a provider window under CTX governs,
+// minus the reserves ([§tokenomics-window-partition]'s min(CTX, window) via a real build).
+test("budget: a window narrower than CTX governs the partition — ceiling = window − reserves", async () => {
     const db = await openMigrated();
     try {
+        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
+        process.env.PLURNK_PROVIDERS_CTX = "1000000";
+        process.env.PLURNK_PROVIDERS_REASONING = "0";
+        process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
+        process.env.PLURNK_PROVIDERS_SAFETY = "0";
         const { sessionId, runId, loopId } = await envelope(db);
-        const engine = new Engine({ db, schemes: new SchemeRegistry() }); // no override → DEFAULT 0.9 ratio
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
+            if (prevPart[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prevPart[i];
+        });
         const t = await engine.runTurn({ provider: new Mock({ contextSize: 12, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const { ceiling } = budgetHeadline((await packetOf(db, t.turnId)).packet);
-        assert.equal(ceiling, Math.floor(12 * 0.9), "ratio ceiling is floor(window * 0.9) = 10");
+        assert.equal(ceiling, 12, "window 12 < CTX, zero reserves → promptBudget 12");
     } finally { await db.close(); }
 });

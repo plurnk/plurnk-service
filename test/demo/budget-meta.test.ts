@@ -1,5 +1,5 @@
 // Budget as a META-SCENARIO (owner's design): the storyline demos, re-run under a
-// tight PLURNK_BUDGET_CEILING. Budget pressure is a DIMENSION atop a real scenario,
+// tight partition CTX. Budget pressure is a DIMENSION atop a real scenario,
 // not a bespoke fixture — if the same task still completes when the model must curate
 // to fit the window, the grinder works end-to-end with a real model. The intg layer
 // (budget-stories.test.ts) pins the exact mechanics; this pins the behavior, the way
@@ -40,11 +40,15 @@ interface BudgetRun {
 }
 
 // runStory with a pinned budget ceiling. The daemon's engine reads
-// PLURNK_BUDGET_CEILING at construction (inside liveSession), so set before / restore
+// the partition env at construction (inside liveSession), so set before / restore
 // after — mirrors budget-grind. `projectRoot` overrides the default fixture (the SPEC demo).
 const runUnderBudget = async (opts: { label: string; prompt: string; ceiling: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
-    const prev = process.env.PLURNK_BUDGET_CEILING;
-    process.env.PLURNK_BUDGET_CEILING = String(opts.ceiling);
+    const prev = process.env.PLURNK_PROVIDERS_CTX;
+    // promptBudget = opts.ceiling exactly; real assistant reserve keeps maxTokens sane live.
+    process.env.PLURNK_PROVIDERS_CTX = String(opts.ceiling + 8192);
+    process.env.PLURNK_PROVIDERS_REASONING = "0";
+    process.env.PLURNK_PROVIDERS_ASSISTANT = "8192";
+    process.env.PLURNK_PROVIDERS_SAFETY = "0";
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
     try {
@@ -72,7 +76,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; ceiling: nu
         if (opts.cleanupRoot) await opts.cleanupRoot();
         throw err;
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_BUDGET_CEILING; else process.env.PLURNK_BUDGET_CEILING = prev;
+        if (prev === undefined) delete process.env.PLURNK_PROVIDERS_CTX; else process.env.PLURNK_PROVIDERS_CTX = prev;
     }
 };
 

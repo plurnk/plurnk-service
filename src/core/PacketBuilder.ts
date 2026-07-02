@@ -17,22 +17,19 @@ import PacketWire, { type PacketSection } from "./packet-wire.ts";
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider } from "@plurnk/plurnk-providers";
 
-const DEFAULT_BUDGET_CEILING = 0.9;
-
 // Substituted into the budget readout after the assembled packet is measured
 // (the figure depends on the packet's own rendered size — chicken/egg).
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 
-// PLURNK_BUDGET_CEILING is dual-mode: <=1 is a fraction of the provider's
-// context window, >1 is an absolute token wall — lets a demo pin a tiny
-// ceiling regardless of the model's real window to force the grinder.
-const readCeiling = (): number => {
-    const raw = process.env.PLURNK_BUDGET_CEILING;
-    if (raw === undefined || raw.length === 0) return DEFAULT_BUDGET_CEILING;
-    const n = Number.parseFloat(raw);
-    if (!Number.isFinite(n) || n <= 0) return DEFAULT_BUDGET_CEILING;
+// §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
+// providers-env convention): the ceiling is DERIVED from these, never set directly
+// (PLURNK_BUDGET_CEILING is retired — a settable ceiling let policy contradict physics).
+const readPartitionInt = (name: string, min: number): number => {
+    const raw = process.env[name];
+    const n = Number.parseInt(raw ?? "", 10);
+    if (!Number.isFinite(n) || n < min) throw new Error(`${name} must be an integer >= ${min}; got ${raw}`);
     return n;
 };
 
@@ -68,13 +65,6 @@ export type RequestPacket = {
 // Packet assembly (SPEC §packet-construction) + the budget grinder (§grinder):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
 export default class PacketBuilder {
-    static computeCeiling(contextSize: number | null, config: number): number | null {
-        // Absolute wall (config > 1) is window-independent — the point of the >1
-        // mode is to pin a ceiling even when the provider reports no window; cap at
-        // the real window when one is known. Ratio mode needs a window to scale.
-        if (config > 1) return contextSize === null ? Math.floor(config) : Math.min(Math.floor(config), contextSize);
-        return contextSize === null ? null : Math.floor(contextSize * config);
-    }
 
     #db: Db;
     #schemes: SchemeRegistry;
@@ -82,7 +72,12 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    #budgetCeiling: number;
+    // §tokenomics-window-partition — policy max, reasoning reserve, content floor, template
+    // overhead. Shipped defaults partition any ≥77Ki window to EXACTLY 65536 prompt tokens.
+    #ctx: number;
+    #reasoning: number;
+    #assistant: number;
+    #safety: number;
 
     constructor({ db, schemes, telemetry, executors }: {
         db: Db;
@@ -94,18 +89,30 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#telemetry = telemetry;
         this.#executors = executors;
-        this.#budgetCeiling = readCeiling();
+        this.#ctx = readPartitionInt("PLURNK_PROVIDERS_CTX", 1);
+        this.#reasoning = readPartitionInt("PLURNK_PROVIDERS_REASONING", 0);
+        this.#assistant = readPartitionInt("PLURNK_PROVIDERS_ASSISTANT", 0);
+        this.#safety = readPartitionInt("PLURNK_PROVIDERS_SAFETY", 0);
     }
 
-    // §tokenomics-ceiling-calibrates-to-usage (#311) — the ceiling divides by the loop's observed
-    // real/measured token ratio. countTokens can be a heuristic (chars/4 on the openai family);
-    // escaped-JSON log rows run ~2.7 real chars/token, so honest arithmetic on that ruler shipped a
-    // 65k-real packet into a 49k window. usage.prompt is ground truth for the WHOLE wire request:
-    // once a loop has seen one response, requiring measured ≤ ceiling/ratio makes a real overflow
-    // unreachable. ratio floors at 1 — an overcounting ruler never EXPANDS the ceiling.
-    ceilingFor(provider: Provider, tokenRatio = 1): number | null {
-        const ceiling = PacketBuilder.computeCeiling(provider.contextSize, this.#budgetCeiling);
-        return ceiling === null ? null : Math.floor(ceiling / Math.max(1, tokenRatio));
+    // The generation envelope — REASONING + ASSISTANT, one undifferentiated pool, passed on
+    // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition).
+    decodeBudget(): number {
+        return this.#reasoning + this.#assistant;
+    }
+
+    // §tokenomics-window-partition ÷ §tokenomics-ceiling-calibrates-to-usage — the prompt ceiling
+    // is DERIVED, never set: effectiveWindow = min(CTX, provider window; CTX alone when the
+    // provider reports none) minus the reserves, divided by the loop's observed real/measured
+    // token ratio (usage.prompt is ground truth; a heuristic ruler shipped a 65k-real packet into
+    // a 49k window, #311). A fractional ceiling also budgeted the prompt against the window and
+    // FORGOT the response lives there too. Reserves exceeding the window is a configuration
+    // contradiction — fail hard. ratio floors at 1: an overcounting ruler never expands the budget.
+    ceilingFor(provider: Provider, tokenRatio = 1): number {
+        const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
+        const promptBudget = effectiveWindow - this.#reasoning - this.#assistant - this.#safety;
+        if (promptBudget <= 0) throw new Error(`window partition contradiction: effective window ${effectiveWindow} <= reserves ${this.#reasoning}+${this.#assistant}+${this.#safety} (PLURNK_PROVIDERS_CTX/REASONING/ASSISTANT/SAFETY)`);
+        return Math.floor(promptBudget / Math.max(1, tokenRatio));
     }
 
     // Assemble the request half of the spec'd packet (Packet.json §system
@@ -227,7 +234,7 @@ export default class PacketBuilder {
         // Pass 1: measure the assembled total with the placeholder budget in
         // place, resolve free/percent, substitute into the budget section.
         let total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        if (ceiling !== null) {
+        {
             const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
             if (budgetSec) {
                 // Curation pressure gates on OCCUPANCY (§tokenomics-pressure-gates-on-occupancy, #308):
@@ -270,10 +277,10 @@ export default class PacketBuilder {
             byTurn: Array<{ turn: string; tokens: number }>;
             largest: Array<{ path: string; tokens: number }>;
         },
-        ceiling: number | null,
+        ceiling: number,
     ): string {
         const lines: string[] = [];
-        if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
+        lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
         if (log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
@@ -354,7 +361,7 @@ export default class PacketBuilder {
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
         const ceiling = this.ceilingFor(provider, tokenRatio);
         const measure = (p: RequestPacket): number => p.tokens;
-        if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
+        if (measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
         // The grinder may compact ONLY the newest turn — the immediately-prior turn's emissions
         // (turn N>1), or, when there is no prior turn (turn 1), THIS turn's own foists. It NEVER

@@ -38,17 +38,18 @@ test("[§tokenomics-ceiling-calibrates-to-usage] the next turn's ceiling divides
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // The provider reports its prompts cost 2× what our ruler measured (window 100k → raw ceiling 90k).
+        // The provider reports its prompts cost 2× what our ruler measured (window 100k, CTX 78848,
+        // test reserves 1344 → raw promptBudget 77504).
         const provider = new UndercountedMock({ contextSize: 100000, ratio: 2, responses: [resp([sendStmt(102, null, "1")]), resp([sendStmt(200, null, "done")])] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         const ceiling = Number(/Token Ceiling (\d+)/.exec(budget)?.[1]);
-        // Turn 2's ceiling ≈ 90000/2 — the measured packet may now only claim half the window,
+        // Turn 2's ceiling ≈ 77504/2 — the measured packet may now only claim half the budget,
         // so the REAL request (2× our measure) can never exceed it. Small drift allowed: the
         // observed ratio includes the wire join overhead our per-slot measure doesn't.
-        assert.ok(ceiling <= 45000, `ceiling calibrated down from 90000; got ${ceiling}`);
-        assert.ok(ceiling >= 40000, `calibration is the observed ~2×, not runaway shrink; got ${ceiling}`);
+        assert.ok(ceiling <= 38752, `ceiling calibrated down from 77504; got ${ceiling}`);
+        assert.ok(ceiling >= 34000, `calibration is the observed ~2×, not runaway shrink; got ${ceiling}`);
     } finally { await db.close(); }
 });
 
@@ -64,6 +65,6 @@ test("[§tokenomics-ceiling-calibrates-to-usage] an accurate ruler keeps its ful
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
-        assert.match(budget, /Token Ceiling 90000/, "the raw ceiling stands for an honest ruler");
+        assert.match(budget, /Token Ceiling 77504/, "the raw promptBudget stands for an honest ruler");
     } finally { await db.close(); }
 });

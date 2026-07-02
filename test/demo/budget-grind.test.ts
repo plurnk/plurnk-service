@@ -1,5 +1,5 @@
 // Extreme-budget demo — designed to FAIL until the model is taught to curate.
-// PLURNK_BUDGET_CEILING is pinned just above the fixed sysprompt floor
+// The partition CTX is pinned so promptBudget sits just above the fixed sysprompt floor
 // (plurnk.md ~1313t + persona/requirements), so a couple of file READs push
 // the assembled packet past the wall. With no curation the log accumulates and
 // `peak` blows the ceiling; staying under means the model HID earlier reads as
@@ -39,8 +39,12 @@ const NO_CURATION = 4200;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
-    const prevCeiling = process.env.PLURNK_BUDGET_CEILING;
-    process.env.PLURNK_BUDGET_CEILING = String(CEILING); // captured by the daemon's engine at construction (liveSession, below)
+    const prevCeiling = process.env.PLURNK_PROVIDERS_CTX;
+    // promptBudget = CEILING exactly; a real assistant reserve keeps maxTokens sane for live gemma.
+    process.env.PLURNK_PROVIDERS_CTX = String(CEILING + 8192);
+    process.env.PLURNK_PROVIDERS_REASONING = "0";
+    process.env.PLURNK_PROVIDERS_ASSISTANT = "8192";
+    process.env.PLURNK_PROVIDERS_SAFETY = "0"; // captured by the daemon's engine at construction (liveSession, below)
     try {
         const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
@@ -63,8 +67,8 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
             assert.ok(peak < NO_CURATION, `the model curated rather than letting the log run away (peaked ${peak}, no-curation ~${NO_CURATION}+; communicated ceiling ${CEILING})`);
         } finally { await s.cleanup(); }
     } finally {
-        if (prevCeiling === undefined) delete process.env.PLURNK_BUDGET_CEILING;
-        else process.env.PLURNK_BUDGET_CEILING = prevCeiling;
+        if (prevCeiling === undefined) delete process.env.PLURNK_PROVIDERS_CTX;
+        else process.env.PLURNK_PROVIDERS_CTX = prevCeiling;
         await fixture.cleanup();
     }
 });

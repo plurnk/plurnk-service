@@ -25,12 +25,19 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
 const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
 
-// Construct an engine pinned to an absolute budget ceiling (>1 = absolute).
-// Set → construct (reads env) → delete is synchronous, so no cross-test race.
+// Construct an engine pinned to an exact prompt budget: CTX = the pin, zero reserves —
+// promptBudget IS the pin (§tokenomics-window-partition; the settable ceiling is retired).
+// Set → construct (reads env) → restore is synchronous, so no cross-test race.
 const engineAt = (db: Db, ceiling: number): Engine => {
-    process.env.PLURNK_BUDGET_CEILING = String(ceiling);
+    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
+    process.env.PLURNK_PROVIDERS_CTX = String(ceiling);
+    process.env.PLURNK_PROVIDERS_REASONING = "0";
+    process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
+    process.env.PLURNK_PROVIDERS_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    delete process.env.PLURNK_BUDGET_CEILING;
+    ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
+        if (prev[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prev[i];
+    });
     return engine;
 };
 

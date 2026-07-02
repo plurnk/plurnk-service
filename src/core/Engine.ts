@@ -109,10 +109,6 @@ const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_LOOP_TIMEOUT", D
 const LOOP_TIMEOUT_REASON = "loop_timeout";
 
 export default class Engine {
-    static computeCeiling(contextSize: number | null, config: number): number | null {
-        return PacketBuilder.computeCeiling(contextSize, config);
-    }
-
     static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>): string {
         return StrikeRail.fingerprintTurn(ops);
     }
@@ -771,7 +767,7 @@ export default class Engine {
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
